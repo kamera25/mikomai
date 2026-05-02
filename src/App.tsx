@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
 import { ScheduledTasksPanel } from "./components/ScheduledTasksPanel";
@@ -209,20 +210,29 @@ function App() {
           setMessages(prev => [...prev, { role: "ai", content: `Failed to execute: ${e.toString()}`, timestamp: new Date().toISOString() }]);
         }
       } else {
-        setMessages(prev => [...prev, { role: "ai", content: "Thinking...", timestamp: new Date().toISOString() }]);
-        try {
-          const result: string = await invoke("ask_llm", { prompt: userMessage });
+        setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
+        
+        const unlisten = await listen<string>("llm-chunk", (event) => {
           setMessages(prev => {
             const updated = [...prev];
-            updated[updated.length - 1] = { role: "ai", content: result, timestamp: new Date().toISOString() };
+            const lastMessage = updated[updated.length - 1];
+            if (lastMessage && lastMessage.role === "ai") {
+              updated[updated.length - 1] = { ...lastMessage, content: lastMessage.content + event.payload };
+            }
             return updated;
           });
+        });
+
+        try {
+          await invoke("ask_llm", { prompt: userMessage });
         } catch (e: any) {
           setMessages(prev => {
             const updated = [...prev];
             updated[updated.length - 1] = { role: "ai", content: `Error: ${e.toString()}`, timestamp: new Date().toISOString() };
             return updated;
           });
+        } finally {
+          unlisten();
         }
       }
     }, 500);

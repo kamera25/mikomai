@@ -8,6 +8,7 @@ use llama_cpp_2::model::AddBos;
 use llama_cpp_2::sampling::LlamaSampler;
 use std::sync::Mutex;
 use std::num::NonZeroU32;
+use tauri::Emitter;
 
 #[derive(serde::Serialize)]
 pub enum ModelState {
@@ -113,7 +114,7 @@ const SYSTEM_PROMPT: &str = "あなたは「MIKOMAI (Managed Infrastructure Know
 - コマンドやコード、IPアドレスなどは、必ずマークダウンのコードブロック(`)で囲み、視認性を高めてください。";
 
 #[tauri::command]
-pub async fn ask_llm(prompt: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
+pub async fn ask_llm(window: tauri::Window, prompt: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
     let model_lock = state.model.lock().unwrap();
     let model = match &*model_lock {
         Some(m) => m,
@@ -166,6 +167,7 @@ pub async fn ask_llm(prompt: String, state: tauri::State<'_, LlamaState>) -> Res
         // Try converting accumulated bytes to string, if error means not fully formed utf8 character yet
         match String::from_utf8(bytes_accumulator.clone()) {
             Ok(s) => {
+                let _ = window.emit("llm-chunk", &s);
                 result_string.push_str(&s);
                 bytes_accumulator.clear();
             }
@@ -173,6 +175,7 @@ pub async fn ask_llm(prompt: String, state: tauri::State<'_, LlamaState>) -> Res
                 // Keep accumulating if we cannot parse it cleanly yet
                 let utf8_error_index = e.utf8_error().valid_up_to();
                 let valid_str = String::from_utf8_lossy(&bytes_accumulator[..utf8_error_index]).to_string();
+                let _ = window.emit("llm-chunk", &valid_str);
                 result_string.push_str(&valid_str);
                 let remaining_bytes = bytes_accumulator[utf8_error_index..].to_vec();
                 bytes_accumulator = remaining_bytes;
