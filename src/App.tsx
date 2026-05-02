@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
 import "./App.css";
 
 interface Message {
@@ -29,6 +30,7 @@ function App() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isConnectionOpen, setIsConnectionOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -260,15 +262,40 @@ function App() {
     <div className="app-container">
       {/* Activity Bar (LM Studio style thin left bar) */}
       <nav className="activity-bar">
-        <div 
-          className={`activity-item ${isSidebarOpen ? 'active' : ''}`} 
+         <div 
+          className={`activity-item ${isSidebarOpen && !isSettingsOpen && !isConnectionOpen ? 'active' : ''}`} 
           title="Chat History" 
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          onClick={() => {
+            if (isSettingsOpen || isConnectionOpen) {
+              setIsSettingsOpen(false);
+              setIsConnectionOpen(false);
+              setIsSidebarOpen(true);
+            } else {
+              setIsSidebarOpen(!isSidebarOpen);
+            }
+          }}
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
         </div>
+        <div 
+          className={`activity-item ${isConnectionOpen ? 'active' : ''}`} 
+          title="Connection Settings" 
+          onClick={() => {
+            setIsConnectionOpen(true);
+            setIsSettingsOpen(false);
+          }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><line x1="12" y1="12" x2="12" y2="8"></line></svg>
+        </div>
         <div className="spacer"></div>
-        <div className="activity-item" title="Settings" onClick={() => setIsSettingsOpen(true)}>
+        <div 
+          className={`activity-item ${isSettingsOpen ? 'active' : ''}`} 
+          title="Settings" 
+          onClick={() => {
+            setIsSettingsOpen(true);
+            setIsConnectionOpen(false);
+          }}
+        >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </div>
       </nav>
@@ -319,6 +346,10 @@ function App() {
           <SettingsPanel 
             isOpen={isSettingsOpen} 
             onClose={() => setIsSettingsOpen(false)} 
+          />
+        ) : isConnectionOpen ? (
+          <ConnectionSettingsPanel 
+            onClose={() => setIsConnectionOpen(false)} 
           />
         ) : (
           <main className="main-chat">
