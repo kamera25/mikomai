@@ -155,23 +155,7 @@
   gap: 16px;
 }
 
-.toggle-sidebar-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
 
-.toggle-sidebar-btn:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-hover);
-}
 
 .model-selector {
   display: flex;
