@@ -2,6 +2,7 @@ mod llm;
 mod rag;
 mod network;
 mod mcp_network;
+mod history;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -29,7 +30,9 @@ pub fn run() {
             network::network_show,
             network::network_config,
             mcp_network::network_ping,
-            mcp_network::network_traceroute
+            mcp_network::network_traceroute,
+            history::load_history,
+            history::save_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
