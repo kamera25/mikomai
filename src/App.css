@@ -612,8 +612,28 @@
   background-color: var(--danger);
 }
 
+
 @keyframes pulse {
   0% { opacity: 1; }
   50% { opacity: 0.5; }
   100% { opacity: 1; }
 }
+
+.code-block {
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 10px 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  overflow-x: auto;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.code-block code {
+  font-family: inherit;
+  color: inherit;
+}
+

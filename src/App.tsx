@@ -214,32 +214,98 @@ function App() {
         setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
         
         let fullContent = "";
-        const unlisten = await listen<string>("llm-chunk", (event) => {
-          fullContent += event.payload;
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastMessage = updated[updated.length - 1];
-            if (lastMessage && lastMessage.role === "ai") {
-              updated[updated.length - 1] = { ...lastMessage, content: fullContent };
-            }
-            return updated;
-          });
-        });
-
+        let unlisten: () => void = () => {};
+        
         try {
+          unlisten = await listen<string>("llm-chunk", (event) => {
+            fullContent += event.payload;
+            setMessages(prev => {
+              const updated = [...prev];
+              const lastMessage = updated[updated.length - 1];
+              if (lastMessage && lastMessage.role === "ai") {
+                updated[updated.length - 1] = { ...lastMessage, content: fullContent };
+              }
+              return updated;
+            });
+          });
+
           const response: string = await invoke("ask_llm", { prompt: userMessage });
+          unlisten(); // Unlisten IMMEDIATELY after the first call completes
           
-          // Check for JSON tool call in the final response
-          const jsonMatch = response.match(/\{[\s\S]*?"tool"[\s\S]*?\}/);
-          if (jsonMatch) {
+          console.log("LLM Response:", response);
+          
+          // Better extraction: Try to find JSON block or match balanced-like structure
+          let jsonStr = "";
+          const jsonBlockMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/);
+          if (jsonBlockMatch) {
+            jsonStr = jsonBlockMatch[1];
+          } else {
+            // Fallback: capture from { "tool" to the last }
+            const fallbackMatch = response.match(/\{[\s\S]*?"tool"[\s\S]*\}/);
+            if (fallbackMatch) {
+              jsonStr = fallbackMatch[0];
+            }
+          }
+
+          if (jsonStr) {
             try {
-              const toolCall = JSON.parse(jsonMatch[0]);
+              console.log("Extracted JSON tool string:", jsonStr);
+              const toolCall = JSON.parse(jsonStr);
+              let result: any = null;
+              let toolName = "";
+
+              // Show executing status
+              const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
+                                     toolCall.tool === "network_traceroute" ? "Traceroute" : toolCall.tool;
+              
+              setMessages(prev => [...prev, { role: "ai", content: `⏱️ ${toolActionName} を実行中...`, timestamp: new Date().toISOString() }]);
+
               if (toolCall.tool === "network_ping") {
-                const result: any = await invoke("network_ping", { host: toolCall.args.host });
-                setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
+                toolName = "Ping";
+                result = await invoke("network_ping", { host: toolCall.args.host });
               } else if (toolCall.tool === "network_traceroute") {
-                const result: any = await invoke("network_traceroute", { host: toolCall.args.host });
-                setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
+                toolName = "Traceroute";
+                result = await invoke("network_traceroute", { host: toolCall.args.host });
+              }
+
+              if (result) {
+                // Update the executing status with the tool result
+                const resultMessage = result.success ? 
+                  `### ${toolName} 実行結果\n\`\`\`\n${result.output}\n\`\`\`` : 
+                  `### ${toolName} エラー\n${result.output}`;
+                
+                setMessages(prev => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { role: "ai", content: resultMessage, timestamp: new Date().toISOString() };
+                  return updated;
+                });
+
+                // Automatically ask LLM to analyze the result
+                const analysisPrompt = `ユーザーの入力: "${userMessage}"\nに対する${toolName}の実行結果は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。`;
+                
+                // Add a placeholder for analysis
+                setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
+                
+                let analysisContent = "";
+                const analysisUnlisten = await listen<string>("llm-chunk", (event) => {
+                  analysisContent += event.payload;
+                  setMessages(prev => {
+                    const updated = [...prev];
+                    const lastMessage = updated[updated.length - 1];
+                    if (lastMessage && lastMessage.role === "ai") {
+                      updated[updated.length - 1] = { ...lastMessage, content: analysisContent };
+                    }
+                    return updated;
+                  });
+                });
+
+                try {
+                  await invoke("ask_llm", { prompt: analysisPrompt });
+                } catch (analysisError: any) {
+                  console.error("Failed to get analysis", analysisError);
+                } finally {
+                  analysisUnlisten();
+                }
               }
             } catch (parseError) {
               console.error("Failed to parse tool call JSON", parseError);
@@ -492,11 +558,13 @@ function App() {
                   )}
                   <div className={`message ${msg.role}`}>
                     <div className="message-bubble">
-                      {msg.content.includes("```") ? (
-                        <pre style={{ whiteSpace: 'pre-wrap' }}>{msg.content.replace(/```/g, '')}</pre>
-                      ) : (
-                        msg.content
-                      )}
+                      {msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
+                        if (part.startsWith("```")) {
+                          const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
+                          return <pre key={i} className="code-block"><code>{content}</code></pre>;
+                        }
+                        return <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{part}</span>;
+                      })}
                     </div>
                   </div>
                 </div>
