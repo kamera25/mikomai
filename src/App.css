@@ -9,7 +9,7 @@
 /* Activity Bar */
 .activity-bar {
   width: 54px;
-  background-color: var(--bg-tertiary);
+  background-color: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
@@ -54,7 +54,7 @@
 /* Sidebar Styling */
 .sidebar {
   width: 280px;
-  background-color: #b5b9c3;
+  background-color: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
@@ -93,7 +93,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 15px var(--accent-glow);
+  box-shadow: 0 4px 12px var(--accent-glow);
 }
 
 .session-list {
@@ -124,12 +124,12 @@
 }
 
 .folder-item:hover, .session-item:hover {
-  background-color: var(--bg-tertiary);
+  background-color: var(--bg-hover);
   color: var(--text-primary);
 }
 
 .session-item.active {
-  background-color: var(--bg-tertiary);
+  background-color: var(--bg-hover);
   color: var(--text-primary);
   box-shadow: inset 3px 0 0 var(--accent-color);
 }
@@ -223,8 +223,7 @@
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-color);
-  background-color: rgba(10, 12, 16, 0.8);
-  backdrop-filter: blur(8px);
+  background-color: var(--bg-secondary);
   z-index: 10;
 }
 
@@ -241,7 +240,7 @@
   align-items: center;
   gap: 12px;
   padding: 6px 12px;
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   font-size: 0.85rem;
@@ -291,27 +290,7 @@
   flex-direction: row-reverse;
 }
 
-.avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  font-size: 1.2rem;
-}
-
-.avatar.ai {
-  background-color: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  color: var(--accent-color);
-}
-
-.avatar.user {
-  background-color: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-}
+/* Message bubble styles */
 
 .message-bubble {
   background-color: var(--bg-secondary);
@@ -322,7 +301,7 @@
   font-size: 0.95rem;
   line-height: 1.6;
   max-width: 80%;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .message.user .message-bubble {
@@ -330,7 +309,11 @@
 }
 
 .message.ai .message-bubble {
-  border-top-left-radius: 4px;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 8px 0;
+  max-width: 100%;
 }
 
 .message.user .message-bubble {
@@ -352,7 +335,7 @@
   border-radius: 12px;
   padding: 12px 16px;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .input-container:focus-within {
