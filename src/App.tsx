@@ -7,6 +7,7 @@ import "./App.css";
 interface Message {
   role: "user" | "ai";
   content: string;
+  timestamp?: string; // ISO string
 }
 
 interface ChatSession {
@@ -127,12 +128,32 @@ function App() {
     }
   }, [input]);
 
+  const formatMessageTime = (isoString?: string) => {
+    if (!isoString) return "";
+    const date = new Date(isoString);
+    const now = new Date();
+    
+    const isToday = date.getFullYear() === now.getFullYear() &&
+                    date.getMonth() === now.getMonth() &&
+                    date.getDate() === now.getDate();
+    
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    if (isToday) {
+      return timeStr;
+    } else {
+      const dateStr = date.toLocaleDateString([], { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/');
+      return `${dateStr} ${timeStr}`;
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
     
     const userMessage = input.trim();
+    const timestamp = new Date().toISOString();
     setInput("");
-    setMessages(prev => [...prev, { role: "user", content: userMessage }]);
+    setMessages(prev => [...prev, { role: "user", content: userMessage, timestamp }]);
 
     // Simulated LLM Tool Calling Logic
     setTimeout(async () => {
@@ -142,51 +163,51 @@ function App() {
         const match = lowerInput.match(/ping\s+([a-zA-Z0-9.-]+)/);
         const host = match ? match[1] : "1.1.1.1";
 
-        setMessages(prev => [...prev, { role: "ai", content: `Pinging ${host}...` }]);
+        setMessages(prev => [...prev, { role: "ai", content: `Pinging ${host}...`, timestamp: new Date().toISOString() }]);
 
         try {
           const result: any = await invoke("network_ping", { host });
-          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}` }]);
+          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
         } catch (e: any) {
-          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute ping: ${e.toString()}` }]);
+          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute ping: ${e.toString()}`, timestamp: new Date().toISOString() }]);
         }
       } else if (lowerInput.includes("traceroute") || lowerInput.includes("trace")) {
         const match = lowerInput.match(/trace(?:route)?\s+([a-zA-Z0-9.-]+)/);
         const host = match ? match[1] : "1.1.1.1";
 
-        setMessages(prev => [...prev, { role: "ai", content: `Tracing route to ${host}...` }]);
+        setMessages(prev => [...prev, { role: "ai", content: `Tracing route to ${host}...`, timestamp: new Date().toISOString() }]);
 
         try {
           const result: any = await invoke("network_traceroute", { host });
-          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}` }]);
+          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
         } catch (e: any) {
-          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute traceroute: ${e.toString()}` }]);
+          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute traceroute: ${e.toString()}`, timestamp: new Date().toISOString() }]);
         }
       } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
-        setMessages(prev => [...prev, { role: "ai", content: "Retrieving device status..." }]);
+        setMessages(prev => [...prev, { role: "ai", content: "Retrieving device status...", timestamp: new Date().toISOString() }]);
         
         try {
           const result: any = await invoke("network_show", {
             device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
             command: "show ip int brief"
           });
-          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}` }]);
+          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
         } catch (e: any) {
-          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute: ${e.toString()}` }]);
+          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute: ${e.toString()}`, timestamp: new Date().toISOString() }]);
         }
       } else {
-        setMessages(prev => [...prev, { role: "ai", content: "Thinking..." }]);
+        setMessages(prev => [...prev, { role: "ai", content: "Thinking...", timestamp: new Date().toISOString() }]);
         try {
           const result: string = await invoke("ask_llm", { prompt: userMessage });
           setMessages(prev => {
             const updated = [...prev];
-            updated[updated.length - 1] = { role: "ai", content: result };
+            updated[updated.length - 1] = { role: "ai", content: result, timestamp: new Date().toISOString() };
             return updated;
           });
         } catch (e: any) {
           setMessages(prev => {
             const updated = [...prev];
-            updated[updated.length - 1] = { role: "ai", content: `Error: ${e.toString()}` };
+            updated[updated.length - 1] = { role: "ai", content: `Error: ${e.toString()}`, timestamp: new Date().toISOString() };
             return updated;
           });
         }
@@ -401,13 +422,21 @@ function App() {
               </div>
             ) : (
               messages.map((msg, idx) => (
-                <div key={idx} className={`message ${msg.role}`}>
-                  <div className="message-bubble">
-                    {msg.content.includes("```") ? (
-                      <pre style={{ whiteSpace: 'pre-wrap' }}>{msg.content.replace(/```/g, '')}</pre>
-                    ) : (
-                      msg.content
-                    )}
+                <div key={idx} className={`message-container ${msg.role}`}>
+                  {msg.role === 'user' && (
+                    <div className="message-header">
+                      <div className="header-line"></div>
+                      <span className="message-time">{formatMessageTime(msg.timestamp)}</span>
+                    </div>
+                  )}
+                  <div className={`message ${msg.role}`}>
+                    <div className="message-bubble">
+                      {msg.content.includes("```") ? (
+                        <pre style={{ whiteSpace: 'pre-wrap' }}>{msg.content.replace(/```/g, '')}</pre>
+                      ) : (
+                        msg.content
+                      )}
+                    </div>
                   </div>
                 </div>
               ))

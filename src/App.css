@@ -282,6 +282,33 @@
   gap: 24px;
 }
 
+.message-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.header-line {
+  flex-grow: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border-color));
+}
+
+.message-time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
 .message {
   display: flex;
   gap: 16px;
