@@ -37,7 +37,8 @@ pub fn run() {
             history::load_history,
             history::save_history,
             connections::load_connections,
-            connections::save_connections
+            connections::save_connections,
+            connections::get_mcp_hosts
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

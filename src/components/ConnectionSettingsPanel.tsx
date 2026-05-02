@@ -15,6 +15,13 @@ interface Connection {
   lastConnected: string;
 }
 
+interface McpHost {
+  hostname: string;
+  ip: string;
+  deviceType: string;
+  username: string;
+}
+
 const mockConnections: Connection[] = [
   { id: '1', status: 'online', hostname: 'Core-Switch-01', ip: '192.168.1.1', type: 'SSH (Cisco IOS)', lastConnected: '2024-05-02 14:20' },
   { id: '2', status: 'offline', hostname: 'Edge-Router-02', ip: '192.168.2.1', type: 'SSH (Juniper JunOS)', lastConnected: '2024-04-30 09:15' },
@@ -31,6 +38,19 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [mcpHosts, setMcpHosts] = useState<McpHost[]>([]);
+
+  useEffect(() => {
+    const fetchMcpHosts = async () => {
+      try {
+        const hosts: McpHost[] = await invoke('get_mcp_hosts');
+        setMcpHosts(hosts);
+      } catch (e) {
+        console.error("Failed to fetch MCP hosts:", e);
+      }
+    };
+    fetchMcpHosts();
+  }, []);
 
   useEffect(() => {
     const initConnections = async () => {
@@ -114,6 +134,27 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const handleMcpLookup = () => {
+    const mcpMatch = mcpHosts.find(h => h.hostname.toLowerCase() === formData.hostname.toLowerCase());
+    if (mcpMatch) {
+      setFormData({
+        ...formData,
+        ip: mcpMatch.ip,
+        type: mcpMatch.deviceType.split(' ')[0] as any,
+        username: mcpMatch.username
+      });
+      // Clear errors if we found it
+      if (errors.ip) {
+        const newErrors = { ...errors };
+        delete newErrors.ip;
+        setErrors(newErrors);
+      }
+      alert(`MCPから「${mcpMatch.hostname}」の情報を取得しました。`);
+    } else {
+      alert(`MCPレジストリに「${formData.hostname}」は見つかりませんでした。`);
+    }
   };
 
   const handleSave = async () => {
@@ -202,6 +243,15 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 onChange={(e) => setFormData({...formData, hostname: e.target.value})}
                 placeholder="例: Core-Switch-01"
               />
+              <button 
+                className="btn-mcp-lookup"
+                onClick={handleMcpLookup}
+                disabled={!formData.hostname}
+                title="MCPから情報を取得"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                MCPから取得
+              </button>
             </div>
             <div className="form-group">
               <label>接続方式</label>
@@ -459,6 +509,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
                           </div>
                                                     <span className="hostname-text" onClick={() => handleEdit(conn)}>{conn.hostname}</span>
+                                                    {mcpHosts.some(mh => mh.hostname === conn.hostname) && (
+                                                      <span className="mcp-badge" title="MCP同期済み">MCP</span>
+                                                    )}
                         </div>
                       </td>
                       <td className="col-ip">{conn.ip}</td>

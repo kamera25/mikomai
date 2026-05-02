@@ -174,8 +174,27 @@ function App() {
       const lowerInput = userMessage.toLowerCase();
       
       // Flexible regex for ping (supports Japanese and varied order)
-      const pingMatch = lowerInput.match(/(?:ping|ピン|ピング)\s+([a-zA-Z0-9.-]+)/) || 
-                        lowerInput.match(/([a-zA-Z0-9.-]+)\s*(?:に|へ)?\s*(?:ping|ピン|ピング)/);
+      let pingArgs: any = null;
+      const pingBaseMatch = lowerInput.match(/(?:ping|ピン|ピング)\s+([a-zA-Z0-9.-]+)/) || 
+                            lowerInput.match(/([a-zA-Z0-9.-]+)\s*(?:に|へ)?\s*(?:ping|ピン|ピング)/);
+      
+      if (pingBaseMatch) {
+        const host = pingBaseMatch[1];
+        pingArgs = { host };
+        
+        // Try to find size
+        const sizeMatch = lowerInput.match(/(?:size|サイズ)\s*(\d+)/);
+        if (sizeMatch) pingArgs.size = parseInt(sizeMatch[1]);
+        
+        // Try to find count
+        const countMatch = lowerInput.match(/(?:count|回数|回|回実行)\s*(\d+)/);
+        if (countMatch) pingArgs.count = parseInt(countMatch[1]);
+
+        // Try to find df
+        if (lowerInput.includes("df") || lowerInput.includes("フラグメント禁止") || lowerInput.includes("断片化禁止")) {
+          pingArgs.df = true;
+        }
+      }
       
       // Flexible regex for traceroute (supports Japanese and varied order)
       const traceMatch = lowerInput.match(/(?:trace(?:route)?|トレース|トレースルート)\s+([a-zA-Z0-9.-]+)/) ||
@@ -271,9 +290,8 @@ function App() {
         }
       };
 
-      if (pingMatch) {
-        const host = pingMatch[1] || pingMatch[2];
-        await executeAndAnalyze("network_ping", "Ping", { host });
+      if (pingArgs) {
+        await executeAndAnalyze("network_ping", "Ping", pingArgs);
       } else if (traceMatch) {
         const host = traceMatch[1] || traceMatch[2];
         await executeAndAnalyze("network_traceroute", "Traceroute", { host });

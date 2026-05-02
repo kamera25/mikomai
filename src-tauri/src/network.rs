@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
+use crate::connections::get_device_config;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DeviceConfig {
@@ -85,9 +86,20 @@ pub async fn network_show(
     device: DeviceConfig,
     command: String,
 ) -> Result<CommandResult, String> {
-    println!("Executing read-only command on {}: {}", device.host, command);
+    let mut target_device = device.clone();
+    
+    // If host is not an IP, try to resolve it from MCP/Connections
+    if !device.host.chars().all(|c| c.is_digit(10) || c == '.') {
+        if let Some((ip, user, dtype)) = get_device_config(&app, &device.host) {
+            target_device.host = ip;
+            target_device.username = user;
+            target_device.device_type = dtype;
+        }
+    }
+
+    println!("Executing read-only command on {}: {}", target_device.host, command);
     let wrapper = SidecarNetmikoWrapper::new(&app);
-    match wrapper.execute_show(&device, &command) {
+    match wrapper.execute_show(&target_device, &command) {
         Ok(output) => Ok(CommandResult { success: true, output }),
         Err(err) => Ok(CommandResult { success: false, output: err }),
     }
@@ -99,9 +111,20 @@ pub async fn network_config(
     device: DeviceConfig,
     commands: Vec<String>,
 ) -> Result<CommandResult, String> {
-    println!("Executing WRITE command on {}: {:?}", device.host, commands);
+    let mut target_device = device.clone();
+    
+    // If host is not an IP, try to resolve it from MCP/Connections
+    if !device.host.chars().all(|c| c.is_digit(10) || c == '.') {
+        if let Some((ip, user, dtype)) = get_device_config(&app, &device.host) {
+            target_device.host = ip;
+            target_device.username = user;
+            target_device.device_type = dtype;
+        }
+    }
+
+    println!("Executing WRITE command on {}: {:?}", target_device.host, commands);
     let wrapper = SidecarNetmikoWrapper::new(&app);
-    match wrapper.execute_config(&device, commands) {
+    match wrapper.execute_config(&target_device, commands) {
         Ok(output) => Ok(CommandResult { success: true, output }),
         Err(err) => Ok(CommandResult { success: false, output: err }),
     }

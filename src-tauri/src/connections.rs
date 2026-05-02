@@ -15,6 +15,15 @@ pub struct Connection {
     pub last_connected: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct McpHost {
+    pub hostname: String,
+    pub ip: String,
+    pub device_type: String,
+    pub username: String,
+}
+
 fn get_connections_path(app: &tauri::AppHandle) -> PathBuf {
     let path = app.path().app_data_dir().expect("Failed to get app data dir");
     if !path.exists() {
@@ -40,4 +49,83 @@ pub fn save_connections(app: tauri::AppHandle, connections: Vec<Connection>) -> 
     let data = serde_json::to_string_pretty(&connections).map_err(|e| e.to_string())?;
     fs::write(path, data).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_mcp_hosts() -> Result<Vec<McpHost>, String> {
+    // Mock MCP Registry
+    let hosts = vec![
+        McpHost {
+            hostname: "Core-Switch-01".to_string(),
+            ip: "192.168.1.1".to_string(),
+            device_type: "SSH (Cisco IOS)".to_string(),
+            username: "admin".to_string(),
+        },
+        McpHost {
+            hostname: "Edge-Router-02".to_string(),
+            ip: "192.168.2.1".to_string(),
+            device_type: "SSH (Juniper JunOS)".to_string(),
+            username: "root".to_string(),
+        },
+        McpHost {
+            hostname: "Dist-Switch-03".to_string(),
+            ip: "192.168.1.10".to_string(),
+            device_type: "Telnet (Arista)".to_string(),
+            username: "admin".to_string(),
+        },
+        McpHost {
+            hostname: "Server-Farm-01".to_string(),
+            ip: "10.0.5.50".to_string(),
+            device_type: "SSH (Ubuntu)".to_string(),
+            username: "root".to_string(),
+        },
+    ];
+    Ok(hosts)
+}
+
+pub fn resolve_host_with_mcp(app: &tauri::AppHandle, host: &str) -> String {
+    // 1. Check local connections first
+    if let Ok(connections) = load_connections(app.clone()) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase()) {
+            return conn.ip.clone();
+        }
+    }
+
+    // 2. Check MCP registry
+    if let Ok(mcp_hosts) = get_mcp_hosts() {
+        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == host.to_lowercase()) {
+            return mcp.ip.clone();
+        }
+    }
+
+    // 3. Fallback to original host (let DNS handle it)
+    host.to_string()
+}
+
+pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, String, String)> {
+    // Returns (IP, Username, DeviceType)
+    
+    // 1. Check local connections
+    if let Ok(connections) = load_connections(app.clone()) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase()) {
+            let dtype = if conn.conn_type.contains("Cisco IOS") { "cisco_ios" }
+                        else if conn.conn_type.contains("Juniper") { "juniper_junos" }
+                        else if conn.conn_type.contains("Arista") { "arista_eos" }
+                        else { "cisco_ios" }; // Default
+            return Some((conn.ip.clone(), "admin".to_string(), dtype.to_string()));
+        }
+    }
+
+    // 2. Check MCP registry
+    if let Ok(mcp_hosts) = get_mcp_hosts() {
+        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == host.to_lowercase()) {
+            let dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios" }
+                        else if mcp.device_type.contains("Juniper") { "juniper_junos" }
+                        else if mcp.device_type.contains("Arista") { "arista_eos" }
+                        else { "cisco_ios" };
+            return Some((mcp.ip.clone(), mcp.username.clone(), dtype.to_string()));
+        }
+    }
+
+    None
 }

@@ -213,6 +213,18 @@
   text-decoration: underline;
 }
 
+.mcp-badge {
+  background-color: #fce7f3;
+  color: #db2777;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  margin-left: 8px;
+  border: 1px solid #fbcfe8;
+  vertical-align: middle;
+}
+
 .type-badge {
   display: inline-block;
   padding: 2px 8px;
@@ -371,8 +383,34 @@
 }
 
 .form-group input:focus, .form-group select:focus {
-  border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.btn-mcp-lookup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: #fdf2f8;
+  border: 1px solid #fbcfe8;
+  color: #db2777;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-mcp-lookup:hover:not(:disabled) {
+  background-color: #fce7f3;
+  border-color: #f9a8d4;
+}
+
+.btn-mcp-lookup:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .form-group input.error {

@@ -114,7 +114,7 @@ const SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI (Managed Infrastructure K
 - MCPツールを呼び出す場合は、**必ず**以下のJSONフォーマットを回答の末尾、または論理的なタイミングで含めてください。
 - フォーマット: `{"tool": "TOOL_NAME", "args": {"ARG_NAME": "VALUE"}}`
 - 利用可能なツール:
-  1. `network_ping`: 引数 `host` (IPまたはホスト名)
+  1. `network_ping`: 引数 `host` (必須: IPまたはホスト名), `size` (任意: バイトサイズ), `count` (任意: 回数), `df` (任意: フラグメント禁止フラグ, boolean)
   2. `network_traceroute`: 引数 `host` (IPまたはホスト名)
   3. `network_show`: 引数 `command` (Cisco IOS等のコマンド)
 
