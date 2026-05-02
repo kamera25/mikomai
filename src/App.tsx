@@ -40,6 +40,7 @@ function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [modelStatus, setModelStatus] = useState<string>("NotLoaded");
   const [connectedHost] = useState<string>("192.168.1.1 (Core-Switch-01)");
+  const isComposing = useRef(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -489,8 +490,12 @@ function App() {
                 onChange={(e) => setInput(e.target.value)}
                 rows={1}
                 disabled={modelStatus !== "Loaded"}
+                onCompositionStart={() => { isComposing.current = true; }}
+                onCompositionEnd={() => { 
+                  setTimeout(() => { isComposing.current = false; }, 100); 
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && modelStatus === "Loaded") {
+                  if (e.key === 'Enter' && !isComposing.current && !e.shiftKey && modelStatus === "Loaded") {
                     e.preventDefault();
                     handleSend();
                   }

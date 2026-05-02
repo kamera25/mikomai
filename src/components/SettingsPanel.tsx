@@ -16,7 +16,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
   const handleDownloadAndLoad = async () => {
     try {
       setIsLoading(true);
-      setDownloadStatus("Downloading model from HuggingFace... (this may take a while)");
+      setDownloadStatus("モデルのダウンロードを開始します（時間がかかる場合があります）");
       
       const downloadedPath = await invoke<string>("download_model", {
         repo: modelPath,

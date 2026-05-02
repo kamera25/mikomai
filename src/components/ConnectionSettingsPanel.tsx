@@ -30,6 +30,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
     const initConnections = async () => {
@@ -152,6 +153,38 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       }
 
       setIsEditing(false);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filteredConnections.length && filteredConnections.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredConnections.map(c => c.id));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    
+    if (!confirm(`${selectedIds.length}件のホストを削除してもよろしいですか？`)) {
+      return;
+    }
+
+    const updatedConnections = connections.filter(conn => !selectedIds.includes(conn.id));
+    setConnections(updatedConnections);
+    setSelectedIds([]);
+
+    try {
+      await invoke('save_connections', { connections: updatedConnections });
+    } catch (e) {
+      console.error("Failed to delete connections:", e);
     }
   };
 
@@ -394,7 +427,14 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               <table className="connection-table">
                 <thead>
                   <tr>
-                    <th className="col-status">-</th>
+                    <th className="col-status">
+                      <input 
+                        type="checkbox" 
+                        className="access-checkbox" 
+                        checked={filteredConnections.length > 0 && selectedIds.length === filteredConnections.length}
+                        onChange={toggleSelectAll}
+                      />
+                    </th>
                     <th className="col-hostname">接続ホスト名</th>
                     <th className="col-ip">IP</th>
                     <th className="col-type">接続方式</th>
@@ -404,9 +444,14 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 </thead>
                 <tbody>
                   {filteredConnections.map(conn => (
-                    <tr key={conn.id}>
+                    <tr key={conn.id} className={selectedIds.includes(conn.id) ? 'selected' : ''}>
                       <td className="col-status">
-                        <input type="checkbox" className="access-checkbox" defaultChecked={conn.status === 'online'} />
+                        <input 
+                          type="checkbox" 
+                          className="access-checkbox" 
+                          checked={selectedIds.includes(conn.id)} 
+                          onChange={() => toggleSelect(conn.id)}
+                        />
                       </td>
                       <td className="col-hostname">
                         <div className="hostname-cell">
@@ -433,7 +478,14 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
             <footer className="connection-panel-footer">
               <button className="add-device-btn" onClick={handleAddHost}>ホスト追加</button>
-              <button className="delete-selected-btn">削除</button>
+              <button 
+                className="delete-selected-btn" 
+                onClick={handleDeleteSelected}
+                disabled={selectedIds.length === 0}
+                style={{ opacity: selectedIds.length === 0 ? 0.5 : 1, cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }}
+              >
+                削除 {selectedIds.length > 0 && `(${selectedIds.length})`}
+              </button>
             </footer>
           </>
         )}
