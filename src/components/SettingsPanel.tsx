@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import './SettingsPanel.css';
 
 interface SettingsPanelProps {
@@ -7,6 +8,35 @@ interface SettingsPanelProps {
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
+  const [modelPath, setModelPath] = useState("Qwen/Qwen2.5-0.5B-Instruct-GGUF");
+  const [modelFilename, setModelFilename] = useState("qwen2.5-0.5b-instruct-q4_k_m.gguf");
+  const [downloadStatus, setDownloadStatus] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleDownloadAndLoad = async () => {
+    try {
+      setIsLoading(true);
+      setDownloadStatus("Downloading model from HuggingFace... (this may take a while)");
+      
+      const downloadedPath = await invoke<string>("download_model", {
+        repo: modelPath,
+        filename: modelFilename
+      });
+      
+      setDownloadStatus(`Model downloaded to: ${downloadedPath}. Loading into memory...`);
+      
+      const loadResult = await invoke<string>("load_model", {
+        path: downloadedPath
+      });
+      
+      setDownloadStatus(`Success: ${loadResult}`);
+    } catch (e: any) {
+      setDownloadStatus(`Error: ${e.toString()}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -21,12 +51,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
           <div className="settings-group">
             <h3>Local LLM (llama.cpp)</h3>
             <div className="form-control">
-              <label>Model Path</label>
-              <div className="input-with-button">
-                <input type="text" placeholder="/path/to/model.gguf" defaultValue="~/.cache/huggingface/hub/models--Qwen--Qwen2.5-7B-Instruct-GGUF" />
-                <button className="btn btn-secondary">Browse</button>
-              </div>
-              <small>Model will be downloaded automatically if not found.</small>
+              <label>HuggingFace Repo</label>
+              <input type="text" value={modelPath} onChange={e => setModelPath(e.target.value)} placeholder="Qwen/Qwen2.5-0.5B-Instruct-GGUF" />
+            </div>
+            <div className="form-control">
+              <label>Filename (GGUF)</label>
+              <input type="text" value={modelFilename} onChange={e => setModelFilename(e.target.value)} placeholder="qwen2.5-0.5b-instruct-q4_k_m.gguf" />
+            </div>
+            <div className="form-control">
+              <button 
+                className="btn btn-secondary" 
+                onClick={handleDownloadAndLoad}
+                disabled={isLoading}
+              >
+                {isLoading ? "Downloading..." : "Download & Load Model"}
+              </button>
+              {downloadStatus && <small className="status-text" style={{ marginTop: '8px', color: downloadStatus.startsWith('Error') ? 'var(--danger)' : 'var(--success)' }}>{downloadStatus}</small>}
             </div>
           </div>
 

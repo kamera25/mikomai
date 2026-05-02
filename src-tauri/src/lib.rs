@@ -1,3 +1,6 @@
+mod llm;
+mod rag;
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -6,9 +9,21 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let llama_state = llm::LlamaState::new().expect("Failed to initialize Llama backend");
+    let rag_state = rag::RagState::new();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .manage(llama_state)
+        .manage(rag_state)
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            llm::download_model,
+            llm::load_model,
+            rag::connect_db,
+            rag::ingest_document,
+            rag::query_rag
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
