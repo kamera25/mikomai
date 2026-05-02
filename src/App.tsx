@@ -69,7 +69,22 @@ function App() {
         }
       } else {
         // General Chat
-        setMessages(prev => [...prev, { role: "ai", content: "I understand. I can help you check network status or configure devices. Try asking me to 'show interfaces' or 'configure port 1'." }]);
+        setMessages(prev => [...prev, { role: "ai", content: "Thinking..." }]);
+        try {
+          const result: string = await invoke("ask_llm", { prompt: userMessage });
+          // Update the "Thinking..." message with the actual result
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: "ai", content: result };
+            return updated;
+          });
+        } catch (e: any) {
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: "ai", content: `Error: ${e.toString()}` };
+            return updated;
+          });
+        }
       }
     }, 500);
   };

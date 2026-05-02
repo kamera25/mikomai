@@ -22,6 +22,7 @@ pub fn run() {
             greet,
             llm::download_model,
             llm::load_model,
+            llm::ask_llm,
             rag::connect_db,
             rag::ingest_document,
             rag::query_rag,
