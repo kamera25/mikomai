@@ -43,7 +43,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
     <div className="settings-overlay">
       <div className="settings-panel">
         <div className="settings-header">
-          <h2>Agent Configuration</h2>
+          <h2>mikomai Configuration</h2>
           <button className="close-button" onClick={onClose}>&times;</button>
         </div>
 
