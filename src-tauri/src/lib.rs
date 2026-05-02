@@ -3,6 +3,9 @@ mod rag;
 mod network;
 mod mcp_network;
 mod history;
+pub mod scheduled_tasks;
+
+use tauri::Manager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -16,6 +19,15 @@ pub fn run() {
     let rag_state = rag::RagState::new();
 
     tauri::Builder::default()
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::block_on(async move {
+                let sched_state = scheduled_tasks::init_scheduler(&app_handle).await;
+                app_handle.manage(sched_state);
+            });
+
+            Ok(())
+        })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .manage(llama_state)
@@ -34,7 +46,13 @@ pub fn run() {
             mcp_network::network_ping,
             mcp_network::network_traceroute,
             history::load_history,
-            history::save_history
+            history::save_history,
+            scheduled_tasks::load_scheduled_tasks,
+            scheduled_tasks::save_scheduled_tasks,
+            scheduled_tasks::add_scheduled_task,
+            scheduled_tasks::update_scheduled_task,
+            scheduled_tasks::delete_scheduled_task,
+            scheduled_tasks::execute_task
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
