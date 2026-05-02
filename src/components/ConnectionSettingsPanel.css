@@ -238,24 +238,15 @@
   transition: all 0.2s;
 }
 
-.btn-action.connect {
-  background-color: #3b82f6;
-  color: white;
-}
-
-.btn-action.connect:hover {
-  background-color: #2563eb;
-}
-
-.btn-action.disconnect {
+.btn-action.edit {
   background-color: white;
   border: 1px solid #e2e8f0;
-  color: #ef4444;
+  color: #3b82f6;
 }
 
-.btn-action.disconnect:hover {
-  background-color: #fef2f2;
-  border-color: #fecaca;
+.btn-action.edit:hover {
+  background-color: #eff6ff;
+  border-color: #bfdbfe;
 }
 
 .connection-panel-footer {
@@ -271,19 +262,20 @@
   flex-grow: 1;
   max-width: 400px;
   padding: 12px;
-  background-color: transparent;
-  border: 2px dashed #cbd5e1;
-  color: #64748b;
+  background-color: #3b82f6;
+  border: none;
+  color: white;
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  box-shadow: 0 1px 2px rgba(59, 130, 246, 0.2);
 }
 
 .add-device-btn:hover {
-  border-color: #3b82f6;
-  color: #3b82f6;
-  background-color: #eff6ff;
+  background-color: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
 }
 
 .delete-selected-btn {

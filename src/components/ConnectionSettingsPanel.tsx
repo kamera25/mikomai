@@ -111,8 +111,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                   </td>
                   <td className="col-last">{conn.lastConnected}</td>
                   <td className="col-actions">
-                    <button className={`btn-action ${conn.status === 'online' ? 'disconnect' : 'connect'}`}>
-                      {conn.status === 'online' ? '切断' : '接続'}
+                    <button className="btn-action edit">
+                      編集
                     </button>
                   </td>
                 </tr>
@@ -122,7 +122,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
         </div>
 
         <footer className="connection-panel-footer">
-          <button className="add-device-btn">+ Add New Device</button>
+          <button className="add-device-btn">ホスト追加</button>
           <button className="delete-selected-btn">削除</button>
         </footer>
       </div>
