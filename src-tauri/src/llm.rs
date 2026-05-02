@@ -9,9 +9,18 @@ use llama_cpp_2::sampling::LlamaSampler;
 use std::sync::Mutex;
 use std::num::NonZeroU32;
 
+#[derive(serde::Serialize)]
+pub enum ModelState {
+    NotLoaded,
+    Loading,
+    Loaded,
+    Error(String),
+}
+
 pub struct LlamaState {
     pub backend: LlamaBackend,
     pub model: Mutex<Option<LlamaModel>>,
+    pub status: Mutex<ModelState>,
 }
 
 impl LlamaState {
@@ -20,6 +29,7 @@ impl LlamaState {
         Ok(Self {
             backend,
             model: Mutex::new(None),
+            status: Mutex::new(ModelState::NotLoaded),
         })
     }
 }
@@ -36,14 +46,42 @@ pub async fn download_model(repo: String, filename: String) -> Result<String, St
 
 #[tauri::command]
 pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
+    {
+        let mut status_lock = state.status.lock().unwrap();
+        *status_lock = ModelState::Loading;
+    }
+
     let model_params = LlamaModelParams::default();
-    let model = LlamaModel::load_from_file(&state.backend, &path, &model_params)
-        .map_err(|e| format!("Failed to load model: {}", e))?;
+    let model = match LlamaModel::load_from_file(&state.backend, &path, &model_params) {
+        Ok(m) => m,
+        Err(e) => {
+            let err_msg = format!("Failed to load model: {}", e);
+            let mut status_lock = state.status.lock().unwrap();
+            *status_lock = ModelState::Error(err_msg.clone());
+            return Err(err_msg);
+        }
+    };
     
     let mut model_lock = state.model.lock().unwrap();
     *model_lock = Some(model);
     
+    {
+        let mut status_lock = state.status.lock().unwrap();
+        *status_lock = ModelState::Loaded;
+    }
+    
     Ok("Model loaded successfully".to_string())
+}
+
+#[tauri::command]
+pub fn get_model_status(state: tauri::State<'_, LlamaState>) -> ModelState {
+    let status_lock = state.status.lock().unwrap();
+    match &*status_lock {
+        ModelState::NotLoaded => ModelState::NotLoaded,
+        ModelState::Loading => ModelState::Loading,
+        ModelState::Loaded => ModelState::Loaded,
+        ModelState::Error(e) => ModelState::Error(e.clone()),
+    }
 }
 
 #[tauri::command]

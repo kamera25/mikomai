@@ -35,6 +35,7 @@ function App() {
   const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [modelStatus, setModelStatus] = useState<string>("NotLoaded");
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -94,6 +95,28 @@ function App() {
     }
     return undefined;
   };
+
+  // Poll model status
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const status = await invoke<any>("get_model_status");
+        if (typeof status === 'string') {
+          setModelStatus(status);
+        } else if (typeof status === 'object' && status !== null) {
+          // Handle Error(string) case
+          if ('Error' in status) {
+            setModelStatus('Error');
+          }
+        }
+      } catch (e) {
+        console.error("Failed to get model status:", e);
+      }
+    };
+    checkStatus();
+    const interval = setInterval(checkStatus, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -395,22 +418,37 @@ function App() {
   
           {/* Input Area */}
           <div className="input-area">
-            <div className="input-container">
+            {modelStatus !== "Loaded" && (
+              <div className={`model-status-banner ${modelStatus.toLowerCase()}`}>
+                <div className="status-spinner"></div>
+                <span>
+                  {modelStatus === "NotLoaded" && "AIモデルが読み込まれていません。設定からモデルを読み込んでください。"}
+                  {modelStatus === "Loading" && "AIモデルを読み込み中です。しばらくお待ちください..."}
+                  {modelStatus === "Error" && "AIモデルの読み込みに失敗しました。設定を確認してください。"}
+                </span>
+              </div>
+            )}
+            <div className={`input-container ${modelStatus !== "Loaded" ? 'disabled' : ''}`}>
               <textarea
                 ref={textareaRef}
                 className="chat-input"
-                placeholder="mikomaiに質問する..."
+                placeholder={modelStatus === "Loaded" ? "mikomaiに質問する..." : "モデルの準備を待っています..."}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 rows={1}
+                disabled={modelStatus !== "Loaded"}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.key === 'Enter' && !e.shiftKey && modelStatus === "Loaded") {
                     e.preventDefault();
                     handleSend();
                   }
                 }}
               />
-              <button className="send-button" onClick={handleSend}>
+              <button 
+                className="send-button" 
+                onClick={handleSend}
+                disabled={modelStatus !== "Loaded" || !input.trim()}
+              >
                 <svg viewBox="0 0 24 24">
                   <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
                 </svg>
