@@ -102,7 +102,7 @@ function App() {
               <line x1="6" y1="18" x2="6.01" y2="18"></line>
             </svg>
           </div>
-          <h2>NetOps Agent</h2>
+          <h2>mikomai</h2>
         </div>
         
         <div className="session-list">
@@ -149,7 +149,7 @@ function App() {
                   <line x1="6" y1="18" x2="6.01" y2="18"></line>
                 </svg>
               </div>
-              <h3>Local Network Operations Agent</h3>
+              <h3>mikomai</h3>
               <p>I am connected to your local vector database and MCP servers. Ask me to retrieve manuals, check switch statuses, or propose configuration changes.</p>
             </div>
           ) : (
@@ -176,7 +176,7 @@ function App() {
             <textarea
               ref={textareaRef}
               className="chat-input"
-              placeholder="Ask the network agent..."
+              placeholder="Ask mikomai..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               rows={1}

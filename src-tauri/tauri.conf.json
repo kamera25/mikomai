@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "myapp",
+  "productName": "mikomai",
   "version": "0.1.0",
   "identifier": "com.mikomai.agent",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "myapp",
+        "title": "mikomai",
         "width": 800,
         "height": 600
       }
