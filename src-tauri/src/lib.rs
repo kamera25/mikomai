@@ -34,6 +34,7 @@ pub fn run() {
             network::network_config,
             mcp_network::network_ping,
             mcp_network::network_traceroute,
+            mcp_network::network_get_hosts,
             history::load_history,
             history::save_history,
             connections::load_connections,

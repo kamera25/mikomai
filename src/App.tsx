@@ -200,6 +200,10 @@ function App() {
       const traceMatch = lowerInput.match(/(?:trace(?:route)?|トレース|トレースルート)\s+([a-zA-Z0-9.-]+)/) ||
                          lowerInput.match(/([a-zA-Z0-9.-]+)\s*(?:に|へ)?\s*(?:trace(?:route)?|トレース|トレースルート)/);
 
+      // Flexible regex for host list
+      const hostListMatch = lowerInput.match(/(?:host|ホスト|接続先|ターゲット).*(?:list|一覧|教え|見せ|確認)/) || 
+                            lowerInput.match(/(?:list|一覧|教え|見せ|確認).*(?:host|ホスト|接続先|ターゲット)/);
+
       const executeAndAnalyze = async (toolId: string, toolLabel: string, args: any, depth: number = 0, executedTools: Set<string> = new Set()) => {
         const toolSignature = `${toolId}:${JSON.stringify(args)}`;
         if (executedTools.has(toolSignature)) {
@@ -270,6 +274,7 @@ function App() {
               const nextToolCall = JSON.parse(nextJsonStr);
               const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
                                          nextToolCall.tool === "network_traceroute" ? "Traceroute" : 
+                                         nextToolCall.tool === "network_get_hosts" ? "Host List" :
                                          nextToolCall.tool === "network_show" ? "Show Command" : nextToolCall.tool;
               
               // Add a small delay for better UX before chaining
@@ -295,6 +300,8 @@ function App() {
       } else if (traceMatch) {
         const host = traceMatch[1] || traceMatch[2];
         await executeAndAnalyze("network_traceroute", "Traceroute", { host });
+      } else if (hostListMatch) {
+        await executeAndAnalyze("network_get_hosts", "Host List", {});
       } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
         await executeAndAnalyze("network_show", "Show Command", {
           device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
@@ -343,6 +350,7 @@ function App() {
               const toolCall = JSON.parse(jsonStr);
               const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
                                      toolCall.tool === "network_traceroute" ? "Traceroute" : 
+                                     toolCall.tool === "network_get_hosts" ? "Host List" :
                                      toolCall.tool === "network_show" ? "Show Command" : toolCall.tool;
               
               await executeAndAnalyze(toolCall.tool, toolActionName, toolCall.args);

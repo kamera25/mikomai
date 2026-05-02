@@ -117,6 +117,7 @@ const SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI (Managed Infrastructure K
   1. `network_ping`: 引数 `host` (必須: IPまたはホスト名), `size` (任意: バイトサイズ), `count` (任意: 回数), `df` (任意: フラグメント禁止フラグ, boolean)
   2. `network_traceroute`: 引数 `host` (IPまたはホスト名)
   3. `network_show`: 引数 `command` (Cisco IOS等のコマンド)
+  4. `network_get_hosts`: 接続可能なホストの一覧（ホスト名、IP、接続タイプなど）を取得します。引数は不要です。
 
 # 5. コミュニケーション・スタイル
 - 冗長な挨拶や感情的な表現は不要です。技術的、簡潔、かつ論理的なトーンを維持してください。
