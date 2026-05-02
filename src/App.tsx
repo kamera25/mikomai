@@ -12,6 +12,11 @@ interface Message {
   timestamp?: string; // ISO string
 }
 
+interface SummaryItem {
+  timestamp: string;
+  content: string;
+}
+
 interface ChatSession {
   id: string;
   type: 'session';
@@ -41,6 +46,7 @@ function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [modelStatus, setModelStatus] = useState<string>("NotLoaded");
   const [connectedHost] = useState<string>("192.168.1.1 (Core-Switch-01)");
+  const [summaries, setSummaries] = useState<SummaryItem[]>([]);
   const isComposing = useRef(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -78,6 +84,13 @@ function App() {
         console.error("Failed to load history:", e);
       } finally {
         setIsLoaded(true);
+      }
+
+      try {
+        const savedSummaries = await invoke<SummaryItem[]>("load_summaries");
+        setSummaries(savedSummaries || []);
+      } catch (e) {
+        console.error("Failed to load summaries:", e);
       }
     };
     initHistory();
@@ -161,6 +174,21 @@ function App() {
     }
   };
 
+  const summarizeAndSave = async (content: string) => {
+    try {
+      const summaryPrompt = `以下の内容（実行結果やアシスタントの回答）を40文字程度で簡潔に要約してください。\n\n${content}`;
+      const summaryText: string = await invoke("ask_llm_background", { prompt: summaryPrompt });
+      const newSummary = { timestamp: new Date().toISOString(), content: summaryText };
+      await invoke("save_summary", { summary: newSummary });
+      setSummaries(prev => {
+        const next = [...prev, newSummary];
+        return next.length > 5 ? next.slice(next.length - 5) : next;
+      });
+    } catch (e) {
+      console.error("Failed to generate/save summary:", e);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
     
@@ -230,7 +258,10 @@ function App() {
             return updated;
           });
 
-          const analysisPrompt = `ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n【重要】既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。`;
+          const recentSummariesText = summaries.slice(-5).map((s, i) => `${i+1}. ${s.content}`).join("\n");
+          const contextPrefix = recentSummariesText ? `【過去の実行履歴要約（直近5件）】\n${recentSummariesText}\n※最新の情報（番号が大きいもの）を優先するようにし、最新の情報で解決できない場合は、その前の情報を参照…を繰り返すようにしてください。\n\n` : "";
+
+          const analysisPrompt = `${contextPrefix}ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n【重要】既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。`;
           
           setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
           
@@ -283,7 +314,10 @@ function App() {
               }, 1000);
             } catch (e) {
               console.error("Failed to parse subsequent tool call JSON", e);
+              summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`);
             }
+          } else {
+             summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`);
           }
 
         } catch (e: any) {
@@ -331,10 +365,15 @@ function App() {
             });
           });
 
-          const response: string = await invoke("ask_llm", { prompt: userMessage });
+          const recentSummariesText = summaries.slice(-5).map((s, i) => `${i+1}. ${s.content}`).join("\n");
+          const contextPrefix = recentSummariesText ? `【過去の実行履歴要約（直近5件）】\n${recentSummariesText}\n※最新の情報（番号が大きいもの）を優先するようにし、最新の情報で解決できない場合は、その前の情報を参照…を繰り返すようにしてください。\n\n` : "";
+          const promptWithContext = `${contextPrefix}【ユーザー入力】\n${userMessage}`;
+
+          const response: string = await invoke("ask_llm", { prompt: promptWithContext });
           unlisten(); // Unlisten IMMEDIATELY after the first call completes
           
           console.log("LLM Response:", response);
+          summarizeAndSave(`ユーザー入力: ${userMessage}\n回答: ${response}`);
           
           // Better extraction: Try to find JSON block or match balanced-like structure
           let jsonStr = "";

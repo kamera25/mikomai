@@ -26,6 +26,7 @@ pub fn run() {
             llm::download_model,
             llm::load_model,
             llm::ask_llm,
+            llm::ask_llm_background,
             llm::get_model_status,
             rag::connect_db,
             rag::ingest_document,
@@ -37,6 +38,8 @@ pub fn run() {
             mcp_network::network_get_hosts,
             history::load_history,
             history::save_history,
+            history::load_summaries,
+            history::save_summary,
             connections::load_connections,
             connections::save_connections,
             connections::get_mcp_hosts

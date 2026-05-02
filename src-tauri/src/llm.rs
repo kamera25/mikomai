@@ -22,6 +22,7 @@ pub struct LlamaState {
     pub backend: LlamaBackend,
     pub model: Mutex<Option<LlamaModel>>,
     pub status: Mutex<ModelState>,
+    pub inference_lock: Mutex<()>,
 }
 
 impl LlamaState {
@@ -31,6 +32,7 @@ impl LlamaState {
             backend,
             model: Mutex::new(None),
             status: Mutex::new(ModelState::NotLoaded),
+            inference_lock: Mutex::new(()),
         })
     }
 }
@@ -122,10 +124,14 @@ const SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI (Managed Infrastructure K
 # 5. コミュニケーション・スタイル
 - 冗長な挨拶や感情的な表現は不要です。技術的、簡潔、かつ論理的なトーンを維持してください。
 - コマンドやコード、IPアドレスなどは、必ずマークダウンのコードブロック(`)で囲み、視認性を高めてください。
-- ツール実行の際は必ず日本語でアナウンスを行い、その後にJSONブロックを提示してください。"##;
+- ツール実行の際は必ず日本語でアナウンスを行い、その後にJSONブロックを提示してください。
+
+# 6. 継続的な対話の文脈 (Context Memory)
+- ユーザーから「もっと詳しく」「先ほどの結果から」等の追加要求があった場合は、入力の前に付与された【過去の実行履歴要約】を参照して文脈を補完し、応答してください。"##;
 
 #[tauri::command]
 pub async fn ask_llm(window: tauri::Window, prompt: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
+    let _inference_guard = state.inference_lock.lock().unwrap();
     let model_lock = state.model.lock().unwrap();
     let model = match &*model_lock {
         Some(m) => m,
@@ -211,3 +217,87 @@ pub async fn ask_llm(window: tauri::Window, prompt: String, state: tauri::State<
 
     Ok(result_string)
 }
+
+#[tauri::command]
+pub async fn ask_llm_background(prompt: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
+    let _inference_guard = state.inference_lock.lock().unwrap();
+    let model_lock = state.model.lock().unwrap();
+    let model = match &*model_lock {
+        Some(m) => m,
+        None => return Err("Model not loaded.".to_string()),
+    };
+
+    let formatted_prompt = format!(
+        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+        SYSTEM_PROMPT,
+        prompt
+    );
+
+    let mut ctx_params = LlamaContextParams::default();
+    ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(2048));
+
+    let mut ctx = model.new_context(&state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
+    let tokens = model.str_to_token(&formatted_prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
+
+    let mut batch = LlamaBatch::new(2048, 1);
+    let last_index = tokens.len() - 1;
+    for (i, token) in tokens.into_iter().enumerate() {
+        let is_last = i == last_index;
+        batch.add(token, i as i32, &[0], is_last).map_err(|e| format!("Failed to add to batch: {:?}", e))?;
+    }
+
+    ctx.decode(&mut batch).map_err(|e| format!("Decode error: {:?}", e))?;
+
+    let mut result_string = String::new();
+    let mut n_cur = batch.n_tokens();
+    let mut sampler = LlamaSampler::greedy();
+
+    let im_end_tokens = model.str_to_token("<|im_end|>", AddBos::Never).unwrap_or_default();
+    let im_end_token = im_end_tokens.first().copied();
+
+    let n_len = 500; // max length
+
+    let mut bytes_accumulator = Vec::new();
+
+    for _ in 0..n_len {
+        let new_token_id = sampler.sample(&mut ctx, batch.n_tokens() - 1);
+
+        if new_token_id == model.token_eos() || Some(new_token_id) == im_end_token {
+            break;
+        }
+
+        let mut token_bytes = model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
+        bytes_accumulator.append(&mut token_bytes);
+
+        match String::from_utf8(bytes_accumulator.clone()) {
+            Ok(s) => {
+                result_string.push_str(&s);
+                bytes_accumulator.clear();
+            }
+            Err(e) => {
+                let utf8_error_index = e.utf8_error().valid_up_to();
+                let valid_str = String::from_utf8_lossy(&bytes_accumulator[..utf8_error_index]).to_string();
+                result_string.push_str(&valid_str);
+                let remaining_bytes = bytes_accumulator[utf8_error_index..].to_vec();
+                bytes_accumulator = remaining_bytes;
+                if bytes_accumulator.len() > 8 {
+                     result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
+                     bytes_accumulator.clear();
+                }
+            }
+        }
+
+        batch.clear();
+        batch.add(new_token_id, n_cur, &[0], true).map_err(|e| format!("Failed to add: {:?}", e))?;
+        n_cur += 1;
+
+        ctx.decode(&mut batch).map_err(|e| format!("Decode error: {:?}", e))?;
+    }
+
+    if !bytes_accumulator.is_empty() {
+        result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
+    }
+
+    Ok(result_string)
+}
+
