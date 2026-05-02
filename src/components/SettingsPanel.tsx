@@ -8,8 +8,8 @@ interface SettingsPanelProps {
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
-  const [modelPath, setModelPath] = useState("Qwen/Qwen2.5-0.5B-Instruct-GGUF");
-  const [modelFilename, setModelFilename] = useState("qwen2.5-0.5b-instruct-q4_k_m.gguf");
+  const [modelPath, setModelPath] = useState("bartowski/google_gemma-4-E2B-it-GGUF");
+  const [modelFilename, setModelFilename] = useState("google_gemma-4-E2B-it-Q4_K_M.gguf");
   const [downloadStatus, setDownloadStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -57,11 +57,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
             <h3>ローカルLLM (llama.cpp)</h3>
             <div className="form-control">
               <label>HuggingFace リポジトリ</label>
-              <input type="text" value={modelPath} onChange={e => setModelPath(e.target.value)} placeholder="Qwen/Qwen2.5-0.5B-Instruct-GGUF" />
+              <input type="text" value={modelPath} onChange={e => setModelPath(e.target.value)} placeholder="bartowski/google_gemma-4-E2B-it-GGUF" />
             </div>
             <div className="form-control">
               <label>ファイル名 (GGUF)</label>
-              <input type="text" value={modelFilename} onChange={e => setModelFilename(e.target.value)} placeholder="qwen2.5-0.5b-instruct-q4_k_m.gguf" />
+              <input type="text" value={modelFilename} onChange={e => setModelFilename(e.target.value)} placeholder="google_gemma-4-E2B-it-Q4_K_M.gguf" />
             </div>
             <div className="form-control">
               <button 
