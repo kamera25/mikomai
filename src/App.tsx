@@ -169,28 +169,30 @@ function App() {
     setInput("");
     setMessages(prev => [...prev, { role: "user", content: userMessage, timestamp }]);
 
-    // Simulated LLM Tool Calling Logic
+    // Improved Tool Calling Logic
     setTimeout(async () => {
       const lowerInput = userMessage.toLowerCase();
       
-      if (lowerInput.includes("ping")) {
-        const match = lowerInput.match(/ping\s+([a-zA-Z0-9.-]+)/);
-        const host = match ? match[1] : "1.1.1.1";
+      // Flexible regex for ping (supports Japanese and varied order)
+      const pingMatch = lowerInput.match(/(?:ping|ピン|ピング)\s+([a-zA-Z0-9.-]+)/) || 
+                        lowerInput.match(/([a-zA-Z0-9.-]+)\s*(?:に|へ)?\s*(?:ping|ピン|ピング)/);
+      
+      // Flexible regex for traceroute (supports Japanese and varied order)
+      const traceMatch = lowerInput.match(/(?:trace(?:route)?|トレース|トレースルート)\s+([a-zA-Z0-9.-]+)/) ||
+                         lowerInput.match(/([a-zA-Z0-9.-]+)\s*(?:に|へ)?\s*(?:trace(?:route)?|トレース|トレースルート)/);
 
+      if (pingMatch) {
+        const host = pingMatch[1] || pingMatch[2];
         setMessages(prev => [...prev, { role: "ai", content: `Pinging ${host}...`, timestamp: new Date().toISOString() }]);
-
         try {
           const result: any = await invoke("network_ping", { host });
           setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
         } catch (e: any) {
           setMessages(prev => [...prev, { role: "ai", content: `Failed to execute ping: ${e.toString()}`, timestamp: new Date().toISOString() }]);
         }
-      } else if (lowerInput.includes("traceroute") || lowerInput.includes("trace")) {
-        const match = lowerInput.match(/trace(?:route)?\s+([a-zA-Z0-9.-]+)/);
-        const host = match ? match[1] : "1.1.1.1";
-
+      } else if (traceMatch) {
+        const host = traceMatch[1] || traceMatch[2];
         setMessages(prev => [...prev, { role: "ai", content: `Tracing route to ${host}...`, timestamp: new Date().toISOString() }]);
-
         try {
           const result: any = await invoke("network_traceroute", { host });
           setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
@@ -199,7 +201,6 @@ function App() {
         }
       } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
         setMessages(prev => [...prev, { role: "ai", content: "Retrieving device status...", timestamp: new Date().toISOString() }]);
-        
         try {
           const result: any = await invoke("network_show", {
             device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
@@ -212,19 +213,38 @@ function App() {
       } else {
         setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
         
+        let fullContent = "";
         const unlisten = await listen<string>("llm-chunk", (event) => {
+          fullContent += event.payload;
           setMessages(prev => {
             const updated = [...prev];
             const lastMessage = updated[updated.length - 1];
             if (lastMessage && lastMessage.role === "ai") {
-              updated[updated.length - 1] = { ...lastMessage, content: lastMessage.content + event.payload };
+              updated[updated.length - 1] = { ...lastMessage, content: fullContent };
             }
             return updated;
           });
         });
 
         try {
-          await invoke("ask_llm", { prompt: userMessage });
+          const response: string = await invoke("ask_llm", { prompt: userMessage });
+          
+          // Check for JSON tool call in the final response
+          const jsonMatch = response.match(/\{[\s\S]*?"tool"[\s\S]*?\}/);
+          if (jsonMatch) {
+            try {
+              const toolCall = JSON.parse(jsonMatch[0]);
+              if (toolCall.tool === "network_ping") {
+                const result: any = await invoke("network_ping", { host: toolCall.args.host });
+                setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
+              } else if (toolCall.tool === "network_traceroute") {
+                const result: any = await invoke("network_traceroute", { host: toolCall.args.host });
+                setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
+              }
+            } catch (parseError) {
+              console.error("Failed to parse tool call JSON", parseError);
+            }
+          }
         } catch (e: any) {
           setMessages(prev => {
             const updated = [...prev];

@@ -93,6 +93,7 @@ pub async fn network_traceroute(host: String) -> Result<TracerouteResult, String
                     surge_ping::IcmpPacket::V4(p) => p.get_real_dest().into(),
                     surge_ping::IcmpPacket::V6(p) => p.get_real_dest().into(),
                 };
+                println!("Hop {}: {:?} from {}", ttl, duration, hop_ip);
                 output.push_str(&format!("{:2}  {:?}  {}\n", ttl, duration, hop_ip));
 
                 if hop_ip == ip {
@@ -101,7 +102,8 @@ pub async fn network_traceroute(host: String) -> Result<TracerouteResult, String
                     break;
                 }
             }
-            Err(_) => {
+            Err(e) => {
+                println!("Hop {}: Timeout or Error: {:?}", ttl, e);
                 output.push_str(&format!("{:2}  *        Request timed out.\n", ttl));
             }
         }
