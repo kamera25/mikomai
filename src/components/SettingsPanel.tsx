@@ -46,7 +46,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
           <div className="settings-header-content">
             <div>
               <h2>設定</h2>
-              <p>ローカルLLM、ナレッジベース、ネットワーク認証情報を設定します。</p>
+              <p>ローカルLLM、ナレッジベースを設定します。</p>
             </div>
             <button className="close-button" onClick={onClose} title="設定を閉じる">&times;</button>
           </div>
@@ -93,23 +93,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
             </div>
           </section>
 
-          <section className="settings-group">
-            <h3>ネットワーク認証情報</h3>
-            <div className="form-control">
-              <label>デフォルトユーザー名</label>
-              <input type="text" placeholder="admin" />
-            </div>
-            <div className="form-control">
-              <label>デフォルトパスワード</label>
-              <input type="password" placeholder="••••••••" />
-            </div>
-            <p className="warning-text">認証情報はローカルのセキュアエンクレーブに保存されます。</p>
-          </section>
         </div>
 
         <footer className="settings-footer">
           <div className="settings-footer-content">
-            <button className="btn btn-primary" onClick={onClose} style={{ padding: '12px 24px', fontSize: '1rem' }}>保存して終了</button>
+            <button className="btn btn-primary" onClick={onClose}>保存して終了</button>
           </div>
         </footer>
       </div>
