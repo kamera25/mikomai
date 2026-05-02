@@ -1,12 +1,25 @@
 import { useState, useRef, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ApprovalModal } from "./components/ApprovalModal";
 import "./App.css";
 
+interface Message {
+  role: "user" | "ai";
+  content: string;
+}
+
 function App() {
   const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isApprovalOpen, setIsApprovalOpen] = useState(false);
+  
+  // Pending Tool Call State
+  const [pendingCommands, setPendingCommands] = useState<string[]>([]);
+  const [pendingRationale, setPendingRationale] = useState<string>("");
+  const [pendingDiff, setPendingDiff] = useState<string>("");
+  
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea
@@ -16,6 +29,65 @@ function App() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
     }
   }, [input]);
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    
+    const userMessage = input.trim();
+    setInput("");
+    setMessages(prev => [...prev, { role: "user", content: userMessage }]);
+
+    // Simulated LLM Tool Calling Logic
+    setTimeout(async () => {
+      const lowerInput = userMessage.toLowerCase();
+      
+      if (lowerInput.includes("configure") || lowerInput.includes("change") || lowerInput.includes("set")) {
+        // AI decides to call `network_config`
+        setPendingCommands([
+          "conf t",
+          "interface GigabitEthernet0/1",
+          "description Connected via AI Agent",
+          "end",
+          "write memory"
+        ]);
+        setPendingRationale("Based on your request, I will configure the interface description. This requires writing to the device configuration.");
+        setPendingDiff(" interface GigabitEthernet0/1\n- description Old\n+ description Connected via AI Agent");
+        setIsApprovalOpen(true);
+        
+      } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
+        // AI decides to call `network_show`
+        setMessages(prev => [...prev, { role: "ai", content: "Retrieving device status..." }]);
+        
+        try {
+          const result: any = await invoke("network_show", {
+            device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
+            command: "show ip int brief"
+          });
+          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}` }]);
+        } catch (e: any) {
+          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute: ${e.toString()}` }]);
+        }
+      } else {
+        // General Chat
+        setMessages(prev => [...prev, { role: "ai", content: "I understand. I can help you check network status or configure devices. Try asking me to 'show interfaces' or 'configure port 1'." }]);
+      }
+    }, 500);
+  };
+
+  const handleApproveWrite = async () => {
+    setIsApprovalOpen(false);
+    setMessages(prev => [...prev, { role: "ai", content: "Executing configuration changes..." }]);
+    
+    try {
+      const result: any = await invoke("network_config", {
+        device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
+        commands: pendingCommands
+      });
+      setMessages(prev => [...prev, { role: "ai", content: result.success ? `Changes applied successfully:\n\`\`\`\n${result.output}\n\`\`\`` : `Configuration failed: ${result.output}` }]);
+    } catch (e: any) {
+      setMessages(prev => [...prev, { role: "ai", content: `Failed to execute: ${e.toString()}` }]);
+    }
+  };
 
   return (
     <div className="app-container">
@@ -67,18 +139,35 @@ function App() {
 
         {/* Chat History */}
         <div className="chat-history">
-          <div className="empty-state">
-            <div className="agent-icon" style={{ width: 64, height: 64, marginBottom: 24, borderRadius: 16 }}>
-               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-                <line x1="6" y1="6" x2="6.01" y2="6"></line>
-                <line x1="6" y1="18" x2="6.01" y2="18"></line>
-              </svg>
+          {messages.length === 0 ? (
+            <div className="empty-state">
+              <div className="agent-icon" style={{ width: 64, height: 64, marginBottom: 24, borderRadius: 16 }}>
+                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                  <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                  <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                </svg>
+              </div>
+              <h3>Local Network Operations Agent</h3>
+              <p>I am connected to your local vector database and MCP servers. Ask me to retrieve manuals, check switch statuses, or propose configuration changes.</p>
             </div>
-            <h3>Local Network Operations Agent</h3>
-            <p>I am connected to your local vector database and MCP servers. Ask me to retrieve manuals, check switch statuses, or propose configuration changes.</p>
-          </div>
+          ) : (
+            messages.map((msg, idx) => (
+              <div key={idx} className={`message ${msg.role}`}>
+                <div className={`avatar ${msg.role}`}>
+                  {msg.role === 'ai' ? '🤖' : '👤'}
+                </div>
+                <div className="message-bubble">
+                  {msg.content.includes("```") ? (
+                    <pre style={{ whiteSpace: 'pre-wrap' }}>{msg.content.replace(/```/g, '')}</pre>
+                  ) : (
+                    msg.content
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Input Area */}
@@ -94,11 +183,11 @@ function App() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  // Handle send
+                  handleSend();
                 }
               }}
             />
-            <button className="send-button">
+            <button className="send-button" onClick={handleSend}>
               <svg viewBox="0 0 24 24">
                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
               </svg>
@@ -115,27 +204,10 @@ function App() {
       <ApprovalModal 
         isOpen={isApprovalOpen}
         onClose={() => setIsApprovalOpen(false)}
-        onApprove={() => {
-          console.log("Approved!");
-          setIsApprovalOpen(false);
-        }}
-        commands={[
-          "conf t",
-          "interface GigabitEthernet0/1",
-          "description Connected to Main Server",
-          "speed 1000",
-          "duplex full",
-          "end",
-          "write memory"
-        ]}
-        rationale="The port GigabitEthernet0/1 needs to be configured for a new server connection. The server requires a dedicated 1Gbps full-duplex link to avoid auto-negotiation issues."
-        diffText={` interface GigabitEthernet0/1
-- description Unused
-+ description Connected to Main Server
-- speed auto
-+ speed 1000
-- duplex auto
-+ duplex full`}
+        onApprove={handleApproveWrite}
+        commands={pendingCommands}
+        rationale={pendingRationale}
+        diffText={pendingDiff}
       />
     </div>
   );

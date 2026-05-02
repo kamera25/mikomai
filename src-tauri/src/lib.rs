@@ -1,5 +1,6 @@
 mod llm;
 mod rag;
+mod network;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -22,7 +23,9 @@ pub fn run() {
             llm::load_model,
             rag::connect_db,
             rag::ingest_document,
-            rag::query_rag
+            rag::query_rag,
+            network::network_show,
+            network::network_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
