@@ -181,35 +181,107 @@ function App() {
       const traceMatch = lowerInput.match(/(?:trace(?:route)?|トレース|トレースルート)\s+([a-zA-Z0-9.-]+)/) ||
                          lowerInput.match(/([a-zA-Z0-9.-]+)\s*(?:に|へ)?\s*(?:trace(?:route)?|トレース|トレースルート)/);
 
+      const executeAndAnalyze = async (toolId: string, toolLabel: string, args: any, depth: number = 0, executedTools: Set<string> = new Set()) => {
+        const toolSignature = `${toolId}:${JSON.stringify(args)}`;
+        if (executedTools.has(toolSignature)) {
+          setMessages(prev => [...prev, { role: "ai", content: "以上、報告いたします。", timestamp: new Date().toISOString() }]);
+          return;
+        }
+        executedTools.add(toolSignature);
+
+        if (depth > 3) {
+          setMessages(prev => [...prev, { role: "ai", content: "エラー: ツール呼び出しのループが深すぎるため中断しました。", timestamp: new Date().toISOString() }]);
+          return;
+        }
+
+        setMessages(prev => [...prev, { role: "ai", content: `⏱️ ${toolLabel} を実行中...`, timestamp: new Date().toISOString() }]);
+        try {
+          const result: any = await invoke(toolId, args);
+          const resultMessage = result.success ? 
+            `### ${toolLabel} 実行結果\n\`\`\`\n${result.output}\n\`\`\`` : 
+            `### ${toolLabel} エラー\n${result.output}`;
+          
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: "ai", content: resultMessage, timestamp: new Date().toISOString() };
+            return updated;
+          });
+
+          const analysisPrompt = `ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n【重要】既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。`;
+          
+          setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
+          
+          let analysisContent = "";
+          const analysisUnlisten = await listen<string>("llm-chunk", (event) => {
+            analysisContent += event.payload;
+            setMessages(prev => {
+              const updated = [...prev];
+              const lastMessage = updated[updated.length - 1];
+              if (lastMessage && lastMessage.role === "ai") {
+                updated[updated.length - 1] = { ...lastMessage, content: analysisContent };
+              }
+              return updated;
+            });
+          });
+
+          let responseStr = "";
+          try {
+            responseStr = await invoke("ask_llm", { prompt: analysisPrompt });
+          } catch (analysisError: any) {
+            console.error("Failed to get analysis", analysisError);
+          } finally {
+            analysisUnlisten();
+          }
+
+          // Check if the AI outputted another tool call JSON
+          let nextJsonStr = "";
+          const nextJsonBlockMatch = responseStr.match(/```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/);
+          if (nextJsonBlockMatch) {
+            nextJsonStr = nextJsonBlockMatch[1];
+          } else {
+            const nextFallbackMatch = responseStr.match(/\{[\s\S]*?"tool"[\s\S]*\}/);
+            if (nextFallbackMatch) {
+              nextJsonStr = nextFallbackMatch[0];
+            }
+          }
+
+          if (nextJsonStr) {
+            try {
+              console.log("Extracted subsequent JSON tool string:", nextJsonStr);
+              const nextToolCall = JSON.parse(nextJsonStr);
+              const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
+                                         nextToolCall.tool === "network_traceroute" ? "Traceroute" : 
+                                         nextToolCall.tool === "network_show" ? "Show Command" : nextToolCall.tool;
+              
+              // Add a small delay for better UX before chaining
+              setTimeout(async () => {
+                await executeAndAnalyze(nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
+              }, 1000);
+            } catch (e) {
+              console.error("Failed to parse subsequent tool call JSON", e);
+            }
+          }
+
+        } catch (e: any) {
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: "ai", content: `Failed to execute ${toolLabel}: ${e.toString()}`, timestamp: new Date().toISOString() };
+            return updated;
+          });
+        }
+      };
+
       if (pingMatch) {
         const host = pingMatch[1] || pingMatch[2];
-        setMessages(prev => [...prev, { role: "ai", content: `Pinging ${host}...`, timestamp: new Date().toISOString() }]);
-        try {
-          const result: any = await invoke("network_ping", { host });
-          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
-        } catch (e: any) {
-          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute ping: ${e.toString()}`, timestamp: new Date().toISOString() }]);
-        }
+        await executeAndAnalyze("network_ping", "Ping", { host });
       } else if (traceMatch) {
         const host = traceMatch[1] || traceMatch[2];
-        setMessages(prev => [...prev, { role: "ai", content: `Tracing route to ${host}...`, timestamp: new Date().toISOString() }]);
-        try {
-          const result: any = await invoke("network_traceroute", { host });
-          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
-        } catch (e: any) {
-          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute traceroute: ${e.toString()}`, timestamp: new Date().toISOString() }]);
-        }
+        await executeAndAnalyze("network_traceroute", "Traceroute", { host });
       } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
-        setMessages(prev => [...prev, { role: "ai", content: "Retrieving device status...", timestamp: new Date().toISOString() }]);
-        try {
-          const result: any = await invoke("network_show", {
-            device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
-            command: "show ip int brief"
-          });
-          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}`, timestamp: new Date().toISOString() }]);
-        } catch (e: any) {
-          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute: ${e.toString()}`, timestamp: new Date().toISOString() }]);
-        }
+        await executeAndAnalyze("network_show", "Show Command", {
+          device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
+          command: "show ip int brief"
+        });
       } else {
         setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
         
@@ -251,62 +323,11 @@ function App() {
             try {
               console.log("Extracted JSON tool string:", jsonStr);
               const toolCall = JSON.parse(jsonStr);
-              let result: any = null;
-              let toolName = "";
-
-              // Show executing status
               const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
-                                     toolCall.tool === "network_traceroute" ? "Traceroute" : toolCall.tool;
+                                     toolCall.tool === "network_traceroute" ? "Traceroute" : 
+                                     toolCall.tool === "network_show" ? "Show Command" : toolCall.tool;
               
-              setMessages(prev => [...prev, { role: "ai", content: `⏱️ ${toolActionName} を実行中...`, timestamp: new Date().toISOString() }]);
-
-              if (toolCall.tool === "network_ping") {
-                toolName = "Ping";
-                result = await invoke("network_ping", { host: toolCall.args.host });
-              } else if (toolCall.tool === "network_traceroute") {
-                toolName = "Traceroute";
-                result = await invoke("network_traceroute", { host: toolCall.args.host });
-              }
-
-              if (result) {
-                // Update the executing status with the tool result
-                const resultMessage = result.success ? 
-                  `### ${toolName} 実行結果\n\`\`\`\n${result.output}\n\`\`\`` : 
-                  `### ${toolName} エラー\n${result.output}`;
-                
-                setMessages(prev => {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = { role: "ai", content: resultMessage, timestamp: new Date().toISOString() };
-                  return updated;
-                });
-
-                // Automatically ask LLM to analyze the result
-                const analysisPrompt = `ユーザーの入力: "${userMessage}"\nに対する${toolName}の実行結果は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。`;
-                
-                // Add a placeholder for analysis
-                setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
-                
-                let analysisContent = "";
-                const analysisUnlisten = await listen<string>("llm-chunk", (event) => {
-                  analysisContent += event.payload;
-                  setMessages(prev => {
-                    const updated = [...prev];
-                    const lastMessage = updated[updated.length - 1];
-                    if (lastMessage && lastMessage.role === "ai") {
-                      updated[updated.length - 1] = { ...lastMessage, content: analysisContent };
-                    }
-                    return updated;
-                  });
-                });
-
-                try {
-                  await invoke("ask_llm", { prompt: analysisPrompt });
-                } catch (analysisError: any) {
-                  console.error("Failed to get analysis", analysisError);
-                } finally {
-                  analysisUnlisten();
-                }
-              }
+              await executeAndAnalyze(toolCall.tool, toolActionName, toolCall.args);
             } catch (parseError) {
               console.error("Failed to parse tool call JSON", parseError);
             }
