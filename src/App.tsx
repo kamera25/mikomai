@@ -43,6 +43,11 @@ function App() {
   const isComposing = useRef(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   // Load history from backend
   useEffect(() => {
@@ -130,6 +135,11 @@ function App() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
     }
   }, [input]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const formatMessageTime = (isoString?: string) => {
     if (!isoString) return "";
@@ -462,6 +472,7 @@ function App() {
                 </div>
               ))
             )}
+            <div ref={messagesEndRef} />
           </div>
   
           {/* Input Area */}
