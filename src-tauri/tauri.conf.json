@@ -32,8 +32,7 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/netmiko_wrapper",
-      "binaries/mcp_ping_traceroute"
+      "binaries/netmiko_wrapper"
     ]
   }
 }
