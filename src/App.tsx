@@ -36,6 +36,7 @@ function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [modelStatus, setModelStatus] = useState<string>("NotLoaded");
+  const [connectedHost] = useState<string>("192.168.1.1 (Core-Switch-01)");
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -283,8 +284,9 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Activity Bar (LM Studio style thin left bar) */}
-      <nav className="activity-bar">
+      <div className="main-layout">
+        {/* Activity Bar (LM Studio style thin left bar) */}
+        <nav className="activity-bar">
          <div 
           className={`activity-item ${isSidebarOpen && !isSettingsOpen && !isConnectionOpen ? 'active' : ''}`} 
           title="Chat History" 
@@ -379,11 +381,7 @@ function App() {
             {/* Top Header */}
             <header className="chat-header">
               <div className="header-left">
-    
-                <div className="model-selector">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                  <span>Gemma 4-E2B-it (ローカル)</span>
-                </div>
+                <h1 className="header-title">mikomai</h1>
               </div>
             </header>
     
@@ -426,6 +424,11 @@ function App() {
                   {modelStatus === "Loading" && "AIモデルを読み込み中です。しばらくお待ちください..."}
                   {modelStatus === "Error" && "AIモデルの読み込みに失敗しました。設定を確認してください。"}
                 </span>
+                {(modelStatus === "NotLoaded" || modelStatus === "Error") && (
+                  <button className="banner-button" onClick={() => setIsSettingsOpen(true)}>
+                    設定
+                  </button>
+                )}
               </div>
             )}
             <div className={`input-container ${modelStatus !== "Loaded" ? 'disabled' : ''}`}>
@@ -444,20 +447,41 @@ function App() {
                   }
                 }}
               />
-              <button 
-                className="send-button" 
-                onClick={handleSend}
-                disabled={modelStatus !== "Loaded" || !input.trim()}
-              >
-                <svg viewBox="0 0 24 24">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
-                </svg>
-              </button>
+                <button 
+                  className="send-button" 
+                  onClick={handleSend}
+                  disabled={modelStatus !== "Loaded" || !input.trim()}
+                >
+                  <svg viewBox="0 0 24 24">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+                  </svg>
+                </button>
+              </div>
             </div>
-          </div>
-        </main>
+          </main>
         )}
+        </div>
       </div>
+      
+      {/* Status Bar */}
+      <footer className="status-bar">
+        <div className="status-left">
+          <div className="status-item">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+            <span>{connectedHost}</span>
+          </div>
+        </div>
+        <div className="status-right">
+          <div className="status-item">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            <span>Gemma 4-E2B-it (ローカル)</span>
+          </div>
+          <div className="status-item">
+            <div className={`status-dot ${modelStatus.toLowerCase()}`}></div>
+            <span>{modelStatus === "Loaded" ? "Ready" : modelStatus}</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
