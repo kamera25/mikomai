@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use std::path::PathBuf;
 use tauri::AppHandle;
+use tauri_plugin_shell::ShellExt;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DeviceConfig {
@@ -23,27 +23,26 @@ pub trait NetworkInterface {
     fn execute_config(&self, device: &DeviceConfig, commands: Vec<String>) -> Result<String, String>;
 }
 
-// Implementation using a Python Subprocess (Netmiko) fallback
-pub struct PythonNetmikoWrapper {
-    script_path: PathBuf,
+// Implementation using a Tauri Sidecar fallback
+pub struct SidecarNetmikoWrapper {
+    app: AppHandle,
 }
 
-impl PythonNetmikoWrapper {
+impl SidecarNetmikoWrapper {
     pub fn new(app: &AppHandle) -> Self {
-        // In a real build, we'd resolve this via `app.path().resource_dir()`
-        // For development, we assume it's in `src-tauri/python/netmiko_wrapper.py`
-        let mut path = std::env::current_dir().unwrap_or_default();
-        path.push("python");
-        path.push("netmiko_wrapper.py");
-        Self { script_path: path }
+        Self { app: app.clone() }
     }
 
-    fn run_python_script(&self, args: Vec<String>) -> Result<String, String> {
-        let output = Command::new("python3")
-            .arg(&self.script_path)
-            .args(&args)
-            .output()
-            .map_err(|e| format!("Failed to execute python script: {}", e))?;
+    fn run_sidecar(&self, args: Vec<String>) -> Result<String, String> {
+        let sidecar = self.app.shell()
+            .sidecar("netmiko_wrapper")
+            .map_err(|e| format!("Failed to create sidecar command: {}", e))?
+            .args(args);
+
+        // Run synchronously blockingly for now to match the trait
+        // Note: we might want to change NetworkInterface to be async later
+        let output = tauri::async_runtime::block_on(async { sidecar.output().await })
+            .map_err(|e| format!("Failed to execute sidecar: {}", e))?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -53,7 +52,7 @@ impl PythonNetmikoWrapper {
     }
 }
 
-impl NetworkInterface for PythonNetmikoWrapper {
+impl NetworkInterface for SidecarNetmikoWrapper {
     fn execute_show(&self, device: &DeviceConfig, command: &str) -> Result<String, String> {
         let args = vec![
             "--action".to_string(), "show".to_string(),
@@ -63,7 +62,7 @@ impl NetworkInterface for PythonNetmikoWrapper {
             "--device_type".to_string(), device.device_type.clone(),
             "--command".to_string(), command.to_string()
         ];
-        self.run_python_script(args)
+        self.run_sidecar(args)
     }
 
     fn execute_config(&self, device: &DeviceConfig, commands: Vec<String>) -> Result<String, String> {
@@ -76,7 +75,7 @@ impl NetworkInterface for PythonNetmikoWrapper {
             "--device_type".to_string(), device.device_type.clone(),
             "--commands".to_string(), commands_json
         ];
-        self.run_python_script(args)
+        self.run_sidecar(args)
     }
 }
 
@@ -87,7 +86,7 @@ pub async fn network_show(
     command: String,
 ) -> Result<CommandResult, String> {
     println!("Executing read-only command on {}: {}", device.host, command);
-    let wrapper = PythonNetmikoWrapper::new(&app);
+    let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_show(&device, &command) {
         Ok(output) => Ok(CommandResult { success: true, output }),
         Err(err) => Ok(CommandResult { success: false, output: err }),
@@ -101,7 +100,7 @@ pub async fn network_config(
     commands: Vec<String>,
 ) -> Result<CommandResult, String> {
     println!("Executing WRITE command on {}: {:?}", device.host, commands);
-    let wrapper = PythonNetmikoWrapper::new(&app);
+    let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_config(&device, commands) {
         Ok(output) => Ok(CommandResult { success: true, output }),
         Err(err) => Ok(CommandResult { success: false, output: err }),

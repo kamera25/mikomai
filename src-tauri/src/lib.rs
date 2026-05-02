@@ -14,6 +14,7 @@ pub fn run() {
     let rag_state = rag::RagState::new();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .manage(llama_state)
         .manage(rag_state)
