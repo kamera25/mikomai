@@ -222,7 +222,7 @@ function App() {
           const result: any = await invoke(toolId, args);
           const resultMessage = result.success ? 
             `### ${toolLabel} 実行結果\n\`\`\`\n${result.output}\n\`\`\`` : 
-            `### ${toolLabel} エラー\n${result.output}`;
+            `⚠️ **${toolLabel}の実行に失敗しました。**\n\n【エラー内容】\n\`\`\`\n${result.output}\n\`\`\``;
           
           setMessages(prev => {
             const updated = [...prev];
@@ -287,9 +287,14 @@ function App() {
           }
 
         } catch (e: any) {
+          const errorMsg = e.toString();
+          const displayError = errorMsg.includes("Failed to execute") 
+            ? `❌ **${toolLabel}の実行に失敗しました。**\n\n実行環境（サイドカーやネットワーク接続）に問題がある可能性があります。\n\n詳細: \`${errorMsg}\``
+            : `❌ **${toolLabel}の実行中にエラーが発生しました。**\n\n詳細: \`${errorMsg}\``;
+
           setMessages(prev => {
             const updated = [...prev];
-            updated[updated.length - 1] = { role: "ai", content: `Failed to execute ${toolLabel}: ${e.toString()}`, timestamp: new Date().toISOString() };
+            updated[updated.length - 1] = { role: "ai", content: displayError, timestamp: new Date().toISOString() };
             return updated;
           });
         }
