@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import ReactMarkdown from "react-markdown";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
 import { ScheduledTasksPanel } from "./components/ScheduledTasksPanel";
@@ -648,14 +649,8 @@ function App() {
                     </div>
                   )}
                   <div className={`message ${msg.role}`}>
-                    <div className="message-bubble">
-                      {msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
-                        if (part.startsWith("```")) {
-                          const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
-                          return <pre key={i} className="code-block"><code>{content}</code></pre>;
-                        }
-                        return <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{part}</span>;
-                      })}
+                    <div className="message-bubble markdown-body">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
                   </div>
                 </div>
