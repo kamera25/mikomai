@@ -311,13 +311,13 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
             <div className="connection-toolbar">
               <div className="toolbar-left">
                 <span className="results-count">
-                  <strong>{filteredConnections.length}</strong> of <strong>{mockConnections.length}</strong> Registered Devices
+                  <strong>{filteredConnections.length}</strong> / <strong>{mockConnections.length}</strong> ホストを表示
                 </span>
                 <div className="search-box-container">
                   <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                   <input 
                     type="text" 
-                    placeholder="Search Registered Devices" 
+                    placeholder="ホストを検索…" 
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -326,17 +326,17 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               <div className="toolbar-right">
                 <button className="toolbar-btn">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
-                  Columns
+                  表示設定
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </button>
                 <div className="csv-actions">
                   <button className="toolbar-btn csv-btn">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    Import CSV
+                    CSVインポート
                   </button>
                   <button className="toolbar-btn csv-btn">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                    Export CSV
+                    CSVエクスポート
                   </button>
                 </div>
               </div>
