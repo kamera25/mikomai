@@ -24,6 +24,7 @@ const mockConnections: Connection[] = [
 ];
 
 export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = ({ onClose }) => {
+  const [connections, setConnections] = useState<Connection[]>(mockConnections);
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -44,7 +45,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     baudRate: 9600
   });
 
-  const filteredConnections = mockConnections.filter(conn => 
+  const filteredConnections = connections.filter(conn =>
     conn.hostname.toLowerCase().includes(searchQuery.toLowerCase()) ||
     conn.ip.includes(searchQuery) ||
     conn.type.toLowerCase().includes(searchQuery.toLowerCase())
@@ -102,7 +103,28 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const handleSave = () => {
     if (validate()) {
       console.log('Saving connection:', formData);
-      // In a real app, we would update the state or call an API here
+      if (editingId) {
+        setConnections(connections.map(conn =>
+          conn.id === editingId
+            ? {
+                ...conn,
+                hostname: formData.hostname || formData.ip,
+                ip: formData.ip,
+                type: formData.type === 'Console' ? 'Console (Serial)' : `${formData.type} ${formData.authMethod === 'key' ? '(Key)' : '(Password)'}`
+              }
+            : conn
+        ));
+      } else {
+        const newConnection: Connection = {
+          id: Date.now().toString(),
+          status: 'offline',
+          hostname: formData.hostname || formData.ip,
+          ip: formData.ip,
+          type: formData.type === 'Console' ? 'Console (Serial)' : `${formData.type} ${formData.authMethod === 'key' ? '(Key)' : '(Password)'}`,
+          lastConnected: 'Never'
+        };
+        setConnections([...connections, newConnection]);
+      }
       setIsEditing(false);
     }
   };
@@ -311,7 +333,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
             <div className="connection-toolbar">
               <div className="toolbar-left">
                 <span className="results-count">
-                  <strong>{filteredConnections.length}</strong> / <strong>{mockConnections.length}</strong> ホストを表示
+                  <strong>{filteredConnections.length}</strong> / <strong>{connections.length}</strong> ホストを表示
                 </span>
                 <div className="search-box-container">
                   <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
