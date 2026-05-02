@@ -4670,6 +4670,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "mikomai"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "hf-hub",
+ "lancedb",
+ "llama-cpp-2",
+ "mcp-client",
+ "mcp-core",
+ "mcp-server",
+ "serde",
+ "serde_json",
+ "surge-ping",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tauri-plugin-shell",
+ "tokio",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4770,27 +4791,6 @@ name = "murmurhash32"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
-
-[[package]]
-name = "myapp"
-version = "0.1.0"
-dependencies = [
- "futures",
- "hf-hub",
- "lancedb",
- "llama-cpp-2",
- "mcp-client",
- "mcp-core",
- "mcp-server",
- "serde",
- "serde_json",
- "surge-ping",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tauri-plugin-shell",
- "tokio",
-]
 
 [[package]]
 name = "native-tls"
