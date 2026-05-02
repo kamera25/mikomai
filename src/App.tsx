@@ -54,6 +54,37 @@ function App() {
         setPendingDiff(" interface GigabitEthernet0/1\n- description Old\n+ description Connected via AI Agent");
         setIsApprovalOpen(true);
         
+      } else if (lowerInput.includes("ping")) {
+        // AI decides to call `network_ping`
+        // Extract IP or host using regex simply for simulation
+        const match = lowerInput.match(/ping\s+([a-zA-Z0-9.-]+)/);
+        const host = match ? match[1] : "1.1.1.1";
+
+        setMessages(prev => [...prev, { role: "ai", content: `Pinging ${host}...` }]);
+
+        try {
+          const result: any = await invoke("network_ping", {
+            host
+          });
+          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}` }]);
+        } catch (e: any) {
+          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute ping: ${e.toString()}` }]);
+        }
+      } else if (lowerInput.includes("traceroute") || lowerInput.includes("trace")) {
+        // AI decides to call `network_traceroute`
+        const match = lowerInput.match(/trace(?:route)?\s+([a-zA-Z0-9.-]+)/);
+        const host = match ? match[1] : "1.1.1.1";
+
+        setMessages(prev => [...prev, { role: "ai", content: `Tracing route to ${host}...` }]);
+
+        try {
+          const result: any = await invoke("network_traceroute", {
+            host
+          });
+          setMessages(prev => [...prev, { role: "ai", content: result.success ? `\`\`\`\n${result.output}\n\`\`\`` : `Error: ${result.output}` }]);
+        } catch (e: any) {
+          setMessages(prev => [...prev, { role: "ai", content: `Failed to execute traceroute: ${e.toString()}` }]);
+        }
       } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
         // AI decides to call `network_show`
         setMessages(prev => [...prev, { role: "ai", content: "Retrieving device status..." }]);
