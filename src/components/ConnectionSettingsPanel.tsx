@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import './ConnectionSettingsPanel.css';
 
 interface ConnectionSettingsPanelProps {
@@ -29,6 +30,20 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+
+  useEffect(() => {
+    const initConnections = async () => {
+      try {
+        const savedConnections: Connection[] = await invoke('load_connections');
+        if (savedConnections && savedConnections.length > 0) {
+          setConnections(savedConnections);
+        }
+      } catch (e) {
+        console.error("Failed to load connections:", e);
+      }
+    };
+    initConnections();
+  }, []);
 
   const [formData, setFormData] = useState({
     hostname: '',
@@ -100,11 +115,13 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (validate()) {
       console.log('Saving connection:', formData);
+      let updatedConnections = connections;
+
       if (editingId) {
-        setConnections(connections.map(conn =>
+        updatedConnections = connections.map(conn =>
           conn.id === editingId
             ? {
                 ...conn,
@@ -113,7 +130,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 type: formData.type === 'Console' ? 'Console (Serial)' : `${formData.type} ${formData.authMethod === 'key' ? '(Key)' : '(Password)'}`
               }
             : conn
-        ));
+        );
       } else {
         const newConnection: Connection = {
           id: Date.now().toString(),
@@ -123,8 +140,17 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
           type: formData.type === 'Console' ? 'Console (Serial)' : `${formData.type} ${formData.authMethod === 'key' ? '(Key)' : '(Password)'}`,
           lastConnected: 'Never'
         };
-        setConnections([...connections, newConnection]);
+        updatedConnections = [...connections, newConnection];
       }
+
+      setConnections(updatedConnections);
+
+      try {
+        await invoke('save_connections', { connections: updatedConnections });
+      } catch (e) {
+        console.error("Failed to save connections:", e);
+      }
+
       setIsEditing(false);
     }
   };
