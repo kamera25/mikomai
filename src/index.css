@@ -14,7 +14,7 @@
   
   --border-color: #272d38;
   
-  --font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Meiryo', 'Yu Gothic', sans-serif;
+  --font-family: 'Inter', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Meiryo', 'Yu Gothic', sans-serif;
   
   --danger: #ef4444;
   --success: #10b981;
@@ -25,6 +25,10 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+input, button, select, textarea {
+  font-family: inherit;
 }
 
 body {
