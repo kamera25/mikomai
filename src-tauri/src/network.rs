@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use tauri::AppHandle;
-use tauri_plugin_shell::ShellExt;
+use std::sync::Mutex;
+use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_shell::{process::CommandChild, ShellExt};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DeviceConfig {
@@ -104,5 +104,69 @@ pub async fn network_config(
     match wrapper.execute_config(&device, commands) {
         Ok(output) => Ok(CommandResult { success: true, output }),
         Err(err) => Ok(CommandResult { success: false, output: err }),
+    }
+}
+
+pub struct McpState {
+    pub process: Mutex<Option<CommandChild>>,
+}
+
+#[tauri::command]
+pub async fn start_ns_mcp_server(app: AppHandle, state: State<'_, McpState>) -> Result<String, String> {
+    println!("Starting Network Sketcher MCP Server...");
+
+    let mut process_lock = state.process.lock().unwrap();
+    if process_lock.is_some() {
+        return Ok("MCP Server is already running".to_string());
+    }
+
+    let (mut rx, child) = app.shell()
+        .sidecar("ns_mcp_server")
+        .map_err(|e| format!("Failed to create sidecar command: {}", e))?
+        .spawn()
+        .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+
+    *process_lock = Some(child);
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
+                    let output = String::from_utf8_lossy(&line).to_string();
+                    let _ = app_handle.emit("mcp-response", output);
+                }
+                tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
+                    let err = String::from_utf8_lossy(&line).to_string();
+                    eprintln!("[MCP Server stderr] {}", err);
+                    let _ = app_handle.emit("mcp-error", err);
+                }
+                tauri_plugin_shell::process::CommandEvent::Error(err) => {
+                    eprintln!("[MCP Server error] {}", err);
+                    let _ = app_handle.emit("mcp-error", err.to_string());
+                }
+                tauri_plugin_shell::process::CommandEvent::Terminated(payload) => {
+                    println!("[MCP Server terminated] code: {:?}", payload.code);
+                    let _ = app_handle.emit("mcp-terminated", payload.code);
+                    // We ideally want to clear the state here, but we can't easily access it
+                }
+                _ => {}
+            }
+        }
+    });
+
+    Ok("Network Sketcher MCP Server started".to_string())
+}
+
+#[tauri::command]
+pub async fn send_mcp_message(state: State<'_, McpState>, message: String) -> Result<(), String> {
+    let mut process_lock = state.process.lock().unwrap();
+    if let Some(child) = process_lock.as_mut() {
+        let payload = format!("{}\n", message);
+        child.write(payload.as_bytes())
+            .map_err(|e| format!("Failed to write to MCP Server stdin: {}", e))?;
+        Ok(())
+    } else {
+        Err("MCP Server is not running".to_string())
     }
 }
