@@ -1,29 +1,27 @@
 ---
 brand: Yamaha
 os_version: Rev.15
-category: interface
+category: arp
 command_type: show
 target_model: RTX1210 RTX1300
 ---
 [Context: {brand} {target_model}, {category} {command_type} command reference]
 
-## Command: `show status lan1`
+## Command: `show arp`
 
 ### Description
- このコマンドを入力すると、LAN1インターフェースのステータスを表示できます。
+ このコマンドを入力すると、ARPテーブルを表示できます。
  このコマンドはYamahaでしか使えません。
 
 ### Usage
 
 ```text
-#show status lan1
+#show arp
 ```
 
 ### Output
 
 ```text
-LAN1
-IP Address: 192.168.100.1/24
-Ethernet Address: 00:a0:de:11:22:33
-Link status: UP
+Interface  IP Address      MAC Address        TTL(sec)
+LAN1       192.168.100.2   00:11:22:33:44:55       900
 ```
