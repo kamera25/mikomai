@@ -4,7 +4,8 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 use std::sync::{Arc, Mutex};
 use fastembed::{TextEmbedding, EmbeddingModel, InitOptions};
 use futures::StreamExt;
-use arrow_array::{RecordBatch, StringArray};
+use arrow_array::{RecordBatch, StringArray, LargeStringArray, Array};
+use tauri::Manager;
 
 pub struct RagState {
     pub db: Mutex<Option<Connection>>,
@@ -37,6 +38,33 @@ impl RagState {
         *model_lock = Some(arc_model.clone());
         Ok(arc_model)
     }
+
+    pub async fn get_db(&self, app: &tauri::AppHandle) -> Result<Connection, String> {
+        {
+            let db_lock = self.db.lock().unwrap();
+            if let Some(conn) = &*db_lock {
+                return Ok(conn.clone());
+            }
+        }
+
+        // Auto-connect to default path
+        let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        let lancedb_dir = app_data_dir.join("lancedb");
+        
+        // Ensure directory exists
+        if !lancedb_dir.exists() {
+            std::fs::create_dir_all(&lancedb_dir).map_err(|e| format!("Failed to create DB directory: {}", e))?;
+        }
+        
+        let path = lancedb_dir.to_string_lossy().to_string();
+        println!("Auto-connecting to LanceDB at: {}", path);
+        
+        let conn = connect(&path).execute().await.map_err(|e| format!("DB auto-connect error: {}", e))?;
+        
+        let mut db_lock = self.db.lock().unwrap();
+        *db_lock = Some(conn.clone());
+        Ok(conn)
+    }
 }
 
 #[tauri::command]
@@ -61,14 +89,16 @@ pub async fn ingest_document(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn query_rag(query: String, filter: Option<String>, state: tauri::State<'_, RagState>) -> Result<String, String> {
+pub async fn query_rag(
+    query: String, 
+    filter: Option<String>, 
+    state: tauri::State<'_, RagState>,
+    app: tauri::AppHandle
+) -> Result<String, String> {
     println!("Querying RAG (Rust-native): {} (filter: {:?})", query, filter);
 
-    // 1. Get DB connection
-    let db = {
-        let db_lock = state.db.lock().unwrap();
-        db_lock.as_ref().ok_or("Database not connected")?.clone()
-    };
+    // 1. Get DB connection (auto-connect if needed)
+    let db = state.get_db(&app).await?;
 
     // 2. Get/Init embedding model
     let model = state.get_model()?;
@@ -102,20 +132,34 @@ pub async fn query_rag(query: String, filter: Option<String>, state: tauri::Stat
     while let Some(batch_result) = stream.next().await {
         let batch: RecordBatch = batch_result.map_err(|e| format!("Error reading search results: {}", e))?;
         
+        //println!("Actual column type: {:?}", batch.column_by_name("text").unwrap().data_type());
+
         // Extract text and path columns
         let text_col = batch.column_by_name("text")
-            .ok_or("Column 'text' not found in results")?
-            .as_any().downcast_ref::<StringArray>()
-            .ok_or("Failed to downcast text column")?;
+            .ok_or("Column 'text' not found in results")?;
             
+        let text_values: Vec<String> = if let Some(arr) = text_col.as_any().downcast_ref::<LargeStringArray>() {
+            (0..arr.len()).map(|i| arr.value(i).to_string()).collect()
+        } else if let Some(arr) = text_col.as_any().downcast_ref::<StringArray>() {
+            (0..arr.len()).map(|i| arr.value(i).to_string()).collect()
+        } else {
+            return Err(format!("Failed to downcast text column. Actual type: {:?}", text_col.data_type()));
+        };
+
         let path_col = batch.column_by_name("path")
-            .ok_or("Column 'path' not found in results")?
-            .as_any().downcast_ref::<StringArray>()
-            .ok_or("Failed to downcast path column")?;
+            .ok_or("Column 'path' not found in results")?;
+            
+        let path_values: Vec<String> = if let Some(arr) = path_col.as_any().downcast_ref::<LargeStringArray>() {
+            (0..arr.len()).map(|i| arr.value(i).to_string()).collect()
+        } else if let Some(arr) = path_col.as_any().downcast_ref::<StringArray>() {
+            (0..arr.len()).map(|i| arr.value(i).to_string()).collect()
+        } else {
+            return Err(format!("Failed to downcast path column. Actual type: {:?}", path_col.data_type()));
+        };
 
         for i in 0..batch.num_rows() {
-            let text = text_col.value(i);
-            let path = path_col.value(i);
+            let text = &text_values[i];
+            let path = &path_values[i];
             context.push_str(&format!("\n--- Result {} (Source: {}) ---\n{}\n", count, path, text));
             count += 1;
         }

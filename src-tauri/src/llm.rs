@@ -9,6 +9,7 @@ use llama_cpp_2::sampling::LlamaSampler;
 use std::sync::Mutex;
 use std::num::NonZeroU32;
 use tauri::Emitter;
+use tauri::Manager;
 
 #[derive(serde::Serialize)]
 pub enum ModelState {
@@ -156,10 +157,12 @@ pub async fn ask_llm(
         None
     };
 
-    let rag_context = crate::rag::query_rag(prompt.clone(), brand_filter, rag_state).await.unwrap_or_else(|e| {
+    let rag_context = crate::rag::query_rag(prompt.clone(), brand_filter, rag_state, window.app_handle().clone()).await.unwrap_or_else(|e| {
         println!("RAG search error: {}", e);
         "No relevant information found due to search error.".to_string()
     });
+
+    println!("RAG context size: {} characters", rag_context.len());
 
     let _inference_guard = llama_state.inference_lock.lock().unwrap();
     let model_lock = llama_state.model.lock().unwrap();
@@ -180,7 +183,17 @@ pub async fn ask_llm(
 
     let mut ctx = model.new_context(&llama_state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
 
-    let tokens = model.str_to_token(&formatted_prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
+    let mut tokens = model.str_to_token(&formatted_prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
+    println!("Total tokens in prompt: {}", tokens.len());
+
+    // Truncate if tokens exceed capacity (leaving room for response)
+    let max_tokens = 2048 - 512; // Leave 512 for response
+    if tokens.len() > max_tokens {
+        println!("Prompt too long ({} tokens), truncating to {} tokens", tokens.len(), max_tokens);
+        // Keep the start (system prompt) and end (user prompt) but truncate middle if possible?
+        // For simplicity, just take the first max_tokens.
+        tokens.truncate(max_tokens);
+    }
 
     let mut batch = LlamaBatch::new(2048, 1);
     let last_index = tokens.len() - 1;
