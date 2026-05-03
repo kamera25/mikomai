@@ -75,6 +75,10 @@ pub async fn network_ping(
         }
     }
 
+    output.push_str(&format!("\n--- {} ping statistics ---\n", ip));
+    output.push_str(&format!("{} packets transmitted, {} received, {}% packet loss\n", 
+        ping_count, success_count, (ping_count - success_count) * 100 / ping_count));
+
     Ok(PingResult {
         success: success_count > 0,
         output,

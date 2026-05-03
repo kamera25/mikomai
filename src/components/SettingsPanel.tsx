@@ -25,8 +25,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   repetitionPenalty,
   onRepetitionPenaltyChange
 }) => {
-  const [modelPath, setModelPath] = useState("bartowski/google_gemma-4-E2B-it-GGUF");
-  const [modelFilename, setModelFilename] = useState("google_gemma-4-E2B-it-Q4_K_M.gguf");
+  const [modelPath, setModelPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
+  const [modelFilename, setModelFilename] = useState("google_gemma-4-E4B-it-Q4_K_M.gguf");
   const [downloadStatus, setDownloadStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [dbPath, setDbPath] = useState("");

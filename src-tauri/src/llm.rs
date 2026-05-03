@@ -171,7 +171,7 @@ pub async fn ask_llm(
     };
 
     let formatted_prompt = format!(
-        "<|im_start|>system\n{}\n\n# 【参考資料】\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+        "<|turn>system\n{}\n\n# 【参考資料】\n{}<turn|>\n<|turn>user\n{}<turn|>\n<|turn>model\n",
         SYSTEM_PROMPT,
         rag_context,
         prompt
@@ -222,8 +222,8 @@ pub async fn ask_llm(
     };
     let mut sampler = sampler;
 
-    let im_end_tokens = model.str_to_token("<|im_end|>", AddBos::Never).unwrap_or_default();
-    let im_end_token = im_end_tokens.first().copied();
+    let turn_end_tokens = model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
+    let turn_end_token = turn_end_tokens.first().copied();
 
     let n_len = 500; // max length
 
@@ -232,7 +232,7 @@ pub async fn ask_llm(
     for _ in 0..n_len {
         let new_token_id = sampler.sample(&mut ctx, batch.n_tokens() - 1);
 
-        if new_token_id == model.token_eos() || Some(new_token_id) == im_end_token {
+        if new_token_id == model.token_eos() || Some(new_token_id) == turn_end_token {
             break;
         }
 
@@ -290,7 +290,7 @@ pub async fn ask_llm_background(
     };
 
     let formatted_prompt = format!(
-        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+        "<|turn>system\n{}<turn|>\n<|turn>user\n{}<turn|>\n<|turn>model\n",
         SUMMARIZATION_SYSTEM_PROMPT,
         prompt
     );
@@ -318,8 +318,8 @@ pub async fn ask_llm_background(
         LlamaSampler::greedy(),
     ]);
 
-    let im_end_tokens = model.str_to_token("<|im_end|>", AddBos::Never).unwrap_or_default();
-    let im_end_token = im_end_tokens.first().copied();
+    let turn_end_tokens = model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
+    let turn_end_token = turn_end_tokens.first().copied();
 
     let n_len = 500; // max length
 
@@ -328,7 +328,7 @@ pub async fn ask_llm_background(
     for _ in 0..n_len {
         let new_token_id = sampler.sample(&mut ctx, batch.n_tokens() - 1);
 
-        if new_token_id == model.token_eos() || Some(new_token_id) == im_end_token {
+        if new_token_id == model.token_eos() || Some(new_token_id) == turn_end_token {
             break;
         }
 

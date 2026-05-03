@@ -270,9 +270,10 @@ function App() {
         setMessages(prev => [...prev, { role: "ai", content: `⏱️ ${toolLabel} を実行中...`, timestamp: new Date().toISOString() }]);
         try {
           const result: any = await invoke(toolId, args);
+          const statusBadge = result.success ? "✅ 成功" : "❌ 失敗";
           const resultMessage = result.success ? 
-            `### ${toolLabel} 実行結果\n\`\`\`terminal\n${result.output}\n\`\`\`` :
-            `⚠️ **${toolLabel}の実行に失敗しました。**\n\n【エラー内容】\n\`\`\`terminal\n${result.output}\n\`\`\``;
+            `### ${toolLabel} 実行結果: ${statusBadge}\n\`\`\`terminal\n${result.output}\n\`\`\`` :
+            `⚠️ **${toolLabel}の実行に失敗しました: ${statusBadge}**\n\n【エラー内容】\n\`\`\`terminal\n${result.output}\n\`\`\``;
           
           setMessages(prev => {
             const updated = [...prev];
@@ -283,7 +284,7 @@ function App() {
           const recentSummariesText = summaries.slice(-historyLimit).map((s, i) => `${i+1}. ${s.content}`).join("\n");
           const contextPrefix = recentSummariesText ? `【過去の実行履歴要約（直近${historyLimit}件）】\n${recentSummariesText}\n※最新の情報（番号が大きいもの）を優先するようにし、最新の情報で解決できない場合は、その前の情報を参照…を繰り返すようにしてください。\n\n` : "";
 
-          const analysisPrompt = `${contextPrefix}ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n【重要】既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。`;
+          const analysisPrompt = `${contextPrefix}ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果（ステータス: ${statusBadge}）は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。`;
           
           setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
           
@@ -788,7 +789,7 @@ function App() {
         <div className="status-right">
           <div className="status-item">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-            <span>Gemma 4-E2B-it (ローカル)</span>
+            <span>Gemma 4-E4B-it (ローカル)</span>
           </div>
           <div className="status-item">
             <div className={`status-dot ${modelStatus.toLowerCase()}`}></div>
