@@ -8,7 +8,7 @@ use llama_cpp_2::model::AddBos;
 use llama_cpp_2::sampling::LlamaSampler;
 use std::sync::Mutex;
 use std::num::NonZeroU32;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 #[derive(serde::Serialize)]
 pub enum ModelState {
@@ -97,7 +97,13 @@ const SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI (Managed Infrastructure K
 - あなたは最新のネットワーク技術文書やベンダーマニュアルを格納した「LanceDB」というベクトルデータベースにアクセスできます。
 - 質問に対しては、まずこのLanceDBからの検索結果を最優先で参照してください。
 - 検索結果に答えが存在しない場合、あるいは確証が持てない場合は、絶対に推測で回答したり、存在しないコマンドを捏造（ハルシネーション）しないでください。
-- わからない場合は、明確に「LanceDBのマニュアル情報からは該当する情報が見つかりません。追加の検索キーワードを指示するか、実機から情報を取得しますか？」と回答してください。
+- わからない場合は、明確に「NW-DBのマニュアル情報からは該当する情報が見つかりません。追加の検索キーワードを指示するか、実機から情報を取得しますか？」と回答してください。
+- ユーザに対して「LanceDB」のことを「NW-DB」と伝えてください。
+
+### 重要なルール（必ず守ってください）
+1. ユーザーが特定の機器メーカー（Yamaha、Ciscoなど）やOSを指定した場合、提供された【参考資料】の冒頭にある `[Context: ...]` の情報と完全に一致するデータのみを使用してください。
+2. メーカーが一致しない資料は、内容がどれほど似ていても完全に無視してください。
+3. 該当するメーカーの資料がない場合は、「提供された資料の中に〇〇（メーカー名）の該当コマンドがありません」と正直に答えてください。
 
 # 2. ツールとエージェント操作 (MCP Rules)
 - あなたはローカルネットワークを診断・操作するためのMCPを持っています。
@@ -131,33 +137,39 @@ const SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI (Managed Infrastructure K
 - ユーザーから「もっと詳しく」「先ほどの結果から」等の追加要求があった場合は、入力の前に付与された【過去の実行履歴要約】を参照して文脈を補完し、応答してください。"##;
 
 #[tauri::command]
-pub async fn ask_llm(window: tauri::Window, prompt: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
+pub async fn ask_llm(
+    window: tauri::Window, 
+    prompt: String, 
+    llama_state: tauri::State<'_, LlamaState>,
+    rag_state: tauri::State<'_, crate::rag::RagState>
+) -> Result<String, String> {
     // Perform RAG search BEFORE taking locks to avoid holding MutexGuard across await points
-    let app_handle = window.app_handle();
     
     // Detect brand filter
     let brand_filter = if prompt.contains("ヤマハ") || prompt.to_lowercase().contains("yamaha") {
+        println!("Detected Yamaha brand filter");
         Some("brand LIKE '%Yamaha%'".to_string())
     } else if prompt.contains("シスコ") || prompt.to_lowercase().contains("cisco") {
+        println!("Detected Cisco brand filter");
         Some("brand LIKE '%Cisco%'".to_string())
     } else {
         None
     };
 
-    let rag_context = crate::rag::query_rag(prompt.clone(), brand_filter, app_handle.clone()).await.unwrap_or_else(|e| {
+    let rag_context = crate::rag::query_rag(prompt.clone(), brand_filter, rag_state).await.unwrap_or_else(|e| {
         println!("RAG search error: {}", e);
         "No relevant information found due to search error.".to_string()
     });
 
-    let _inference_guard = state.inference_lock.lock().unwrap();
-    let model_lock = state.model.lock().unwrap();
+    let _inference_guard = llama_state.inference_lock.lock().unwrap();
+    let model_lock = llama_state.model.lock().unwrap();
     let model = match &*model_lock {
         Some(m) => m,
         None => return Err("Model not loaded. Please configure and load a model first.".to_string()),
     };
 
     let formatted_prompt = format!(
-        "<|im_start|>system\n{}\n\n# LanceDBからの検索結果 (Context):\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+        "<|im_start|>system\n{}\n\n# 【参考資料】\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
         SYSTEM_PROMPT,
         rag_context,
         prompt
@@ -166,7 +178,7 @@ pub async fn ask_llm(window: tauri::Window, prompt: String, state: tauri::State<
     let mut ctx_params = LlamaContextParams::default();
     ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(2048));
 
-    let mut ctx = model.new_context(&state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
+    let mut ctx = model.new_context(&llama_state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
 
     let tokens = model.str_to_token(&formatted_prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
 
