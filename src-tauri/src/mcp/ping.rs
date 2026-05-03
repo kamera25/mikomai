@@ -10,12 +10,6 @@ pub struct PingResult {
     pub output: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct TracerouteResult {
-    pub success: bool,
-    pub output: String,
-}
-
 fn resolve_host(host: &str) -> Result<IpAddr, String> {
     let addrs = format!("{}:80", host).to_socket_addrs().map_err(|e| e.to_string())?;
     addrs.into_iter().next().map(|a| a.ip()).ok_or("Could not resolve host".to_string())
@@ -138,102 +132,32 @@ async fn run_system_ping(host: &str, size: Option<usize>, count: Option<u32>, df
     })
 }
 
-#[tauri::command]
-pub async fn network_traceroute(app: tauri::AppHandle, host: String) -> Result<TracerouteResult, String> {
-    let resolved_host = resolve_host_with_mcp(&app, &host);
-    let ip: IpAddr = match resolved_host.parse() {
-        Ok(ip) => ip,
-        Err(_) => tokio::task::spawn_blocking(move || resolve_host(&resolved_host))
-            .await
-            .map_err(|e| e.to_string())??,
-    };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    // FxPing manually builds a traceroute by iterating TTLs with surge-ping
-    // because `traceroute` crate might have limitations or missing exports.
-    // The previous implementation that iterates TTLs matches FxPing exactly!
-
-    let mut output = format!("Tracing route to {} over a maximum of 30 hops:\n\n", ip);
-    let mut success = false;
-    let payload = vec![0u8; 32];
-
-    for ttl in 1..=30 {
-        let config = match ip {
-            IpAddr::V4(_) => Config::builder().kind(ICMP::V4).ttl(ttl).build(),
-            IpAddr::V6(_) => Config::builder().kind(ICMP::V6).ttl(ttl).build(),
+    #[test]
+    fn test_ping_result_serialization() {
+        let result = PingResult {
+            success: true,
+            output: "Ping successful".to_string(),
         };
-
-        let client = Client::new(&config).map_err(|e| e.to_string())?;
-        let mut pinger = client.pinger(ip, PingIdentifier(ttl as u16)).await;
-        pinger.timeout(Duration::from_secs(2));
-
-        match pinger.ping(PingSequence(ttl as u16), &payload).await {
-            Ok((packet, duration)) => {
-                let hop_ip: IpAddr = match packet {
-                    surge_ping::IcmpPacket::V4(p) => p.get_real_dest().into(),
-                    surge_ping::IcmpPacket::V6(p) => p.get_real_dest().into(),
-                };
-                println!("Hop {}: {:?} from {}", ttl, duration, hop_ip);
-                output.push_str(&format!("{:2}  {:?}  {}\n", ttl, duration, hop_ip));
-
-                if hop_ip == ip {
-                    output.push_str("\nTrace complete.\n");
-                    success = true;
-                    break;
-                }
-            }
-            Err(e) => {
-                println!("Hop {}: Timeout or Error: {:?}", ttl, e);
-                output.push_str(&format!("{:2}  *        Request timed out.\n", ttl));
-            }
-        }
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(serialized, r#"{"success":true,"output":"Ping successful"}"#);
     }
 
-    Ok(TracerouteResult {
-        success,
-        output,
-    })
+    #[test]
+    fn test_resolve_host_ip() {
+        let ip = resolve_host("127.0.0.1");
+        assert!(ip.is_ok());
+        assert_eq!(ip.unwrap().to_string(), "127.0.0.1");
+    }
+
+    #[test]
+    fn test_resolve_host_domain() {
+        let ip = resolve_host("localhost");
+        assert!(ip.is_ok());
+        let ip_str = ip.unwrap().to_string();
+        assert!(ip_str == "127.0.0.1" || ip_str == "::1");
+    }
 }
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct HostListResult {
-    pub success: bool,
-    pub output: String,
-}
-
-#[tauri::command]
-pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, String> {
-    use crate::connections::{load_connections, get_mcp_hosts};
-    
-    let var_name = "登録されている接続可能なホスト一覧:\n\n".to_string();
-    let mut output = var_name;
-    output.push_str("| ホスト名 | IPアドレス | 接続タイプ | ソース |\n");
-    output.push_str("|----------|------------|------------|--------|\n");
-
-    let mut count = 0;
-
-    // Load local connections
-    if let Ok(connections) = load_connections(app.clone()) {
-        for conn in connections {
-            output.push_str(&format!("| {} | {} | {} | ローカル設定 |\n", conn.hostname, conn.ip, conn.conn_type));
-            count += 1;
-        }
-    }
-
-    // Load MCP hosts
-    if let Ok(mcp_hosts) = get_mcp_hosts() {
-        for host in mcp_hosts {
-            output.push_str(&format!("| {} | {} | {} | MCPレジストリ |\n", host.hostname, host.ip, host.device_type));
-            count += 1;
-        }
-    }
-
-    if count == 0 {
-        output = "登録されているホストが見つかりませんでした。".to_string();
-    }
-
-    Ok(HostListResult {
-        success: true,
-        output,
-    })
-}
-

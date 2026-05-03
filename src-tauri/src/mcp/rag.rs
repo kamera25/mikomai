@@ -27,7 +27,6 @@ impl RagState {
             return Ok(model.clone());
         }
 
-        println!("Initializing embedding model (all-MiniLM-L6-v2)...");
         let mut options = InitOptions::default();
         options.model_name = EmbeddingModel::AllMiniLML6V2;
         options.show_download_progress = true;
@@ -48,17 +47,14 @@ impl RagState {
             }
         }
 
-        // Auto-connect to default path
         let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
         let lancedb_dir = app_data_dir.join("lancedb");
         
-        // Ensure directory exists
         if !lancedb_dir.exists() {
             std::fs::create_dir_all(&lancedb_dir).map_err(|e| format!("Failed to create DB directory: {}", e))?;
         }
         
         let path = lancedb_dir.to_string_lossy().to_string();
-        println!("Auto-connecting to LanceDB at: {}", path);
         
         let conn = connect(&path).execute().await.map_err(|e| format!("DB auto-connect error: {}", e))?;
         
@@ -70,13 +66,11 @@ impl RagState {
 
 #[tauri::command]
 pub async fn connect_db(path: String, state: tauri::State<'_, RagState>) -> Result<String, String> {
-    println!("Connecting to LanceDB at: {}", path);
     let conn = connect(&path).execute().await.map_err(|e| format!("DB connect error: {}", e))?;
     
     let mut db_lock = state.db.lock().unwrap();
     *db_lock = Some(conn);
     
-    // Pre-initialize the model to avoid delay on first query
     let _ = state.get_model()?;
     
     Ok("Connected to LanceDB successfully".to_string())
@@ -84,8 +78,6 @@ pub async fn connect_db(path: String, state: tauri::State<'_, RagState>) -> Resu
 
 #[tauri::command]
 pub async fn ingest_document(path: String) -> Result<String, String> {
-    // This is a stub for the document ingestion pipeline.
-    println!("Ingesting document from: {}", path);
     Ok("Document ingested successfully (stub)".to_string())
 }
 
@@ -102,31 +94,23 @@ pub async fn query_nw_db(
     state: tauri::State<'_, RagState>,
     app: tauri::AppHandle
 ) -> Result<RagResult, String> {
-    println!("Querying RAG (Rust-native): {} (filter: {:?})", query, filter);
 
-    // 1. Get DB connection (auto-connect if needed)
     let db = state.get_db(&app).await?;
-
-    // 2. Get/Init embedding model
     let model = state.get_model()?;
 
-    // 3. Generate embedding for the query
     let embeddings = model.embed(vec![query], None)
         .map_err(|e| format!("Embedding error: {}", e))?;
     let query_vector = embeddings.first().ok_or("Failed to generate embedding")?.clone();
 
-    // 4. Perform search in LanceDB
     let table = db.open_table("documents").execute().await
         .map_err(|e| format!("Failed to open table: {}", e))?;
 
-    // Use the correct Query API for LanceDB Rust SDK 0.27.2
     let mut vector_query = table.query()
         .nearest_to(query_vector)
         .map_err(|e| format!("Vector search error: {}", e))?
         .limit(3);
     
     if let Some(filter_str) = filter {
-        // In lancedb-rs 0.27.2, VectorQuery uses only_if for filtering
         vector_query = vector_query.only_if(filter_str);
     }
 
@@ -139,9 +123,6 @@ pub async fn query_nw_db(
     while let Some(batch_result) = stream.next().await {
         let batch: RecordBatch = batch_result.map_err(|e| format!("Error reading search results: {}", e))?;
         
-        //println!("Actual column type: {:?}", batch.column_by_name("text").unwrap().data_type());
-
-        // Extract text and path columns
         let text_col = batch.column_by_name("text")
             .ok_or("Column 'text' not found in results")?;
             
@@ -176,5 +157,27 @@ pub async fn query_nw_db(
         Ok(RagResult { success: true, output: "LanceDBに該当する情報が見つかりませんでした。".to_string() })
     } else {
         Ok(RagResult { success: true, output: context })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rag_result_serialization() {
+        let result = RagResult {
+            success: true,
+            output: "RAG search results...".to_string(),
+        };
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(serialized, r#"{"success":true,"output":"RAG search results..."}"#);
+    }
+
+    #[test]
+    fn test_rag_state_instantiation() {
+        let state = RagState::new();
+        assert!(state.db.lock().unwrap().is_none());
+        assert!(state.model.lock().unwrap().is_none());
     }
 }
