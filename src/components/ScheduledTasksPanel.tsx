@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import './ScheduledTasksPanel.css';
 
 interface ScheduledTasksPanelProps {
@@ -14,28 +16,101 @@ interface ScheduledTask {
   prompt: string;
 }
 
-const initialMockTasks: ScheduledTask[] = [
-  { id: '1', name: 'バックアップ取得 (Core-Switch)', status: 'running', schedule: '毎日 03:00', lastRun: '2024-05-02 03:00', prompt: 'Core-Switchに対して running-config のバックアップを取得し、指定のサーバーに保存してください。' },
-  { id: '2', name: 'インターフェース状態監視', status: 'running', schedule: '5分おき', lastRun: '2024-05-02 19:55', prompt: '全インターフェースのステータスを確認し、Downしているものがあれば通知してください。' },
-  { id: '3', name: '構成不整合チェック', status: 'stopped', schedule: '毎週月曜 09:00', lastRun: '2024-04-29 09:00', prompt: '現在の構成と標準テンプレートを比較し、差分をレポートしてください。' },
-  { id: '4', name: 'セキュリティログ転送', status: 'running', schedule: 'リアルタイム', lastRun: '2024-05-02 19:58', prompt: '拒否されたパケットのログをリアルタイムでセキュリティ分析チームに転送してください。' },
-  { id: '5', name: '旧型番デバイス棚卸', status: 'disabled', schedule: '毎月1日 00:00', lastRun: '2024-05-01 00:00', prompt: 'ネットワーク内のデバイス型番をスキャンし、サポート終了が近いものをリストアップしてください。' },
-];
-
 export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClose }) => {
-  const [tasks, setTasks] = useState<ScheduledTask[]>(initialMockTasks);
+  const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTask, setEditingTask] = useState<ScheduledTask | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    loadTasks();
+
+    const unlisten = listen('task-executed', (event) => {
+      console.log('Task executed:', event.payload);
+      loadTasks(); // reload to get updated lastRun
+    });
+
+    return () => {
+      unlisten.then(f => f());
+    };
+  }, []);
+
+  const loadTasks = async () => {
+    try {
+      const loadedTasks = await invoke<ScheduledTask[]>('load_scheduled_tasks');
+      setTasks(loadedTasks);
+    } catch (error) {
+      console.error('Failed to load tasks:', error);
+    }
+  };
 
   const filteredTasks = tasks.filter(task => 
     task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     task.schedule.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleSaveTask = () => {
+  const handleSaveTask = async () => {
     if (editingTask) {
-      setTasks(prev => prev.map(t => t.id === editingTask.id ? editingTask : t));
-      setEditingTask(null);
+      try {
+        if (isCreating) {
+          await invoke('add_scheduled_task', {
+            name: editingTask.name,
+            schedule: editingTask.schedule,
+            prompt: editingTask.prompt
+          });
+        } else {
+          await invoke('update_scheduled_task', { task: editingTask });
+        }
+        setEditingTask(null);
+        setIsCreating(false);
+        loadTasks();
+      } catch (error) {
+        console.error('Failed to save task:', error);
+      }
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    try {
+      for (const id of selectedTasks) {
+        await invoke('delete_scheduled_task', { id });
+      }
+      setSelectedTasks(new Set());
+      loadTasks();
+    } catch (error) {
+      console.error('Failed to delete tasks:', error);
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    const newSelected = new Set(selectedTasks);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedTasks(newSelected);
+  };
+
+  const handleCreateNew = () => {
+    setEditingTask({
+      id: '',
+      name: '新規タスク',
+      status: 'running',
+      schedule: '* * * * * *',
+      lastRun: '-',
+      prompt: 'プロンプトを入力してください。'
+    });
+    setIsCreating(true);
+  };
+
+  const handleExecuteNow = async (id: string) => {
+    try {
+      await invoke('execute_task', { id });
+      loadTasks();
+    } catch (error) {
+      console.error('Failed to execute task:', error);
     }
   };
 
@@ -74,9 +149,9 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
             </div>
           </div>
           <div className="toolbar-right">
-            <button className="toolbar-btn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
-              表示設定
+            <button className="toolbar-btn" onClick={loadTasks}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+              更新
             </button>
           </div>
         </div>
@@ -88,15 +163,21 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                 <th className="col-checkbox">-</th>
                 <th>タスク名称</th>
                 <th>状態</th>
-                <th>実行タイミング</th>
+                <th>実行タイミング(Cron)</th>
                 <th>最終実行時刻</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
               {filteredTasks.map(task => (
                 <tr key={task.id}>
                   <td className="col-checkbox">
-                    <input type="checkbox" className="task-checkbox" />
+                    <input
+                      type="checkbox"
+                      className="task-checkbox"
+                      checked={selectedTasks.has(task.id)}
+                      onChange={() => handleToggleSelect(task.id)}
+                    />
                   </td>
                   <td>
                     <div className="task-name-cell">
@@ -105,7 +186,10 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                       </div>
                       <span 
                         className="task-name-text" 
-                        onClick={() => setEditingTask({ ...task })}
+                        onClick={() => {
+                          setEditingTask({ ...task });
+                          setIsCreating(false);
+                        }}
                       >
                         {task.name}
                       </span>
@@ -118,6 +202,14 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                   </td>
                   <td>{task.schedule}</td>
                   <td>{task.lastRun}</td>
+                  <td>
+                    <button
+                      onClick={() => handleExecuteNow(task.id)}
+                      style={{ padding: '4px 8px', fontSize: '12px', cursor: 'pointer' }}
+                    >
+                      手動実行
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -128,7 +220,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
           <div className="task-settings-modal-overlay">
             <div className="task-settings-card">
               <header className="settings-card-header">
-                <h3>タスク詳細設定</h3>
+                <h3>{isCreating ? '新規タスク作成' : 'タスク詳細設定'}</h3>
                 <button className="close-card-btn" onClick={() => setEditingTask(null)}>&times;</button>
               </header>
               <div className="settings-card-body">
@@ -141,7 +233,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                   />
                 </div>
                 <div className="settings-form-group">
-                  <label>実行タイミング</label>
+                  <label>実行タイミング (Cron)</label>
                   <input 
                     type="text" 
                     value={editingTask.schedule} 
@@ -149,13 +241,27 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                   />
                 </div>
                 <div className="settings-form-group">
-                  <label>プロンプト (表示専用)</label>
+                  <label>状態</label>
+                  <select
+                    value={editingTask.status}
+                    onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value as any })}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#1e1e1e', color: 'white' }}
+                  >
+                    <option value="running">実行中</option>
+                    <option value="stopped">停止中</option>
+                    <option value="disabled">無効化</option>
+                  </select>
+                </div>
+                <div className="settings-form-group">
+                  <label>プロンプト</label>
                   <textarea 
                     value={editingTask.prompt} 
-                    readOnly 
-                    className="readonly-prompt-area"
+                    readOnly={!isCreating}
+                    onChange={(e) => isCreating && setEditingTask({ ...editingTask, prompt: e.target.value })}
+                    className={!isCreating ? "readonly-prompt-area" : ""}
+                    style={isCreating ? { width: '100%', minHeight: '80px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#1e1e1e', color: 'white' } : {}}
                   />
-                  <p className="field-hint">※ プロンプトの内容はシステムによって管理されており、変更できません。</p>
+                  {!isCreating && <p className="field-hint">※ プロンプトの内容はシステムによって管理されており、変更できません。</p>}
                 </div>
               </div>
               <footer className="settings-card-footer">
@@ -167,8 +273,23 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
         )}
 
         <footer className="scheduled-panel-footer">
-          <button className="add-task-btn">新規タスク追加</button>
-          <button className="delete-selected-btn" style={{ padding: '12px 32px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>削除</button>
+          <button className="add-task-btn" onClick={handleCreateNew}>新規タスク追加</button>
+          <button
+            className="delete-selected-btn"
+            onClick={handleDeleteSelected}
+            disabled={selectedTasks.size === 0}
+            style={{
+              padding: '12px 32px',
+              backgroundColor: selectedTasks.size > 0 ? '#ef4444' : '#6b7280',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: 600,
+              cursor: selectedTasks.size > 0 ? 'pointer' : 'not-allowed'
+            }}
+          >
+            削除
+          </button>
         </footer>
       </div>
     </div>

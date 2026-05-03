@@ -33,4 +33,7 @@ surge-ping = "0.8.4"
 mcp-core = "0.1.50"
 mcp-server = "0.1.0"
 mcp-client = "0.1.0"
+chrono = "0.4.44"
+uuid = { version = "1.23.1", features = ["v4"] }
+tokio-cron-scheduler = "0.15.1"
 
