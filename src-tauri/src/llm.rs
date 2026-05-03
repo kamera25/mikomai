@@ -118,6 +118,7 @@ const SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI (Managed Infrastructure K
   3. `network_show`: 引数 `command` (Cisco IOS等のコマンド)
   4. `network_get_hosts`: 接続可能なホストの一覧（ホスト名、IP、接続タイプなど）を取得（引数不要）
   5. `query_nw_db`: 技術文書データベース（NW-DB）を検索します。引数 `query` (検索クエリ)。PingやTraceなどの単純な処理ではなく、自身で解決できない場合のみ使用してください。
+  6. `network_arp`: ローカルシステムのARPテーブル（IPとMACアドレスの対応表）を取得します（引数不要）
 
 # 4. 知識の優先順位とハルシネーションの防止 (RAG Rules)
 - ネットワーク技術文書を格納した「NW-DB」の検索結果を最優先で参照してください。

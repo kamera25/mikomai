@@ -49,6 +49,7 @@ pub fn run() {
             mcp::ping::network_ping,
             mcp::traceroute::network_traceroute,
             mcp::hosts::network_get_hosts,
+            mcp::arp::network_arp,
             history::load_history,
             history::save_history,
             history::load_summaries,

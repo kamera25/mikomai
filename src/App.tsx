@@ -361,6 +361,7 @@ function App() {
                                          nextToolCall.tool === "network_traceroute" ? "Traceroute" : 
                                          nextToolCall.tool === "network_get_hosts" ? "Host List" :
                                          nextToolCall.tool === "network_query_nw_db" || nextToolCall.tool === "query_nw_db" ? "NW-DB Search" :
+                                         nextToolCall.tool === "network_arp" ? "ARP Table" :
                                          nextToolCall.tool === "network_show" ? "Show Command" : nextToolCall.tool;
               
               // Add a small delay for better UX before chaining
@@ -396,6 +397,8 @@ function App() {
         await executeAndAnalyze("network_traceroute", "Traceroute", { host });
       } else if (hostListMatch) {
         await executeAndAnalyze("network_get_hosts", "Host List", {});
+      } else if (lowerInput.includes("arp")) {
+        await executeAndAnalyze("network_arp", "ARP Table", {});
       } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
         await executeAndAnalyze("network_show", "Show Command", {
           device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
@@ -450,6 +453,7 @@ function App() {
                                      toolCall.tool === "network_traceroute" ? "Traceroute" : 
                                      toolCall.tool === "network_get_hosts" ? "Host List" :
                                      toolCall.tool === "network_query_nw_db" || toolCall.tool === "query_nw_db" ? "NW-DB Search" :
+                                     toolCall.tool === "network_arp" ? "ARP Table" :
                                      toolCall.tool === "network_show" ? "Show Command" : toolCall.tool;
               
               await executeAndAnalyze(toolCall.tool, toolActionName, toolCall.args);
