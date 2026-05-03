@@ -1,7 +1,6 @@
 mod llm;
-mod rag;
+pub mod mcp;
 mod network;
-mod mcp_network;
 mod history;
 mod connections;
 pub mod scheduled_tasks;
@@ -18,7 +17,7 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let llama_state = llm::LlamaState::new().expect("Failed to initialize Llama backend");
-    let rag_state = rag::RagState::new();
+    let rag_state = mcp::rag::RagState::new();
 
     tauri::Builder::default()
         .setup(|app| {
@@ -42,14 +41,14 @@ pub fn run() {
             llm::ask_llm,
             llm::ask_llm_background,
             llm::get_model_status,
-            rag::connect_db,
-            rag::ingest_document,
-            rag::query_nw_db,
+            mcp::rag::connect_db,
+            mcp::rag::ingest_document,
+            mcp::rag::query_nw_db,
             network::network_show,
             network::network_config,
-            mcp_network::network_ping,
-            mcp_network::network_traceroute,
-            mcp_network::network_get_hosts,
+            mcp::ping::network_ping,
+            mcp::traceroute::network_traceroute,
+            mcp::hosts::network_get_hosts,
             history::load_history,
             history::save_history,
             history::load_summaries,
