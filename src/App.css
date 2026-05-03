@@ -446,11 +446,11 @@
 }
 
 .banner-button.primary {
-  background-color: var(--accent-color);
+  background-color: #059669; /* Darker green */
   color: white;
   border: none;
   font-weight: 600;
-  box-shadow: 0 2px 8px var(--accent-glow);
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.4);
 }
 
 .banner-button:hover {
@@ -459,8 +459,8 @@
 }
 
 .banner-button.primary:hover {
-  background-color: var(--accent-hover);
-  filter: brightness(1.1);
+  background-color: var(--success); /* Brighter green on hover */
+  filter: brightness(0.4);
 }
 
 .banner-button:active {
