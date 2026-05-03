@@ -10,6 +10,7 @@ pub struct AppSettings {
     pub temperature: f32,
     pub repetition_penalty: f32,
     pub model_path: Option<String>,
+    pub recent_ips: Vec<String>,
 }
 
 impl Default for AppSettings {
@@ -19,6 +20,7 @@ impl Default for AppSettings {
             temperature: 0.0,
             repetition_penalty: 1.1,
             model_path: None,
+            recent_ips: Vec::new(),
         }
     }
 }

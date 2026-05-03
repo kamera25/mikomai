@@ -76,6 +76,7 @@ function App() {
   
   // Host Suggestion states
   const [availableHosts, setAvailableHosts] = useState<{hostname: string, ip: string}[]>([]);
+  const [recentIPs, setRecentIPs] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<{hostname: string, ip: string}[]>([]);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
@@ -140,6 +141,9 @@ function App() {
         }
         if (settings && settings.modelPath !== undefined) {
           setModelPath(settings.modelPath);
+        }
+        if (settings && settings.recentIps !== undefined) {
+          setRecentIPs(settings.recentIps);
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -304,6 +308,32 @@ function App() {
     
     const userMessage = input.trim();
     const timestamp = new Date().toISOString();
+    
+    // Extract IP addresses to remember
+    const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+    const foundIPs = userMessage.match(ipRegex);
+    if (foundIPs) {
+      const newRecent = [
+        ...new Set([...foundIPs, ...recentIPs])
+      ].slice(0, 10);
+      setRecentIPs(newRecent);
+      
+      // Save updated IPs to backend settings
+      try {
+        await invoke("save_settings", { 
+          settings: { 
+            historyLimit, 
+            temperature, 
+            repetitionPenalty, 
+            modelPath,
+            recentIps: newRecent 
+          } 
+        });
+      } catch (e) {
+        console.error("Failed to save recent IPs to settings:", e);
+      }
+    }
+
     setInput("");
     setMessages(prev => [...prev, { role: "user", content: userMessage, timestamp }]);
 
@@ -753,7 +783,7 @@ function App() {
             onHistoryLimitChange={async (newLimit) => {
               setHistoryLimit(newLimit);
               try {
-                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature, repetitionPenalty, modelPath } });
+                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -762,7 +792,7 @@ function App() {
             onTemperatureChange={async (newTemp) => {
               setTemperature(newTemp);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp, repetitionPenalty, modelPath } });
+                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp, repetitionPenalty, modelPath, recentIps: recentIPs } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -771,7 +801,7 @@ function App() {
             onRepetitionPenaltyChange={async (newPenalty) => {
               setRepetitionPenalty(newPenalty);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty: newPenalty, modelPath } });
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty: newPenalty, modelPath, recentIps: recentIPs } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -780,7 +810,7 @@ function App() {
             onModelPathChange={async (newPath) => {
               setModelPath(newPath);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath: newPath } });
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath: newPath, recentIps: recentIPs } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -929,7 +959,15 @@ function App() {
                       const query = textBeforeCursor.slice(atIndex + 1);
                       // Check if there's space between @ and cursor
                       if (!query.includes(' ')) {
-                        const filtered = availableHosts.filter(h => 
+                        // Combine available hosts and recent IPs
+                        const combined = [...availableHosts];
+                        recentIPs.forEach(ip => {
+                          if (!combined.some(h => h.ip === ip)) {
+                            combined.push({ hostname: `${ip}`, ip: "過去に投入したIPアドレス" });
+                          }
+                        });
+
+                        const filtered = combined.filter(h => 
                           h.hostname.toLowerCase().includes(query.toLowerCase()) ||
                           h.ip.includes(query)
                         );
