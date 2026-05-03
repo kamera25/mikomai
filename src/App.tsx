@@ -196,7 +196,7 @@ function App() {
 
   const summarizeAndSave = async (content: string) => {
     try {
-      const summaryPrompt = `以下の内容（実行結果やアシスタントの回答）を40文字程度で簡潔に要約してください。\n\n${content}`;
+      const summaryPrompt = `以下の内容を要約してください。\n\n${content}`;
       const summaryText: string = await invoke("ask_llm_background", { prompt: summaryPrompt });
       const newSummary = { timestamp: new Date().toISOString(), content: summaryText };
       await invoke("save_summary", { summary: newSummary });
