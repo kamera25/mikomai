@@ -89,7 +89,7 @@ pub async fn ingest_document(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn query_rag(
+pub async fn query_nw_db(
     query: String, 
     filter: Option<String>, 
     state: tauri::State<'_, RagState>,

@@ -44,7 +44,7 @@ pub fn run() {
             llm::get_model_status,
             rag::connect_db,
             rag::ingest_document,
-            rag::query_rag,
+            rag::query_nw_db,
             network::network_show,
             network::network_config,
             mcp_network::network_ping,

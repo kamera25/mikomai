@@ -211,6 +211,13 @@ function App() {
     }
   };
 
+  const getHistoryBlock = (items: SummaryItem[], limit: number) => {
+    if (limit <= 0 || items.length === 0) return "";
+    const recent = [...items].reverse().slice(0, limit);
+    const text = recent.map((s, i) => `${i + 1}. ${s.content}`).join("\n");
+    return `\n\n【過去の実行履歴要約】\n${text}`;
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
     
@@ -281,10 +288,8 @@ function App() {
             return updated;
           });
 
-          const recentSummariesText = summaries.slice(-historyLimit).map((s, i) => `${i+1}. ${s.content}`).join("\n");
-          const contextPrefix = recentSummariesText ? `【過去の実行履歴要約（直近${historyLimit}件）】\n${recentSummariesText}\n※最新の情報（番号が大きいもの）を優先するようにし、最新の情報で解決できない場合は、その前の情報を参照…を繰り返すようにしてください。\n\n` : "";
-
-          const analysisPrompt = `${contextPrefix}ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果（ステータス: ${statusBadge}）は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。`;
+          const historyBlock = getHistoryBlock(summaries, historyLimit);
+          const analysisPrompt = `ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果（ステータス: ${statusBadge}）は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。${historyBlock}`;
           
           setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
           
@@ -329,6 +334,7 @@ function App() {
               const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
                                          nextToolCall.tool === "network_traceroute" ? "Traceroute" : 
                                          nextToolCall.tool === "network_get_hosts" ? "Host List" :
+                                         nextToolCall.tool === "network_query_nw_db" || nextToolCall.tool === "query_nw_db" ? "NW-DB Search" :
                                          nextToolCall.tool === "network_show" ? "Show Command" : nextToolCall.tool;
               
               // Add a small delay for better UX before chaining
@@ -388,9 +394,8 @@ function App() {
             });
           });
 
-          const recentSummariesText = summaries.slice(-5).map((s, i) => `${i+1}. ${s.content}`).join("\n");
-          const contextPrefix = recentSummariesText ? `【過去の実行履歴要約（直近5件）】\n${recentSummariesText}\n※最新の情報（番号が大きいもの）を優先するようにし、最新の情報で解決できない場合は、その前の情報を参照…を繰り返すようにしてください。\n\n` : "";
-          const promptWithContext = `${contextPrefix}【ユーザー入力】\n${userMessage}`;
+          const historyBlock = getHistoryBlock(summaries, historyLimit);
+          const promptWithContext = `【ユーザー入力】\n${userMessage}${historyBlock}`;
 
           const response: string = await invoke("ask_llm", { prompt: promptWithContext });
           unlisten(); // Unlisten IMMEDIATELY after the first call completes
@@ -418,6 +423,7 @@ function App() {
               const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
                                      toolCall.tool === "network_traceroute" ? "Traceroute" : 
                                      toolCall.tool === "network_get_hosts" ? "Host List" :
+                                     toolCall.tool === "network_query_nw_db" || toolCall.tool === "query_nw_db" ? "NW-DB Search" :
                                      toolCall.tool === "network_show" ? "Show Command" : toolCall.tool;
               
               await executeAndAnalyze(toolCall.tool, toolActionName, toolCall.args);

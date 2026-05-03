@@ -110,21 +110,24 @@ const SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI (Managed Infrastructure K
 - MCPから得られた生データ（JSONやターミナル出力）は、要点を整理して提示してください。
 - ツールを呼び出す場合は、**必ず**以下のJSONフォーマットを回答の末尾、または論理的なタイミングで含めてください。
   `{"tool": "TOOL_NAME", "args": {"ARG_NAME": "VALUE"}}`
+- Ping実行後には完結に状況を説明し、対話を終了してください。
 - 利用可能なツール:
   1. `network_ping`: 引数 `host` (必須: IPまたはホスト名), `size` (任意: バイトサイズ), `count` (任意: 回数), `df` (任意: フラグメント禁止フラグ, boolean)
   2. `network_traceroute`: 引数 `host` (IPまたはホスト名)
   3. `network_show`: 引数 `command` (Cisco IOS等のコマンド)
   4. `network_get_hosts`: 接続可能なホストの一覧（ホスト名、IP、接続タイプなど）を取得（引数不要）
+  5. `query_nw_db`: 技術文書データベース（NW-DB）を検索します。引数 `query` (検索クエリ)
 
 # 4. 知識の優先順位とハルシネーションの防止 (RAG Rules)
-- ネットワーク技術文書を格納した「LanceDB（ユーザーへは「NW-DB」と呼称）」の検索結果を最優先で参照してください。
+- ネットワーク技術文書を格納した「NW-DB」の検索結果を最優先で参照してください。
+- 最初に提供された【参考資料】に十分な情報がない場合は、`query_nw_db` ツールを使用して追加の検索を行ってください。
 - 検索結果に答えがない場合や確証がない場合は、推測や捏造（ハルシネーション）を絶対に避け、「NW-DBのマニュアルからは該当する情報が見つかりません。追加の検索キーワードを指示するか、実機から情報を取得しますか？」と回答してください。
 - ユーザーが機器メーカーやOSを指定した場合、提供された【参考資料】の冒頭にある `[Context: ...]` が一致するデータのみを使用し、一致しない資料は完全に無視してください。該当資料がない場合は、「提供された資料の中に〇〇（メーカー名）の該当コマンドがありません」と回答してください。
 - トラブルシューティングの手順が含まれている場合は、その手順に沿って段階的に診断・ツールの実行を進めてください。
 - ユーザからの依頼については`[Context: ...]`に「operation」が含まれているもののみ検索対象とし、その実行手順に沿って回答を行ってください。
 
 # 5. 継続的な対話の文脈 (Context Memory)
-- ユーザーから追加要求があった場合は、入力の前に付与された【過去の実行履歴要約】を参照して文脈を補完し、応答してください。"##;
+- ユーザーから追加要求があった場合は、入力の末尾に付与された【過去の実行履歴要約】を参照して文脈を補完し、応答してください。"##;
 
 const SUMMARIZATION_SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI」の要約担当ユニットです。
 入力された対話や実行結果から、重要な「事実」と「実行結果」のみを抽出して要約してください。
@@ -136,16 +139,33 @@ const SUMMARIZATION_SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI」の要約
 3. 事実と結果以外の解釈や挨拶は一切不要です。
 4. 40文字以内で簡潔に出力してください。"##;
 
+fn is_technical_query(query: &str) -> bool {
+    let q = query.to_lowercase();
+    // 技術的な内容やマニュアルの検索を示唆するキーワード
+    let keywords = [
+        "コマンド", "設定", "方法", "手順", "マニュアル", "仕様", "意味", 
+        "エラー", "トラブル", "故障", "接続", "ステータス", "確認", "調べ", "教え",
+        "show", "config", "ip", "vlan", "routing", "ping", "trace", "bgp", "ospf", "nat", "vpn",
+        "ヤマハ", "シスコ", "yamaha", "cisco", "juniper", "fortinet", "nvr", "rtx", "ios"
+    ];
+    
+    // 入力が極端に短い場合は会話とみなす
+    if q.chars().count() < 4 {
+        return false;
+    }
+    
+    keywords.iter().any(|&k| q.contains(k))
+}
+
 #[tauri::command]
 pub async fn ask_llm(
-    window: tauri::Window, 
-    prompt: String, 
+    window: tauri::Window,
+    prompt: String,
     llama_state: tauri::State<'_, LlamaState>,
-    rag_state: tauri::State<'_, crate::rag::RagState>
+    rag_state: tauri::State<'_, crate::rag::RagState>,
 ) -> Result<String, String> {
-    // Perform RAG search BEFORE taking locks to avoid holding MutexGuard across await points
-    
-    // Detect brand filter
+    println!("Received prompt: {}", prompt);
+
     let brand_filter = if prompt.contains("ヤマハ") || prompt.to_lowercase().contains("yamaha") {
         println!("Detected Yamaha brand filter");
         Some("brand LIKE '%Yamaha%'".to_string())
@@ -156,10 +176,15 @@ pub async fn ask_llm(
         None
     };
 
-    let rag_context = crate::rag::query_rag(prompt.clone(), brand_filter, rag_state, window.app_handle().clone()).await.unwrap_or_else(|e| {
-        println!("RAG search error: {}", e);
-        "No relevant information found due to search error.".to_string()
-    });
+    let rag_context = if is_technical_query(&prompt) {
+        crate::rag::query_nw_db(prompt.clone(), brand_filter, rag_state, window.app_handle().clone()).await.unwrap_or_else(|e| {
+            println!("RAG search error: {}", e);
+            "No relevant information found due to search error.".to_string()
+        })
+    } else {
+        println!("Skipping RAG search for non-technical query.");
+        "No database search performed for this conversational query.".to_string()
+    };
 
     println!("RAG context size: {} characters", rag_context.len());
 
