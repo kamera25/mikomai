@@ -6,6 +6,7 @@ use fastembed::{TextEmbedding, EmbeddingModel, InitOptions};
 use futures::StreamExt;
 use arrow_array::{RecordBatch, StringArray, LargeStringArray, Array};
 use tauri::Manager;
+use serde::{Serialize, Deserialize};
 
 pub struct RagState {
     pub db: Mutex<Option<Connection>>,
@@ -88,13 +89,19 @@ pub async fn ingest_document(path: String) -> Result<String, String> {
     Ok("Document ingested successfully (stub)".to_string())
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RagResult {
+    pub success: bool,
+    pub output: String,
+}
+
 #[tauri::command]
 pub async fn query_nw_db(
     query: String, 
     filter: Option<String>, 
     state: tauri::State<'_, RagState>,
     app: tauri::AppHandle
-) -> Result<String, String> {
+) -> Result<RagResult, String> {
     println!("Querying RAG (Rust-native): {} (filter: {:?})", query, filter);
 
     // 1. Get DB connection (auto-connect if needed)
@@ -166,8 +173,8 @@ pub async fn query_nw_db(
     }
 
     if context.is_empty() {
-        Ok("No relevant information found in LanceDB.".to_string())
+        Ok(RagResult { success: true, output: "No relevant information found in LanceDB.".to_string() })
     } else {
-        Ok(context)
+        Ok(RagResult { success: true, output: context })
     }
 }
