@@ -131,8 +131,17 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
   const validate = () => {
     const newErrors: { [key: string]: string } = {};
-    if (formData.type !== 'Console' && !formData.ip.trim()) {
-      newErrors.ip = 'IPアドレスまたはホスト名を入力してください';
+    if (formData.type !== 'Console') {
+      const ipStr = formData.ip.trim();
+      if (!ipStr) {
+        newErrors.ip = '有効なIPv4またはIPv6アドレスを入力してください';
+      } else {
+        const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        const ipv6Regex = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
+        if (!ipv4Regex.test(ipStr) && !ipv6Regex.test(ipStr)) {
+          newErrors.ip = '有効なIPv4またはIPv6アドレスを入力してください';
+        }
+      }
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -402,13 +411,13 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
             {formData.type !== 'Console' ? (
               <>
                 <div className="form-group full-width">
-                  <label>IPアドレス / ホスト名 <span style={{color: '#ef4444'}}>*</span></label>
+                  <label>IPアドレス <span style={{color: '#ef4444'}}>*</span></label>
                   <input 
                     type="text" 
                     className={errors.ip ? 'error' : ''}
                     value={formData.ip} 
                     onChange={(e) => setFormData({...formData, ip: e.target.value})}
-                    placeholder="192.168.1.1 or router.local"
+                    placeholder="192.168.1.1 or 2001:db8::1"
                   />
                   {errors.ip && <span className="error-message">{errors.ip}</span>}
                 </div>
