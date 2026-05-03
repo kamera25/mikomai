@@ -700,12 +700,17 @@ function App() {
                 disabled={modelStatus !== "Loaded"}
                 onCompositionStart={() => { isComposing.current = true; }}
                 onCompositionEnd={() => { 
-                  setTimeout(() => { isComposing.current = false; }, 100); 
+                  setTimeout(() => { isComposing.current = false; }, 150); 
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !isComposing.current && !e.shiftKey && modelStatus === "Loaded") {
-                    e.preventDefault();
-                    handleSend();
+                  if (e.key === 'Enter') {
+                    if (isComposing.current || e.nativeEvent.isComposing || e.keyCode === 229) {
+                      return;
+                    }
+                    if (!e.shiftKey && modelStatus === "Loaded") {
+                      e.preventDefault();
+                      handleSend();
+                    }
                   }
                 }}
               />
