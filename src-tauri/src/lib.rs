@@ -65,6 +65,15 @@ pub fn run() {
             settings::load_settings,
             settings::save_settings
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { .. } => {
+                let state = app_handle.state::<llm::LlamaState>();
+                let mut model = state.model.lock().unwrap();
+                *model = None;
+                println!("Llama model cleared on exit.");
+            }
+            _ => {}
+        });
 }

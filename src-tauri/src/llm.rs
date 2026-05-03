@@ -20,20 +20,20 @@ pub enum ModelState {
 }
 
 pub struct LlamaState {
-    pub backend: LlamaBackend,
     pub model: Mutex<Option<LlamaModel>>,
     pub status: Mutex<ModelState>,
     pub inference_lock: Mutex<()>,
+    pub backend: LlamaBackend,
 }
 
 impl LlamaState {
     pub fn new() -> Result<Self, String> {
         let backend = LlamaBackend::init().map_err(|e| e.to_string())?;
         Ok(Self {
-            backend,
             model: Mutex::new(None),
             status: Mutex::new(ModelState::NotLoaded),
             inference_lock: Mutex::new(()),
+            backend,
         })
     }
 }
