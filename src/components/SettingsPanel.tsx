@@ -11,6 +11,8 @@ interface SettingsPanelProps {
   onHistoryLimitChange: (limit: number) => void;
   temperature: number;
   onTemperatureChange: (temp: number) => void;
+  repetitionPenalty: number;
+  onRepetitionPenaltyChange: (penalty: number) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
@@ -19,7 +21,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   historyLimit,
   onHistoryLimitChange,
   temperature,
-  onTemperatureChange
+  onTemperatureChange,
+  repetitionPenalty,
+  onRepetitionPenaltyChange
 }) => {
   const [modelPath, setModelPath] = useState("bartowski/google_gemma-4-E2B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E2B-it-Q4_K_M.gguf");
@@ -116,6 +120,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
               <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
                 回答のランダム性を制御します。0に設定すると最も決定的（同じ入力に対して同じ回答）になります。
+              </p>
+            </div>
+            <div className="form-control">
+              <label>Repetition Penalty (繰り返し抑制)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <input 
+                  type="range" 
+                  min="1.0" 
+                  max="2.0" 
+                  step="0.05"
+                  value={repetitionPenalty} 
+                  onChange={(e) => onRepetitionPenaltyChange(parseFloat(e.target.value))}
+                  style={{ flexGrow: 1 }}
+                />
+                <span style={{ minWidth: '32px', fontWeight: 'bold', color: 'var(--accent-color)' }}>{repetitionPenalty.toFixed(2)}</span>
+              </div>
+              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+                同じ言葉の繰り返しを抑制します。1.0で無効、値を大きくするほど繰り返しが少なくなります。
               </p>
             </div>
           </section>

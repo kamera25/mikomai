@@ -8,6 +8,7 @@ use tauri::Manager;
 pub struct AppSettings {
     pub history_limit: usize,
     pub temperature: f32,
+    pub repetition_penalty: f32,
 }
 
 impl Default for AppSettings {
@@ -15,6 +16,7 @@ impl Default for AppSettings {
         Self {
             history_limit: 5,
             temperature: 0.0,
+            repetition_penalty: 1.1,
         }
     }
 }

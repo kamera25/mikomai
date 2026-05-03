@@ -197,12 +197,19 @@ pub async fn ask_llm(
     let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
     println!("LLM Temperature setting: {}", settings.temperature);
 
-    let mut sampler = if settings.temperature <= 0.0 {
-        LlamaSampler::greedy()
+    let sampler = if settings.temperature <= 0.0 {
+        LlamaSampler::chain_simple([
+            LlamaSampler::penalties(64, settings.repetition_penalty, 0.0, 0.0),
+            LlamaSampler::greedy(),
+        ])
     } else {
-        // Fallback to greedy for now, or implement temperature sampling if needed
-        LlamaSampler::greedy()
+        LlamaSampler::chain_simple([
+            LlamaSampler::penalties(64, settings.repetition_penalty, 0.0, 0.0),
+            LlamaSampler::temp(settings.temperature),
+            LlamaSampler::dist(42),
+        ])
     };
+    let mut sampler = sampler;
 
     let im_end_tokens = model.str_to_token("<|im_end|>", AddBos::Never).unwrap_or_default();
     let im_end_token = im_end_tokens.first().copied();
@@ -259,7 +266,11 @@ pub async fn ask_llm(
 }
 
 #[tauri::command]
-pub async fn ask_llm_background(prompt: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
+pub async fn ask_llm_background(
+    prompt: String, 
+    app: tauri::AppHandle,
+    state: tauri::State<'_, LlamaState>
+) -> Result<String, String> {
     let _inference_guard = state.inference_lock.lock().unwrap();
     let model_lock = state.model.lock().unwrap();
     let model = match &*model_lock {
@@ -290,7 +301,11 @@ pub async fn ask_llm_background(prompt: String, state: tauri::State<'_, LlamaSta
 
     let mut result_string = String::new();
     let mut n_cur = batch.n_tokens();
-    let mut sampler = LlamaSampler::greedy();
+    let settings = crate::settings::load_settings(app).unwrap_or_default();
+    let mut sampler = LlamaSampler::chain_simple([
+        LlamaSampler::penalties(64, settings.repetition_penalty, 0.0, 0.0),
+        LlamaSampler::greedy(),
+    ]);
 
     let im_end_tokens = model.str_to_token("<|im_end|>", AddBos::Never).unwrap_or_default();
     let im_end_token = im_end_tokens.first().copied();

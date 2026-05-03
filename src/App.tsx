@@ -51,6 +51,7 @@ function App() {
   const [summaries, setSummaries] = useState<SummaryItem[]>([]);
   const [historyLimit, setHistoryLimit] = useState<number>(5);
   const [temperature, setTemperature] = useState<number>(0.0);
+  const [repetitionPenalty, setRepetitionPenalty] = useState<number>(1.1);
   const isComposing = useRef(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -104,6 +105,9 @@ function App() {
         }
         if (settings && settings.temperature !== undefined) {
           setTemperature(settings.temperature);
+        }
+        if (settings && settings.repetitionPenalty !== undefined) {
+          setRepetitionPenalty(settings.repetitionPenalty);
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -628,7 +632,7 @@ function App() {
             onHistoryLimitChange={async (newLimit) => {
               setHistoryLimit(newLimit);
               try {
-                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature } });
+                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature, repetitionPenalty } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -637,7 +641,16 @@ function App() {
             onTemperatureChange={async (newTemp) => {
               setTemperature(newTemp);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp } });
+                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp, repetitionPenalty } });
+              } catch (e) {
+                console.error("Failed to save settings:", e);
+              }
+            }}
+            repetitionPenalty={repetitionPenalty}
+            onRepetitionPenaltyChange={async (newPenalty) => {
+              setRepetitionPenalty(newPenalty);
+              try {
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty: newPenalty } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
