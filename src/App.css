@@ -134,14 +134,14 @@
 }
 
 .folder-item:hover, .session-item:hover {
-  background-color: var(--bg-hover);
+  background-color: #f3f4f6;
   color: var(--text-primary);
 }
 
 .session-item.active {
-  background-color: var(--bg-hover);
+  background-color: #e5e7eb;
   color: var(--text-primary);
-  box-shadow: inset 3px 0 0 var(--accent-color);
+  box-shadow: inset 4px 0 0 var(--accent-color);
 }
 
 .folder-icon, .session-icon {

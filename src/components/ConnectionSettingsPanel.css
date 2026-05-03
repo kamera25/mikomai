@@ -178,6 +178,10 @@
   background-color: #f8fafc;
 }
 
+.connection-table tr.selected {
+  background-color: #f1f5f9;
+}
+
 .col-status {
   width: 80px;
   text-align: center;
