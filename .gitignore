@@ -25,6 +25,6 @@ dist-ssr
 venv/
 venv/
 
-nw-docs
+# nw-docs
 src-tauri/.fastembed_cache
 
