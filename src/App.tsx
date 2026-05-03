@@ -49,6 +49,7 @@ function App() {
   const [modelStatus, setModelStatus] = useState<string>("NotLoaded");
   const [connectedHost] = useState<string>("192.168.1.1 (Core-Switch-01)");
   const [summaries, setSummaries] = useState<SummaryItem[]>([]);
+  const [historyLimit, setHistoryLimit] = useState<number>(5);
   const isComposing = useRef(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -93,6 +94,15 @@ function App() {
         setSummaries(savedSummaries || []);
       } catch (e) {
         console.error("Failed to load summaries:", e);
+      }
+
+      try {
+        const settings: any = await invoke("load_settings");
+        if (settings && settings.historyLimit !== undefined) {
+          setHistoryLimit(settings.historyLimit);
+        }
+      } catch (e) {
+        console.error("Failed to load settings:", e);
       }
     };
     initHistory();
@@ -184,7 +194,9 @@ function App() {
       await invoke("save_summary", { summary: newSummary });
       setSummaries(prev => {
         const next = [...prev, newSummary];
-        return next.length > 5 ? next.slice(next.length - 5) : next;
+        // Keep a reasonable number of summaries in state (e.g. 20), 
+        // slicing for prompt will happen later based on historyLimit
+        return next.length > 20 ? next.slice(next.length - 20) : next;
       });
     } catch (e) {
       console.error("Failed to generate/save summary:", e);
@@ -260,8 +272,8 @@ function App() {
             return updated;
           });
 
-          const recentSummariesText = summaries.slice(-5).map((s, i) => `${i+1}. ${s.content}`).join("\n");
-          const contextPrefix = recentSummariesText ? `【過去の実行履歴要約（直近5件）】\n${recentSummariesText}\n※最新の情報（番号が大きいもの）を優先するようにし、最新の情報で解決できない場合は、その前の情報を参照…を繰り返すようにしてください。\n\n` : "";
+          const recentSummariesText = summaries.slice(-historyLimit).map((s, i) => `${i+1}. ${s.content}`).join("\n");
+          const contextPrefix = recentSummariesText ? `【過去の実行履歴要約（直近${historyLimit}件）】\n${recentSummariesText}\n※最新の情報（番号が大きいもの）を優先するようにし、最新の情報で解決できない場合は、その前の情報を参照…を繰り返すようにしてください。\n\n` : "";
 
           const analysisPrompt = `${contextPrefix}ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n【重要】既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。`;
           
@@ -608,6 +620,15 @@ function App() {
           <SettingsPanel 
             isOpen={isSettingsOpen} 
             onClose={() => setIsSettingsOpen(false)} 
+            historyLimit={historyLimit}
+            onHistoryLimitChange={async (newLimit) => {
+              setHistoryLimit(newLimit);
+              try {
+                await invoke("save_settings", { settings: { historyLimit: newLimit } });
+              } catch (e) {
+                console.error("Failed to save settings:", e);
+              }
+            }}
           />
         ) : isConnectionOpen ? (
           <ConnectionSettingsPanel 

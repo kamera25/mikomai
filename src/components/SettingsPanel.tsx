@@ -7,9 +7,16 @@ import './SettingsPanel.css';
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  historyLimit: number;
+  onHistoryLimitChange: (limit: number) => void;
 }
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
+  isOpen, 
+  onClose,
+  historyLimit,
+  onHistoryLimitChange
+}) => {
   const [modelPath, setModelPath] = useState("bartowski/google_gemma-4-E2B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E2B-it-Q4_K_M.gguf");
   const [downloadStatus, setDownloadStatus] = useState("");
@@ -70,6 +77,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
         </header>
 
         <div className="settings-body">
+          <section className="settings-group">
+            <h3>対話設定</h3>
+            <div className="form-control">
+              <label>過去の履歴保持数 (要約)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="20" 
+                  value={historyLimit} 
+                  onChange={(e) => onHistoryLimitChange(parseInt(e.target.value))}
+                  style={{ flexGrow: 1 }}
+                />
+                <span style={{ minWidth: '32px', fontWeight: 'bold', color: 'var(--accent-color)' }}>{historyLimit}</span>
+              </div>
+              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+                AIが回答を生成する際に参照する過去の会話の要約数です。大きくすると文脈をより理解しますが、メモリ消費量が増える可能性があります。
+              </p>
+            </div>
+          </section>
+
           <section className="settings-group">
             <h3>ローカルLLM (llama.cpp)</h3>
             <div className="form-control">

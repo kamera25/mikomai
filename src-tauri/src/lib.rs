@@ -5,6 +5,7 @@ mod mcp_network;
 mod history;
 mod connections;
 pub mod scheduled_tasks;
+mod settings;
 
 use tauri::Manager;
 
@@ -60,7 +61,9 @@ pub fn run() {
             scheduled_tasks::add_scheduled_task,
             scheduled_tasks::update_scheduled_task,
             scheduled_tasks::delete_scheduled_task,
-            scheduled_tasks::execute_task
+            scheduled_tasks::execute_task,
+            settings::load_settings,
+            settings::save_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
