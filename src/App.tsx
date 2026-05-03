@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
 import { ScheduledTasksPanel } from "./components/ScheduledTasksPanel";
+import { Terminal } from "./components/Terminal";
 import "./App.css";
 
 interface Message {
@@ -656,18 +657,7 @@ function App() {
                           const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
 
                           if (isTerminal) {
-                            return (
-                              <div key={i} className="terminal-container">
-                                <div className="terminal-header">
-                                  <div className="terminal-dots">
-                                    <div className="terminal-dot red"></div>
-                                    <div className="terminal-dot yellow"></div>
-                                    <div className="terminal-dot green"></div>
-                                  </div>
-                                </div>
-                                <pre className="terminal-content"><code>{content}</code></pre>
-                              </div>
-                            );
+                            return <Terminal key={i} content={content} />;
                           }
 
                           return <pre key={i} className="code-block"><code>{content}</code></pre>;
