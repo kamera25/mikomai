@@ -167,13 +167,13 @@ pub async fn query_nw_db(
         for i in 0..batch.num_rows() {
             let text = &text_values[i];
             let path = &path_values[i];
-            context.push_str(&format!("\n--- Result {} (Source: {}) ---\n{}\n", count, path, text));
+            context.push_str(&format!("\n--- 検索結果 {} (ソース: {}) ---\n{}\n", count, path, text));
             count += 1;
         }
     }
 
     if context.is_empty() {
-        Ok(RagResult { success: true, output: "No relevant information found in LanceDB.".to_string() })
+        Ok(RagResult { success: true, output: "LanceDBに該当する情報が見つかりませんでした。".to_string() })
     } else {
         Ok(RagResult { success: true, output: context })
     }
