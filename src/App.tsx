@@ -50,6 +50,7 @@ function App() {
   const [connectedHost] = useState<string>("192.168.1.1 (Core-Switch-01)");
   const [summaries, setSummaries] = useState<SummaryItem[]>([]);
   const [historyLimit, setHistoryLimit] = useState<number>(5);
+  const [temperature, setTemperature] = useState<number>(0.0);
   const isComposing = useRef(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -100,6 +101,9 @@ function App() {
         const settings: any = await invoke("load_settings");
         if (settings && settings.historyLimit !== undefined) {
           setHistoryLimit(settings.historyLimit);
+        }
+        if (settings && settings.temperature !== undefined) {
+          setTemperature(settings.temperature);
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -624,7 +628,16 @@ function App() {
             onHistoryLimitChange={async (newLimit) => {
               setHistoryLimit(newLimit);
               try {
-                await invoke("save_settings", { settings: { historyLimit: newLimit } });
+                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature } });
+              } catch (e) {
+                console.error("Failed to save settings:", e);
+              }
+            }}
+            temperature={temperature}
+            onTemperatureChange={async (newTemp) => {
+              setTemperature(newTemp);
+              try {
+                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }

@@ -9,13 +9,17 @@ interface SettingsPanelProps {
   onClose: () => void;
   historyLimit: number;
   onHistoryLimitChange: (limit: number) => void;
+  temperature: number;
+  onTemperatureChange: (temp: number) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
   isOpen, 
   onClose,
   historyLimit,
-  onHistoryLimitChange
+  onHistoryLimitChange,
+  temperature,
+  onTemperatureChange
 }) => {
   const [modelPath, setModelPath] = useState("bartowski/google_gemma-4-E2B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E2B-it-Q4_K_M.gguf");
@@ -94,6 +98,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
               <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
                 AIが回答を生成する際に参照する過去の会話の要約数です。大きくすると文脈をより理解しますが、メモリ消費量が増える可能性があります。
+              </p>
+            </div>
+            <div className="form-control">
+              <label>Temperature (温度)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="2.0" 
+                  step="0.1"
+                  value={temperature} 
+                  onChange={(e) => onTemperatureChange(parseFloat(e.target.value))}
+                  style={{ flexGrow: 1 }}
+                />
+                <span style={{ minWidth: '32px', fontWeight: 'bold', color: 'var(--accent-color)' }}>{temperature.toFixed(1)}</span>
+              </div>
+              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+                回答のランダム性を制御します。0に設定すると最も決定的（同じ入力に対して同じ回答）になります。
               </p>
             </div>
           </section>

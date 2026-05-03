@@ -7,12 +7,14 @@ use tauri::Manager;
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub history_limit: usize,
+    pub temperature: f32,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             history_limit: 5,
+            temperature: 0.0,
         }
     }
 }
