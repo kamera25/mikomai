@@ -249,8 +249,8 @@ function App() {
         try {
           const result: any = await invoke(toolId, args);
           const resultMessage = result.success ? 
-            `### ${toolLabel} 実行結果\n\`\`\`\n${result.output}\n\`\`\`` : 
-            `⚠️ **${toolLabel}の実行に失敗しました。**\n\n【エラー内容】\n\`\`\`\n${result.output}\n\`\`\``;
+            `### ${toolLabel} 実行結果\n\`\`\`terminal\n${result.output}\n\`\`\`` :
+            `⚠️ **${toolLabel}の実行に失敗しました。**\n\n【エラー内容】\n\`\`\`terminal\n${result.output}\n\`\`\``;
           
           setMessages(prev => {
             const updated = [...prev];
@@ -651,7 +651,24 @@ function App() {
                     <div className="message-bubble">
                       {msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
                         if (part.startsWith("```")) {
+                          const isTerminal = part.startsWith("```terminal");
                           const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
+
+                          if (isTerminal) {
+                            return (
+                              <div key={i} className="terminal-container">
+                                <div className="terminal-header">
+                                  <div className="terminal-dots">
+                                    <div className="terminal-dot red"></div>
+                                    <div className="terminal-dot yellow"></div>
+                                    <div className="terminal-dot green"></div>
+                                  </div>
+                                </div>
+                                <pre className="terminal-content"><code>{content}</code></pre>
+                              </div>
+                            );
+                          }
+
                           return <pre key={i} className="code-block"><code>{content}</code></pre>;
                         }
                         return <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{part}</span>;
