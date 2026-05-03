@@ -3,3 +3,4 @@ pub mod traceroute;
 pub mod rag;
 pub mod hosts;
 pub mod arp;
+pub mod ip_info;

@@ -50,6 +50,7 @@ pub fn run() {
             mcp::traceroute::network_traceroute,
             mcp::hosts::network_get_hosts,
             mcp::arp::network_arp,
+            mcp::ip_info::network_get_ip_info,
             history::load_history,
             history::save_history,
             history::load_summaries,
