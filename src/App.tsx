@@ -16,6 +16,7 @@ interface Message {
   role: "user" | "ai";
   content: string;
   timestamp?: string; // ISO string
+  isToolLoading?: boolean;
 }
 
 interface SummaryItem {
@@ -386,9 +387,9 @@ function App() {
         }
 
         const isRag = toolId === "query_nw_db" || toolId === "network_query_nw_db";
-        const statusMsg = isRag ? `🔍 NW-DBを検索中...` : `⏱️ ${toolLabel} を実行中...`;
+        const statusMsg = isRag ? `NW-DBを検索中...` : `${toolLabel} を実行中...`;
         
-        setMessages(prev => [...prev, { role: "ai", content: statusMsg, timestamp: new Date().toISOString() }]);
+        setMessages(prev => [...prev, { role: "ai", content: statusMsg, timestamp: new Date().toISOString(), isToolLoading: true }]);
         try {
           const result: any = await invoke(toolId, args);
           const statusBadge = result.success ? "✅ 成功" : "❌ 失敗";
@@ -402,8 +403,9 @@ function App() {
               const updated = [...prev];
               updated[updated.length - 1] = { 
                 role: "ai", 
-                content: result.success ? `📖 技術文書を確認しました。内容を整理して回答します...` : `⚠️ NW-DBの検索に失敗しました。`, 
-                timestamp: new Date().toISOString() 
+                content: result.success ? `技術文書を確認しました。内容を整理して回答します...` : `⚠️ NW-DBの検索に失敗しました。`, 
+                timestamp: new Date().toISOString(),
+                isToolLoading: result.success
               };
               return updated;
             });
@@ -420,7 +422,7 @@ function App() {
             `ユーザーの質問: "${userMessage}"\nに対して、技術文書データベース(NW-DB)から以下の情報を取得しました:\n\n${result.output}\n\nこの内容に基づき、ネットワークエンジニアの視点で、ユーザーの質問に対する的確な回答を日本語で生成してください。回答には、参照した資料の内容を具体的に含めてください。${historyBlock}` :
             `ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果（ステータス: ${statusBadge}）は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。${historyBlock}`;
           
-          setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
+          setMessages(prev => [...prev, { role: "ai", content: "分析中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
           
           let analysisContent = "";
           const analysisUnlisten = await listen<string>("llm-chunk", (event) => {
@@ -429,7 +431,7 @@ function App() {
               const updated = [...prev];
               const lastMessage = updated[updated.length - 1];
               if (lastMessage && lastMessage.role === "ai") {
-                updated[updated.length - 1] = { ...lastMessage, content: analysisContent };
+                updated[updated.length - 1] = { ...lastMessage, content: analysisContent, isToolLoading: false };
               }
               return updated;
             });
@@ -511,7 +513,7 @@ function App() {
           command: "show ip int brief"
         });
       } else {
-        setMessages(prev => [...prev, { role: "ai", content: "", timestamp: new Date().toISOString() }]);
+        setMessages(prev => [...prev, { role: "ai", content: "思考中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
         
         let fullContent = "";
         let unlisten: () => void = () => {};
@@ -523,7 +525,7 @@ function App() {
               const updated = [...prev];
               const lastMessage = updated[updated.length - 1];
               if (lastMessage && lastMessage.role === "ai") {
-                updated[updated.length - 1] = { ...lastMessage, content: fullContent };
+                updated[updated.length - 1] = { ...lastMessage, content: fullContent, isToolLoading: false };
               }
               return updated;
             });
@@ -868,27 +870,34 @@ function App() {
                   )}
                   <div className={`message ${msg.role}`}>
                     <div className="message-bubble markdown-body">
-                      {msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
-                        if (part.startsWith("```")) {
-                          const isTerminal = part.startsWith("```terminal");
-                          const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
+                      {!!msg.isToolLoading ? (
+                        <div className="tool-status-container" data-is-loading="true">
+                          <div className="status-spinner"></div>
+                          <span>{msg.content}</span>
+                        </div>
+                      ) : (
+                        msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
+                          if (part.startsWith("```")) {
+                            const isTerminal = part.startsWith("```terminal");
+                            const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
 
-                          if (isTerminal) {
-                            return <Terminal key={i} content={content} />;
+                            if (isTerminal) {
+                              return <Terminal key={i} content={content} />;
+                            }
+
+                            return <pre key={i} className="code-block"><code>{content}</code></pre>;
                           }
-
-                          return <pre key={i} className="code-block"><code>{content}</code></pre>;
-                        }
-                        return (
-                          <ReactMarkdown
-                            key={i}
-                            remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
-                          >
-                            {part}
-                          </ReactMarkdown>
-                        );
-                      })}
+                          return (
+                            <ReactMarkdown
+                              key={i}
+                              remarkPlugins={[remarkGfm, remarkMath]}
+                              rehypePlugins={[rehypeKatex]}
+                            >
+                              {part}
+                            </ReactMarkdown>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
                 </div>

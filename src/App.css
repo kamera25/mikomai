@@ -553,12 +553,30 @@
 }
 
 .status-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--border-color);
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(59, 130, 246, 0.1);
   border-top-color: var(--accent-color);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+  display: block;
+}
+
+.tool-status-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  background-color: var(--bg-tertiary);
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin: 8px 0;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  animation: fadeIn 0.3s ease forwards;
 }
 
 @keyframes spin {
