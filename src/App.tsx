@@ -52,6 +52,7 @@ function App() {
   const [historyLimit, setHistoryLimit] = useState<number>(5);
   const [temperature, setTemperature] = useState<number>(0.0);
   const [repetitionPenalty, setRepetitionPenalty] = useState<number>(1.1);
+  const [modelPath, setModelPath] = useState<string | null>(null);
   const isComposing = useRef(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -108,6 +109,9 @@ function App() {
         }
         if (settings && settings.repetitionPenalty !== undefined) {
           setRepetitionPenalty(settings.repetitionPenalty);
+        }
+        if (settings && settings.modelPath !== undefined) {
+          setModelPath(settings.modelPath);
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -496,6 +500,18 @@ function App() {
       setMessages(session.messages);
     }
   }, [activeSessionId]);
+  
+  const handleLoadModel = async () => {
+    if (!modelPath) return;
+    try {
+      setModelStatus("Loading");
+      await invoke("load_model", { path: modelPath });
+      setModelStatus("Loaded");
+    } catch (e) {
+      console.error("Failed to load model:", e);
+      setModelStatus("Error");
+    }
+  };
 
   // Update history when messages change
   useEffect(() => {
@@ -657,7 +673,7 @@ function App() {
             onHistoryLimitChange={async (newLimit) => {
               setHistoryLimit(newLimit);
               try {
-                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature, repetitionPenalty } });
+                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature, repetitionPenalty, modelPath } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -666,7 +682,7 @@ function App() {
             onTemperatureChange={async (newTemp) => {
               setTemperature(newTemp);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp, repetitionPenalty } });
+                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp, repetitionPenalty, modelPath } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -675,7 +691,16 @@ function App() {
             onRepetitionPenaltyChange={async (newPenalty) => {
               setRepetitionPenalty(newPenalty);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty: newPenalty } });
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty: newPenalty, modelPath } });
+              } catch (e) {
+                console.error("Failed to save settings:", e);
+              }
+            }}
+            modelPath={modelPath}
+            onModelPathChange={async (newPath) => {
+              setModelPath(newPath);
+              try {
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath: newPath } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -755,9 +780,18 @@ function App() {
                   {modelStatus === "Error" && "AIモデルの読み込みに失敗しました。設定を確認してください。"}
                 </span>
                 {(modelStatus === "NotLoaded" || modelStatus === "Error") && (
-                  <button className="banner-button" onClick={() => setIsSettingsOpen(true)}>
-                    設定
-                  </button>
+                  <div className="banner-actions">
+                    {modelPath && (
+                      <button className="banner-button primary" onClick={handleLoadModel}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                        モデルの読み込み
+                      </button>
+                    )}
+                    <button className="banner-button" onClick={() => setIsSettingsOpen(true)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                      設定
+                    </button>
+                  </div>
                 )}
               </div>
             )}

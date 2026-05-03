@@ -423,29 +423,44 @@
   color: var(--danger);
 }
 
+.banner-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .banner-button {
-  background-color: #10b981; /* Green fallback */
-  background-color: var(--success);
-  color: #36bb21 !important;
-  border: none;
-  padding: 6px 16px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
   border-radius: 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-left: auto;
-  white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+  white-space: nowrap;
+}
+
+.banner-button.primary {
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  font-weight: 600;
+  box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .banner-button:hover {
-  background-color: #059669;
-  filter: brightness(1.1);
+  background-color: var(--bg-hover);
   transform: translateY(-1px);
+}
+
+.banner-button.primary:hover {
+  background-color: var(--accent-hover);
+  filter: brightness(1.1);
 }
 
 .banner-button:active {

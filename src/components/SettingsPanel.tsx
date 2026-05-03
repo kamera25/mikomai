@@ -13,6 +13,8 @@ interface SettingsPanelProps {
   onTemperatureChange: (temp: number) => void;
   repetitionPenalty: number;
   onRepetitionPenaltyChange: (penalty: number) => void;
+  modelPath: string | null;
+  onModelPathChange: (path: string) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
@@ -23,9 +25,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   temperature,
   onTemperatureChange,
   repetitionPenalty,
-  onRepetitionPenaltyChange
+  onRepetitionPenaltyChange,
+  modelPath: savedModelPath,
+  onModelPathChange
 }) => {
-  const [modelPath, setModelPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
+  const [repoPath, setRepoPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E4B-it-Q4_K_M.gguf");
   const [downloadStatus, setDownloadStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -51,10 +55,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       setDownloadStatus("モデルのダウンロードを開始します（時間がかかる場合があります）");
       
       const downloadedPath = await invoke<string>("download_model", {
-        repo: modelPath,
+        repo: repoPath,
         filename: modelFilename
       });
       
+      onModelPathChange(downloadedPath);
       setDownloadStatus(`Model downloaded to: ${downloadedPath}. Loading into memory...`);
       
       const loadResult = await invoke<string>("load_model", {
@@ -146,7 +151,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <h3>ローカルLLM (llama.cpp)</h3>
             <div className="form-control">
               <label>HuggingFace リポジトリ</label>
-              <input type="text" value={modelPath} onChange={e => setModelPath(e.target.value)} placeholder="bartowski/google_gemma-4-E2B-it-GGUF" />
+              <input type="text" value={repoPath} onChange={e => setRepoPath(e.target.value)} placeholder="bartowski/google_gemma-4-E2B-it-GGUF" />
             </div>
             <div className="form-control">
               <label>ファイル名 (GGUF)</label>
