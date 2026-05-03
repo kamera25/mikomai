@@ -75,9 +75,9 @@ function App() {
   const [modelPath, setModelPath] = useState<string | null>(null);
   
   // Host Suggestion states
-  const [availableHosts, setAvailableHosts] = useState<string[]>([]);
+  const [availableHosts, setAvailableHosts] = useState<{hostname: string, ip: string}[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
+  const [filteredSuggestions, setFilteredSuggestions] = useState<{hostname: string, ip: string}[]>([]);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
   const [cursorPos, setCursorPos] = useState(0);
 
@@ -154,11 +154,24 @@ function App() {
           invoke<McpHost[]>("get_mcp_hosts")
         ]);
         
-        const uniqueHosts = new Set<string>();
-        if (connections) connections.forEach(c => uniqueHosts.add(c.hostname));
-        if (mcpHosts) mcpHosts.forEach(h => uniqueHosts.add(h.hostname));
+        const hostMap = new Map<string, string>();
+        if (connections) {
+          connections.forEach(c => {
+            if (c.hostname && c.ip) hostMap.set(c.hostname, c.ip);
+          });
+        }
+        if (mcpHosts) {
+          mcpHosts.forEach(h => {
+            if (h.hostname && h.ip) hostMap.set(h.hostname, h.ip);
+          });
+        }
         
-        setAvailableHosts(Array.from(uniqueHosts));
+        const hostsArray = Array.from(hostMap.entries()).map(([hostname, ip]) => ({
+          hostname,
+          ip
+        }));
+        
+        setAvailableHosts(hostsArray);
       } catch (e) {
         console.error("Failed to fetch hosts for suggestions:", e);
       }
@@ -268,7 +281,8 @@ function App() {
     return `\n\n【過去の実行履歴要約】\n${text}`;
   };
 
-  const handleSelectSuggestion = (host: string) => {
+  const handleSelectSuggestion = (hostObj: {hostname: string, ip: string}) => {
+    const host = hostObj.hostname;
     const textBeforeCursor = input.slice(0, cursorPos);
     const atIndex = textBeforeCursor.lastIndexOf('@');
     const newValue = input.slice(0, atIndex) + host + ' ' + input.slice(cursorPos);
@@ -882,14 +896,15 @@ function App() {
             <div className={`input-container ${modelStatus !== "Loaded" ? 'disabled' : ''}`}>
               {showSuggestions && filteredSuggestions.length > 0 && (
                 <div className="suggestion-list">
-                  {filteredSuggestions.map((host, idx) => (
+                  {filteredSuggestions.map((hostObj, idx) => (
                     <div 
-                      key={host} 
+                      key={`${hostObj.hostname}-${hostObj.ip}`} 
                       className={`suggestion-item ${idx === suggestionIndex ? 'selected' : ''}`}
-                      onClick={() => handleSelectSuggestion(host)}
+                      onClick={() => handleSelectSuggestion(hostObj)}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8}}><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-                      <span>{host}</span>
+                      <span className="suggestion-hostname">{hostObj.hostname}</span>
+                      <span className="suggestion-ip">({hostObj.ip})</span>
                     </div>
                   ))}
                 </div>
@@ -915,7 +930,8 @@ function App() {
                       // Check if there's space between @ and cursor
                       if (!query.includes(' ')) {
                         const filtered = availableHosts.filter(h => 
-                          h.toLowerCase().includes(query.toLowerCase())
+                          h.hostname.toLowerCase().includes(query.toLowerCase()) ||
+                          h.ip.includes(query)
                         );
                         setFilteredSuggestions(filtered);
                         setShowSuggestions(true);

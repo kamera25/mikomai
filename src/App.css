@@ -442,10 +442,21 @@
   padding: 10px 16px;
   display: flex;
   align-items: center;
+  gap: 8px; /* Added gap for spacing */
   cursor: pointer;
   color: #4b5563; /* Dark gray text */
   font-size: 0.9rem;
   transition: all 0.2s ease;
+}
+
+.suggestion-hostname {
+  font-weight: 500;
+}
+
+.suggestion-ip {
+  font-size: 0.75rem;
+  color: #9ca3af; /* Light gray for IP */
+  font-family: var(--font-mono);
 }
 
 .suggestion-item:hover, .suggestion-item.selected {
