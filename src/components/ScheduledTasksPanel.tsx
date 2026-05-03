@@ -7,6 +7,122 @@ interface ScheduledTasksPanelProps {
   onClose: () => void;
 }
 
+type ScheduleType = 'weekly' | 'daily' | 'hourly' | 'minutely' | 'secondly' | 'custom';
+
+const ScheduleInput: React.FC<{ value: string; onChange: (val: string) => void }> = ({ value, onChange }) => {
+  const [type, setType] = useState<ScheduleType>('custom');
+  const [dayOfWeek, setDayOfWeek] = useState('月曜');
+  const [time, setTime] = useState('00:00');
+  const [minute, setMinute] = useState('0');
+  const [second, setSecond] = useState('0');
+  const [customText, setCustomText] = useState('');
+
+  useEffect(() => {
+    if (value.startsWith('毎週') && value.includes(' ')) {
+      setType('weekly');
+      const parts = value.split(' ');
+      setDayOfWeek(parts[0].replace('毎週', ''));
+      setTime(parts[1]);
+    } else if (value.startsWith('毎日 ')) {
+      setType('daily');
+      setTime(value.replace('毎日 ', ''));
+    } else if (value.startsWith('毎時 ') && value.endsWith('分')) {
+      setType('hourly');
+      setMinute(value.replace('毎時 ', '').replace('分', ''));
+    } else if (value.startsWith('毎分 ') && value.endsWith('秒')) {
+      setType('minutely');
+      setSecond(value.replace('毎分 ', '').replace('秒', ''));
+    } else if (value === '毎秒') {
+      setType('secondly');
+    } else {
+      setType('custom');
+      setCustomText(value);
+    }
+  }, [value]);
+
+  const handleChange = (
+    newType: ScheduleType,
+    newDay: string,
+    newTime: string,
+    newMin: string,
+    newSec: string,
+    newCustom: string
+  ) => {
+    setType(newType);
+    setDayOfWeek(newDay);
+    setTime(newTime);
+    setMinute(newMin);
+    setSecond(newSec);
+    setCustomText(newCustom);
+
+    let newValue = '';
+    if (newType === 'weekly') {
+      newValue = `毎週${newDay} ${newTime}`;
+    } else if (newType === 'daily') {
+      newValue = `毎日 ${newTime}`;
+    } else if (newType === 'hourly') {
+      newValue = `毎時 ${newMin}分`;
+    } else if (newType === 'minutely') {
+      newValue = `毎分 ${newSec}秒`;
+    } else if (newType === 'secondly') {
+      newValue = `毎秒`;
+    } else {
+      newValue = newCustom;
+    }
+    onChange(newValue);
+  };
+
+  return (
+    <div className="schedule-input-container">
+      <select value={type} onChange={(e) => handleChange(e.target.value as ScheduleType, dayOfWeek, time, minute, second, customText)} className="schedule-type-select">
+        <option value="weekly">週次</option>
+        <option value="daily">毎日</option>
+        <option value="hourly">毎時</option>
+        <option value="minutely">毎分</option>
+        <option value="secondly">毎秒</option>
+        <option value="custom">カスタム</option>
+      </select>
+
+      {type === 'weekly' && (
+        <>
+          <select value={dayOfWeek} onChange={(e) => handleChange(type, e.target.value, time, minute, second, customText)} className="schedule-day-select">
+            <option value="月曜">月曜</option>
+            <option value="火曜">火曜</option>
+            <option value="水曜">水曜</option>
+            <option value="木曜">木曜</option>
+            <option value="金曜">金曜</option>
+            <option value="土曜">土曜</option>
+            <option value="日曜">日曜</option>
+          </select>
+          <input type="time" value={time} onChange={(e) => handleChange(type, dayOfWeek, e.target.value, minute, second, customText)} />
+        </>
+      )}
+
+      {type === 'daily' && (
+        <input type="time" value={time} onChange={(e) => handleChange(type, dayOfWeek, e.target.value, minute, second, customText)} />
+      )}
+
+      {type === 'hourly' && (
+        <div className="schedule-flex-input">
+          <input type="number" min="0" max="59" value={minute} onChange={(e) => handleChange(type, dayOfWeek, time, e.target.value, second, customText)} />
+          <span>分</span>
+        </div>
+      )}
+
+      {type === 'minutely' && (
+        <div className="schedule-flex-input">
+          <input type="number" min="0" max="59" value={second} onChange={(e) => handleChange(type, dayOfWeek, time, minute, e.target.value, customText)} />
+          <span>秒</span>
+        </div>
+      )}
+
+      {type === 'custom' && (
+        <input type="text" value={customText} onChange={(e) => handleChange(type, dayOfWeek, time, minute, second, e.target.value)} placeholder="例: 毎月1日 00:00" />
+      )}
+    </div>
+  );
+};
+
 interface ScheduledTask {
   id: string;
   name: string;
@@ -233,11 +349,10 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                   />
                 </div>
                 <div className="settings-form-group">
-                  <label>実行タイミング (Cron)</label>
-                  <input 
-                    type="text" 
+                  <label>実行タイミング</label>
+                  <ScheduleInput
                     value={editingTask.schedule} 
-                    onChange={(e) => setEditingTask({ ...editingTask, schedule: e.target.value })}
+                    onChange={(val) => setEditingTask({ ...editingTask, schedule: val })}
                   />
                 </div>
                 <div className="settings-form-group">
@@ -253,15 +368,17 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                   </select>
                 </div>
                 <div className="settings-form-group">
-                  <label>プロンプト</label>
+                  <label>プロンプト {isCreating ? '' : '(表示専用)'}</label>
                   <textarea 
                     value={editingTask.prompt} 
                     readOnly={!isCreating}
-                    onChange={(e) => isCreating && setEditingTask({ ...editingTask, prompt: e.target.value })}
+                    onChange={(e) => setEditingTask({ ...editingTask, prompt: e.target.value })}
                     className={!isCreating ? "readonly-prompt-area" : ""}
                     style={isCreating ? { width: '100%', minHeight: '80px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#1e1e1e', color: 'white' } : {}}
                   />
-                  {!isCreating && <p className="field-hint">※ プロンプトの内容はシステムによって管理されており、変更できません。</p>}
+                  {!isCreating && (
+                    <p className="field-hint">※ プロンプトの内容はシステムによって管理されており、変更できません。</p>
+                  )}
                 </div>
               </div>
               <footer className="settings-card-footer">
