@@ -28,7 +28,7 @@ impl RagState {
         }
 
         let mut options = InitOptions::default();
-        options.model_name = EmbeddingModel::AllMiniLML6V2;
+        options.model_name = EmbeddingModel::MultilingualE5Large;
         options.show_download_progress = true;
         
         let model = TextEmbedding::try_new(options)
@@ -98,7 +98,9 @@ pub async fn query_nw_db(
     let db = state.get_db(&app).await?;
     let model = state.get_model()?;
 
-    let embeddings = model.embed(vec![query], None)
+    // E5 models require "query: " prefix for searches
+    let instructional_query = format!("query: {}", query);
+    let embeddings = model.embed(vec![instructional_query], None)
         .map_err(|e| format!("Embedding error: {}", e))?;
     let query_vector = embeddings.first().ok_or("Failed to generate embedding")?.clone();
 

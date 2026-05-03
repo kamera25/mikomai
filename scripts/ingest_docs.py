@@ -11,7 +11,7 @@ DOCS_DIR = "./nw-docs"
 DB_PATH = os.environ.get("MIKOMAI_DB_PATH", "./data/knowledge.lance")
 TABLE_NAME = "documents"
 
-MODEL_NAME = "all-MiniLM-L6-v2"
+MODEL_NAME = "intfloat/multilingual-e5-large-instruct"
 
 def main():
     print(f"Initializing LanceDB at {DB_PATH}...")
@@ -38,7 +38,9 @@ def main():
             # or we could split by headers. Let's keep it simple for the first version.
             # We'll store the full text and its embedding.
             
-            embedding = model.encode(content).astype(np.float16)
+            # E5 models require "passage: " prefix for documents
+            instructional_content = f"passage: {content}"
+            embedding = model.encode(instructional_content).astype(np.float16)
             
             data.append({
                 "vector": embedding,
@@ -68,12 +70,12 @@ def main():
         actual_partitions = max(1, len(df) // 4)
         print(f"Dataset too small for 256 partitions. Using {actual_partitions} partitions instead.")
 
-    print(f"Creating IVF-PQ index (cosine, partitions={actual_partitions}, sub_vectors=96)...")
+    print(f"Creating IVF-PQ index (cosine, partitions={actual_partitions}, sub_vectors=128)...")
     try:
         table.create_index(
             metric="cosine",
             num_partitions=actual_partitions,
-            num_sub_vectors=96
+            num_sub_vectors=128
         )
     except Exception as e:
         print(f"Warning: Could not create index: {e}")

@@ -8,7 +8,7 @@ from sentence_transformers import SentenceTransformer
 # Configuration
 DB_PATH = os.environ.get("MIKOMAI_DB_PATH", os.path.expanduser("~/Library/Application Support/com.mikomai.agent/lancedb"))
 TABLE_NAME = "documents"
-MODEL_NAME = "all-MiniLM-L6-v2"
+MODEL_NAME = "intfloat/multilingual-e5-large-instruct"
 
 def main():
     parser = argparse.ArgumentParser(description="Search LanceDB documents")
@@ -25,7 +25,9 @@ def main():
         
         import numpy as np
         model = SentenceTransformer(MODEL_NAME)
-        query_vector = model.encode(query).astype(np.float16)
+        # E5 models require "query: " prefix for searches
+        instructional_query = f"query: {query}"
+        query_vector = model.encode(instructional_query).astype(np.float16)
         
         search_builder = table.search(query_vector)
         if filter_str:
