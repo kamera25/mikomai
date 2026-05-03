@@ -113,20 +113,24 @@ async fn run_system_ping(host: &str, size: Option<usize>, count: Option<u32>, df
     
     cmd.arg(host);
     
+    let is_ipv6 = host.parse::<std::net::Ipv6Addr>().is_ok();
+    let ping_cmd = if is_ipv6 { "ping6" } else { "ping" };
+
     let output = Command::new("sh")
         .arg("-c")
-        .arg(format!("ping {} {} {} {}", 
+        .arg(format!("{} {} {} {} {}", 
+            ping_cmd,
             if let Some(s) = size { format!("-s {}", s) } else { "".to_string() },
             if let Some(c) = count { format!("-c {}", c) } else { "-c 4".to_string() },
             if df { 
-                #[cfg(target_os = "macos")] { "-D" }
+                #[cfg(target_os = "macos")] { if is_ipv6 { "" } else { "-D" } } // ping6 on mac doesn't have -D for DF the same way?
                 #[cfg(target_os = "linux")] { "-M do" }
                 #[cfg(not(any(target_os = "macos", target_os = "linux")))] { "" }
             } else { "" },
             host
         ))
         .output()
-        .map_err(|e| format!("Failed to execute system ping: {}", e))?;
+        .map_err(|e| format!("Failed to execute system ping ({}): {}", ping_cmd, e))?;
     
     Ok(PingResult {
         success: output.status.success(),

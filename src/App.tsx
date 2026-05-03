@@ -225,8 +225,8 @@ function App() {
       
       // Flexible regex for ping (supports Japanese and varied order)
       let pingArgs: any = null;
-      const pingBaseMatch = lowerInput.match(/(?:ping|ピン|ピング)\s+([a-zA-Z0-9.-]+)/) || 
-                            lowerInput.match(/([a-zA-Z0-9.-]+)\s*(?:に|へ)?\s*(?:ping|ピン|ピング)/);
+      const pingBaseMatch = lowerInput.match(/(?:ping|ピン|ピング)\s+([a-zA-Z0-9.:-]+)/) || 
+                            lowerInput.match(/([a-zA-Z0-9.:-]+)\s*(?:に|へ)?\s*(?:ping|ピン|ピング)/);
       
       if (pingBaseMatch) {
         const host = pingBaseMatch[1];
@@ -247,8 +247,8 @@ function App() {
       }
       
       // Flexible regex for traceroute (supports Japanese and varied order)
-      const traceMatch = lowerInput.match(/(?:trace(?:route)?|トレース|トレースルート)\s+([a-zA-Z0-9.-]+)/) ||
-                         lowerInput.match(/([a-zA-Z0-9.-]+)\s*(?:に|へ)?\s*(?:trace(?:route)?|トレース|トレースルート)/);
+      const traceMatch = lowerInput.match(/(?:trace(?:route)?|トレース|トレースルート)\s+([a-zA-Z0-9.:-]+)/) ||
+                         lowerInput.match(/([a-zA-Z0-9.:-]+)\s*(?:に|へ)?\s*(?:trace(?:route)?|トレース|トレースルート)/);
 
       // Flexible regex for host list
       const hostListMatch = lowerInput.match(/(?:host|ホスト|接続先|ターゲット).*(?:list|一覧|教え|見せ|確認)/) || 
