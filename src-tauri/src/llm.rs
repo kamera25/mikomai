@@ -8,7 +8,7 @@ use llama_cpp_2::model::AddBos;
 use llama_cpp_2::sampling::LlamaSampler;
 use std::sync::Mutex;
 use std::num::NonZeroU32;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 #[derive(serde::Serialize)]
 pub enum ModelState {
@@ -94,9 +94,10 @@ const SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI (Managed Infrastructure K
 回答を生成する際は、以下の厳格なルールに従ってください。
 
 # 1. 知識の優先順位とハルシネーションの防止 (RAG Rules)
-- 質問に対しては、まず連携されているベクトルデータベース（ベンダーマニュアル等の検索結果）の情報を最優先で参照してください。
+- あなたは最新のネットワーク技術文書やベンダーマニュアルを格納した「LanceDB」というベクトルデータベースにアクセスできます。
+- 質問に対しては、まずこのLanceDBからの検索結果を最優先で参照してください。
 - 検索結果に答えが存在しない場合、あるいは確証が持てない場合は、絶対に推測で回答したり、存在しないコマンドを捏造（ハルシネーション）しないでください。
-- わからない場合は、明確に「マニュアルからは該当する情報が見つかりません。追加の検索キーワードを指示するか、実機から情報を取得しますか？」と回答してください。
+- わからない場合は、明確に「LanceDBのマニュアル情報からは該当する情報が見つかりません。追加の検索キーワードを指示するか、実機から情報を取得しますか？」と回答してください。
 
 # 2. ツールとエージェント操作 (MCP Rules)
 - あなたはローカルネットワークを診断・操作するためのMCPを持っています。
@@ -131,6 +132,13 @@ const SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI (Managed Infrastructure K
 
 #[tauri::command]
 pub async fn ask_llm(window: tauri::Window, prompt: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
+    // Perform RAG search BEFORE taking locks to avoid holding MutexGuard across await points
+    let app_handle = window.app_handle();
+    let rag_context = crate::rag::query_rag(prompt.clone(), app_handle.clone()).await.unwrap_or_else(|e| {
+        println!("RAG search error: {}", e);
+        "No relevant information found due to search error.".to_string()
+    });
+
     let _inference_guard = state.inference_lock.lock().unwrap();
     let model_lock = state.model.lock().unwrap();
     let model = match &*model_lock {
@@ -139,8 +147,9 @@ pub async fn ask_llm(window: tauri::Window, prompt: String, state: tauri::State<
     };
 
     let formatted_prompt = format!(
-        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+        "<|im_start|>system\n{}\n\n# LanceDBからの検索結果 (Context):\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
         SYSTEM_PROMPT,
+        rag_context,
         prompt
     );
 
