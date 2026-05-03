@@ -2,6 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
 import { ScheduledTasksPanel } from "./components/ScheduledTasksPanel";
@@ -759,7 +763,15 @@ function App() {
 
                           return <pre key={i} className="code-block"><code>{content}</code></pre>;
                         }
-                        return <ReactMarkdown key={i}>{part}</ReactMarkdown>;
+                        return (
+                          <ReactMarkdown
+                            key={i}
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                          >
+                            {part}
+                          </ReactMarkdown>
+                        );
                       })}
                     </div>
                   </div>

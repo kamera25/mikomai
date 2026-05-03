@@ -26,7 +26,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onTemperatureChange,
   repetitionPenalty,
   onRepetitionPenaltyChange,
-  modelPath: savedModelPath,
+  modelPath: _savedModelPath,
   onModelPathChange
 }) => {
   const [repoPath, setRepoPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
