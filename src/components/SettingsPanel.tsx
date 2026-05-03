@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { appDataDir, join } from '@tauri-apps/api/path';
+
 import './SettingsPanel.css';
 
 interface SettingsPanelProps {
@@ -12,6 +14,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E2B-it-Q4_K_M.gguf");
   const [downloadStatus, setDownloadStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [dbPath, setDbPath] = useState("");
+
+  React.useEffect(() => {
+    const initPath = async () => {
+      try {
+        const baseDir = await appDataDir();
+        const fullPath = await join(baseDir, 'lancedb');
+        setDbPath(fullPath);
+      } catch (e) {
+        console.error("Failed to get app data dir", e);
+      }
+    };
+    initPath();
+  }, []);
+
 
   const handleDownloadAndLoad = async () => {
     try {
@@ -80,7 +97,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
             <div className="form-control">
               <label>データベースディレクトリ</label>
               <div className="input-with-button">
-                <input type="text" placeholder="/path/to/lancedb" defaultValue="./data/knowledge.lance" />
+                <input 
+                  type="text" 
+                  placeholder="/path/to/lancedb" 
+                  value={dbPath} 
+                  onChange={e => setDbPath(e.target.value)} 
+                />
+
                 <button className="btn btn-secondary">参照</button>
               </div>
             </div>

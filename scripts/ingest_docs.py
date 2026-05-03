@@ -7,8 +7,9 @@ from pathlib import Path
 
 # Configuration
 DOCS_DIR = "./nw-docs"
-DB_PATH = "./data/knowledge.lance"
+DB_PATH = os.environ.get("MIKOMAI_DB_PATH", "./data/knowledge.lance")
 TABLE_NAME = "documents"
+
 MODEL_NAME = "all-MiniLM-L6-v2"
 
 def main():

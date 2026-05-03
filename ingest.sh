@@ -22,10 +22,18 @@ echo "Installing/Updating dependencies..."
 pip install --upgrade pip
 pip install lancedb pyarrow sentence-transformers python-frontmatter pandas
 
-# Create data directory if it doesn't exist
-mkdir -p data
+# Determine App Data Directory (macOS default for Tauri)
+# Identifier: com.mikomai.agent
+APP_DATA_DIR="$HOME/Library/Application Support/com.mikomai.agent"
+DB_PATH="$APP_DATA_DIR/lancedb"
 
-# Run the ingestion script
-python3 scripts/ingest_docs.py
+echo "Using DB path: $DB_PATH"
+
+# Create directory if it doesn't exist
+mkdir -p "$DB_PATH"
+
+# Run the ingestion script with the DB path
+MIKOMAI_DB_PATH="$DB_PATH" python3 scripts/ingest_docs.py
+
 
 echo "Done!"
