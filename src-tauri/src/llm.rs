@@ -134,7 +134,17 @@ const SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI (Managed Infrastructure K
 pub async fn ask_llm(window: tauri::Window, prompt: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
     // Perform RAG search BEFORE taking locks to avoid holding MutexGuard across await points
     let app_handle = window.app_handle();
-    let rag_context = crate::rag::query_rag(prompt.clone(), app_handle.clone()).await.unwrap_or_else(|e| {
+    
+    // Detect brand filter
+    let brand_filter = if prompt.contains("ヤマハ") || prompt.to_lowercase().contains("yamaha") {
+        Some("brand LIKE '%Yamaha%'".to_string())
+    } else if prompt.contains("シスコ") || prompt.to_lowercase().contains("cisco") {
+        Some("brand LIKE '%Cisco%'".to_string())
+    } else {
+        None
+    };
+
+    let rag_context = crate::rag::query_rag(prompt.clone(), brand_filter, app_handle.clone()).await.unwrap_or_else(|e| {
         println!("RAG search error: {}", e);
         "No relevant information found due to search error.".to_string()
     });

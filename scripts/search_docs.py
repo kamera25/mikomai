@@ -2,6 +2,7 @@ import os
 import lancedb
 import sys
 import json
+import argparse
 from sentence_transformers import SentenceTransformer
 
 # Configuration
@@ -10,11 +11,13 @@ TABLE_NAME = "documents"
 MODEL_NAME = "all-MiniLM-L6-v2"
 
 def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "No query provided"}))
-        return
+    parser = argparse.ArgumentParser(description="Search LanceDB documents")
+    parser.add_argument("query", help="The search query string")
+    parser.add_argument("--filter", help="Metadata filter string (SQL-like)")
+    args = parser.parse_args()
 
-    query = sys.argv[1]
+    query = args.query
+    filter_str = args.filter
     
     try:
         db = lancedb.connect(DB_PATH)
@@ -23,7 +26,11 @@ def main():
         model = SentenceTransformer(MODEL_NAME)
         query_vector = model.encode(query).tolist()
         
-        results = table.search(query_vector).limit(3).to_list()
+        search_builder = table.search(query_vector)
+        if filter_str:
+            search_builder = search_builder.where(filter_str)
+            
+        results = search_builder.limit(3).to_list()
         
         # Format results for Rust
         formatted_results = []

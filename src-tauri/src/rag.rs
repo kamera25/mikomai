@@ -31,31 +31,27 @@ pub async fn connect_db(path: String, state: tauri::State<'_, RagState>) -> Resu
 #[tauri::command]
 pub async fn ingest_document(path: String) -> Result<String, String> {
     // This is a stub for the document ingestion pipeline.
-    // In a full implementation, this would:
-    // 1. Parse PDF/Text
-    // 2. Chunk text
-    // 3. Generate embeddings using ONNX Runtime
-    // 4. Insert into LanceDB
     println!("Ingesting document from: {}", path);
     Ok("Document ingested successfully (stub)".to_string())
 }
 
 #[tauri::command]
-pub async fn query_rag(query: String, app_handle: tauri::AppHandle) -> Result<String, String> {
-    println!("Querying RAG: {}", query);
+pub async fn query_rag(query: String, filter: Option<String>, app_handle: tauri::AppHandle) -> Result<String, String> {
+    println!("Querying RAG: {} (filter: {:?})", query, filter);
 
     let _resource_path = app_handle.path().resource_dir().map_err(|e| e.to_string())?;
-    // In dev mode, resource_dir might be the project root. 
-    // We need to find the scripts/search_docs.py and venv/bin/python.
-    // For simplicity, let's assume we are in the project root in dev mode.
     
     let python_path = "venv/bin/python3";
     let script_path = "scripts/search_docs.py";
 
-    let output = Command::new(python_path)
-        .arg(script_path)
-        .arg(&query)
-        .output()
+    let mut cmd = Command::new(python_path);
+    cmd.arg(script_path).arg(&query);
+
+    if let Some(filter_str) = filter {
+        cmd.arg("--filter").arg(filter_str);
+    }
+
+    let output = cmd.output()
         .map_err(|e| format!("Failed to execute search script: {}", e))?;
 
     if !output.status.success() {
