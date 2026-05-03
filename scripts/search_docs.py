@@ -23,8 +23,9 @@ def main():
         db = lancedb.connect(DB_PATH)
         table = db.open_table(TABLE_NAME)
         
+        import numpy as np
         model = SentenceTransformer(MODEL_NAME)
-        query_vector = model.encode(query).tolist()
+        query_vector = model.encode(query).astype(np.float16)
         
         search_builder = table.search(query_vector)
         if filter_str:

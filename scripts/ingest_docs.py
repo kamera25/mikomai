@@ -2,6 +2,7 @@ import os
 import lancedb
 import pandas as pd
 import frontmatter
+import numpy as np
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
 
@@ -37,7 +38,7 @@ def main():
             # or we could split by headers. Let's keep it simple for the first version.
             # We'll store the full text and its embedding.
             
-            embedding = model.encode(content).tolist()
+            embedding = model.encode(content).astype(np.float16)
             
             data.append({
                 "vector": embedding,
@@ -58,7 +59,29 @@ def main():
     df = pd.DataFrame(data)
     
     # Overwrite the table if it exists
-    db.create_table(TABLE_NAME, data=df, mode="overwrite")
+    table = db.create_table(TABLE_NAME, data=df, mode="overwrite")
+    
+    # Create optimized index
+    # Note: LanceDB requires more vectors than partitions for IVF index
+    actual_partitions = 256
+    if len(df) < actual_partitions:
+        actual_partitions = max(1, len(df) // 4)
+        print(f"Dataset too small for 256 partitions. Using {actual_partitions} partitions instead.")
+
+    print(f"Creating IVF-PQ index (cosine, partitions={actual_partitions}, sub_vectors=96)...")
+    try:
+        table.create_index(
+            metric="cosine",
+            num_partitions=actual_partitions,
+            num_sub_vectors=96
+        )
+    except Exception as e:
+        print(f"Warning: Could not create index: {e}")
+        print("Continuing without index (small datasets perform well with linear scan).")
+    
+    # Optimize table (compact files, cleanup old versions, etc.)
+    print("Optimizing table...")
+    table.optimize()
     
     print("Ingestion complete.")
 
