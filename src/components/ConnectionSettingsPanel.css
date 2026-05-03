@@ -240,6 +240,30 @@
   color: #94a3b8;
 }
 
+.col-actions {
+  width: 60px;
+  text-align: center;
+}
+
+.row-delete-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.row-delete-btn:hover {
+  background-color: #fee2e2;
+  color: #ef4444;
+}
+
 .btn-action {
   padding: 6px 16px;
   border-radius: 6px;
