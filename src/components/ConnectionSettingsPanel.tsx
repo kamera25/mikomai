@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { confirm } from '@tauri-apps/plugin-dialog';
 import Papa from 'papaparse';
 import './ConnectionSettingsPanel.css';
 
@@ -205,7 +206,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     const connToDelete = connections.find(c => c.id === editingId);
     if (!connToDelete) return;
 
-    if (!confirm(`ホスト「${connToDelete.hostname}」を削除してもよろしいですか？`)) {
+    const confirmed = await confirm(`ホスト「${connToDelete.hostname}」を削除してもよろしいですか？`, { title: '確認', kind: 'warning' });
+    if (!confirmed) {
       return;
     }
 
@@ -344,7 +346,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const handleDeleteSelected = async () => {
     if (selectedIds.length === 0) return;
     
-    if (!confirm(`${selectedIds.length}件のホストを削除してもよろしいですか？`)) {
+    const confirmed = await confirm(`${selectedIds.length}件のホストを削除してもよろしいですか？`, { title: '確認', kind: 'warning' });
+    if (!confirmed) {
       return;
     }
 

@@ -32,6 +32,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(llama_state)
         .manage(rag_state)
         .invoke_handler(tauri::generate_handler![
