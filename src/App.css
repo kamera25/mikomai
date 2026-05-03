@@ -406,13 +406,61 @@
 
 .input-container {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column; /* Changed to column to contain suggestion list above input */
+  align-items: stretch;
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 12px 16px;
+  padding: 0; /* Changed to 0 to manage internal spacing */
   transition: all 0.3s ease;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  position: relative;
+}
+
+.suggestion-list {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background-color: #ffffff; /* White background */
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  animation: popupFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1000;
+}
+
+@keyframes popupFade {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.suggestion-item {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: #4b5563; /* Dark gray text */
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.suggestion-item:hover, .suggestion-item.selected {
+  background-color: #f3f4f6; /* Light gray background for selection */
+  color: #111827; /* Darker text on hover */
+}
+
+.suggestion-item.selected {
+  box-shadow: inset 3px 0 0 var(--accent-color);
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  padding: 12px 16px;
 }
 
 .input-container:focus-within {

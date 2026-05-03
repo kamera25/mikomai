@@ -23,6 +23,22 @@ interface SummaryItem {
   content: string;
 }
 
+interface Connection {
+  id: string;
+  status: 'online' | 'offline';
+  hostname: string;
+  ip: string;
+  type: string;
+  lastConnected: string;
+}
+
+interface McpHost {
+  hostname: string;
+  ip: string;
+  deviceType: string;
+  username: string;
+}
+
 interface ChatSession {
   id: string;
   type: 'session';
@@ -57,6 +73,14 @@ function App() {
   const [temperature, setTemperature] = useState<number>(0.0);
   const [repetitionPenalty, setRepetitionPenalty] = useState<number>(1.1);
   const [modelPath, setModelPath] = useState<string | null>(null);
+  
+  // Host Suggestion states
+  const [availableHosts, setAvailableHosts] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const [cursorPos, setCursorPos] = useState(0);
+
   const isComposing = useRef(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -122,6 +146,24 @@ function App() {
       }
     };
     initHistory();
+
+    const fetchHosts = async () => {
+      try {
+        const [connections, mcpHosts] = await Promise.all([
+          invoke<Connection[]>("load_connections"),
+          invoke<McpHost[]>("get_mcp_hosts")
+        ]);
+        
+        const uniqueHosts = new Set<string>();
+        if (connections) connections.forEach(c => uniqueHosts.add(c.hostname));
+        if (mcpHosts) mcpHosts.forEach(h => uniqueHosts.add(h.hostname));
+        
+        setAvailableHosts(Array.from(uniqueHosts));
+      } catch (e) {
+        console.error("Failed to fetch hosts for suggestions:", e);
+      }
+    };
+    fetchHosts();
   }, []);
 
   // Save history to backend whenever it changes
@@ -224,6 +266,23 @@ function App() {
     const recent = [...items].reverse().slice(0, limit);
     const text = recent.map((s, i) => `${i + 1}. ${s.content}`).join("\n");
     return `\n\n【過去の実行履歴要約】\n${text}`;
+  };
+
+  const handleSelectSuggestion = (host: string) => {
+    const textBeforeCursor = input.slice(0, cursorPos);
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+    const newValue = input.slice(0, atIndex) + host + ' ' + input.slice(cursorPos);
+    setInput(newValue);
+    setShowSuggestions(false);
+    
+    // Focus back to textarea and set cursor position
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        const newPos = atIndex + host.length + 1;
+        textareaRef.current.setSelectionRange(newPos, newPos);
+      }
+    }, 0);
   };
 
   const handleSend = async () => {
@@ -821,30 +880,112 @@ function App() {
               </div>
             )}
             <div className={`input-container ${modelStatus !== "Loaded" ? 'disabled' : ''}`}>
-              <textarea
-                ref={textareaRef}
-                className="chat-input"
-                placeholder={modelStatus === "Loaded" ? "mikomaiに質問する..." : "モデルの準備を待っています..."}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                rows={1}
-                disabled={modelStatus !== "Loaded"}
-                onCompositionStart={() => { isComposing.current = true; }}
-                onCompositionEnd={() => { 
-                  setTimeout(() => { isComposing.current = false; }, 150); 
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    if (isComposing.current || e.nativeEvent.isComposing || e.keyCode === 229) {
-                      return;
+              {showSuggestions && filteredSuggestions.length > 0 && (
+                <div className="suggestion-list">
+                  {filteredSuggestions.map((host, idx) => (
+                    <div 
+                      key={host} 
+                      className={`suggestion-item ${idx === suggestionIndex ? 'selected' : ''}`}
+                      onClick={() => handleSelectSuggestion(host)}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8}}><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                      <span>{host}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="input-wrapper">
+                <textarea
+                  ref={textareaRef}
+                  className="chat-input"
+                  placeholder={modelStatus === "Loaded" ? "mikomaiに質問する..." : "モデルの準備を待っています..."}
+                  value={input}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    const pos = e.target.selectionStart;
+                    setInput(newValue);
+                    setCursorPos(pos);
+                    
+                    // Detect @
+                    const textBeforeCursor = newValue.slice(0, pos);
+                    const atIndex = textBeforeCursor.lastIndexOf('@');
+                    
+                    if (atIndex !== -1) {
+                      const query = textBeforeCursor.slice(atIndex + 1);
+                      // Check if there's space between @ and cursor
+                      if (!query.includes(' ')) {
+                        const filtered = availableHosts.filter(h => 
+                          h.toLowerCase().includes(query.toLowerCase())
+                        );
+                        setFilteredSuggestions(filtered);
+                        setShowSuggestions(true);
+                        setSuggestionIndex(0);
+                      } else {
+                        setShowSuggestions(false);
+                      }
+                    } else {
+                      setShowSuggestions(false);
                     }
-                    if (!e.shiftKey && modelStatus === "Loaded") {
-                      e.preventDefault();
-                      handleSend();
+                  }}
+                  rows={1}
+                  disabled={modelStatus !== "Loaded"}
+                  onCompositionStart={() => { isComposing.current = true; }}
+                  onCompositionEnd={() => { 
+                    setTimeout(() => { isComposing.current = false; }, 150); 
+                  }}
+                  onKeyDown={(e) => {
+                    if (showSuggestions && filteredSuggestions.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setSuggestionIndex(prev => {
+                          const next = (prev + 1) % filteredSuggestions.length;
+                          // Scroll into view logic
+                          const list = document.querySelector('.suggestion-list');
+                          const items = list?.querySelectorAll('.suggestion-item');
+                          if (items && items[next]) {
+                            (items[next] as HTMLElement).scrollIntoView({ block: 'nearest' });
+                          }
+                          return next;
+                        });
+                        return;
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setSuggestionIndex(prev => {
+                          const next = (prev - 1 + filteredSuggestions.length) % filteredSuggestions.length;
+                          // Scroll into view logic
+                          const list = document.querySelector('.suggestion-list');
+                          const items = list?.querySelectorAll('.suggestion-item');
+                          if (items && items[next]) {
+                            (items[next] as HTMLElement).scrollIntoView({ block: 'nearest' });
+                          }
+                          return next;
+                        });
+                        return;
+                      }
+                      if (e.key === 'Enter' || e.key === 'Tab') {
+                        e.preventDefault();
+                        handleSelectSuggestion(filteredSuggestions[suggestionIndex]);
+                        return;
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        setShowSuggestions(false);
+                        return;
+                      }
                     }
-                  }
-                }}
-              />
+
+                    if (e.key === 'Enter') {
+                      if (isComposing.current || (e.nativeEvent as any).isComposing || e.keyCode === 229) {
+                        return;
+                      }
+                      if (!e.shiftKey && modelStatus === "Loaded") {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }
+                  }}
+                />
                 <button 
                   className="send-button" 
                   onClick={handleSend}
@@ -856,10 +997,11 @@ function App() {
                 </button>
               </div>
             </div>
-          </main>
-        )}
-        </div>
-      </div>
+          </div>
+        </main>
+      )}
+    </div>
+  </div>
       
       {/* Status Bar */}
       <footer className="status-bar">
