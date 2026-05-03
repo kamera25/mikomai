@@ -175,9 +175,20 @@ pub async fn ask_llm(
     let max_tokens = 2048 - 512; // Leave 512 for response
     if tokens.len() > max_tokens {
         println!("Prompt too long ({} tokens), truncating to {} tokens", tokens.len(), max_tokens);
-        // Keep the start (system prompt) and end (user prompt) but truncate middle if possible?
-        // For simplicity, just take the first max_tokens.
-        tokens.truncate(max_tokens);
+
+        // We want to keep the system prompt at the beginning and the user query at the end.
+        // We will remove tokens from the middle.
+        let to_remove = tokens.len() - max_tokens;
+        // Keep some fixed amount of tokens from the start (e.g. system prompt and start of context)
+        // and remove the middle section.
+        let start_keep = 500;
+
+        if tokens.len() > start_keep + to_remove {
+            tokens.drain(start_keep..(start_keep + to_remove));
+        } else {
+            // Fallback just in case
+            tokens.truncate(max_tokens);
+        }
     }
 
     let mut batch = LlamaBatch::new(2048, 1);
@@ -285,7 +296,19 @@ pub async fn ask_llm_background(
     ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(2048));
 
     let mut ctx = model.new_context(&state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
-    let tokens = model.str_to_token(&formatted_prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
+    let mut tokens = model.str_to_token(&formatted_prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
+
+    let max_tokens = 2048 - 512;
+    if tokens.len() > max_tokens {
+        let to_remove = tokens.len() - max_tokens;
+        let start_keep = 500;
+
+        if tokens.len() > start_keep + to_remove {
+            tokens.drain(start_keep..(start_keep + to_remove));
+        } else {
+            tokens.truncate(max_tokens);
+        }
+    }
 
     let mut batch = LlamaBatch::new(2048, 1);
     let last_index = tokens.len() - 1;
