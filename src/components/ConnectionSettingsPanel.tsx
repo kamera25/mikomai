@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import Papa from 'papaparse';
 import './ConnectionSettingsPanel.css';
 
 interface ConnectionSettingsPanelProps {
@@ -39,6 +40,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mcpHosts, setMcpHosts] = useState<McpHost[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchMcpHosts = async () => {
@@ -195,6 +197,134 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
       setIsEditing(false);
     }
+  };
+
+  const handleDeleteCurrent = async () => {
+    if (!editingId) return;
+
+    const connToDelete = connections.find(c => c.id === editingId);
+    if (!connToDelete) return;
+
+    if (!confirm(`ホスト「${connToDelete.hostname}」を削除してもよろしいですか？`)) {
+      return;
+    }
+
+    const updatedConnections = connections.filter(conn => conn.id !== editingId);
+    setConnections(updatedConnections);
+
+    // Clean up selectedIds to avoid dangling state
+    setSelectedIds(prev => prev.filter(id => id !== editingId));
+
+    try {
+      await invoke('save_connections', { connections: updatedConnections });
+    } catch (e) {
+      console.error("Failed to delete connection:", e);
+    }
+
+    setIsEditing(false);
+    setEditingId(null);
+  };
+
+  const handleImportCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      Papa.parse(text, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          const newConnections: Connection[] = [];
+
+          results.data.forEach((row: any, i) => {
+            if (row.hostname && row.ip) {
+              const newConn: Connection = {
+                id: row.id || Date.now().toString() + i,
+                status: (row.status === 'online' || row.status === 'offline') ? row.status : 'offline',
+                hostname: row.hostname,
+                ip: row.ip,
+                type: row.type || 'SSH',
+                lastConnected: row.lastConnected || 'Never'
+              };
+              newConnections.push(newConn);
+            }
+          });
+
+          if (newConnections.length > 0) {
+            const updatedConnections = [...connections];
+            for (const newConn of newConnections) {
+              const existingIdx = updatedConnections.findIndex(c => c.id === newConn.id);
+              if (existingIdx >= 0) {
+                updatedConnections[existingIdx] = newConn;
+              } else {
+                updatedConnections.push(newConn);
+              }
+            }
+
+            setConnections(updatedConnections);
+            try {
+              await invoke('save_connections', { connections: updatedConnections });
+              alert(`${newConnections.length}件のホストをインポートしました。`);
+            } catch (error) {
+              console.error("Failed to save imported connections:", error);
+            }
+          }
+        }
+      });
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+
+    reader.readAsText(file);
+  };
+
+  const handleExportCsv = () => {
+    // Basic CSV escaping function
+    const escapeCsv = (val: string) => {
+      if (val == null) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const headers = ['id', 'status', 'hostname', 'ip', 'type', 'lastConnected'];
+    const csvRows = [];
+
+    // Add header row
+    csvRows.push(headers.map(escapeCsv).join(','));
+
+    // Add data rows
+    for (const conn of connections) {
+      const row = [
+        conn.id,
+        conn.status,
+        conn.hostname,
+        conn.ip,
+        conn.type,
+        conn.lastConnected
+      ];
+      csvRows.push(row.map(escapeCsv).join(','));
+    }
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'connections.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const toggleSelect = (id: string) => {
@@ -421,6 +551,11 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
         )}
       </div>
       <footer className="form-footer">
+        {editingId && (
+          <button className="btn-cancel" style={{ marginRight: 'auto', backgroundColor: '#fee2e2', color: '#dc2626', borderColor: '#f87171' }} onClick={handleDeleteCurrent}>
+            削除
+          </button>
+        )}
         <button className="btn-cancel" onClick={() => setIsEditing(false)}>キャンセル</button>
         <button className="btn-save" onClick={handleSave}>{editingId ? '変更を保存' : 'ホストを登録'}</button>
       </footer>
@@ -461,11 +596,18 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </button>
                 <div className="csv-actions">
-                  <button className="toolbar-btn csv-btn">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    ref={fileInputRef}
+                    style={{ display: 'none' }}
+                    onChange={handleImportCsv}
+                  />
+                  <button className="toolbar-btn csv-btn" onClick={() => fileInputRef.current?.click()}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     CSVインポート
                   </button>
-                  <button className="toolbar-btn csv-btn">
+                  <button className="toolbar-btn csv-btn" onClick={handleExportCsv}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                     CSVエクスポート
                   </button>
