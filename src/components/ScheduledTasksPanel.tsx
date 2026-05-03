@@ -1,9 +1,125 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './ScheduledTasksPanel.css';
 
 interface ScheduledTasksPanelProps {
   onClose: () => void;
 }
+
+type ScheduleType = 'weekly' | 'daily' | 'hourly' | 'minutely' | 'secondly' | 'custom';
+
+const ScheduleInput: React.FC<{ value: string; onChange: (val: string) => void }> = ({ value, onChange }) => {
+  const [type, setType] = useState<ScheduleType>('custom');
+  const [dayOfWeek, setDayOfWeek] = useState('月曜');
+  const [time, setTime] = useState('00:00');
+  const [minute, setMinute] = useState('0');
+  const [second, setSecond] = useState('0');
+  const [customText, setCustomText] = useState('');
+
+  useEffect(() => {
+    if (value.startsWith('毎週') && value.includes(' ')) {
+      setType('weekly');
+      const parts = value.split(' ');
+      setDayOfWeek(parts[0].replace('毎週', ''));
+      setTime(parts[1]);
+    } else if (value.startsWith('毎日 ')) {
+      setType('daily');
+      setTime(value.replace('毎日 ', ''));
+    } else if (value.startsWith('毎時 ') && value.endsWith('分')) {
+      setType('hourly');
+      setMinute(value.replace('毎時 ', '').replace('分', ''));
+    } else if (value.startsWith('毎分 ') && value.endsWith('秒')) {
+      setType('minutely');
+      setSecond(value.replace('毎分 ', '').replace('秒', ''));
+    } else if (value === '毎秒') {
+      setType('secondly');
+    } else {
+      setType('custom');
+      setCustomText(value);
+    }
+  }, [value]);
+
+  const handleChange = (
+    newType: ScheduleType,
+    newDay: string,
+    newTime: string,
+    newMin: string,
+    newSec: string,
+    newCustom: string
+  ) => {
+    setType(newType);
+    setDayOfWeek(newDay);
+    setTime(newTime);
+    setMinute(newMin);
+    setSecond(newSec);
+    setCustomText(newCustom);
+
+    let newValue = '';
+    if (newType === 'weekly') {
+      newValue = `毎週${newDay} ${newTime}`;
+    } else if (newType === 'daily') {
+      newValue = `毎日 ${newTime}`;
+    } else if (newType === 'hourly') {
+      newValue = `毎時 ${newMin}分`;
+    } else if (newType === 'minutely') {
+      newValue = `毎分 ${newSec}秒`;
+    } else if (newType === 'secondly') {
+      newValue = `毎秒`;
+    } else {
+      newValue = newCustom;
+    }
+    onChange(newValue);
+  };
+
+  return (
+    <div className="schedule-input-container">
+      <select value={type} onChange={(e) => handleChange(e.target.value as ScheduleType, dayOfWeek, time, minute, second, customText)} className="schedule-type-select">
+        <option value="weekly">週次</option>
+        <option value="daily">毎日</option>
+        <option value="hourly">毎時</option>
+        <option value="minutely">毎分</option>
+        <option value="secondly">毎秒</option>
+        <option value="custom">カスタム</option>
+      </select>
+
+      {type === 'weekly' && (
+        <>
+          <select value={dayOfWeek} onChange={(e) => handleChange(type, e.target.value, time, minute, second, customText)} className="schedule-day-select">
+            <option value="月曜">月曜</option>
+            <option value="火曜">火曜</option>
+            <option value="水曜">水曜</option>
+            <option value="木曜">木曜</option>
+            <option value="金曜">金曜</option>
+            <option value="土曜">土曜</option>
+            <option value="日曜">日曜</option>
+          </select>
+          <input type="time" value={time} onChange={(e) => handleChange(type, dayOfWeek, e.target.value, minute, second, customText)} />
+        </>
+      )}
+
+      {type === 'daily' && (
+        <input type="time" value={time} onChange={(e) => handleChange(type, dayOfWeek, e.target.value, minute, second, customText)} />
+      )}
+
+      {type === 'hourly' && (
+        <div className="schedule-flex-input">
+          <input type="number" min="0" max="59" value={minute} onChange={(e) => handleChange(type, dayOfWeek, time, e.target.value, second, customText)} />
+          <span>分</span>
+        </div>
+      )}
+
+      {type === 'minutely' && (
+        <div className="schedule-flex-input">
+          <input type="number" min="0" max="59" value={second} onChange={(e) => handleChange(type, dayOfWeek, time, minute, e.target.value, customText)} />
+          <span>秒</span>
+        </div>
+      )}
+
+      {type === 'custom' && (
+        <input type="text" value={customText} onChange={(e) => handleChange(type, dayOfWeek, time, minute, second, e.target.value)} placeholder="例: 毎月1日 00:00" />
+      )}
+    </div>
+  );
+};
 
 interface ScheduledTask {
   id: string;
@@ -26,6 +142,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
   const [tasks, setTasks] = useState<ScheduledTask[]>(initialMockTasks);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTask, setEditingTask] = useState<ScheduledTask | null>(null);
+  const [isNewTask, setIsNewTask] = useState(false);
 
   const filteredTasks = tasks.filter(task => 
     task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -34,8 +151,13 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
 
   const handleSaveTask = () => {
     if (editingTask) {
-      setTasks(prev => prev.map(t => t.id === editingTask.id ? editingTask : t));
+      if (isNewTask) {
+        setTasks(prev => [...prev, editingTask]);
+      } else {
+        setTasks(prev => prev.map(t => t.id === editingTask.id ? editingTask : t));
+      }
       setEditingTask(null);
+      setIsNewTask(false);
     }
   };
 
@@ -105,7 +227,10 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                       </div>
                       <span 
                         className="task-name-text" 
-                        onClick={() => setEditingTask({ ...task })}
+                        onClick={() => {
+                          setEditingTask({ ...task });
+                          setIsNewTask(false);
+                        }}
                       >
                         {task.name}
                       </span>
@@ -129,7 +254,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
             <div className="task-settings-card">
               <header className="settings-card-header">
                 <h3>タスク詳細設定</h3>
-                <button className="close-card-btn" onClick={() => setEditingTask(null)}>&times;</button>
+                <button className="close-card-btn" onClick={() => { setEditingTask(null); setIsNewTask(false); }}>&times;</button>
               </header>
               <div className="settings-card-body">
                 <div className="settings-form-group">
@@ -142,24 +267,26 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                 </div>
                 <div className="settings-form-group">
                   <label>実行タイミング</label>
-                  <input 
-                    type="text" 
+                  <ScheduleInput
                     value={editingTask.schedule} 
-                    onChange={(e) => setEditingTask({ ...editingTask, schedule: e.target.value })}
+                    onChange={(val) => setEditingTask({ ...editingTask, schedule: val })}
                   />
                 </div>
                 <div className="settings-form-group">
-                  <label>プロンプト (表示専用)</label>
+                  <label>プロンプト {isNewTask ? '' : '(表示専用)'}</label>
                   <textarea 
                     value={editingTask.prompt} 
-                    readOnly 
-                    className="readonly-prompt-area"
+                    readOnly={!isNewTask}
+                    onChange={(e) => setEditingTask({ ...editingTask, prompt: e.target.value })}
+                    className={isNewTask ? "" : "readonly-prompt-area"}
                   />
-                  <p className="field-hint">※ プロンプトの内容はシステムによって管理されており、変更できません。</p>
+                  {!isNewTask && (
+                    <p className="field-hint">※ プロンプトの内容はシステムによって管理されており、変更できません。</p>
+                  )}
                 </div>
               </div>
               <footer className="settings-card-footer">
-                <button className="settings-cancel-btn" onClick={() => setEditingTask(null)}>キャンセル</button>
+                <button className="settings-cancel-btn" onClick={() => { setEditingTask(null); setIsNewTask(false); }}>キャンセル</button>
                 <button className="settings-save-btn" onClick={handleSaveTask}>保存</button>
               </footer>
             </div>
@@ -167,7 +294,17 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
         )}
 
         <footer className="scheduled-panel-footer">
-          <button className="add-task-btn">新規タスク追加</button>
+          <button className="add-task-btn" onClick={() => {
+            setIsNewTask(true);
+            setEditingTask({
+              id: Date.now().toString(),
+              name: '',
+              status: 'stopped',
+              schedule: '毎日 00:00',
+              lastRun: '-',
+              prompt: ''
+            });
+          }}>新規タスク追加</button>
           <button className="delete-selected-btn" style={{ padding: '12px 32px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>削除</button>
         </footer>
       </div>

@@ -323,3 +323,54 @@
 .settings-save-btn:hover {
   background-color: #2563eb;
 }
+
+/* Schedule Input Component Styles */
+.schedule-input-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.schedule-type-select,
+.schedule-day-select {
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  color: #1e293b;
+  background-color: #f8fafc;
+  transition: all 0.2s;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.schedule-type-select:focus,
+.schedule-day-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background-color: white;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.schedule-input-container input[type="time"],
+.schedule-input-container input[type="number"],
+.schedule-input-container input[type="text"] {
+  flex-grow: 1;
+}
+
+.schedule-flex-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-grow: 1;
+}
+
+.schedule-flex-input input {
+  width: 100%;
+}
+
+.schedule-flex-input span {
+  font-size: 0.95rem;
+  color: #64748b;
+  white-space: nowrap;
+}
