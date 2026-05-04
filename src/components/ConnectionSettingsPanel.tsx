@@ -25,17 +25,10 @@ interface McpHost {
   username: string;
 }
 
-const mockConnections: Connection[] = [
-  { id: '1', status: 'online', hostname: 'Core-Switch-01', ip: '192.168.1.1', type: 'SSH (Cisco IOS)', lastConnected: '2024-05-02 14:20' },
-  { id: '2', status: 'offline', hostname: 'Edge-Router-02', ip: '192.168.2.1', type: 'SSH (Juniper JunOS)', lastConnected: '2024-04-30 09:15' },
-  { id: '3', status: 'online', hostname: 'Dist-Switch-03', ip: '192.168.1.10', type: 'Telnet (Arista)', lastConnected: '2024-05-02 17:45' },
-  { id: '4', status: 'online', hostname: 'Server-Farm-01', ip: '10.0.5.50', type: 'SSH (Ubuntu)', lastConnected: '2024-05-01 22:10' },
-  { id: '5', status: 'offline', hostname: 'Backup-Router', ip: '172.16.0.1', type: 'SSH (Cisco XE)', lastConnected: 'Never' },
-  { id: '6', status: 'online', hostname: 'Access-Point-04', ip: '192.168.5.25', type: 'SSH (Aruba)', lastConnected: '2024-05-02 10:30' },
-];
+// Removed mockConnections as they are no longer needed
 
 export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = ({ onClose }) => {
-  const [connections, setConnections] = useState<Connection[]>(mockConnections);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

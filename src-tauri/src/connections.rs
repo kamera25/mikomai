@@ -55,34 +55,8 @@ pub fn save_connections(app: tauri::AppHandle, connections: Vec<Connection>) -> 
 
 #[tauri::command]
 pub fn get_mcp_hosts() -> Result<Vec<McpHost>, String> {
-    // Mock MCP Registry
-    let hosts = vec![
-        McpHost {
-            hostname: "Core-Switch-01".to_string(),
-            ip: "192.168.1.1".to_string(),
-            device_type: "SSH (Cisco IOS)".to_string(),
-            username: "admin".to_string(),
-        },
-        McpHost {
-            hostname: "Edge-Router-02".to_string(),
-            ip: "192.168.2.1".to_string(),
-            device_type: "SSH (Juniper JunOS)".to_string(),
-            username: "root".to_string(),
-        },
-        McpHost {
-            hostname: "Dist-Switch-03".to_string(),
-            ip: "192.168.1.10".to_string(),
-            device_type: "Telnet (Arista)".to_string(),
-            username: "admin".to_string(),
-        },
-        McpHost {
-            hostname: "Server-Farm-01".to_string(),
-            ip: "10.0.5.50".to_string(),
-            device_type: "SSH (Ubuntu)".to_string(),
-            username: "root".to_string(),
-        },
-    ];
-    Ok(hosts)
+    // Return empty list as mock is no longer needed
+    Ok(vec![])
 }
 
 pub fn resolve_host_with_mcp(app: &tauri::AppHandle, host: &str) -> String {
@@ -169,9 +143,8 @@ mod tests {
     }
 
     #[test]
-    fn test_get_mcp_hosts_returns_data() {
+    fn test_get_mcp_hosts_returns_empty_list() {
         let hosts = get_mcp_hosts().unwrap();
-        assert!(!hosts.is_empty());
-        assert_eq!(hosts[0].hostname, "Core-Switch-01");
+        assert!(hosts.is_empty());
     }
 }
