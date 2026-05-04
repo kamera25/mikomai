@@ -11,6 +11,8 @@ pub struct AppSettings {
     pub repetition_penalty: f32,
     pub model_path: Option<String>,
     pub recent_ips: Vec<String>,
+    #[serde(default)]
+    pub mcp_timeout: Option<u64>,
 }
 
 impl Default for AppSettings {
@@ -21,6 +23,7 @@ impl Default for AppSettings {
             repetition_penalty: 1.1,
             model_path: None,
             recent_ips: Vec::new(),
+            mcp_timeout: Some(30),
         }
     }
 }

@@ -8,13 +8,15 @@ interface UseMcpProps {
   summaries: SummaryItem[];
   setSummaries: React.Dispatch<React.SetStateAction<SummaryItem[]>>;
   historyLimit: number;
+  mcpTimeout?: number;
 }
 
 export function useMcp({ 
   setMessages, 
   summaries, 
   setSummaries, 
-  historyLimit 
+  historyLimit,
+  mcpTimeout = 30
 }: UseMcpProps) {
 
   const summarizeAndSave = async (content: string) => {
@@ -64,7 +66,14 @@ export function useMcp({
     
     setMessages(prev => [...prev, { role: "ai", content: statusMsg, timestamp: new Date().toISOString(), isToolLoading: true }]);
     try {
-      const result: any = await invoke(toolId, args);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("MCP execution timed out")), mcpTimeout * 1000)
+      );
+
+      const result: any = await Promise.race([
+        invoke(toolId, args),
+        timeoutPromise
+      ]);
       const statusBadge = result.success ? "✅ 成功" : "❌ 失敗";
       const resultMessage = result.success ? 
         `### ${toolLabel} 実行結果: ${statusBadge}\n\`\`\`terminal\n${result.output}\n\`\`\`` :

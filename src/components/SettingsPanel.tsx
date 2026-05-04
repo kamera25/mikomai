@@ -15,6 +15,8 @@ interface SettingsPanelProps {
   onRepetitionPenaltyChange: (penalty: number) => void;
   modelPath: string | null;
   onModelPathChange: (path: string) => void;
+  mcpTimeout: number;
+  onMcpTimeoutChange: (timeout: number) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
@@ -27,7 +29,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   repetitionPenalty,
   onRepetitionPenaltyChange,
   modelPath: _savedModelPath,
-  onModelPathChange
+  onModelPathChange,
+  mcpTimeout,
+  onMcpTimeoutChange
 }) => {
   const [repoPath, setRepoPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E4B-it-Q4_K_M.gguf");
@@ -143,6 +147,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
               <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
                 同じ言葉の繰り返しを抑制します。1.0で無効、値を大きくするほど繰り返しが少なくなります。
+              </p>
+            </div>
+            <div className="form-control">
+              <label>MCP 実行タイムアウト (秒)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <input
+                  type="range"
+                  min="5"
+                  max="120"
+                  step="5"
+                  value={mcpTimeout}
+                  onChange={(e) => onMcpTimeoutChange(parseInt(e.target.value))}
+                  style={{ flexGrow: 1 }}
+                />
+                <span style={{ minWidth: '32px', fontWeight: 'bold', color: 'var(--accent-color)' }}>{mcpTimeout}</span>
+              </div>
+              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+                ツール (MCP) 実行の最大待機時間です。時間を超えると処理を中断します。
               </p>
             </div>
           </section>
