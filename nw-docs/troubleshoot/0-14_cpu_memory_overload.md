@@ -1,7 +1,7 @@
 ---
 brand: 共通 全て
 ---
-[Context: {brand} troubleshoot]
+[Context: {brand} troubleshooting]
 
 ## Problem: `ネットワーク機器のリソース（CPU/メモリ）枯渇による通信遅延やドロップ`
 

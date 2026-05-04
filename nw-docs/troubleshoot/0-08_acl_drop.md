@@ -1,7 +1,7 @@
 ---
 brand: 共通 全て
 ---
-[Context: {brand} troubleshoot]
+[Context: {brand} troubleshooting]
 
 ## Problem: `ACL（アクセスコントロールリスト）による意図しない通信遮断`
 

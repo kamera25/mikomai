@@ -1,7 +1,7 @@
 ---
 brand: 共通 全て
 ---
-[Context: {brand} troubleshoot]
+[Context: {brand} troubleshooting]
 
 ## Problem: `VLANの不一致により通信ができない`
 

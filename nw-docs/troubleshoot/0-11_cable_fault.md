@@ -1,7 +1,7 @@
 ---
 brand: 共通 全て
 ---
-[Context: {brand} troubleshoot]
+[Context: {brand} troubleshooting]
 
 ## Problem: `物理的なケーブル不良によるリンクダウンや通信エラー`
 

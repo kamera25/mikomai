@@ -1,7 +1,7 @@
 ---
 brand: 共通 全て
 ---
-[Context: {brand} troubleshoot]
+[Context: {brand} troubleshooting]
 
 ## Problem: `ARP解決の失敗による同一セグメント内の通信不可`
 

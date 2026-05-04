@@ -1,7 +1,7 @@
 ---
 brand: 共通 全て
 ---
-[Context: {brand} troubleshoot]
+[Context: {brand} troubleshooting]
 
 ## Problem: `Speed/Duplexの不一致（Auto-Negotiation失敗）によるパフォーマンス低下`
 

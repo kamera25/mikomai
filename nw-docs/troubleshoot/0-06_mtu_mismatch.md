@@ -1,7 +1,7 @@
 ---
 brand: 共通 全て
 ---
-[Context: {brand} troubleshoot]
+[Context: {brand} troubleshooting]
 
 ## Problem: `MTUサイズの不一致によるパケットドロップ（特定の通信のみ失敗）`
 
