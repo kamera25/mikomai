@@ -498,6 +498,9 @@ function App() {
                   </svg>
                 </button>
                 <h1 className="header-title">mikomai</h1>
+                {recentIPs.length > 0 && (
+                  <span className="header-hostname">{recentIPs[0]}</span>
+                )}
               </div>
             </header>
     
