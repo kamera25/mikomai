@@ -1,8 +1,8 @@
 [package]
 name = "mikomai"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Managed Infrastructure Knowledge Operator of Ml Agent Interface."
+authors = ["NAKAOKU Takahiro"]
 license = "MIT"
 edition = "2021"
 
