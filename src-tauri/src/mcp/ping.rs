@@ -15,15 +15,12 @@ fn resolve_host(host: &str) -> Result<IpAddr, String> {
     addrs.into_iter().next().map(|a| a.ip()).ok_or("Could not resolve host".to_string())
 }
 
-#[tauri::command]
-pub async fn network_ping(
-    app: tauri::AppHandle,
-    host: String,
+pub async fn network_ping_core(
+    resolved_host: String,
     size: Option<usize>,
     count: Option<u32>,
     df: Option<bool>,
 ) -> Result<PingResult, String> {
-    let resolved_host = resolve_host_with_mcp(&app, &host);
     let df_val = df.unwrap_or(false);
     
     // If DF is requested, use system ping fallback (macOS/Linux)
@@ -77,6 +74,18 @@ pub async fn network_ping(
         success: success_count > 0,
         output,
     })
+}
+
+#[tauri::command]
+pub async fn network_ping(
+    app: tauri::AppHandle,
+    host: String,
+    size: Option<usize>,
+    count: Option<u32>,
+    df: Option<bool>,
+) -> Result<PingResult, String> {
+    let resolved_host = resolve_host_with_mcp(&app, &host);
+    network_ping_core(resolved_host, size, count, df).await
 }
 
 async fn run_system_ping(host: &str, size: Option<usize>, count: Option<u32>, df: bool) -> Result<PingResult, String> {
@@ -159,5 +168,32 @@ mod tests {
         assert!(ip.is_ok());
         let ip_str = ip.unwrap().to_string();
         assert!(ip_str == "127.0.0.1" || ip_str == "::1");
+    }
+
+    #[tokio::test]
+    async fn test_network_ping_core_localhost() {
+        // Note: this test uses standard surge_ping or system fallback
+        // It might fail on Linux without correct permissions for surge_ping if not root,
+        // but we'll try to run it. If it fails, users usually run it with df=true.
+        // Let's test the system fallback directly (df=true).
+        let result = network_ping_core("127.0.0.1".to_string(), Some(32), Some(1), Some(true)).await;
+        assert!(result.is_ok());
+        let ping_res = result.unwrap();
+        assert!(ping_res.success);
+        assert!(ping_res.output.contains("127.0.0.1"));
+    }
+
+    #[tokio::test]
+    async fn test_network_ping_core_invalid_host() {
+        let result = network_ping_core("invalid.localdomain.test".to_string(), Some(32), Some(1), Some(false)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_run_system_ping_localhost() {
+        let result = run_system_ping("127.0.0.1", Some(56), Some(1), false).await;
+        assert!(result.is_ok());
+        let ping_res = result.unwrap();
+        assert!(ping_res.success);
     }
 }
