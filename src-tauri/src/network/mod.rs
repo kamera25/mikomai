@@ -194,28 +194,4 @@ pub async fn send_mcp_message(state: State<'_, McpState>, message: String) -> Re
     }
 }
 
-#[tauri::command]
-pub async fn resolve_ip(ip: String) -> Result<String, String> {
-    println!("Resolving IP: {}", ip);
-    let output = std::process::Command::new("nslookup")
-        .arg(&ip)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        if line.to_lowercase().contains("name =") {
-            return Ok(line.split("name =").last().unwrap().trim().trim_end_matches('.').to_string());
-        }
-    }
-    
-    // If not found in name = format, look for Name: format (some versions of nslookup)
-    let lines: Vec<&str> = stdout.lines().collect();
-    for i in 0..lines.len() {
-        if lines[i].contains("Name:") && i + 1 < lines.len() {
-            return Ok(lines[i].split("Name:").last().unwrap().trim().to_string());
-        }
-    }
-
-    Err("Not found".to_string())
-}
+pub mod dns;
