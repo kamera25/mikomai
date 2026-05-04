@@ -10,7 +10,8 @@
     "check": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
-    "mcp": "tsx src/mcp-server.ts"
+    "mcp": "tsx src/mcp-server.ts",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

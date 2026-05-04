@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Message, SummaryItem } from "../types";
+import { parsePingCommand } from "../utils/commandParser";
 
 interface UseMcpProps {
   messages: Message[];
@@ -180,24 +181,7 @@ export function useMcp({
   const handleMcpResponse = async (userMessage: string) => {
     const lowerInput = userMessage.toLowerCase();
     
-    let pingArgs: any = null;
-    const pingBaseMatch = lowerInput.match(/(?:ping|ピン|ピング)\s+([a-zA-Z0-9.:-]+)/) || 
-                          lowerInput.match(/([a-zA-Z0-9.:-]+)\s*(?:に|へ)?\s*(?:ping|ピン|ピング)/);
-    
-    if (pingBaseMatch) {
-      const host = pingBaseMatch[1];
-      pingArgs = { host };
-      
-      const sizeMatch = lowerInput.match(/(?:size|サイズ)\s*(\d+)/);
-      if (sizeMatch) pingArgs.size = parseInt(sizeMatch[1]);
-      
-      const countMatch = lowerInput.match(/(?:count|回数|回|回実行)\s*(\d+)/);
-      if (countMatch) pingArgs.count = parseInt(countMatch[1]);
-
-      if (lowerInput.includes("df") || lowerInput.includes("フラグメント禁止") || lowerInput.includes("断片化禁止")) {
-        pingArgs.df = true;
-      }
-    }
+    const pingArgs = parsePingCommand(userMessage);
     
     const traceMatch = lowerInput.match(/(?:trace(?:route)?|トレース|トレースルート)\s+([a-zA-Z0-9.:-]+)/) ||
                        lowerInput.match(/([a-zA-Z0-9.:-]+)\s*(?:に|へ)?\s*(?:trace(?:route)?|トレース|トレースルート)/);
