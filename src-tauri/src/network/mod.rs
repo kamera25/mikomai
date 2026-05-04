@@ -20,8 +20,8 @@ pub struct CommandResult {
 
 // Abstract trait for network operations
 pub trait NetworkInterface {
-    fn execute_show(&self, device: &DeviceConfig, command: &str) -> Result<String, String>;
-    fn execute_config(&self, device: &DeviceConfig, commands: Vec<String>) -> Result<String, String>;
+    async fn execute_show(&self, device: &DeviceConfig, command: &str) -> Result<String, String>;
+    async fn execute_config(&self, device: &DeviceConfig, commands: Vec<String>) -> Result<String, String>;
 }
 
 // Implementation using a Tauri Sidecar fallback
@@ -34,15 +34,13 @@ impl SidecarNetmikoWrapper {
         Self { app: app.clone() }
     }
 
-    fn run_sidecar(&self, args: Vec<String>) -> Result<String, String> {
+    async fn run_sidecar(&self, args: Vec<String>) -> Result<String, String> {
         let sidecar = self.app.shell()
             .sidecar("netmiko_wrapper")
             .map_err(|e| format!("Failed to create sidecar command: {}", e))?
             .args(args);
 
-        // Run synchronously blockingly for now to match the trait
-        // Note: we might want to change NetworkInterface to be async later
-        let output = tauri::async_runtime::block_on(async { sidecar.output().await })
+        let output = sidecar.output().await
             .map_err(|e| format!("Failed to execute sidecar: {}", e))?;
 
         if output.status.success() {
@@ -54,7 +52,7 @@ impl SidecarNetmikoWrapper {
 }
 
 impl NetworkInterface for SidecarNetmikoWrapper {
-    fn execute_show(&self, device: &DeviceConfig, command: &str) -> Result<String, String> {
+    async fn execute_show(&self, device: &DeviceConfig, command: &str) -> Result<String, String> {
         let args = vec![
             "--action".to_string(), "show".to_string(),
             "--host".to_string(), device.host.clone(),
@@ -63,10 +61,10 @@ impl NetworkInterface for SidecarNetmikoWrapper {
             "--device_type".to_string(), device.device_type.clone(),
             "--command".to_string(), command.to_string()
         ];
-        self.run_sidecar(args)
+        self.run_sidecar(args).await
     }
 
-    fn execute_config(&self, device: &DeviceConfig, commands: Vec<String>) -> Result<String, String> {
+    async fn execute_config(&self, device: &DeviceConfig, commands: Vec<String>) -> Result<String, String> {
         let commands_json = serde_json::to_string(&commands).unwrap_or_default();
         let args = vec![
             "--action".to_string(), "config".to_string(),
@@ -76,7 +74,7 @@ impl NetworkInterface for SidecarNetmikoWrapper {
             "--device_type".to_string(), device.device_type.clone(),
             "--commands".to_string(), commands_json
         ];
-        self.run_sidecar(args)
+        self.run_sidecar(args).await
     }
 }
 
@@ -99,7 +97,7 @@ pub async fn network_show(
 
     println!("Executing read-only command on {}: {}", target_device.host, command);
     let wrapper = SidecarNetmikoWrapper::new(&app);
-    match wrapper.execute_show(&target_device, &command) {
+    match wrapper.execute_show(&target_device, &command).await {
         Ok(output) => Ok(CommandResult { success: true, output }),
         Err(err) => Ok(CommandResult { success: false, output: err }),
     }
@@ -124,7 +122,7 @@ pub async fn network_config(
 
     println!("Executing WRITE command on {}: {:?}", target_device.host, commands);
     let wrapper = SidecarNetmikoWrapper::new(&app);
-    match wrapper.execute_config(&target_device, commands) {
+    match wrapper.execute_config(&target_device, commands).await {
         Ok(output) => Ok(CommandResult { success: true, output }),
         Err(err) => Ok(CommandResult { success: false, output: err }),
     }
@@ -138,7 +136,7 @@ pub struct McpState {
 pub async fn start_ns_mcp_server(app: AppHandle, state: State<'_, McpState>) -> Result<String, String> {
     println!("Starting Network Sketcher MCP Server...");
 
-    let mut process_lock = state.process.lock().unwrap();
+    let mut process_lock = state.process.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
     if process_lock.is_some() {
         return Ok("MCP Server is already running".to_string());
     }
@@ -183,7 +181,7 @@ pub async fn start_ns_mcp_server(app: AppHandle, state: State<'_, McpState>) -> 
 
 #[tauri::command]
 pub async fn send_mcp_message(state: State<'_, McpState>, message: String) -> Result<(), String> {
-    let mut process_lock = state.process.lock().unwrap();
+    let mut process_lock = state.process.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
     if let Some(child) = process_lock.as_mut() {
         let payload = format!("{}\n", message);
         child.write(payload.as_bytes())

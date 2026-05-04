@@ -22,7 +22,7 @@ impl RagState {
     }
 
     pub fn get_model(&self) -> Result<Arc<TextEmbedding>, String> {
-        let mut model_lock = self.model.lock().unwrap();
+        let mut model_lock = self.model.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
         if let Some(model) = &*model_lock {
             return Ok(model.clone());
         }
@@ -41,7 +41,7 @@ impl RagState {
 
     pub async fn get_db(&self, app: &tauri::AppHandle) -> Result<Connection, String> {
         {
-            let db_lock = self.db.lock().unwrap();
+            let db_lock = self.db.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
             if let Some(conn) = &*db_lock {
                 return Ok(conn.clone());
             }
@@ -67,7 +67,7 @@ impl RagState {
         
         let conn = connect(&path).execute().await.map_err(|e| format!("DB auto-connect error: {}", e))?;
         
-        let mut db_lock = self.db.lock().unwrap();
+        let mut db_lock = self.db.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
         *db_lock = Some(conn.clone());
         Ok(conn)
     }
@@ -77,7 +77,7 @@ impl RagState {
 pub async fn connect_db(path: String, state: tauri::State<'_, RagState>) -> Result<String, String> {
     let conn = connect(&path).execute().await.map_err(|e| format!("DB connect error: {}", e))?;
     
-    let mut db_lock = state.db.lock().unwrap();
+    let mut db_lock = state.db.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
     *db_lock = Some(conn);
     
     let _ = state.get_model()?;
@@ -178,28 +178,36 @@ pub async fn query_nw_db(
         let text_col = batch.column_by_name("text")
             .ok_or("Column 'text' not found in results")?;
             
-        let text_values: Vec<String> = if let Some(arr) = text_col.as_any().downcast_ref::<LargeStringArray>() {
-            (0..arr.len()).map(|i| arr.value(i).to_string()).collect()
-        } else if let Some(arr) = text_col.as_any().downcast_ref::<StringArray>() {
-            (0..arr.len()).map(|i| arr.value(i).to_string()).collect()
-        } else {
-            return Err(format!("Failed to downcast text column. Actual type: {:?}", text_col.data_type()));
-        };
-
         let path_col = batch.column_by_name("path")
             .ok_or("Column 'path' not found in results")?;
-            
-        let path_values: Vec<String> = if let Some(arr) = path_col.as_any().downcast_ref::<LargeStringArray>() {
-            (0..arr.len()).map(|i| arr.value(i).to_string()).collect()
-        } else if let Some(arr) = path_col.as_any().downcast_ref::<StringArray>() {
-            (0..arr.len()).map(|i| arr.value(i).to_string()).collect()
-        } else {
-            return Err(format!("Failed to downcast path column. Actual type: {:?}", path_col.data_type()));
-        };
+
+        let (text_large, text_small) = (
+            text_col.as_any().downcast_ref::<LargeStringArray>(),
+            text_col.as_any().downcast_ref::<StringArray>(),
+        );
+
+        let (path_large, path_small) = (
+            path_col.as_any().downcast_ref::<LargeStringArray>(),
+            path_col.as_any().downcast_ref::<StringArray>(),
+        );
 
         for i in 0..batch.num_rows() {
-            let text = &text_values[i];
-            let path = &path_values[i];
+            let text = if let Some(arr) = text_large {
+                arr.value(i)
+            } else if let Some(arr) = text_small {
+                arr.value(i)
+            } else {
+                return Err(format!("Failed to downcast text column. Actual type: {:?}", text_col.data_type()));
+            };
+
+            let path = if let Some(arr) = path_large {
+                arr.value(i)
+            } else if let Some(arr) = path_small {
+                arr.value(i)
+            } else {
+                return Err(format!("Failed to downcast path column. Actual type: {:?}", path_col.data_type()));
+            };
+
             context.push_str(&format!("\n--- 検索結果 {} (ソース: {}) ---\n{}\n", count, path, text));
             count += 1;
         }

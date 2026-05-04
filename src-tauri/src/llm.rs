@@ -51,7 +51,7 @@ pub async fn download_model(repo: String, filename: String) -> Result<String, St
 #[tauri::command]
 pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
     {
-        let mut status_lock = state.status.lock().unwrap();
+        let mut status_lock = state.status.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
         *status_lock = ModelState::Loading;
     }
 
@@ -64,17 +64,18 @@ pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<S
         Ok(m) => m,
         Err(e) => {
             let err_msg = format!("Failed to load model: {}", e);
-            let mut status_lock = state.status.lock().unwrap();
-            *status_lock = ModelState::Error(err_msg.clone());
+            if let Ok(mut status_lock) = state.status.lock() {
+                *status_lock = ModelState::Error(err_msg.clone());
+            }
             return Err(err_msg);
         }
     };
     
-    let mut model_lock = state.model.lock().unwrap();
+    let mut model_lock = state.model.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
     *model_lock = Some(model);
     
     {
-        let mut status_lock = state.status.lock().unwrap();
+        let mut status_lock = state.status.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
         *status_lock = ModelState::Loaded;
     }
     
@@ -83,7 +84,10 @@ pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<S
 
 #[tauri::command]
 pub fn get_model_status(state: tauri::State<'_, LlamaState>) -> ModelState {
-    let status_lock = state.status.lock().unwrap();
+    let status_lock = match state.status.lock() {
+        Ok(lock) => lock,
+        Err(_) => return ModelState::Error("Mutex lock poisoned".to_string()),
+    };
     match &*status_lock {
         ModelState::NotLoaded => ModelState::NotLoaded,
         ModelState::Loading => ModelState::Loading,
@@ -181,8 +185,8 @@ pub async fn ask_llm(
 ) -> Result<String, String> {
     println!("Received prompt: {}", prompt);
 
-    let _inference_guard = llama_state.inference_lock.lock().unwrap();
-    let model_lock = llama_state.model.lock().unwrap();
+    let _inference_guard = llama_state.inference_lock.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    let model_lock = llama_state.model.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
     let model = match &*model_lock {
         Some(m) => m,
         None => return Err("Model not loaded. Please configure and load a model first.".to_string()),
@@ -309,8 +313,8 @@ pub async fn ask_llm_background(
     app: tauri::AppHandle,
     state: tauri::State<'_, LlamaState>
 ) -> Result<String, String> {
-    let _inference_guard = state.inference_lock.lock().unwrap();
-    let model_lock = state.model.lock().unwrap();
+    let _inference_guard = state.inference_lock.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    let model_lock = state.model.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
     let model = match &*model_lock {
         Some(m) => m,
         None => return Err("Model not loaded.".to_string()),
