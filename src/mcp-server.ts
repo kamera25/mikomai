@@ -78,12 +78,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         content: [
           {
             type: "text",
-            text: `Failed to write CSV file: ${error.message}`,
+            text: `Failed to write CSV file: ${errorMessage}`,
           },
         ],
         isError: true,
