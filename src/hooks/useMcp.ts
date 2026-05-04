@@ -207,7 +207,7 @@ export function useMcp({
         await executeAndAnalyze(userMessage, "network_list_serial_ports", "Serial Ports", {});
       } else {
         // Fallback to LLM for parsing port and message if not clearly a list request
-        setMessages(prev => [...prev, { role: "ai", content: "思考中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
+        setMessages(prev => [...prev, { role: "ai", content: "考え中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
       }
     } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
       await executeAndAnalyze(userMessage, "network_show", "Show Command", {
@@ -215,7 +215,7 @@ export function useMcp({
         command: "show ip int brief"
       });
     } else {
-      setMessages(prev => [...prev, { role: "ai", content: "思考中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
+      setMessages(prev => [...prev, { role: "ai", content: "考え中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
       
       let fullContent = "";
       let unlisten: () => void = () => {};
