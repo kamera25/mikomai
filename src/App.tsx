@@ -499,7 +499,10 @@ function App() {
                 </button>
                 <h1 className="header-title">mikomai</h1>
                 {recentIPs.length > 0 && (
+                  <div>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
                   <span className="header-hostname">{recentIPs[0]}</span>
+                  </div>
                 )}
               </div>
             </header>
@@ -537,10 +540,6 @@ function App() {
       {/* Status Bar */}
       <footer className="status-bar">
         <div className="status-left">
-          <div className="status-item">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-            <span>{connectedHost}</span>
-          </div>
         </div>
         <div className="status-right">
           <div className="status-item">
