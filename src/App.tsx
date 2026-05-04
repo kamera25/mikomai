@@ -1,61 +1,17 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
 import { ScheduledTasksPanel } from "./components/ScheduledTasksPanel";
-import { Terminal } from "./components/Terminal";
 import "./App.css";
 
-interface Message {
-  role: "user" | "ai";
-  content: string;
-  timestamp?: string; // ISO string
-  isToolLoading?: boolean;
-}
-
-interface SummaryItem {
-  timestamp: string;
-  content: string;
-}
-
-interface Connection {
-  id: string;
-  status: 'online' | 'offline';
-  hostname: string;
-  ip: string;
-  type: string;
-  lastConnected: string;
-}
-
-interface McpHost {
-  hostname: string;
-  ip: string;
-  deviceType: string;
-  username: string;
-}
-
-interface ChatSession {
-  id: string;
-  type: 'session';
-  title: string;
-  messages: Message[];
-}
-
-interface Folder {
-  id: string;
-  type: 'folder';
-  name: string;
-  items: HistoryItem[];
-  isOpen: boolean;
-}
-
-type HistoryItem = Folder | ChatSession;
+import { Message, SummaryItem, Connection, McpHost, ChatSession, HistoryItem } from './types';
+import { Chat } from "./components/Chat/Chat";
+import { ChatInput } from "./components/ChatInput/ChatInput";
+import { Sidebar } from "./components/Sidebar/Sidebar";
+import { ActivityBar } from "./components/ActivityBar/ActivityBar";
 
 function App() {
   const [input, setInput] = useState("");
@@ -583,21 +539,6 @@ function App() {
     }, 500);
   };
 
-  const toggleFolder = (folderId: string) => {
-    const updateItems = (items: HistoryItem[]): HistoryItem[] => {
-      return items.map(item => {
-        if (item.id === folderId && item.type === 'folder') {
-          return { ...item, isOpen: !item.isOpen };
-        }
-        if (item.type === 'folder') {
-          return { ...item, items: updateItems(item.items) };
-        }
-        return item;
-      });
-    };
-    setHistory(prev => updateItems(prev));
-  };
-
   // Helper to find a session in the tree
   const findSession = (items: HistoryItem[], id: string): ChatSession | undefined => {
     for (const item of items) {
@@ -649,131 +590,85 @@ function App() {
     });
   }, [messages, activeSessionId]);
 
-  const renderHistoryItems = (items: HistoryItem[], level = 0) => {
-    return items.map(item => {
-      if (item.type === 'folder') {
-        return (
-          <div key={item.id} className="folder-container">
-            <div 
-              className="folder-item" 
-              style={{ paddingLeft: `${12 + level * 12}px` }}
-              onClick={() => toggleFolder(item.id)}
-            >
-              <div className="folder-icon">
-                <svg className={`chevron ${item.isOpen ? 'open' : ''}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-              </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4, color: 'var(--accent-color)' }}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-              <span className="folder-name">{item.name}</span>
-            </div>
-            {item.isOpen && renderHistoryItems(item.items, level + 1)}
-          </div>
-        );
-      } else {
-        return (
-          <div 
-            key={item.id} 
-            className={`session-item ${activeSessionId === item.id ? 'active' : ''}`}
-            style={{ paddingLeft: `${28 + level * 12}px` }}
-            onClick={() => setActiveSessionId(item.id)}
-          >
-            <span className="session-title">{item.title}</span>
-          </div>
-        );
-      }
-    });
-  };
-
-  return (
+    return (
     <div className="app-container">
       <div className="main-layout">
         {/* Activity Bar (LM Studio style thin left bar) */}
-        <nav className="activity-bar">
-         <div 
-          className={`activity-item ${!isSettingsOpen && !isConnectionOpen && !isScheduledTasksOpen ? 'active' : ''}`} 
-          title="Chat History" 
-          onClick={() => {
-            setIsSettingsOpen(false);
-            setIsConnectionOpen(false);
-            setIsScheduledTasksOpen(false);
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-        </div>
-        <div 
-          className={`activity-item ${isConnectionOpen ? 'active' : ''}`} 
-          title="Connection Settings" 
-          onClick={() => {
-            setIsConnectionOpen(true);
-            setIsSettingsOpen(false);
-            setIsScheduledTasksOpen(false);
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><line x1="12" y1="12" x2="12" y2="8"></line></svg>
-        </div>
-        <div 
-          className={`activity-item ${isScheduledTasksOpen ? 'active' : ''}`} 
-          title="Scheduled Tasks" 
-          onClick={() => {
-            setIsScheduledTasksOpen(true);
-            setIsConnectionOpen(false);
-            setIsSettingsOpen(false);
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-        </div>
-        <div className="spacer"></div>
-        <div 
-          className={`activity-item ${isSettingsOpen ? 'active' : ''}`} 
-          title="Settings" 
-          onClick={() => {
-            setIsSettingsOpen(true);
-            setIsConnectionOpen(false);
-            setIsScheduledTasksOpen(false);
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-        </div>
-      </nav>
+        <ActivityBar
+          isSidebarOpen={isSidebarOpen}
+          setIsSidebarOpen={setIsSidebarOpen}
+          isConnectionOpen={isConnectionOpen}
+          setIsConnectionOpen={setIsConnectionOpen}
+          isScheduledTasksOpen={isScheduledTasksOpen}
+          setIsScheduledTasksOpen={setIsScheduledTasksOpen}
+          isSettingsOpen={isSettingsOpen}
+          setIsSettingsOpen={setIsSettingsOpen}
+        />
 
       {/* Sidebar (History) */}
-      <aside className={`sidebar ${isSidebarOpen ? '' : 'collapsed'}`}>
-        <div className="sidebar-header">
-          <h2>履歴</h2>
-          <div className="header-actions">
-            <button className="icon-button" title="新規フォルダ" onClick={() => {
-              const folderName = prompt("フォルダ名を入力してください");
-              if (folderName) {
-                setHistory(prev => [{
-                  id: `folder-${Date.now()}`,
-                  type: 'folder',
-                  name: folderName,
-                  isOpen: true,
-                  items: []
-                }, ...prev]);
+      <Sidebar
+        isSidebarOpen={isSidebarOpen}
+        history={history}
+        activeSessionId={activeSessionId}
+        createNewFolder={() => {
+          const folderName = prompt("フォルダ名を入力してください");
+          if (folderName) {
+            setHistory(prev => [{
+              id: `folder-${Date.now()}`,
+              type: 'folder',
+              name: folderName,
+              isOpen: true,
+              items: []
+            }, ...prev]);
+          }
+        }}
+        createNewSession={() => {
+          const id = `session-${Date.now()}`;
+          setHistory(prev => [{
+            id,
+            type: 'session',
+            title: "新しいセッション",
+            messages: []
+          }, ...prev]);
+          setActiveSessionId(id);
+          setMessages([]);
+        }}
+        toggleFolder={(folderId: string) => {
+          setHistory(prev => {
+            const toggleNode = (items: HistoryItem[]): HistoryItem[] => {
+              return items.map(item => {
+                if (item.type === 'folder') {
+                  if (item.id === folderId) {
+                    return { ...item, isOpen: !item.isOpen };
+                  }
+                  return { ...item, items: toggleNode(item.items) };
+                }
+                return item;
+              });
+            };
+            return toggleNode(prev);
+          });
+        }}
+        switchSession={async (sessionId: string) => {
+          setActiveSessionId(sessionId);
+          const findSession = (items: HistoryItem[]): ChatSession | null => {
+            for (const item of items) {
+              if (item.type === 'session' && item.id === sessionId) {
+                return item;
               }
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg>
-            </button>
-            <button className="icon-button" title="新規チャット" onClick={() => {
-              const id = `session-${Date.now()}`;
-              setHistory(prev => [{
-                id,
-                type: 'session',
-                title: "新しいセッション",
-                messages: []
-              }, ...prev]);
-              setActiveSessionId(id);
-              setMessages([]);
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
-          </div>
-        </div>
-        
-        <div className="session-list">
-          {renderHistoryItems(history)}
-        </div>
-      </aside>
+              if (item.type === 'folder') {
+                const found = findSession(item.items);
+                if (found) return found;
+              }
+            }
+            return null;
+          };
+          const session = findSession(history);
+          if (session) {
+            setMessages(session.messages);
+          }
+        }}
+      />
 
       {/* Main Viewport (Grouping Chat and Settings) */}
       <div className="main-viewport">
@@ -846,218 +741,30 @@ function App() {
             </header>
     
             {/* Chat History */}
-            <div className="chat-history">
-              {messages.length === 0 ? (
-                <div className="empty-state">
-                  <div>
-                     <img width="64px" height="64px" src="/public/mikomai.png" alt="mikomai" />
-                </div>
-                <h3>mikomai</h3>
-                <p>ネットワーク構築やトラブルシュートをサポートします。サポートして欲しいことを伝えてみてください。</p>
-                <p>例えば、マニュアルの取得、スイッチの状態確認、構成変更の提案などご支援いたします。</p>
-              </div>
-            ) : (
-              messages.map((msg, idx) => (
-                <div key={idx} className={`message-container ${msg.role}`}>
-                  {msg.role === 'user' && (
-                    <div className="message-header">
-                      <div className="header-line"></div>
-                      <span className="message-time">{formatMessageTime(msg.timestamp)}</span>
-                    </div>
-                  )}
-                  <div className={`message ${msg.role}`}>
-                    <div className="message-bubble markdown-body">
-                      {!!msg.isToolLoading ? (
-                        <div className="tool-status-container" data-is-loading="true">
-                          <div className="status-spinner"></div>
-                          <span>{msg.content}</span>
-                        </div>
-                      ) : (
-                        msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
-                          if (part.startsWith("```")) {
-                            const isTerminal = part.startsWith("```terminal");
-                            const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
-
-                            if (isTerminal) {
-                              return <Terminal key={i} content={content} />;
-                            }
-
-                            return <pre key={i} className="code-block"><code>{content}</code></pre>;
-                          }
-                          return (
-                            <ReactMarkdown
-                              key={i}
-                              remarkPlugins={[remarkGfm, remarkMath]}
-                              rehypePlugins={[rehypeKatex]}
-                            >
-                              {part}
-                            </ReactMarkdown>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+            <Chat ref={messagesEndRef} messages={messages} formatMessageTime={formatMessageTime} />
   
           {/* Input Area */}
-          <div className="input-area">
-            {modelStatus !== "Loaded" && (
-              <div className={`model-status-banner ${modelStatus.toLowerCase()}`}>
-                <div className="status-spinner"></div>
-                <span>
-                  {modelStatus === "NotLoaded" && "AIモデルが読み込まれていません。設定からモデルを読み込んでください。"}
-                  {modelStatus === "Loading" && "AIモデルを読み込み中です。しばらくお待ちください..."}
-                  {modelStatus === "Error" && "AIモデルの読み込みに失敗しました。設定を確認してください。"}
-                </span>
-                {(modelStatus === "NotLoaded" || modelStatus === "Error") && (
-                  <div className="banner-actions">
-                    {modelPath && (
-                      <button className="banner-button primary" onClick={handleLoadModel}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
-                        モデルの読み込み
-                      </button>
-                    )}
-                    <button className="banner-button" onClick={() => setIsSettingsOpen(true)}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                      設定
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            <div className={`input-container ${modelStatus !== "Loaded" ? 'disabled' : ''}`}>
-              {showSuggestions && filteredSuggestions.length > 0 && (
-                <div className="suggestion-list">
-                  {filteredSuggestions.map((hostObj, idx) => (
-                    <div 
-                      key={`${hostObj.hostname}-${hostObj.ip}`} 
-                      className={`suggestion-item ${idx === suggestionIndex ? 'selected' : ''}`}
-                      onClick={() => handleSelectSuggestion(hostObj)}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8}}><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-                      <span className="suggestion-hostname">{hostObj.hostname}</span>
-                      <span className="suggestion-ip">({hostObj.ip})</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="input-wrapper">
-                <textarea
-                  ref={textareaRef}
-                  className="chat-input"
-                  placeholder={modelStatus === "Loaded" ? "mikomaiに質問する..." : "モデルの準備を待っています..."}
-                  value={input}
-                  onChange={(e) => {
-                    const newValue = e.target.value;
-                    const pos = e.target.selectionStart;
-                    setInput(newValue);
-                    setCursorPos(pos);
-                    
-                    // Detect @
-                    const textBeforeCursor = newValue.slice(0, pos);
-                    const atIndex = textBeforeCursor.lastIndexOf('@');
-                    
-                    if (atIndex !== -1) {
-                      const query = textBeforeCursor.slice(atIndex + 1);
-                      // Check if there's space between @ and cursor
-                      if (!query.includes(' ')) {
-                        // Combine available hosts and recent IPs
-                        const combined = [...availableHosts];
-                        recentIPs.forEach(ip => {
-                          if (!combined.some(h => h.ip === ip)) {
-                            combined.push({ hostname: `${ip}`, ip: "過去に投入したIPアドレス" });
-                          }
-                        });
-
-                        const filtered = combined.filter(h => 
-                          h.hostname.toLowerCase().includes(query.toLowerCase()) ||
-                          h.ip.includes(query)
-                        );
-                        setFilteredSuggestions(filtered);
-                        setShowSuggestions(true);
-                        setSuggestionIndex(0);
-                      } else {
-                        setShowSuggestions(false);
-                      }
-                    } else {
-                      setShowSuggestions(false);
-                    }
-                  }}
-                  rows={1}
-                  disabled={modelStatus !== "Loaded"}
-                  onCompositionStart={() => { isComposing.current = true; }}
-                  onCompositionEnd={() => { 
-                    setTimeout(() => { isComposing.current = false; }, 150); 
-                  }}
-                  onKeyDown={(e) => {
-                    if (showSuggestions && filteredSuggestions.length > 0) {
-                      if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        setSuggestionIndex(prev => {
-                          const next = (prev + 1) % filteredSuggestions.length;
-                          // Scroll into view logic
-                          const list = document.querySelector('.suggestion-list');
-                          const items = list?.querySelectorAll('.suggestion-item');
-                          if (items && items[next]) {
-                            (items[next] as HTMLElement).scrollIntoView({ block: 'nearest' });
-                          }
-                          return next;
-                        });
-                        return;
-                      }
-                      if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        setSuggestionIndex(prev => {
-                          const next = (prev - 1 + filteredSuggestions.length) % filteredSuggestions.length;
-                          // Scroll into view logic
-                          const list = document.querySelector('.suggestion-list');
-                          const items = list?.querySelectorAll('.suggestion-item');
-                          if (items && items[next]) {
-                            (items[next] as HTMLElement).scrollIntoView({ block: 'nearest' });
-                          }
-                          return next;
-                        });
-                        return;
-                      }
-                      if (e.key === 'Enter' || e.key === 'Tab') {
-                        e.preventDefault();
-                        handleSelectSuggestion(filteredSuggestions[suggestionIndex]);
-                        return;
-                      }
-                      if (e.key === 'Escape') {
-                        e.preventDefault();
-                        setShowSuggestions(false);
-                        return;
-                      }
-                    }
-
-                    if (e.key === 'Enter') {
-                      if (isComposing.current || (e.nativeEvent as any).isComposing || e.keyCode === 229) {
-                        return;
-                      }
-                      if (!e.shiftKey && modelStatus === "Loaded") {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }
-                  }}
-                />
-                <button 
-                  className="send-button" 
-                  onClick={handleSend}
-                  disabled={modelStatus !== "Loaded" || !input.trim()}
-                >
-                  <svg viewBox="0 0 24 24">
-                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
+          <ChatInput
+            ref={textareaRef}
+            modelStatus={modelStatus}
+            modelPath={modelPath}
+            input={input}
+            setInput={setInput}
+            showSuggestions={showSuggestions}
+            setShowSuggestions={setShowSuggestions}
+            filteredSuggestions={filteredSuggestions}
+            suggestionIndex={suggestionIndex}
+            setSuggestionIndex={setSuggestionIndex}
+            handleSelectSuggestion={handleSelectSuggestion}
+            handleSend={handleSend}
+            handleLoadModel={handleLoadModel}
+            setIsSettingsOpen={setIsSettingsOpen}
+            setCursorPos={setCursorPos}
+            availableHosts={availableHosts}
+            recentIPs={recentIPs}
+            setFilteredSuggestions={setFilteredSuggestions}
+            isComposing={isComposing}
+          />
         </main>
       )}
     </div>
