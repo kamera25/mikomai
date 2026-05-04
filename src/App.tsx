@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import "katex/dist/katex.min.css";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
@@ -484,6 +483,9 @@ function App() {
                   </svg>
                 </button>
                 <h1 className="header-title">mikomai</h1>
+                {recentIPs.length > 0 && (
+                  <span className="header-hostname">{recentIPs[0]}</span>
+                )}
               </div>
             </header>
     
