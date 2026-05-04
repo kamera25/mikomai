@@ -29,6 +29,7 @@ interface Connection {
   status: 'online' | 'offline';
   hostname: string;
   ip: string;
+  port?: number;
   type: string;
   lastConnected: string;
 }
@@ -36,6 +37,7 @@ interface Connection {
 interface McpHost {
   hostname: string;
   ip: string;
+  port?: number;
   deviceType: string;
   username: string;
 }

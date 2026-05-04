@@ -10,6 +10,8 @@ pub struct Connection {
     pub status: String,
     pub hostname: String,
     pub ip: String,
+    #[serde(default)]
+    pub port: Option<u16>,
     #[serde(rename = "type")]
     pub conn_type: String,
     pub last_connected: String,
