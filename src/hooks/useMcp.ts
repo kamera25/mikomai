@@ -139,6 +139,8 @@ export function useMcp({
                                      nextToolCall.tool === "network_query_nw_db" || nextToolCall.tool === "query_nw_db" ? "NW-DB Search" :
                                      nextToolCall.tool === "network_arp" ? "ARP Table" :
                                      nextToolCall.tool === "network_get_ip_info" ? "IP Info" :
+                                     nextToolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
+                                     nextToolCall.tool === "network_send_console_message" ? "Console Message" :
                                      nextToolCall.tool === "network_show" ? "Show Command" : nextToolCall.tool;
           
           setTimeout(async () => {
@@ -205,6 +207,13 @@ export function useMcp({
       await executeAndAnalyze(userMessage, "network_arp", "ARP Table", {});
     } else if (lowerInput.includes("ip") || lowerInput.includes("ネットワーク情報") || lowerInput.includes("アドレス")) {
       await executeAndAnalyze(userMessage, "network_get_ip_info", "IP Info", {});
+    } else if (lowerInput.includes("console") || lowerInput.includes("コンソール") || lowerInput.includes("シリアル")) {
+      if (lowerInput.includes("list") || lowerInput.includes("一覧") || lowerInput.includes("ポート") || lowerInput.includes("リスト")) {
+        await executeAndAnalyze(userMessage, "network_list_serial_ports", "Serial Ports", {});
+      } else {
+        // Fallback to LLM for parsing port and message if not clearly a list request
+        setMessages(prev => [...prev, { role: "ai", content: "思考中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
+      }
     } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
       await executeAndAnalyze(userMessage, "network_show", "Show Command", {
         device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
@@ -259,6 +268,8 @@ export function useMcp({
                                    toolCall.tool === "network_query_nw_db" || toolCall.tool === "query_nw_db" ? "NW-DB Search" :
                                    toolCall.tool === "network_arp" ? "ARP Table" :
                                    toolCall.tool === "network_get_ip_info" ? "IP Info" :
+                                   toolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
+                                   toolCall.tool === "network_send_console_message" ? "Console Message" :
                                    toolCall.tool === "network_show" ? "Show Command" : toolCall.tool;
             
             await executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
