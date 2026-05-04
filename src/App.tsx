@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import "katex/dist/katex.min.css";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
@@ -31,6 +30,7 @@ function App() {
   const [temperature, setTemperature] = useState<number>(0.0);
   const [repetitionPenalty, setRepetitionPenalty] = useState<number>(1.1);
   const [modelPath, setModelPath] = useState<string | null>(null);
+  const [mcpTimeout, setMcpTimeout] = useState<number>(30);
   
   // Host Suggestion states
   const [availableHosts, setAvailableHosts] = useState<{hostname: string, ip: string}[]>([]);
@@ -45,7 +45,8 @@ function App() {
     setMessages,
     summaries,
     setSummaries,
-    historyLimit
+    historyLimit,
+    mcpTimeout
   });
 
   const isComposing = useRef(false);
@@ -110,6 +111,9 @@ function App() {
         }
         if (settings && settings.recentIps !== undefined) {
           setRecentIPs(settings.recentIps);
+        }
+        if (settings && settings.mcpTimeout !== undefined) {
+          setMcpTimeout(settings.mcpTimeout);
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -269,7 +273,8 @@ function App() {
             temperature, 
             repetitionPenalty, 
             modelPath,
-            recentIps: newRecent 
+            recentIps: newRecent,
+            mcpTimeout
           } 
         });
       } catch (e) {
@@ -427,7 +432,7 @@ function App() {
             onHistoryLimitChange={async (newLimit) => {
               setHistoryLimit(newLimit);
               try {
-                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs } });
+                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -436,7 +441,7 @@ function App() {
             onTemperatureChange={async (newTemp) => {
               setTemperature(newTemp);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp, repetitionPenalty, modelPath, recentIps: recentIPs } });
+                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -445,7 +450,7 @@ function App() {
             onRepetitionPenaltyChange={async (newPenalty) => {
               setRepetitionPenalty(newPenalty);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty: newPenalty, modelPath, recentIps: recentIPs } });
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty: newPenalty, modelPath, recentIps: recentIPs, mcpTimeout } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -454,7 +459,16 @@ function App() {
             onModelPathChange={async (newPath) => {
               setModelPath(newPath);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath: newPath, recentIps: recentIPs } });
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath: newPath, recentIps: recentIPs, mcpTimeout } });
+              } catch (e) {
+                console.error("Failed to save settings:", e);
+              }
+            }}
+            mcpTimeout={mcpTimeout}
+            onMcpTimeoutChange={async (newTimeout: number) => {
+              setMcpTimeout(newTimeout);
+              try {
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout: newTimeout } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
