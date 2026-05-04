@@ -55,7 +55,11 @@ pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<S
         *status_lock = ModelState::Loading;
     }
 
-    let model_params = LlamaModelParams::default();
+    let mut model_params = std::pin::pin!(LlamaModelParams::default());
+
+    // Add overrides to move Vision tensors to CPU (null backend to skip loading to VRAM/saving memory)
+    model_params.as_mut().add_cpu_buft_override(c".*vision.*");
+
     let model = match LlamaModel::load_from_file(&state.backend, &path, &model_params) {
         Ok(m) => m,
         Err(e) => {
