@@ -78,4 +78,25 @@ mod tests {
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(serialized, r#"{"success":true,"output":"Trace complete."}"#);
     }
+
+    #[test]
+    fn test_resolve_host_ip() {
+        let ip = resolve_host("127.0.0.1");
+        assert!(ip.is_ok());
+        assert_eq!(ip.unwrap().to_string(), "127.0.0.1");
+    }
+
+    #[test]
+    fn test_resolve_host_domain() {
+        let ip = resolve_host("localhost");
+        assert!(ip.is_ok());
+        let ip_str = ip.unwrap().to_string();
+        assert!(ip_str == "127.0.0.1" || ip_str == "::1");
+    }
+
+    #[test]
+    fn test_resolve_host_invalid() {
+        let ip = resolve_host("this.is.an.invalid.domain.that.does.not.exist.local");
+        assert!(ip.is_err());
+    }
 }
