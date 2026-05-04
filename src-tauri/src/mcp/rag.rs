@@ -96,6 +96,9 @@ pub struct RagResult {
     pub output: String,
 }
 
+use crate::mcp::brands;
+use regex::Regex;
+
 #[tauri::command]
 pub async fn query_nw_db(
     query: String, 
@@ -104,11 +107,48 @@ pub async fn query_nw_db(
     app: tauri::AppHandle
 ) -> Result<RagResult, String> {
 
+    let mut brand_filter: Option<String> = None;
+    let mut processed_query = query.clone();
+
+    // Regex to match [Context: BrandName]
+    // Matches something like [Context: Cisco] or [Context: Cisco OS=1.0]
+    let context_re = Regex::new(r"\[Context:\s*([^\]\s]+)[^\]]*\]").map_err(|e| e.to_string())?;
+    
+    if let Some(caps) = context_re.captures(&query) {
+        let brand_candidate = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        if let Some(matched_brand) = brands::get_brand(brand_candidate) {
+            brand_filter = Some(format!("brand = '{}'", matched_brand));
+            // Remove the context tag from the query for embedding
+            processed_query = context_re.replace_all(&query, "").to_string().trim().to_string();
+        }
+    }
+
+    if brand_filter.is_none() {
+        // Fallback: check if any known brand name is mentioned in the query string
+        for &brand in brands::BRANDS {
+            // Case-insensitive word-boundary search
+            let brand_re = Regex::new(&format!(r"(?i)\b{}\b", brand)).map_err(|e| e.to_string())?;
+            if brand_re.is_match(&query) {
+                brand_filter = Some(format!("brand = '{}'", brand));
+                break;
+            }
+        }
+    }
+
+    // If query is now empty (e.g. LLM sent ONLY the context tag), 
+    // we use a generic query or handle it. 
+    // For now, if it's empty, we use the original query's brand name as the query.
+    if processed_query.is_empty() && brand_filter.is_some() {
+        if let Some(caps) = context_re.captures(&query) {
+            processed_query = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+        }
+    }
+
     let db = state.get_db(&app).await?;
     let model = state.get_model()?;
 
     // E5 models require "query: " prefix for searches
-    let instructional_query = format!("query: {}", query);
+    let instructional_query = format!("query: {}", processed_query);
     let embeddings = model.embed(vec![instructional_query], None)
         .map_err(|e| format!("Embedding error: {}", e))?;
     let query_vector = embeddings.first().ok_or("Failed to generate embedding")?.clone();
@@ -121,7 +161,8 @@ pub async fn query_nw_db(
         .map_err(|e| format!("Vector search error: {}", e))?
         .limit(3);
     
-    if let Some(filter_str) = filter {
+    let final_filter = brand_filter.or(filter);
+    if let Some(filter_str) = final_filter {
         vector_query = vector_query.only_if(filter_str);
     }
 

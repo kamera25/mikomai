@@ -33,6 +33,12 @@ def main():
             # Metadata
             metadata = post.metadata
             content = post.content
+
+            # Replace placeholders like {brand} with values from metadata
+            for key, value in metadata.items():
+                placeholder = f"{{{key}}}"
+                if placeholder in content:
+                    content = content.replace(placeholder, str(value))
             
             # Basic chunking: for now, we just take the whole content if it's small, 
             # or we could split by headers. Let's keep it simple for the first version.

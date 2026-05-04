@@ -5211,6 +5211,7 @@ dependencies = [
  "mcp-client",
  "mcp-core",
  "mcp-server",
+ "regex",
  "serde",
  "serde_json",
  "serialport",

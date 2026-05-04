@@ -1,6 +1,7 @@
 pub mod ping;
 pub mod traceroute;
 pub mod rag;
+pub mod brands;
 pub mod hosts;
 pub mod arp;
 pub mod ip_info;
