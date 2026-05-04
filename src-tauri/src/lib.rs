@@ -67,7 +67,8 @@ pub fn run() {
             scheduled_tasks::delete_scheduled_task,
             scheduled_tasks::execute_task,
             settings::load_settings,
-            settings::save_settings
+            settings::save_settings,
+            network::resolve_ip
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

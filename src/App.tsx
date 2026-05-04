@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "katex/dist/katex.min.css";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -120,38 +120,64 @@ function App() {
       }
     };
     initHistory();
-
-    const fetchHosts = async () => {
-      try {
-        const [connections, mcpHosts] = await Promise.all([
-          invoke<Connection[]>("load_connections"),
-          invoke<McpHost[]>("get_mcp_hosts")
-        ]);
-        
-        const hostMap = new Map<string, string>();
-        if (connections) {
-          connections.forEach(c => {
-            if (c.hostname && c.ip) hostMap.set(c.hostname, c.ip);
-          });
-        }
-        if (mcpHosts) {
-          mcpHosts.forEach(h => {
-            if (h.hostname && h.ip) hostMap.set(h.hostname, h.ip);
-          });
-        }
-        
-        const hostsArray = Array.from(hostMap.entries()).map(([hostname, ip]) => ({
-          hostname,
-          ip
-        }));
-        
-        setAvailableHosts(hostsArray);
-      } catch (e) {
-        console.error("Failed to fetch hosts for suggestions:", e);
-      }
-    };
-    fetchHosts();
   }, []);
+
+  const fetchHosts = useCallback(async (hostToResolve?: string) => {
+    try {
+      const [connections, mcpHosts] = await Promise.all([
+        invoke<Connection[]>("load_connections"),
+        invoke<McpHost[]>("get_mcp_hosts")
+      ]);
+      
+      const hostMap = new Map<string, string>();
+      if (connections) {
+        connections.forEach(c => {
+          if (c.hostname && c.ip) hostMap.set(c.hostname, c.ip);
+        });
+      }
+      if (mcpHosts) {
+        mcpHosts.forEach(h => {
+          if (h.hostname && h.ip) hostMap.set(h.hostname, h.ip);
+        });
+      }
+
+      // Active resolution for new IP addresses
+      if (hostToResolve && /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostToResolve)) {
+        const isKnown = Array.from(hostMap.values()).includes(hostToResolve);
+        if (!isKnown) {
+          try {
+            const resolvedName = await invoke<string>("resolve_ip", { ip: hostToResolve });
+            if (resolvedName) {
+              hostMap.set(resolvedName, hostToResolve);
+            }
+          } catch (e) {
+            // Silently fail if resolution fails
+          }
+        }
+      }
+      
+      const hostsArray = Array.from(hostMap.entries()).map(([hostname, ip]) => ({
+        hostname,
+        ip
+      }));
+      
+      setAvailableHosts(hostsArray);
+    } catch (e) {
+      console.error("Failed to fetch hosts for suggestions:", e);
+    }
+  }, []);
+
+  // Initial fetch for hosts
+  useEffect(() => {
+    fetchHosts();
+  }, [fetchHosts]);
+
+  // Trigger name resolution/host fetch when active IP/host changes
+  useEffect(() => {
+    if (recentIPs.length > 0) {
+      fetchHosts(recentIPs[0]);
+    }
+  }, [recentIPs[0], fetchHosts]);
 
   // Save history to backend whenever it changes
   useEffect(() => {
@@ -256,16 +282,22 @@ function App() {
     const userMessage = input.trim();
     const timestamp = new Date().toISOString();
     
-    // Extract IP addresses to remember
+    // Extract IP addresses and @hostnames to remember
     const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-    const foundIPs = userMessage.match(ipRegex);
-    if (foundIPs) {
+    const mentionRegex = /@([a-zA-Z0-9.-]+)/g;
+    
+    const foundIPs = userMessage.match(ipRegex) || [];
+    const foundMentions = Array.from(userMessage.matchAll(mentionRegex)).map(m => m[1]);
+    
+    const allFound = [...new Set([...foundMentions, ...foundIPs])];
+    
+    if (allFound.length > 0) {
       const newRecent = [
-        ...new Set([...foundIPs, ...recentIPs])
+        ...new Set([...allFound, ...recentIPs])
       ].slice(0, 10);
       setRecentIPs(newRecent);
       
-      // Save updated IPs to backend settings
+      // Save updated hosts to backend settings
       try {
         await invoke("save_settings", { 
           settings: { 
@@ -278,7 +310,7 @@ function App() {
           } 
         });
       } catch (e) {
-        console.error("Failed to save recent IPs to settings:", e);
+        console.error("Failed to save recent hosts to settings:", e);
       }
     }
 
@@ -500,8 +532,17 @@ function App() {
                 <h1 className="header-title">mikomai</h1>
                 {recentIPs.length > 0 && (
                   <div>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-                  <span className="header-hostname">{recentIPs[0]}</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                    <span className="header-hostname">
+                      {(() => {
+                        const current = recentIPs[0];
+                        const host = availableHosts.find(h => h.ip === current || h.hostname === current);
+                        if (host && host.hostname && host.ip && host.hostname !== host.ip) {
+                          return `${host.hostname} (${host.ip})`;
+                        }
+                        return current;
+                      })()}
+                    </span>
                   </div>
                 )}
               </div>
