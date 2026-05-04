@@ -132,18 +132,17 @@ pub async fn ask_llm(prompt: String, state: tauri::State<'_, LlamaState>) -> Res
         bytes_accumulator.append(&mut token_bytes);
 
         // Try converting accumulated bytes to string, if error means not fully formed utf8 character yet
-        match String::from_utf8(bytes_accumulator.clone()) {
+        match std::str::from_utf8(&bytes_accumulator) {
             Ok(s) => {
-                result_string.push_str(&s);
+                result_string.push_str(s);
                 bytes_accumulator.clear();
             }
             Err(e) => {
                 // Keep accumulating if we cannot parse it cleanly yet
-                let utf8_error_index = e.utf8_error().valid_up_to();
+                let utf8_error_index = e.valid_up_to();
                 let valid_str = String::from_utf8_lossy(&bytes_accumulator[..utf8_error_index]).to_string();
                 result_string.push_str(&valid_str);
-                let remaining_bytes = bytes_accumulator[utf8_error_index..].to_vec();
-                bytes_accumulator = remaining_bytes;
+                bytes_accumulator.drain(..utf8_error_index);
                 if bytes_accumulator.len() > 8 {
                      // Failsafe in case we just got junk
                      result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
