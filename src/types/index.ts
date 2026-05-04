@@ -3,6 +3,12 @@ export interface Message {
   content: string;
   timestamp?: string; // ISO string
   isToolLoading?: boolean;
+  task_id?: string;
+  event_type?: "UserInput" | "ToolExecution" | "AgentResponse" | "SystemMessage";
+  status?: "Running" | "Success" | "Failed";
+  action_name?: string;
+  summary_text?: string;
+  raw_data?: string | null;
 }
 
 export interface SummaryItem {

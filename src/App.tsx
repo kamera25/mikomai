@@ -319,7 +319,18 @@ function App() {
     }
 
     setInput("");
-    setMessages(prev => [...prev, { role: "user", content: userMessage, timestamp }]);
+    setMessages(prev => [...prev, {
+      role: "user",
+      content: userMessage,
+      timestamp,
+      event_type: "UserInput",
+      task_id: `task_user_${Date.now()}`
+    }]);
+
+    // Force scroll to bottom on new user input
+    setTimeout(() => {
+      scrollToBottom();
+    }, 100);
 
     // Use MCP hook to handle the response
     setTimeout(async () => {
@@ -565,27 +576,32 @@ function App() {
             <Chat ref={messagesEndRef} messages={messages} formatMessageTime={formatMessageTime} />
   
           {/* Input Area */}
-          <ChatInput
-            ref={textareaRef}
-            modelStatus={modelStatus}
-            modelPath={modelPath}
-            input={input}
-            setInput={setInput}
-            showSuggestions={showSuggestions}
-            setShowSuggestions={setShowSuggestions}
-            filteredSuggestions={filteredSuggestions}
-            suggestionIndex={suggestionIndex}
-            setSuggestionIndex={setSuggestionIndex}
-            handleSelectSuggestion={handleSelectSuggestion}
-            handleSend={handleSend}
-            handleLoadModel={handleLoadModel}
-            setIsSettingsOpen={setIsSettingsOpen}
-            setCursorPos={setCursorPos}
-            availableHosts={availableHosts}
-            recentIPs={recentIPs}
-            setFilteredSuggestions={setFilteredSuggestions}
-            isComposing={isComposing}
-          />
+          <div className="input-area-wrapper">
+            {messages.some(m => m.status === 'Running') && (
+              <div className="global-loading-indicator"></div>
+            )}
+            <ChatInput
+              ref={textareaRef}
+              modelStatus={modelStatus}
+              modelPath={modelPath}
+              input={input}
+              setInput={setInput}
+              showSuggestions={showSuggestions}
+              setShowSuggestions={setShowSuggestions}
+              filteredSuggestions={filteredSuggestions}
+              suggestionIndex={suggestionIndex}
+              setSuggestionIndex={setSuggestionIndex}
+              handleSelectSuggestion={handleSelectSuggestion}
+              handleSend={handleSend}
+              handleLoadModel={handleLoadModel}
+              setIsSettingsOpen={setIsSettingsOpen}
+              setCursorPos={setCursorPos}
+              availableHosts={availableHosts}
+              recentIPs={recentIPs}
+              setFilteredSuggestions={setFilteredSuggestions}
+              isComposing={isComposing}
+            />
+          </div>
         </main>
       )}
     </div>

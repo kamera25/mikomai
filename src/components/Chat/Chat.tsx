@@ -1,10 +1,6 @@
-import { forwardRef } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import { Terminal } from '../Terminal';
+import { forwardRef, useEffect, useRef } from 'react';
 import { Message } from '../../types';
+import { TimelineEvent } from './TimelineEvent';
 
 interface ChatProps {
   messages: Message[];
@@ -12,8 +8,25 @@ interface ChatProps {
 }
 
 export const Chat = forwardRef<HTMLDivElement, ChatProps>(({ messages, formatMessageTime }, ref) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isUserScrollingUp = useRef(false);
+
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    // Consider it scrolling up if we're not within 50px of the bottom
+    isUserScrollingUp.current = scrollHeight - scrollTop - clientHeight > 50;
+  };
+
+  useEffect(() => {
+    // Scroll to bottom when messages change, unless user is actively scrolling up
+    if (!isUserScrollingUp.current && ref && typeof ref !== 'function' && ref.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, ref]);
+
   return (
-    <div className="chat-history">
+    <div className="chat-history" ref={containerRef} onScroll={handleScroll}>
       {messages.length === 0 ? (
         <div className="empty-state">
           <div>
@@ -25,46 +38,7 @@ export const Chat = forwardRef<HTMLDivElement, ChatProps>(({ messages, formatMes
         </div>
       ) : (
         messages.map((msg, idx) => (
-          <div key={idx} className={`message-container ${msg.role}`}>
-            {msg.role === 'user' && (
-              <div className="message-header">
-                <div className="header-line"></div>
-                <span className="message-time">{formatMessageTime(msg.timestamp)}</span>
-              </div>
-            )}
-            <div className={`message ${msg.role}`}>
-              <div className="message-bubble markdown-body">
-                {!!msg.isToolLoading ? (
-                  <div className="tool-status-container" data-is-loading="true">
-                    <div className="status-spinner"></div>
-                    <span>{msg.content}</span>
-                  </div>
-                ) : (
-                  msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
-                    if (part.startsWith("```")) {
-                      const isTerminal = part.startsWith("```terminal");
-                      const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
-
-                      if (isTerminal) {
-                        return <Terminal key={i} content={content} />;
-                      }
-
-                      return <pre key={i} className="code-block"><code>{content}</code></pre>;
-                    }
-                    return (
-                      <ReactMarkdown
-                        key={i}
-                        remarkPlugins={[remarkGfm, remarkMath]}
-                        rehypePlugins={[rehypeKatex]}
-                      >
-                        {part}
-                      </ReactMarkdown>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
+          <TimelineEvent key={msg.task_id || idx} msg={msg} formatMessageTime={formatMessageTime} />
         ))
       )}
       <div ref={ref} />
