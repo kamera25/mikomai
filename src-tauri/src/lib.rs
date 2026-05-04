@@ -4,7 +4,7 @@ mod network;
 mod history;
 mod connections;
 pub mod scheduled_tasks;
-mod settings;
+pub(crate) mod settings;
 
 use tauri::Manager;
 

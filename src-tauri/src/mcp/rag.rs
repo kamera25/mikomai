@@ -47,8 +47,17 @@ impl RagState {
             }
         }
 
-        let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        let lancedb_dir = app_data_dir.join("lancedb");
+        let db_path = if let Ok(settings) = crate::settings::load_settings(app.clone()) {
+            settings.db_path.unwrap_or_else(|| {
+                let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
+                app_data_dir.join("lancedb").to_string_lossy().to_string()
+            })
+        } else {
+            let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            app_data_dir.join("lancedb").to_string_lossy().to_string()
+        };
+        
+        let lancedb_dir = std::path::PathBuf::from(&db_path);
         
         if !lancedb_dir.exists() {
             std::fs::create_dir_all(&lancedb_dir).map_err(|e| format!("Failed to create DB directory: {}", e))?;

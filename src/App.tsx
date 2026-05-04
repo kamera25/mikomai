@@ -30,6 +30,7 @@ function App() {
   const [repetitionPenalty, setRepetitionPenalty] = useState<number>(1.1);
   const [modelPath, setModelPath] = useState<string | null>(null);
   const [mcpTimeout, setMcpTimeout] = useState<number>(30);
+  const [dbPath, setDbPath] = useState<string>("");
   
   // Host Suggestion states
   const [availableHosts, setAvailableHosts] = useState<{hostname: string, ip: string}[]>([]);
@@ -113,6 +114,9 @@ function App() {
         }
         if (settings && settings.mcpTimeout !== undefined) {
           setMcpTimeout(settings.mcpTimeout);
+        }
+        if (settings && settings.dbPath) {
+          setDbPath(settings.dbPath);
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -305,7 +309,8 @@ function App() {
             repetitionPenalty, 
             modelPath,
             recentIps: newRecent,
-            mcpTimeout
+            mcpTimeout,
+            dbPath
           } 
         });
       } catch (e) {
@@ -463,7 +468,7 @@ function App() {
             onHistoryLimitChange={async (newLimit) => {
               setHistoryLimit(newLimit);
               try {
-                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout } });
+                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -472,7 +477,7 @@ function App() {
             onTemperatureChange={async (newTemp) => {
               setTemperature(newTemp);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout } });
+                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -481,7 +486,7 @@ function App() {
             onRepetitionPenaltyChange={async (newPenalty) => {
               setRepetitionPenalty(newPenalty);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty: newPenalty, modelPath, recentIps: recentIPs, mcpTimeout } });
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty: newPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -490,7 +495,7 @@ function App() {
             onModelPathChange={async (newPath) => {
               setModelPath(newPath);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath: newPath, recentIps: recentIPs, mcpTimeout } });
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath: newPath, recentIps: recentIPs, mcpTimeout, dbPath } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }
@@ -499,7 +504,16 @@ function App() {
             onMcpTimeoutChange={async (newTimeout: number) => {
               setMcpTimeout(newTimeout);
               try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout: newTimeout } });
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout: newTimeout, dbPath } });
+              } catch (e) {
+                console.error("Failed to save settings:", e);
+              }
+            }}
+            dbPath={dbPath}
+            onDbPathChange={async (newDbPath) => {
+              setDbPath(newDbPath);
+              try {
+                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath: newDbPath } });
               } catch (e) {
                 console.error("Failed to save settings:", e);
               }

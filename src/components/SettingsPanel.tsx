@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { appDataDir, join } from '@tauri-apps/api/path';
+import { open } from '@tauri-apps/plugin-dialog';
 
 import './SettingsPanel.css';
 
@@ -17,6 +17,8 @@ interface SettingsPanelProps {
   onModelPathChange: (path: string) => void;
   mcpTimeout: number;
   onMcpTimeoutChange: (timeout: number) => void;
+  dbPath: string;
+  onDbPathChange: (path: string) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
@@ -31,26 +33,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   modelPath: _savedModelPath,
   onModelPathChange,
   mcpTimeout,
-  onMcpTimeoutChange
+  onMcpTimeoutChange,
+  dbPath,
+  onDbPathChange
 }) => {
   const [repoPath, setRepoPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E4B-it-Q4_K_M.gguf");
   const [downloadStatus, setDownloadStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [dbPath, setDbPath] = useState("");
-
-  React.useEffect(() => {
-    const initPath = async () => {
-      try {
-        const baseDir = await appDataDir();
-        const fullPath = await join(baseDir, 'lancedb');
-        setDbPath(fullPath);
-      } catch (e) {
-        console.error("Failed to get app data dir", e);
-      }
-    };
-    initPath();
-  }, []);
 
 
   const handleDownloadAndLoad = async () => {
@@ -75,6 +65,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       setDownloadStatus(`Error: ${e.toString()}`);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSelectDbDir = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "データベースディレクトリを選択"
+      });
+      if (selected) {
+        onDbPathChange(selected as string);
+      }
+    } catch (e) {
+      console.error("Failed to select directory:", e);
     }
   };
 
@@ -200,17 +205,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   type="text" 
                   placeholder="/path/to/lancedb" 
                   value={dbPath} 
-                  onChange={e => setDbPath(e.target.value)} 
+                  onChange={e => onDbPathChange(e.target.value)} 
                 />
 
-                <button className="btn btn-secondary">参照</button>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={handleSelectDbDir}
+                >
+                  参照
+                </button>
               </div>
             </div>
             <div className="form-control">
               <label>埋め込みモデル</label>
               <select>
-                <option>all-MiniLM-L6-v2 (ローカル ONNX)</option>
-                <option>bge-base-en-v1.5 (ローカル ONNX)</option>
+                <option>MultilingualE5Large (ローカル)</option>
               </select>
             </div>
           </section>

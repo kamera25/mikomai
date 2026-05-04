@@ -13,6 +13,7 @@ pub struct AppSettings {
     pub recent_ips: Vec<String>,
     #[serde(default)]
     pub mcp_timeout: Option<u64>,
+    pub db_path: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -24,6 +25,7 @@ impl Default for AppSettings {
             model_path: None,
             recent_ips: Vec::new(),
             mcp_timeout: Some(30),
+            db_path: None,
         }
     }
 }
@@ -39,11 +41,18 @@ fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
 #[tauri::command]
 pub fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
     let path = get_settings_path(&app);
-    if !path.exists() {
-        return Ok(AppSettings::default());
+    let mut settings = if !path.exists() {
+        AppSettings::default()
+    } else {
+        let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&data).map_err(|e| e.to_string())?
+    };
+
+    if settings.db_path.is_none() {
+        let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        settings.db_path = Some(app_data_dir.join("lancedb").to_string_lossy().to_string());
     }
-    let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let settings: AppSettings = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+
     Ok(settings)
 }
 
@@ -68,6 +77,7 @@ mod tests {
         assert!(settings.model_path.is_none());
         assert!(settings.recent_ips.is_empty());
         assert_eq!(settings.mcp_timeout, Some(30));
+        assert!(settings.db_path.is_none());
     }
 
     #[test]
@@ -79,6 +89,7 @@ mod tests {
             model_path: Some("/path/to/model".to_string()),
             recent_ips: vec!["192.168.1.1".to_string()],
             mcp_timeout: Some(60),
+            db_path: Some("/path/to/db".to_string()),
         };
 
         let serialized = serde_json::to_string(&settings).unwrap();
@@ -88,5 +99,6 @@ mod tests {
         assert!(serialized.contains(r#""modelPath":"/path/to/model""#));
         assert!(serialized.contains(r#""recentIps":["192.168.1.1"]"#));
         assert!(serialized.contains(r#""mcpTimeout":60"#));
+        assert!(serialized.contains(r#""dbPath":"/path/to/db""#));
     }
 }
