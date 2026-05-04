@@ -38,7 +38,7 @@ export function useMcp({
     if (limit <= 0 || items.length === 0) return "";
     const recent = [...items].reverse().slice(0, limit);
     const text = recent.map((s, i) => `${i + 1}. ${s.content}`).join("\n");
-    return `\n\n【過去の実行履歴要約】\n${text}`;
+    return `\n\n<memory>\n${text}\n</memory>`;
   };
 
   const executeAndAnalyze = async (
