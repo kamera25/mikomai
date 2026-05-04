@@ -136,9 +136,9 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(({
     <div className="input-area">
       {modelStatus !== "Loaded" && (
         <div className={`model-status-banner ${modelStatus.toLowerCase()}`}>
-          <div className="status-spinner"></div>
+          {modelStatus === "Loading" && <div className="status-spinner"></div>}
           <span>
-            {modelStatus === "NotLoaded" && "AIモデルが読み込まれていません。設定からモデルを読み込んでください。"}
+            {modelStatus === "NotLoaded" && "AIモデルが読み込まれていません。モデルを読み込んでください。"}
             {modelStatus === "Loading" && "AIモデルを読み込み中です。しばらくお待ちください..."}
             {modelStatus === "Error" && "AIモデルの読み込みに失敗しました。設定を確認してください。"}
           </span>
