@@ -104,7 +104,9 @@ export function useMcp({
         `ユーザーの質問: "${userMessage}"\nに対して、技術文書データベース(NW-DB)から以下の情報を取得しました:\n\n${result.output}\n\nこの内容に基づき、ネットワークエンジニアの視点で、ユーザーの質問に対する的確な回答を日本語で生成してください。回答には、参照した資料の内容を具体的に含めてください。${historyBlock}` :
         `ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果（ステータス: ${statusBadge}）は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。${historyBlock}`;
       
-      setMessages(prev => [...prev, { role: "ai", content: "分析中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
+      if (!(isRag && result.success)) {
+        setMessages(prev => [...prev, { role: "ai", content: "分析中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
+      }
       
       let analysisContent = "";
       const analysisUnlisten = await listen<string>("llm-chunk", (event) => {
