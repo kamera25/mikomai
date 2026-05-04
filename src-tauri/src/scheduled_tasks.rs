@@ -248,3 +248,25 @@ pub async fn execute_task(
     // Logic to actually execute would go here
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scheduled_task_serialization() {
+        let task = ScheduledTask {
+            id: "task-1".to_string(),
+            name: "Test Task".to_string(),
+            status: "running".to_string(),
+            schedule: "0 0 * * * *".to_string(),
+            last_run: "2023-10-27 10:00".to_string(),
+            prompt: "Test prompt".to_string(),
+        };
+
+        let serialized = serde_json::to_string(&task).unwrap();
+        assert!(serialized.contains(r#""id":"task-1""#));
+        assert!(serialized.contains(r#""name":"Test Task""#));
+        assert!(serialized.contains(r#""schedule":"0 0 * * * *""#));
+    }
+}

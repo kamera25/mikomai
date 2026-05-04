@@ -35,3 +35,18 @@ pub async fn network_arp() -> Result<ArpResult, String> {
         },
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_arp_result_serialization() {
+        let result = ArpResult {
+            success: true,
+            output: "arp info".to_string(),
+        };
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(serialized, r#"{"success":true,"output":"arp info"}"#);
+    }
+}

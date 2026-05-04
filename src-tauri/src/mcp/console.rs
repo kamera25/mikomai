@@ -43,6 +43,32 @@ pub fn network_list_serial_ports() -> Result<ConsoleResult, String> {
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serial_port_info_serialization() {
+        let info = SerialPortInfo {
+            port_name: "COM1".to_string(),
+            port_type: "USB".to_string(),
+        };
+        let serialized = serde_json::to_string(&info).unwrap();
+        assert!(serialized.contains(r#""port_name":"COM1""#));
+        assert!(serialized.contains(r#""port_type":"USB""#));
+    }
+
+    #[test]
+    fn test_console_result_serialization() {
+        let result = ConsoleResult {
+            success: true,
+            output: "console output".to_string(),
+        };
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(serialized, r#"{"success":true,"output":"console output"}"#);
+    }
+}
+
 #[tauri::command]
 pub async fn network_send_console_message(
     port: String,

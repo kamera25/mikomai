@@ -102,3 +102,18 @@ pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, 
         output: combined_output,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ip_info_result_serialization() {
+        let result = IpInfoResult {
+            success: true,
+            output: "ip info".to_string(),
+        };
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(serialized, r#"{"success":true,"output":"ip info"}"#);
+    }
+}

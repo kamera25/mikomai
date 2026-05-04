@@ -65,6 +65,64 @@ pub fn save_history(app: tauri::AppHandle, history: Vec<HistoryItem>) -> Result<
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_serialization() {
+        let msg = Message {
+            role: "user".to_string(),
+            content: "Hello".to_string(),
+        };
+        let serialized = serde_json::to_string(&msg).unwrap();
+        assert!(serialized.contains(r#""role":"user""#));
+        assert!(serialized.contains(r#""content":"Hello""#));
+    }
+
+    #[test]
+    fn test_history_item_session_serialization() {
+        let session = ChatSession {
+            id: "session-1".to_string(),
+            title: "Test Session".to_string(),
+            messages: vec![Message {
+                role: "user".to_string(),
+                content: "Hi".to_string(),
+            }],
+        };
+        let item = HistoryItem::Session(session);
+        let serialized = serde_json::to_string(&item).unwrap();
+        assert!(serialized.contains(r#""type":"session""#));
+        assert!(serialized.contains(r#""id":"session-1""#));
+    }
+
+    #[test]
+    fn test_history_item_folder_serialization() {
+        let folder = Folder {
+            id: "folder-1".to_string(),
+            name: "Test Folder".to_string(),
+            items: vec![],
+            is_open: true,
+        };
+        let item = HistoryItem::Folder(folder);
+        let serialized = serde_json::to_string(&item).unwrap();
+        assert!(serialized.contains(r#""type":"folder""#));
+        assert!(serialized.contains(r#""name":"Test Folder""#));
+        assert!(serialized.contains(r#""isOpen":true"#));
+    }
+
+    #[test]
+    fn test_summary_item_serialization() {
+        let summary = SummaryItem {
+            timestamp: "2023-10-27T10:00:00Z".to_string(),
+            content: "Test summary".to_string(),
+        };
+        let serialized = serde_json::to_string(&summary).unwrap();
+        assert!(serialized.contains(r#""timestamp":"2023-10-27T10:00:00Z""#));
+        assert!(serialized.contains(r#""content":"Test summary""#));
+    }
+}
+
 fn get_summaries_path(app: &tauri::AppHandle) -> PathBuf {
     let path = app.path().app_data_dir().expect("Failed to get app data dir");
     if !path.exists() {
