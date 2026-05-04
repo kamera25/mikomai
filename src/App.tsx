@@ -24,7 +24,6 @@ function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [modelStatus, setModelStatus] = useState<string>("NotLoaded");
-  const [connectedHost] = useState<string>("192.168.1.1 (Core-Switch-01)");
   const [summaries, setSummaries] = useState<SummaryItem[]>([]);
   const [historyLimit, setHistoryLimit] = useState<number>(5);
   const [temperature, setTemperature] = useState<number>(0.0);
