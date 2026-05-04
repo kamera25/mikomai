@@ -131,3 +131,47 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
 
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_connection_serialization() {
+        let conn = Connection {
+            id: "test-1".to_string(),
+            status: "active".to_string(),
+            hostname: "router-1".to_string(),
+            ip: "10.0.0.1".to_string(),
+            port: Some(22),
+            conn_type: "SSH".to_string(),
+            last_connected: "2023-10-27".to_string(),
+        };
+
+        let serialized = serde_json::to_string(&conn).unwrap();
+        assert!(serialized.contains(r#""id":"test-1""#));
+        assert!(serialized.contains(r#""port":22"#));
+        assert!(serialized.contains(r#""type":"SSH""#));
+    }
+
+    #[test]
+    fn test_mcp_host_serialization() {
+        let host = McpHost {
+            hostname: "switch-1".to_string(),
+            ip: "10.0.0.2".to_string(),
+            device_type: "Telnet".to_string(),
+            username: "admin".to_string(),
+        };
+
+        let serialized = serde_json::to_string(&host).unwrap();
+        assert!(serialized.contains(r#""hostname":"switch-1""#));
+        assert!(serialized.contains(r#""deviceType":"Telnet""#));
+    }
+
+    #[test]
+    fn test_get_mcp_hosts_returns_data() {
+        let hosts = get_mcp_hosts().unwrap();
+        assert!(!hosts.is_empty());
+        assert_eq!(hosts[0].hostname, "Core-Switch-01");
+    }
+}

@@ -195,3 +195,31 @@ pub async fn send_mcp_message(state: State<'_, McpState>, message: String) -> Re
 }
 
 pub mod dns;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_device_config_serialization() {
+        let config = DeviceConfig {
+            host: "10.0.0.1".to_string(),
+            username: "admin".to_string(),
+            password: Some("pass".to_string()),
+            device_type: "cisco_ios".to_string(),
+        };
+        let serialized = serde_json::to_string(&config).unwrap();
+        assert!(serialized.contains(r#""host":"10.0.0.1""#));
+        assert!(serialized.contains(r#""password":"pass""#));
+    }
+
+    #[test]
+    fn test_command_result_serialization() {
+        let result = CommandResult {
+            success: true,
+            output: "show run output".to_string(),
+        };
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(serialized, r#"{"success":true,"output":"show run output"}"#);
+    }
+}

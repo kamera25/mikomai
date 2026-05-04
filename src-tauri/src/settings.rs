@@ -54,3 +54,39 @@ pub fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(),
     fs::write(path, data).map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_settings_default() {
+        let settings = AppSettings::default();
+        assert_eq!(settings.history_limit, 5);
+        assert_eq!(settings.temperature, 0.0);
+        assert_eq!(settings.repetition_penalty, 1.1);
+        assert!(settings.model_path.is_none());
+        assert!(settings.recent_ips.is_empty());
+        assert_eq!(settings.mcp_timeout, Some(30));
+    }
+
+    #[test]
+    fn test_app_settings_serialization() {
+        let settings = AppSettings {
+            history_limit: 10,
+            temperature: 0.7,
+            repetition_penalty: 1.2,
+            model_path: Some("/path/to/model".to_string()),
+            recent_ips: vec!["192.168.1.1".to_string()],
+            mcp_timeout: Some(60),
+        };
+
+        let serialized = serde_json::to_string(&settings).unwrap();
+        assert!(serialized.contains(r#""historyLimit":10"#));
+        assert!(serialized.contains(r#""temperature":0.7"#));
+        assert!(serialized.contains(r#""repetitionPenalty":1.2"#));
+        assert!(serialized.contains(r#""modelPath":"/path/to/model""#));
+        assert!(serialized.contains(r#""recentIps":["192.168.1.1"]"#));
+        assert!(serialized.contains(r#""mcpTimeout":60"#));
+    }
+}
