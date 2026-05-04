@@ -177,6 +177,55 @@ const SUMMARIZATION_SYSTEM_PROMPT: &str = r##"あなたは「MIKOMAI」の要約
 4. 事実と結果以外の解釈、推測、挨拶は一切不要です。
 5. 出力は必ず40トークン以内の極小サイズに収めてください。"##;
 
+fn prepare_prompt_tokens(
+    model: &LlamaModel,
+    prompt: &str,
+) -> Result<Vec<llama_cpp_2::token::LlamaToken>, String> {
+    let mut tokens = model.str_to_token(prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
+
+    let max_tokens = 2048 - 512;
+    if tokens.len() > max_tokens {
+        let to_remove = tokens.len() - max_tokens;
+        let start_keep = 500;
+
+        if tokens.len() > start_keep + to_remove {
+            tokens.drain(start_keep..(start_keep + to_remove));
+        } else {
+            tokens.truncate(max_tokens);
+        }
+    }
+    Ok(tokens)
+}
+
+fn process_token_bytes(
+    bytes_accumulator: &mut Vec<u8>,
+    result_string: &mut String,
+    window: Option<&tauri::Window>,
+) {
+    match std::str::from_utf8(bytes_accumulator) {
+        Ok(s) => {
+            if let Some(w) = window {
+                let _ = w.emit("llm-chunk", s);
+            }
+            result_string.push_str(s);
+            bytes_accumulator.clear();
+        }
+        Err(e) => {
+            let utf8_error_index = e.valid_up_to();
+            let valid_str = String::from_utf8_lossy(&bytes_accumulator[..utf8_error_index]).to_string();
+            if let Some(w) = window {
+                let _ = w.emit("llm-chunk", &valid_str);
+            }
+            result_string.push_str(&valid_str);
+            bytes_accumulator.drain(..utf8_error_index);
+            if bytes_accumulator.len() > 8 {
+                 result_string.push_str(&String::from_utf8_lossy(bytes_accumulator));
+                 bytes_accumulator.clear();
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn ask_llm(
     window: tauri::Window,
@@ -203,28 +252,8 @@ pub async fn ask_llm(
 
     let mut ctx = model.new_context(&llama_state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
 
-    let mut tokens = model.str_to_token(&formatted_prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
+    let tokens = prepare_prompt_tokens(model, &formatted_prompt)?;
     println!("Total tokens in prompt: {}", tokens.len());
-
-    // Truncate if tokens exceed capacity (leaving room for response)
-    let max_tokens = 2048 - 512; // Leave 512 for response
-    if tokens.len() > max_tokens {
-        println!("Prompt too long ({} tokens), truncating to {} tokens", tokens.len(), max_tokens);
-
-        // We want to keep the system prompt at the beginning and the user query at the end.
-        // We will remove tokens from the middle.
-        let to_remove = tokens.len() - max_tokens;
-        // Keep some fixed amount of tokens from the start (e.g. system prompt and start of context)
-        // and remove the middle section.
-        let start_keep = 500;
-
-        if tokens.len() > start_keep + to_remove {
-            tokens.drain(start_keep..(start_keep + to_remove));
-        } else {
-            // Fallback just in case
-            tokens.truncate(max_tokens);
-        }
-    }
 
     let mut batch = LlamaBatch::new(2048, 1);
     let last_index = tokens.len() - 1;
@@ -271,27 +300,7 @@ pub async fn ask_llm(
         let mut token_bytes = model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
         bytes_accumulator.append(&mut token_bytes);
 
-        // Try converting accumulated bytes to string, if error means not fully formed utf8 character yet
-        match std::str::from_utf8(&bytes_accumulator) {
-            Ok(s) => {
-                let _ = window.emit("llm-chunk", s);
-                result_string.push_str(s);
-                bytes_accumulator.clear();
-            }
-            Err(e) => {
-                // Keep accumulating if we cannot parse it cleanly yet
-                let utf8_error_index = e.valid_up_to();
-                let valid_str = String::from_utf8_lossy(&bytes_accumulator[..utf8_error_index]).to_string();
-                let _ = window.emit("llm-chunk", &valid_str);
-                result_string.push_str(&valid_str);
-                bytes_accumulator.drain(..utf8_error_index);
-                if bytes_accumulator.len() > 8 {
-                     // Failsafe in case we just got junk
-                     result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
-                     bytes_accumulator.clear();
-                }
-            }
-        }
+        process_token_bytes(&mut bytes_accumulator, &mut result_string, Some(&window));
 
         batch.clear();
         batch.add(new_token_id, n_cur, &[0], true).map_err(|e| format!("Failed to add: {:?}", e))?;
@@ -330,19 +339,8 @@ pub async fn ask_llm_background(
     ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(2048));
 
     let mut ctx = model.new_context(&state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
-    let mut tokens = model.str_to_token(&formatted_prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
 
-    let max_tokens = 2048 - 512;
-    if tokens.len() > max_tokens {
-        let to_remove = tokens.len() - max_tokens;
-        let start_keep = 500;
-
-        if tokens.len() > start_keep + to_remove {
-            tokens.drain(start_keep..(start_keep + to_remove));
-        } else {
-            tokens.truncate(max_tokens);
-        }
-    }
+    let tokens = prepare_prompt_tokens(model, &formatted_prompt)?;
 
     let mut batch = LlamaBatch::new(2048, 1);
     let last_index = tokens.len() - 1;
@@ -378,22 +376,7 @@ pub async fn ask_llm_background(
         let mut token_bytes = model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
         bytes_accumulator.append(&mut token_bytes);
 
-        match std::str::from_utf8(&bytes_accumulator) {
-            Ok(s) => {
-                result_string.push_str(s);
-                bytes_accumulator.clear();
-            }
-            Err(e) => {
-                let utf8_error_index = e.valid_up_to();
-                let valid_str = String::from_utf8_lossy(&bytes_accumulator[..utf8_error_index]).to_string();
-                result_string.push_str(&valid_str);
-                bytes_accumulator.drain(..utf8_error_index);
-                if bytes_accumulator.len() > 8 {
-                     result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
-                     bytes_accumulator.clear();
-                }
-            }
-        }
+        process_token_bytes(&mut bytes_accumulator, &mut result_string, None);
 
         batch.clear();
         batch.add(new_token_id, n_cur, &[0], true).map_err(|e| format!("Failed to add: {:?}", e))?;
