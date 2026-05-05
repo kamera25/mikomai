@@ -76,7 +76,7 @@ function App() {
           const defaultHistory: HistoryItem[] = [{
             id: defaultId,
             type: 'session',
-            title: "New Session",
+            title: "新しいセッション",
             messages: []
           }];
           setHistory(defaultHistory);

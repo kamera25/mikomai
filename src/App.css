@@ -397,6 +397,10 @@
   flex-direction: column;
 }
 
+.message-container.user {
+  align-items: flex-end;
+}
+
 /* Timeline Node (Dot) */
 .timeline-node {
   position: absolute;
@@ -447,14 +451,19 @@
 }
 
 .message.user .message-bubble {
-  background-color: transparent;
-  font-weight: 500;
-  font-size: 1.05rem;
+  background-color: var(--bg-tertiary);
+  padding: 12px 18px;
+  border-radius: 18px 18px 2px 18px;
+  border: 1px solid var(--border-color);
+  max-width: 80%;
   color: var(--text-primary);
+  font-weight: 400;
+  font-size: 0.95rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
 .message.user {
-  flex-direction: row; /* All left-aligned */
+  justify-content: flex-end;
 }
 
 .message-header {
