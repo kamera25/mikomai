@@ -25,6 +25,8 @@ pub struct Message {
     pub summary_text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

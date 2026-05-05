@@ -10,6 +10,7 @@ export interface Message {
   action_name?: string;
   summary_text?: string;
   raw_data?: string | null;
+  args?: any;
 }
 
 export interface SummaryItem {

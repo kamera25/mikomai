@@ -20,7 +20,7 @@ export function useMcp({
   mcpTimeout = 30
 }: UseMcpProps) {
 
-  const summarizeAndSave = async (content: string) => {
+  const summarizeAndSave = async (content: string, taskId?: string) => {
     try {
       const summaryPrompt = `以下の内容を要約してください。\n\n${content}`;
       const summaryText: string = await invoke("ask_llm_background", { prompt: summaryPrompt });
@@ -30,6 +30,12 @@ export function useMcp({
         const next = [...prev, newSummary];
         return next.length > 20 ? next.slice(next.length - 20) : next;
       });
+
+      if (taskId) {
+        setMessages(prev => prev.map(msg => 
+          msg.task_id === taskId ? { ...msg, summary_text: summaryText } : msg
+        ));
+      }
     } catch (e) {
       console.error("Failed to generate/save summary:", e);
     }
@@ -52,7 +58,12 @@ export function useMcp({
   ) => {
     const toolSignature = `${toolId}:${JSON.stringify(args)}`;
     if (executedTools.has(toolSignature)) {
-      setMessages(prev => [...prev, { role: "ai", content: "以上、報告いたします。", timestamp: new Date().toISOString() }]);
+      setMessages(prev => [...prev, { 
+        role: "ai", 
+        content: "以上、報告いたします。", 
+        timestamp: new Date().toISOString(),
+        event_type: "AgentResponse"
+      }]);
       return;
     }
     executedTools.add(toolSignature);
@@ -77,7 +88,8 @@ export function useMcp({
       status: "Running",
       action_name: toolLabel,
       summary_text: statusMsg,
-      raw_data: null
+      raw_data: null,
+      args
     }]);
 
     try {
@@ -175,16 +187,16 @@ export function useMcp({
           } catch (e) {
             // Final response: make it visible
             setMessages(prev => prev.map(msg => 
-              msg.task_id === analysisTaskId ? { ...msg, isHidden: false } : msg
+              msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
             ));
-            summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`);
+            summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
           }
         } else {
           // Final response: make it visible
           setMessages(prev => prev.map(msg => 
-            msg.task_id === analysisTaskId ? { ...msg, isHidden: false } : msg
+            msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
           ));
-          summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`);
+          summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
         }
       }
 
@@ -230,7 +242,14 @@ export function useMcp({
         await executeAndAnalyze(userMessage, "network_list_serial_ports", "Serial Ports", {});
       } else {
         // Fallback to LLM for parsing port and message if not clearly a list request
-        setMessages(prev => [...prev, { role: "ai", content: "考え中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
+        setMessages(prev => [...prev, { 
+          role: "ai", 
+          content: "考え中...", 
+          timestamp: new Date().toISOString(), 
+          isToolLoading: true,
+          isHidden: true,
+          event_type: "AgentResponse"
+        }]);
       }
     } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
       await executeAndAnalyze(userMessage, "network_show", "Show Command", {
@@ -268,7 +287,7 @@ export function useMcp({
         unlisten(); 
         
         console.log("LLM Response:", response);
-        summarizeAndSave(`ユーザー入力: ${userMessage}\n回答: ${response}`);
+        summarizeAndSave(`ユーザー入力: ${userMessage}\n回答: ${response}`, thinkingTaskId);
         
         // Support multiple tool calls in parallel
         const jsonBlocks = [...response.matchAll(/```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/g)];
@@ -308,13 +327,13 @@ export function useMcp({
             } catch (e) {
               // Final response: make it visible
               setMessages(prev => prev.map(msg => 
-                msg.task_id === thinkingTaskId ? { ...msg, isHidden: false } : msg
+                msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答" } : msg
               ));
             }
           } else {
             // Final response: make it visible
             setMessages(prev => prev.map(msg => 
-              msg.task_id === thinkingTaskId ? { ...msg, isHidden: false } : msg
+              msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答" } : msg
             ));
           }
         }

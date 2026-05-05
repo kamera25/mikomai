@@ -34,7 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {timelineEvents.map((m, i) => (
             <div 
               key={m.task_id || i} 
-              className={`sidebar-timeline-item ${m.status?.toLowerCase() || ""}`}
+              className={`sidebar-timeline-item ${m.role} ${m.status?.toLowerCase() || ""} ${m.event_type?.toLowerCase() || ""}`}
               onClick={(e) => {
                 e.stopPropagation();
                 if (m.task_id && onTimelineItemClick) {
@@ -44,16 +44,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="sidebar-timeline-icon">
                 {m.role === 'user' ? (
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                 ) : m.event_type === 'ToolExecution' ? (
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
                 ) : (
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                 )}
               </div>
               <div className="sidebar-timeline-content">
                 <span className="sidebar-timeline-label">
-                  {m.role === 'user' ? "指示" : m.event_type === 'ToolExecution' ? m.action_name : "回答"}
+                  {m.role === 'user' ? (
+                    m.content
+                  ) : m.event_type === 'ToolExecution' ? (
+                    <>
+                      <span className="timeline-action-name">{m.action_name}</span>
+                      {m.args && <span className="sidebar-timeline-args">{JSON.stringify(m.args)}</span>}
+                    </>
+                  ) : (
+                    m.summary_text || m.content
+                  )}
                 </span>
               </div>
             </div>
