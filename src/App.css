@@ -607,6 +607,39 @@
   letter-spacing: 1px;
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.raw-data-copy-button {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #999;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.raw-data-copy-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.raw-data-copy-button.copied {
+  color: #27c93f;
+  background: rgba(39, 201, 63, 0.1);
+  border-color: rgba(39, 201, 63, 0.3);
+}
+
+.raw-data-copy-button svg {
+  flex-shrink: 0;
 }
 
 .timeline-raw-data {

@@ -13,6 +13,17 @@ interface TimelineEventProps {
 
 export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+    }
+  };
 
   if (msg.isHidden) return null;
 
@@ -65,6 +76,31 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               <div className="timeline-raw-data-wrapper">
                 <div className="raw-data-header">
                   <span>RAW OUTPUT</span>
+                  <button 
+                    className={`raw-data-copy-button ${copied ? 'copied' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCopy(msg.raw_data || '');
+                    }}
+                    title="クリップボードにコピー"
+                  >
+                    {copied ? (
+                      <>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span>COPIED</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        <span>COPY</span>
+                      </>
+                    )}
+                  </button>
                 </div>
                 <div className="timeline-raw-data">
                   <Terminal content={msg.raw_data} />
