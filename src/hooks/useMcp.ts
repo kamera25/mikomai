@@ -62,10 +62,24 @@ export function useMcp({
       return;
     }
 
+    const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const isRag = toolId === "query_nw_db" || toolId === "network_query_nw_db";
     const statusMsg = isRag ? `NW-DBを検索中...` : `${toolLabel} を実行中...`;
     
-    setMessages(prev => [...prev, { role: "ai", content: statusMsg, timestamp: new Date().toISOString(), isToolLoading: true }]);
+    // Add ToolExecution block
+    setMessages(prev => [...prev, {
+      role: "ai",
+      content: "",
+      timestamp: new Date().toISOString(),
+      isToolLoading: true,
+      task_id: taskId,
+      event_type: "ToolExecution",
+      status: "Running",
+      action_name: toolLabel,
+      summary_text: statusMsg,
+      raw_data: null
+    }]);
+
     try {
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("MCP execution timed out")), mcpTimeout * 1000)
@@ -75,50 +89,42 @@ export function useMcp({
         invoke(toolId, args),
         timeoutPromise
       ]);
-      const statusBadge = result.success ? "✅ 成功" : "❌ 失敗";
-      const resultMessage = result.success ? 
-        `### ${toolLabel} 実行結果: ${statusBadge}\n\`\`\`terminal\n${result.output}\n\`\`\`` :
-        `⚠️ **${toolLabel}の実行に失敗しました: ${statusBadge}**\n\n【エラー内容】\n\`\`\`terminal\n${result.output}\n\`\`\``;
-      
-      if (isRag) {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { 
-            role: "ai", 
-            content: result.success ? `技術文書を確認しました。内容を整理して回答します...` : `⚠️ NW-DBの検索に失敗しました。`, 
-            timestamp: new Date().toISOString(),
-            isToolLoading: result.success
-          };
-          return updated;
-        });
-      } else {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: "ai", content: resultMessage, timestamp: new Date().toISOString() };
-          return updated;
-        });
-      }
+
+      // Update ToolExecution block
+      setMessages(prev => prev.map(msg =>
+        msg.task_id === taskId ? {
+          ...msg,
+          isToolLoading: false,
+          status: result.success ? "Success" : "Failed",
+          summary_text: result.success ? `${toolLabel} 完了` : `${toolLabel} 失敗`,
+          raw_data: result.output || "No output provided"
+        } : msg
+      ));
 
       const historyBlock = getHistoryBlock(summaries, historyLimit);
       const analysisPrompt = isRag ? 
         `ユーザーの質問: "${userMessage}"\nに対して、技術文書データベース(NW-DB)から以下の情報を取得しました:\n\n${result.output}\n\nこの内容に基づき、ネットワークエンジニアの視点で、ユーザーの質問に対する的確な回答を日本語で生成してください。回答には、参照した資料の内容を具体的に含めてください。${historyBlock}` :
-        `ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果（ステータス: ${statusBadge}）は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。${historyBlock}`;
+        `ユーザーの入力: "${userMessage}"\nに対する${toolLabel}の実行結果は以下の通りです:\n\n${result.output}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。${historyBlock}`;
       
-      if (!(isRag && result.success)) {
-        setMessages(prev => [...prev, { role: "ai", content: "分析中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
-      }
+      const analysisTaskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+      // We don't want to show the "分析中..." (analysis loading) block if it's not explicitly requested or we hide it by default,
+      // but to keep previous UX flow, we can push an AgentResponse block.
+      setMessages(prev => [...prev, {
+        role: "ai",
+        content: "分析中...",
+        timestamp: new Date().toISOString(),
+        isToolLoading: true,
+        task_id: analysisTaskId,
+        event_type: "AgentResponse"
+      }]);
       
       let analysisContent = "";
       const analysisUnlisten = await listen<string>("llm-chunk", (event) => {
         analysisContent += event.payload;
-        setMessages(prev => {
-          const updated = [...prev];
-          const lastMessage = updated[updated.length - 1];
-          if (lastMessage && lastMessage.role === "ai") {
-            updated[updated.length - 1] = { ...lastMessage, content: analysisContent, isToolLoading: false };
-          }
-          return updated;
-        });
+        setMessages(prev => prev.map(msg =>
+          msg.task_id === analysisTaskId ? { ...msg, content: analysisContent, isToolLoading: false } : msg
+        ));
       });
 
       let responseStr = "";
@@ -168,15 +174,16 @@ export function useMcp({
 
     } catch (e: any) {
       const errorMsg = e.toString();
-      const displayError = errorMsg.includes("Failed to execute") 
-        ? `❌ **${toolLabel}の実行に失敗しました。**\n\n実行環境（サイドカーやネットワーク接続）に問題がある可能性があります。\n\n詳細: \`${errorMsg}\``
-        : `❌ **${toolLabel}の実行中にエラーが発生しました。**\n\n詳細: \`${errorMsg}\``;
 
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: "ai", content: displayError, timestamp: new Date().toISOString() };
-        return updated;
-      });
+      setMessages(prev => prev.map(msg =>
+        msg.task_id === taskId ? {
+          ...msg,
+          isToolLoading: false,
+          status: "Failed",
+          summary_text: `${toolLabel} エラー`,
+          raw_data: errorMsg
+        } : msg
+      ));
     }
   };
 
