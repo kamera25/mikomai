@@ -555,6 +555,13 @@
   font-size: 0.95rem;
 }
 
+.timeline-type-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
 .action-label {
   font-weight: 600;
   color: var(--text-primary);

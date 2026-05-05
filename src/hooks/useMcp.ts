@@ -87,6 +87,7 @@ export function useMcp({
       event_type: "ToolExecution",
       status: "Running",
       action_name: toolLabel,
+      tool_id: toolId,
       summary_text: statusMsg,
       raw_data: null,
       args
@@ -167,7 +168,7 @@ export function useMcp({
           const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
                                      nextToolCall.tool === "network_traceroute" ? "Traceroute" : 
                                      nextToolCall.tool === "network_get_hosts" ? "Host List" :
-                                     nextToolCall.tool === "network_query_nw_db" || nextToolCall.tool === "query_nw_db" ? "NW-DB Search" :
+                                     nextToolCall.tool === "network_query_nw_db" || nextToolCall.tool === "query_nw_db" ? "NWDB検索" :
                                      nextToolCall.tool === "network_arp" ? "ARP Table" :
                                      nextToolCall.tool === "network_get_ip_info" ? "IP Info" :
                                      nextToolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
@@ -186,7 +187,8 @@ export function useMcp({
             setMessages(prev => prev.map(msg => 
               msg.task_id === analysisTaskId ? { ...msg, isHidden: true } : msg
             ));
-            const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : "Tool";
+            const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
+                                       nextToolCall.tool === "query_nw_db" || nextToolCall.tool === "network_query_nw_db" ? "NWDB検索" : "Tool";
             setTimeout(async () => {
               await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
             }, 1000);
@@ -315,7 +317,7 @@ export function useMcp({
             const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
                                    toolCall.tool === "network_traceroute" ? "Traceroute" : 
                                    toolCall.tool === "network_get_hosts" ? "Host List" :
-                                   toolCall.tool === "network_query_nw_db" || toolCall.tool === "query_nw_db" ? "NW-DB Search" :
+                                   toolCall.tool === "network_query_nw_db" || toolCall.tool === "query_nw_db" ? "NWDB検索" :
                                    toolCall.tool === "network_arp" ? "ARP Table" :
                                    toolCall.tool === "network_get_ip_info" ? "IP Info" :
                                    toolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
@@ -333,7 +335,8 @@ export function useMcp({
               setMessages(prev => prev.map(msg => 
                 msg.task_id === thinkingTaskId ? { ...msg, isHidden: true } : msg
               ));
-              const toolActionName = toolCall.tool === "network_ping" ? "Ping" : "Tool"; // Simplified
+              const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
+                                     toolCall.tool === "query_nw_db" || toolCall.tool === "network_query_nw_db" ? "NWDB検索" : "Tool";
               executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
             } catch (e) {
               // Final response: make it visible

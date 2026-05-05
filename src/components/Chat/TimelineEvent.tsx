@@ -44,6 +44,13 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                 </span>}
               </div>
               <div className="timeline-summary-text">
+                <div className="timeline-type-icon">
+                  {msg.tool_id === 'query_nw_db' || msg.tool_id === 'network_query_nw_db' ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path><path d="M8 2v20"></path></svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                  )}
+                </div>
                 <span className="action-label">{msg.action_name}</span>
                 <span className="summary-content">{msg.summary_text}</span>
               </div>

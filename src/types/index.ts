@@ -8,6 +8,7 @@ export interface Message {
   event_type?: "UserInput" | "ToolExecution" | "AgentResponse" | "SystemMessage";
   status?: "Running" | "Success" | "Failed";
   action_name?: string;
+  tool_id?: string;
   summary_text?: string;
   raw_data?: string | null;
   args?: any;
