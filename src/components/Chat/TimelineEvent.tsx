@@ -16,9 +16,17 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
 
   if (msg.isHidden) return null;
 
+  const getContainerClass = () => {
+    let classes = `message-container ${msg.role}`;
+    if (msg.event_type) classes += ` ${msg.event_type.toLowerCase()}`;
+    if (msg.status) classes += ` ${msg.status.toLowerCase()}`;
+    return classes;
+  };
+
   if (msg.event_type === "ToolExecution") {
     return (
-      <div className="message-container ai tool-event">
+      <div className={getContainerClass()}>
+        <div className="timeline-node"></div>
         <div className="message ai">
           <div className={`timeline-block tool-execution ${msg.status?.toLowerCase()}`}>
             <div
@@ -62,15 +70,13 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
     );
   }
 
-  // Handle standard User/AI messages or fallback
+  // Handle standard User/AI messages as timeline events
   return (
-    <div className={`message-container ${msg.role} ${msg.event_type?.toLowerCase() || ""}`}>
-      {msg.role === 'user' && (
-        <div className="message-header">
-          <div className="header-line"></div>
-          <span className="message-time">{formatMessageTime(msg.timestamp)}</span>
-        </div>
-      )}
+    <div className={getContainerClass()}>
+      <div className="timeline-node"></div>
+      <div className="message-header">
+        <span className="message-time">{formatMessageTime(msg.timestamp)}</span>
+      </div>
       <div className={`message ${msg.role}`}>
         <div className="message-bubble markdown-body">
           {msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
@@ -84,6 +90,9 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
 
               return (
                 <div key={i} className="code-block-wrapper">
+                  <div className="code-block-header">
+                    <span>CODE</span>
+                  </div>
                   <pre className="code-block"><code>{content}</code></pre>
                 </div>
               );

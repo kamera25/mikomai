@@ -409,6 +409,7 @@ function App() {
         isSidebarOpen={isSidebarOpen}
         history={history}
         activeSessionId={activeSessionId}
+        messages={messages}
         createNewFolder={() => {
           const folderName = prompt("フォルダ名を入力してください");
           if (folderName) {

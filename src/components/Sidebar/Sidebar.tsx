@@ -1,10 +1,10 @@
-import React from 'react';
-import { HistoryItem } from '../../types';
+import { HistoryItem, Message } from '../../types';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
   history: HistoryItem[];
   activeSessionId: string;
+  messages: Message[];
   createNewFolder: () => void;
   createNewSession: () => void;
   toggleFolder: (folderId: string) => void;
@@ -16,6 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isSidebarOpen,
   history,
   activeSessionId,
+  messages,
   createNewFolder,
   createNewSession,
   toggleFolder,
@@ -55,6 +56,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
     });
   };
 
+  const renderSessionTimeline = () => {
+    const timelineEvents = messages.filter(m => !m.isHidden);
+    if (timelineEvents.length === 0) return null;
+
+    return (
+      <div className="sidebar-timeline">
+        <h3 className="sidebar-section-title">操作ログ</h3>
+        <div className="timeline-items">
+          {timelineEvents.map((m, i) => (
+            <div key={m.task_id || i} className={`sidebar-timeline-item ${m.status?.toLowerCase() || ""}`}>
+              <div className="sidebar-timeline-icon">
+                {m.role === 'user' ? (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                ) : m.event_type === 'ToolExecution' ? (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                ) : (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                )}
+              </div>
+              <div className="sidebar-timeline-content">
+                <span className="sidebar-timeline-label">
+                  {m.role === 'user' ? "指示" : m.event_type === 'ToolExecution' ? m.action_name : "回答"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <aside className={`sidebar ${isSidebarOpen ? '' : 'collapsed'}`}>
       <div className="sidebar-header">
@@ -69,8 +101,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      <div className="session-list">
-        {renderHistoryItems(history)}
+      <div className="sidebar-scroll-area">
+        <div className="session-list">
+          {renderHistoryItems(history)}
+        </div>
+        
+        {renderSessionTimeline()}
       </div>
     </aside>
   );
