@@ -108,13 +108,13 @@ export function useMcp({
       
       const analysisTaskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-      // We don't want to show the "分析中..." (analysis loading) block if it's not explicitly requested or we hide it by default,
-      // but to keep previous UX flow, we can push an AgentResponse block.
+      // Hide the intermediate "Analyzing..." or thinking process
       setMessages(prev => [...prev, {
         role: "ai",
         content: "分析中...",
         timestamp: new Date().toISOString(),
         isToolLoading: true,
+        isHidden: true, // Hide by default
         task_id: analysisTaskId,
         event_type: "AgentResponse"
       }]);
@@ -136,21 +136,19 @@ export function useMcp({
         analysisUnlisten();
       }
 
-      let nextJsonStr = "";
-      const nextJsonBlockMatch = responseStr.match(/```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/);
-      if (nextJsonBlockMatch) {
-        nextJsonStr = nextJsonBlockMatch[1];
-      } else {
-        const nextFallbackMatch = responseStr.match(/\{[\s\S]*?"tool"[\s\S]*\}/);
-        if (nextFallbackMatch) {
-          nextJsonStr = nextFallbackMatch[0];
-        }
-      }
-
-      if (nextJsonStr) {
+      // Support multiple tool calls in parallel
+      const nextJsonBlocks = [...responseStr.matchAll(/```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/g)];
+      const nextToolCalls = nextJsonBlocks.map(match => {
         try {
-          console.log("Extracted subsequent JSON tool string:", nextJsonStr);
-          const nextToolCall = JSON.parse(nextJsonStr);
+          return JSON.parse(match[1]);
+        } catch (e) {
+          return null;
+        }
+      }).filter(tc => tc !== null);
+
+      if (nextToolCalls.length > 0) {
+        for (const nextToolCall of nextToolCalls) {
+          console.log("Extracted subsequent tool call:", nextToolCall);
           const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
                                      nextToolCall.tool === "network_traceroute" ? "Traceroute" : 
                                      nextToolCall.tool === "network_get_hosts" ? "Host List" :
@@ -164,12 +162,30 @@ export function useMcp({
           setTimeout(async () => {
             await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
           }, 1000);
-        } catch (e) {
-          console.error("Failed to parse subsequent tool call JSON", e);
-          summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`);
         }
       } else {
-         summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`);
+        const nextFallbackMatch = responseStr.match(/\{[\s\S]*?"tool"[\s\S]*\}/);
+        if (nextFallbackMatch) {
+          try {
+            const nextToolCall = JSON.parse(nextFallbackMatch[0]);
+            const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : "Tool";
+            setTimeout(async () => {
+              await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
+            }, 1000);
+          } catch (e) {
+            // Final response: make it visible
+            setMessages(prev => prev.map(msg => 
+              msg.task_id === analysisTaskId ? { ...msg, isHidden: false } : msg
+            ));
+            summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`);
+          }
+        } else {
+          // Final response: make it visible
+          setMessages(prev => prev.map(msg => 
+            msg.task_id === analysisTaskId ? { ...msg, isHidden: false } : msg
+          ));
+          summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`);
+        }
       }
 
     } catch (e: any) {
@@ -222,7 +238,17 @@ export function useMcp({
         command: "show ip int brief"
       });
     } else {
-      setMessages(prev => [...prev, { role: "ai", content: "考え中...", timestamp: new Date().toISOString(), isToolLoading: true }]);
+      const thinkingTaskId = `task_think_${Date.now()}`;
+      // Intermediate thinking message (hidden)
+      setMessages(prev => [...prev, { 
+        role: "ai", 
+        content: "考え中...", 
+        timestamp: new Date().toISOString(), 
+        isToolLoading: true,
+        isHidden: true,
+        task_id: thinkingTaskId,
+        event_type: "AgentResponse"
+      }]);
       
       let fullContent = "";
       let unlisten: () => void = () => {};
@@ -230,14 +256,9 @@ export function useMcp({
       try {
         unlisten = await listen<string>("llm-chunk", (event) => {
           fullContent += event.payload;
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastMessage = updated[updated.length - 1];
-            if (lastMessage && lastMessage.role === "ai") {
-              updated[updated.length - 1] = { ...lastMessage, content: fullContent, isToolLoading: false };
-            }
-            return updated;
-          });
+          setMessages(prev => prev.map(msg => 
+            msg.task_id === thinkingTaskId ? { ...msg, content: fullContent, isToolLoading: false } : msg
+          ));
         });
 
         const historyBlock = getHistoryBlock(summaries, historyLimit);
@@ -249,21 +270,20 @@ export function useMcp({
         console.log("LLM Response:", response);
         summarizeAndSave(`ユーザー入力: ${userMessage}\n回答: ${response}`);
         
-        let jsonStr = "";
-        const jsonBlockMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/);
-        if (jsonBlockMatch) {
-          jsonStr = jsonBlockMatch[1];
-        } else {
-          const fallbackMatch = response.match(/\{[\s\S]*?"tool"[\s\S]*\}/);
-          if (fallbackMatch) {
-            jsonStr = fallbackMatch[0];
-          }
-        }
-
-        if (jsonStr) {
+        // Support multiple tool calls in parallel
+        const jsonBlocks = [...response.matchAll(/```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/g)];
+        const toolCalls = jsonBlocks.map(match => {
           try {
-            console.log("Extracted JSON tool string:", jsonStr);
-            const toolCall = JSON.parse(jsonStr);
+            return JSON.parse(match[1]);
+          } catch (e) {
+            return null;
+          }
+        }).filter(tc => tc !== null);
+
+        if (toolCalls.length > 0) {
+          // Keep the trigger message hidden
+          for (const toolCall of toolCalls) {
+            console.log("Extracted tool call:", toolCall);
             const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
                                    toolCall.tool === "network_traceroute" ? "Traceroute" : 
                                    toolCall.tool === "network_get_hosts" ? "Host List" :
@@ -274,17 +294,40 @@ export function useMcp({
                                    toolCall.tool === "network_send_console_message" ? "Console Message" :
                                    toolCall.tool === "network_show" ? "Show Command" : toolCall.tool;
             
-            await executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
-          } catch (parseError) {
-            console.error("Failed to parse tool call JSON", parseError);
+            // Execute in parallel (no await here, or wrap in Promise.all)
+            executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
+          }
+        } else {
+          // Check for single JSON block without code fences as fallback
+          const fallbackMatch = response.match(/\{[\s\S]*?"tool"[\s\S]*\}/);
+          if (fallbackMatch) {
+            try {
+              const toolCall = JSON.parse(fallbackMatch[0]);
+              const toolActionName = toolCall.tool === "network_ping" ? "Ping" : "Tool"; // Simplified
+              executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
+            } catch (e) {
+              // Final response: make it visible
+              setMessages(prev => prev.map(msg => 
+                msg.task_id === thinkingTaskId ? { ...msg, isHidden: false } : msg
+              ));
+            }
+          } else {
+            // Final response: make it visible
+            setMessages(prev => prev.map(msg => 
+              msg.task_id === thinkingTaskId ? { ...msg, isHidden: false } : msg
+            ));
           }
         }
       } catch (e: any) {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: "ai", content: `Error: ${e.toString()}`, timestamp: new Date().toISOString() };
-          return updated;
-        });
+        setMessages(prev => prev.map(msg => 
+          msg.task_id === thinkingTaskId ? { 
+            ...msg, 
+            content: `Error: ${e.toString()}`, 
+            isHidden: false, 
+            isToolLoading: false,
+            status: "Failed"
+          } : msg
+        ));
       } finally {
         unlisten();
       }

@@ -7,6 +7,24 @@ use tauri::Manager;
 pub struct Message {
     pub role: String,
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
+    pub is_tool_loading: Option<bool>,
+    #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
+    pub is_hidden: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_data: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -320,7 +320,7 @@
 }
 
 .chat-history::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1; /* Clear gray color */
+  background-color: #cbd5e1;
   border-radius: 10px;
   border: 2px solid transparent;
   background-clip: content-box;
@@ -391,6 +391,16 @@
   box-shadow: none;
   padding: 8px 0;
   max-width: 100%;
+  width: 100%;
+}
+
+.message-container.tool-event {
+  margin: 4px 0;
+}
+
+.message-container.tool-event .message.ai {
+  max-width: 100%;
+  width: 100%;
 }
 
 .message.user .message-bubble {
@@ -399,20 +409,36 @@
 
 /* Timeline UI additions */
 .timeline-block {
-  margin: 12px 0;
-  border-radius: 8px;
+  margin: 8px 0;
+  border-radius: 12px;
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   overflow: hidden;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+  max-width: 800px;
+}
+
+.timeline-block.running {
+  border-left: 4px solid var(--accent-color);
+}
+
+.timeline-block.success {
+  border-left: 4px solid var(--success);
+}
+
+.timeline-block.failed {
+  border-left: 4px solid var(--danger);
 }
 
 .timeline-summary {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
-  background-color: var(--bg-tertiary);
+  padding: 14px 18px;
+  background-color: var(--bg-secondary);
   transition: background-color 0.2s ease;
+  user-select: none;
 }
 
 .timeline-summary:hover {
@@ -420,15 +446,20 @@
 }
 
 .timeline-status-icon {
-  width: 24px;
+  width: 28px;
+  height: 28px;
   display: flex;
+  align-items: center;
   justify-content: center;
-  margin-right: 12px;
+  margin-right: 16px;
+  background-color: var(--bg-tertiary);
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .status-spinner-small {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border: 2px solid rgba(59, 130, 246, 0.2);
   border-top-color: var(--accent-color);
   border-radius: 50%;
@@ -437,31 +468,71 @@
 
 .icon-success {
   color: var(--success);
+  display: flex;
 }
 
 .icon-failed {
   color: var(--danger);
+  display: flex;
 }
 
 .timeline-summary-text {
   flex-grow: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 0.95rem;
+}
+
+.action-label {
+  font-weight: 600;
   color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summary-content {
+  color: var(--text-secondary);
 }
 
 .timeline-chevron {
   color: var(--text-muted);
-  font-size: 0.8rem;
-  transition: transform 0.2s ease;
+  transition: transform 0.3s ease;
+  display: flex;
 }
 
 .timeline-chevron.open {
   transform: rotate(180deg);
 }
 
-.timeline-raw-data {
+.timeline-raw-data-wrapper {
   border-top: 1px solid var(--border-color);
-  background-color: #1e1e1e; /* Terminal background */
+  background-color: #1e1e1e;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.raw-data-header {
+  background-color: #2d2d2d;
+  padding: 6px 16px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #888;
+  letter-spacing: 1px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.timeline-raw-data {
+  padding: 0;
 }
 
 /* Global loading indicator */
