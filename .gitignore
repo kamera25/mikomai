@@ -28,3 +28,4 @@ venv/
 # nw-docs
 src-tauri/.fastembed_cache
 
+coverage/
