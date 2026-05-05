@@ -25,7 +25,7 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
 
   if (msg.event_type === "ToolExecution") {
     return (
-      <div className={getContainerClass()}>
+      <div className={getContainerClass()} id={msg.task_id}>
         <div className="timeline-node"></div>
         <div className="message ai">
           <div className={`timeline-block tool-execution ${msg.status?.toLowerCase()}`}>
@@ -72,7 +72,7 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
 
   // Handle standard User/AI messages as timeline events
   return (
-    <div className={getContainerClass()}>
+    <div className={getContainerClass()} id={msg.task_id}>
       <div className="timeline-node"></div>
       <div className="message-header">
         <span className="message-time">{formatMessageTime(msg.timestamp)}</span>

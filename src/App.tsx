@@ -350,6 +350,13 @@ function App() {
     return undefined;
   };
 
+  const scrollToMessage = (taskId: string) => {
+    const element = document.getElementById(taskId);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
   // Sync messages when active session changes
   useEffect(() => {
     const session = findSession(history, activeSessionId);
@@ -449,6 +456,7 @@ function App() {
             return toggleNode(prev);
           });
         }}
+        onTimelineItemClick={scrollToMessage}
         switchSession={async (sessionId: string) => {
           setActiveSessionId(sessionId);
           const findSession = (items: HistoryItem[]): ChatSession | null => {

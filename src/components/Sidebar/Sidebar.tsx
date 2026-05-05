@@ -9,6 +9,7 @@ interface SidebarProps {
   createNewSession: () => void;
   toggleFolder: (folderId: string) => void;
   switchSession: (sessionId: string) => void;
+  onTimelineItemClick?: (taskId: string) => void;
   formatDate?: (dateString: string) => string;
 }
 
@@ -20,8 +21,48 @@ export const Sidebar: React.FC<SidebarProps> = ({
   createNewFolder,
   createNewSession,
   toggleFolder,
-  switchSession
+  switchSession,
+  onTimelineItemClick
 }) => {
+  const renderSessionTimeline = () => {
+    const timelineEvents = messages.filter(m => !m.isHidden);
+    if (timelineEvents.length === 0) return null;
+
+    return (
+      <div className="sidebar-timeline">
+        <div className="timeline-items">
+          {timelineEvents.map((m, i) => (
+            <div 
+              key={m.task_id || i} 
+              className={`sidebar-timeline-item ${m.status?.toLowerCase() || ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (m.task_id && onTimelineItemClick) {
+                  onTimelineItemClick(m.task_id);
+                }
+              }}
+            >
+              <div className="sidebar-timeline-icon">
+                {m.role === 'user' ? (
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                ) : m.event_type === 'ToolExecution' ? (
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                ) : (
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                )}
+              </div>
+              <div className="sidebar-timeline-content">
+                <span className="sidebar-timeline-label">
+                  {m.role === 'user' ? "指示" : m.event_type === 'ToolExecution' ? m.action_name : "回答"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const renderHistoryItems = (items: HistoryItem[], level = 0) => {
     return items.map(item => {
       if (item.type === 'folder') {
@@ -42,49 +83,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         );
       } else {
+        const isActive = activeSessionId === item.id;
         return (
-          <div
-            key={item.id}
-            className={`session-item ${activeSessionId === item.id ? 'active' : ''}`}
-            style={{ paddingLeft: `${level * 12 + 28}px` }}
-            onClick={() => switchSession(item.id)}
-          >
-            <span className="session-title">{item.title}</span>
+          <div key={item.id} className="session-container">
+            <div
+              className={`session-item ${isActive ? 'active' : ''}`}
+              style={{ paddingLeft: `${level * 12 + 28}px` }}
+              onClick={() => switchSession(item.id)}
+            >
+              <span className="session-title">{item.title}</span>
+            </div>
+            {isActive && renderSessionTimeline()}
           </div>
         );
       }
     });
-  };
-
-  const renderSessionTimeline = () => {
-    const timelineEvents = messages.filter(m => !m.isHidden);
-    if (timelineEvents.length === 0) return null;
-
-    return (
-      <div className="sidebar-timeline">
-        <h3 className="sidebar-section-title">操作ログ</h3>
-        <div className="timeline-items">
-          {timelineEvents.map((m, i) => (
-            <div key={m.task_id || i} className={`sidebar-timeline-item ${m.status?.toLowerCase() || ""}`}>
-              <div className="sidebar-timeline-icon">
-                {m.role === 'user' ? (
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                ) : m.event_type === 'ToolExecution' ? (
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-                ) : (
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                )}
-              </div>
-              <div className="sidebar-timeline-content">
-                <span className="sidebar-timeline-label">
-                  {m.role === 'user' ? "指示" : m.event_type === 'ToolExecution' ? m.action_name : "回答"}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -105,8 +118,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="session-list">
           {renderHistoryItems(history)}
         </div>
-        
-        {renderSessionTimeline()}
       </div>
     </aside>
   );
