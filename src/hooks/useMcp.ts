@@ -135,7 +135,7 @@ export function useMcp({
       const analysisUnlisten = await listen<string>("llm-chunk", (event) => {
         analysisContent += event.payload;
         setMessages(prev => prev.map(msg =>
-          msg.task_id === analysisTaskId ? { ...msg, content: analysisContent, isToolLoading: false } : msg
+          msg.task_id === analysisTaskId ? { ...msg, content: analysisContent, isToolLoading: false, isHidden: false } : msg
         ));
       });
 
@@ -159,6 +159,9 @@ export function useMcp({
       }).filter(tc => tc !== null);
 
       if (nextToolCalls.length > 0) {
+        setMessages(prev => prev.map(msg => 
+          msg.task_id === analysisTaskId ? { ...msg, isHidden: true } : msg
+        ));
         for (const nextToolCall of nextToolCalls) {
           console.log("Extracted subsequent tool call:", nextToolCall);
           const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
@@ -180,6 +183,9 @@ export function useMcp({
         if (nextFallbackMatch) {
           try {
             const nextToolCall = JSON.parse(nextFallbackMatch[0]);
+            setMessages(prev => prev.map(msg => 
+              msg.task_id === analysisTaskId ? { ...msg, isHidden: true } : msg
+            ));
             const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : "Tool";
             setTimeout(async () => {
               await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
@@ -276,7 +282,7 @@ export function useMcp({
         unlisten = await listen<string>("llm-chunk", (event) => {
           fullContent += event.payload;
           setMessages(prev => prev.map(msg => 
-            msg.task_id === thinkingTaskId ? { ...msg, content: fullContent, isToolLoading: false } : msg
+            msg.task_id === thinkingTaskId ? { ...msg, content: fullContent, isToolLoading: false, isHidden: false } : msg
           ));
         });
 
@@ -301,6 +307,9 @@ export function useMcp({
 
         if (toolCalls.length > 0) {
           // Keep the trigger message hidden
+          setMessages(prev => prev.map(msg => 
+            msg.task_id === thinkingTaskId ? { ...msg, isHidden: true } : msg
+          ));
           for (const toolCall of toolCalls) {
             console.log("Extracted tool call:", toolCall);
             const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
@@ -317,11 +326,13 @@ export function useMcp({
             executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
           }
         } else {
-          // Check for single JSON block without code fences as fallback
           const fallbackMatch = response.match(/\{[\s\S]*?"tool"[\s\S]*\}/);
           if (fallbackMatch) {
             try {
               const toolCall = JSON.parse(fallbackMatch[0]);
+              setMessages(prev => prev.map(msg => 
+                msg.task_id === thinkingTaskId ? { ...msg, isHidden: true } : msg
+              ));
               const toolActionName = toolCall.tool === "network_ping" ? "Ping" : "Tool"; // Simplified
               executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
             } catch (e) {
