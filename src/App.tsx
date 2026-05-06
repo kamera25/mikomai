@@ -14,6 +14,14 @@ import { ActivityBar } from "./components/ActivityBar/ActivityBar";
 import { useMcp } from "./hooks/useMcp";
 import { useHistory } from "./hooks/useHistory";
 import { StatusBar } from "./components/StatusBar/StatusBar";
+import {
+  DEFAULT_HISTORY_LIMIT,
+  DEFAULT_TEMPERATURE,
+  DEFAULT_REPETITION_PENALTY,
+  DEFAULT_MODEL_PATH,
+  DEFAULT_MCP_TIMEOUT,
+  DEFAULT_DB_PATH,
+} from "./constants/defaults";
 
 function App() {
   const {
@@ -34,12 +42,12 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [modelStatus, setModelStatus] = useState<string>("NotLoaded");
   const [summaries, setSummaries] = useState<SummaryItem[]>([]);
-  const [historyLimit, setHistoryLimit] = useState<number>(5);
-  const [temperature, setTemperature] = useState<number>(0.0);
-  const [repetitionPenalty, setRepetitionPenalty] = useState<number>(1.1);
-  const [modelPath, setModelPath] = useState<string | null>(null);
-  const [mcpTimeout, setMcpTimeout] = useState<number>(30);
-  const [dbPath, setDbPath] = useState<string>("");
+  const [historyLimit, setHistoryLimit] = useState<number>(DEFAULT_HISTORY_LIMIT);
+  const [temperature, setTemperature] = useState<number>(DEFAULT_TEMPERATURE);
+  const [repetitionPenalty, setRepetitionPenalty] = useState<number>(DEFAULT_REPETITION_PENALTY);
+  const [modelPath, setModelPath] = useState<string | null>(DEFAULT_MODEL_PATH);
+  const [mcpTimeout, setMcpTimeout] = useState<number>(DEFAULT_MCP_TIMEOUT);
+  const [dbPath, setDbPath] = useState<string>(DEFAULT_DB_PATH);
   
   // Host Suggestion states
   const [availableHosts, setAvailableHosts] = useState<{hostname: string, ip: string}[]>([]);
