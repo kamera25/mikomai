@@ -10,6 +10,8 @@ use std::sync::Mutex;
 use std::num::NonZeroU32;
 use tauri::Emitter;
 use tauri::Manager;
+use crate::llm_manager::{SharedModel, AgentManager};
+use std::sync::Arc;
 
 #[derive(serde::Serialize)]
 pub enum ModelState {
@@ -20,20 +22,20 @@ pub enum ModelState {
 }
 
 pub struct LlamaState {
-    pub model: Mutex<Option<LlamaModel>>,
+    pub shared: Mutex<Option<SharedModel>>,
     pub status: Mutex<ModelState>,
     pub inference_lock: Mutex<()>,
-    pub backend: LlamaBackend,
+    pub backend: Arc<LlamaBackend>,
 }
 
 impl LlamaState {
     pub fn new() -> Result<Self, String> {
         let backend = LlamaBackend::init().map_err(|e| e.to_string())?;
         Ok(Self {
-            model: Mutex::new(None),
+            shared: Mutex::new(None),
             status: Mutex::new(ModelState::NotLoaded),
             inference_lock: Mutex::new(()),
-            backend,
+            backend: Arc::new(backend),
         })
     }
 }
@@ -60,7 +62,7 @@ pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<S
     // Add overrides to move Vision tensors to CPU (null backend to skip loading to VRAM/saving memory)
     model_params.as_mut().add_cpu_buft_override(c".*vision.*");
 
-    let model = match LlamaModel::load_from_file(&state.backend, &path, &model_params) {
+    let model = match LlamaModel::load_from_file(&*state.backend, &path, &model_params) {
         Ok(m) => m,
         Err(e) => {
             let err_msg = format!("Failed to load model: {}", e);
@@ -71,8 +73,11 @@ pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<S
         }
     };
     
-    let mut model_lock = state.model.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-    *model_lock = Some(model);
+    let mut shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    *shared_lock = Some(SharedModel {
+        model: Arc::new(model),
+        backend: state.backend.clone(),
+    });
     
     {
         let mut status_lock = state.status.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
@@ -245,9 +250,9 @@ pub async fn ask_llm(
     println!("Received prompt: {}", prompt);
 
     let _inference_guard = llama_state.inference_lock.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-    let model_lock = llama_state.model.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-    let model = match &*model_lock {
-        Some(m) => m,
+    let shared_lock = llama_state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    let shared = match &*shared_lock {
+        Some(s) => s,
         None => return Err("Model not loaded. Please configure and load a model first.".to_string()),
     };
 
@@ -260,9 +265,9 @@ pub async fn ask_llm(
     let mut ctx_params = LlamaContextParams::default();
     ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(2048));
 
-    let mut ctx = model.new_context(&llama_state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
+    let mut ctx = shared.model.new_context(&llama_state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
 
-    let tokens = prepare_prompt_tokens(model, &formatted_prompt)?;
+    let tokens = prepare_prompt_tokens(&shared.model, &formatted_prompt)?;
     println!("Total tokens in prompt: {}", tokens.len());
 
     let mut batch = LlamaBatch::new(2048, 1);
@@ -293,7 +298,7 @@ pub async fn ask_llm(
     };
     let mut sampler = sampler;
 
-    let turn_end_tokens = model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
+    let turn_end_tokens = shared.model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
     let turn_end_token = turn_end_tokens.first().copied();
 
     let n_len = 500; // max length
@@ -303,11 +308,11 @@ pub async fn ask_llm(
     for _ in 0..n_len {
         let new_token_id = sampler.sample(&mut ctx, batch.n_tokens() - 1);
 
-        if new_token_id == model.token_eos() || Some(new_token_id) == turn_end_token {
+        if new_token_id == shared.model.token_eos() || Some(new_token_id) == turn_end_token {
             break;
         }
 
-        let mut token_bytes = model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
+        let mut token_bytes = shared.model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
         bytes_accumulator.append(&mut token_bytes);
 
         process_token_bytes(&mut bytes_accumulator, &mut result_string, Some(&window));
@@ -333,9 +338,9 @@ pub async fn ask_llm_background(
     state: tauri::State<'_, LlamaState>
 ) -> Result<String, String> {
     let _inference_guard = state.inference_lock.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-    let model_lock = state.model.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-    let model = match &*model_lock {
-        Some(m) => m,
+    let shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    let shared = match &*shared_lock {
+        Some(s) => s,
         None => return Err("Model not loaded.".to_string()),
     };
 
@@ -348,9 +353,9 @@ pub async fn ask_llm_background(
     let mut ctx_params = LlamaContextParams::default();
     ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(2048));
 
-    let mut ctx = model.new_context(&state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
+    let mut ctx = shared.model.new_context(&state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
 
-    let tokens = prepare_prompt_tokens(model, &formatted_prompt)?;
+    let tokens = prepare_prompt_tokens(&shared.model, &formatted_prompt)?;
 
     let mut batch = LlamaBatch::new(2048, 1);
     let last_index = tokens.len() - 1;
@@ -369,7 +374,7 @@ pub async fn ask_llm_background(
         LlamaSampler::greedy(),
     ]);
 
-    let turn_end_tokens = model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
+    let turn_end_tokens = shared.model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
     let turn_end_token = turn_end_tokens.first().copied();
 
     let n_len = 500; // max length
@@ -379,11 +384,11 @@ pub async fn ask_llm_background(
     for _ in 0..n_len {
         let new_token_id = sampler.sample(&mut ctx, batch.n_tokens() - 1);
 
-        if new_token_id == model.token_eos() || Some(new_token_id) == turn_end_token {
+        if new_token_id == shared.model.token_eos() || Some(new_token_id) == turn_end_token {
             break;
         }
 
-        let mut token_bytes = model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
+        let mut token_bytes = shared.model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
         bytes_accumulator.append(&mut token_bytes);
 
         process_token_bytes(&mut bytes_accumulator, &mut result_string, None);

@@ -44,4 +44,5 @@ tauri-plugin-dialog = "2.7.1"
 serialport = "4.7.0"
 dns-lookup = "3.0.1"
 regex = "1.12.3"
+anyhow = "1.0.102"
 
