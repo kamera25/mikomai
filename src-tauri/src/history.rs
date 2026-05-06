@@ -94,6 +94,16 @@ mod tests {
         let msg = Message {
             role: "user".to_string(),
             content: "Hello".to_string(),
+            timestamp: None,
+            is_tool_loading: None,
+            is_hidden: None,
+            task_id: None,
+            event_type: None,
+            status: None,
+            action_name: None,
+            summary_text: None,
+            raw_data: None,
+            args: None,
         };
         let serialized = serde_json::to_string(&msg).unwrap();
         assert!(serialized.contains(r#""role":"user""#));
@@ -108,6 +118,16 @@ mod tests {
             messages: vec![Message {
                 role: "user".to_string(),
                 content: "Hi".to_string(),
+                timestamp: None,
+                is_tool_loading: None,
+                is_hidden: None,
+                task_id: None,
+                event_type: None,
+                status: None,
+                action_name: None,
+                summary_text: None,
+                raw_data: None,
+                args: None,
             }],
         };
         let item = HistoryItem::Session(session);
