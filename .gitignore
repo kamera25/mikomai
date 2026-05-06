@@ -29,3 +29,4 @@ venv/
 src-tauri/.fastembed_cache
 
 coverage/
+build/
