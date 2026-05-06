@@ -161,8 +161,9 @@ export function useMcp({
 
       if (nextToolCalls.length > 0) {
         setMessages(prev => prev.map(msg => 
-          msg.task_id === analysisTaskId ? { ...msg, isHidden: true } : msg
+          msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
         ));
+        summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
         for (const nextToolCall of nextToolCalls) {
           console.log("Extracted subsequent tool call:", nextToolCall);
           const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
@@ -185,8 +186,9 @@ export function useMcp({
           try {
             const nextToolCall = JSON.parse(nextFallbackMatch[0]);
             setMessages(prev => prev.map(msg => 
-              msg.task_id === analysisTaskId ? { ...msg, isHidden: true } : msg
+              msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
             ));
+            summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
             const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
                                        nextToolCall.tool === "query_nw_db" || nextToolCall.tool === "network_query_nw_db" ? "NWDB検索" : "Tool";
             setTimeout(async () => {
@@ -308,9 +310,9 @@ export function useMcp({
         }).filter(tc => tc !== null);
 
         if (toolCalls.length > 0) {
-          // Keep the trigger message hidden
+          // Keep the trigger message visible
           setMessages(prev => prev.map(msg => 
-            msg.task_id === thinkingTaskId ? { ...msg, isHidden: true } : msg
+            msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
           ));
           for (const toolCall of toolCalls) {
             console.log("Extracted tool call:", toolCall);
@@ -333,7 +335,7 @@ export function useMcp({
             try {
               const toolCall = JSON.parse(fallbackMatch[0]);
               setMessages(prev => prev.map(msg => 
-                msg.task_id === thinkingTaskId ? { ...msg, isHidden: true } : msg
+                msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
               ));
               const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
                                      toolCall.tool === "query_nw_db" || toolCall.tool === "network_query_nw_db" ? "NWDB検索" : "Tool";
