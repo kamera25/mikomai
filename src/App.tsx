@@ -209,6 +209,13 @@ function App() {
     scrollToBottom();
   }, [messages]);
 
+  // Close history sidebar when leaving chat screen
+  useEffect(() => {
+    if (isSettingsOpen || isConnectionOpen || isScheduledTasksOpen) {
+      setIsSidebarOpen(false);
+    }
+  }, [isSettingsOpen, isConnectionOpen, isScheduledTasksOpen, setIsSidebarOpen]);
+
   const formatMessageTime = (isoString?: string) => {
     if (!isoString) return "";
     const date = new Date(isoString);
@@ -332,8 +339,6 @@ function App() {
       <div className="main-layout">
         {/* Activity Bar (LM Studio style thin left bar) */}
         <ActivityBar
-          isSidebarOpen={isSidebarOpen}
-          setIsSidebarOpen={setIsSidebarOpen}
           isConnectionOpen={isConnectionOpen}
           setIsConnectionOpen={setIsConnectionOpen}
           isScheduledTasksOpen={isScheduledTasksOpen}

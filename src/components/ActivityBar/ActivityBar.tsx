@@ -1,8 +1,6 @@
 import React from 'react';
 
 interface ActivityBarProps {
-  setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  isSidebarOpen: boolean;
   setIsConnectionOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isConnectionOpen: boolean;
   setIsScheduledTasksOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -12,8 +10,6 @@ interface ActivityBarProps {
 }
 
 export const ActivityBar: React.FC<ActivityBarProps> = ({
-  setIsSidebarOpen,
-  isSidebarOpen,
   setIsConnectionOpen,
   isConnectionOpen,
   setIsScheduledTasksOpen,
@@ -30,11 +26,6 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
           setIsSettingsOpen(false);
           setIsConnectionOpen(false);
           setIsScheduledTasksOpen(false);
-          if (!isSettingsOpen && !isConnectionOpen && !isScheduledTasksOpen) {
-            setIsSidebarOpen(!isSidebarOpen);
-          } else {
-            setIsSidebarOpen(true);
-          }
         }}
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
