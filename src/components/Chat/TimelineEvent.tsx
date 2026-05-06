@@ -12,7 +12,9 @@ interface TimelineEventProps {
 }
 
 export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const isNwDb = msg.tool_id === 'query_nw_db' || msg.tool_id === 'network_query_nw_db';
+  const defaultExpanded = msg.event_type === "ToolExecution" && !isNwDb;
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async (text: string) => {
