@@ -1,0 +1,11 @@
+--- src/components/ConnectionSettingsPanel.tsx
++++ src/components/ConnectionSettingsPanel.tsx
+@@ -15,6 +15,8 @@
+   port?: number;
+   type: string;
+   lastConnected: string;
++  username?: string;
++  password?: string;
+ }
+
+ interface McpHost {

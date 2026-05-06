@@ -86,13 +86,14 @@ pub async fn network_show(
 ) -> Result<CommandResult, String> {
     let mut target_device = device.clone();
     
-    // If host is not an IP, try to resolve it from MCP/Connections
-    if !device.host.chars().all(|c| c.is_digit(10) || c == '.') {
-        if let Some((ip, user, dtype)) = get_device_config(&app, &device.host) {
-            target_device.host = ip;
-            target_device.username = user;
-            target_device.device_type = dtype;
+    // Try to resolve it from MCP/Connections, falling back to passed-in device if not found
+    if let Some((ip, user, password, dtype)) = get_device_config(&app, &device.host) {
+        target_device.host = ip;
+        target_device.username = user;
+        if password.is_some() {
+            target_device.password = password;
         }
+        target_device.device_type = dtype;
     }
 
     println!("Executing read-only command on {}: {}", target_device.host, command);
@@ -111,13 +112,14 @@ pub async fn network_config(
 ) -> Result<CommandResult, String> {
     let mut target_device = device.clone();
     
-    // If host is not an IP, try to resolve it from MCP/Connections
-    if !device.host.chars().all(|c| c.is_digit(10) || c == '.') {
-        if let Some((ip, user, dtype)) = get_device_config(&app, &device.host) {
-            target_device.host = ip;
-            target_device.username = user;
-            target_device.device_type = dtype;
+    // Try to resolve it from MCP/Connections, falling back to passed-in device if not found
+    if let Some((ip, user, password, dtype)) = get_device_config(&app, &device.host) {
+        target_device.host = ip;
+        target_device.username = user;
+        if password.is_some() {
+            target_device.password = password;
         }
+        target_device.device_type = dtype;
     }
 
     println!("Executing WRITE command on {}: {:?}", target_device.host, commands);

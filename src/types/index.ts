@@ -24,8 +24,12 @@ export interface Connection {
   status: 'online' | 'offline';
   hostname: string;
   ip: string;
+  port?: number;
   type: string;
   lastConnected: string;
+  username?: string;
+  password?: string;
+  deviceType?: string;
 }
 
 export interface McpHost {
