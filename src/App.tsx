@@ -6,24 +6,32 @@ import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
 import { ScheduledTasksPanel } from "./components/ScheduledTasksPanel";
 import "./App.css";
 
-import { Message, SummaryItem, Connection, McpHost, ChatSession, HistoryItem } from './types';
+import { SummaryItem, Connection, McpHost } from './types';
 import { Chat } from "./components/Chat/Chat";
 import { ChatInput } from "./components/ChatInput/ChatInput";
 import { Sidebar } from "./components/Sidebar/Sidebar";
 import { ActivityBar } from "./components/ActivityBar/ActivityBar";
 import { useMcp } from "./hooks/useMcp";
+import { useHistory } from "./hooks/useHistory";
 import { StatusBar } from "./components/StatusBar/StatusBar";
 
 function App() {
+  const {
+    history,
+    activeSessionId,
+    messages,
+    setMessages,
+    createNewFolder,
+    createNewSession,
+    toggleFolder,
+    switchSession,
+  } = useHistory();
+
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConnectionOpen, setIsConnectionOpen] = useState(false);
   const [isScheduledTasksOpen, setIsScheduledTasksOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeSessionId, setActiveSessionId] = useState<string>("");
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
   const [modelStatus, setModelStatus] = useState<string>("NotLoaded");
   const [summaries, setSummaries] = useState<SummaryItem[]>([]);
   const [historyLimit, setHistoryLimit] = useState<number>(5);
@@ -59,36 +67,9 @@ function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Load history from backend
+  // Load summaries and settings from backend
   useEffect(() => {
-    const initHistory = async () => {
-      try {
-        const savedHistory: HistoryItem[] = await invoke("load_history");
-        if (savedHistory && savedHistory.length > 0) {
-          setHistory(savedHistory);
-          // Set active session to the first one found
-          const firstSession = findFirstSession(savedHistory);
-          if (firstSession) {
-            setActiveSessionId(firstSession.id);
-          }
-        } else {
-          // Initialize with default session if empty
-          const defaultId = "session-1";
-          const defaultHistory: HistoryItem[] = [{
-            id: defaultId,
-            type: 'session',
-            title: "新しいセッション",
-            messages: []
-          }];
-          setHistory(defaultHistory);
-          setActiveSessionId(defaultId);
-        }
-      } catch (e) {
-        console.error("Failed to load history:", e);
-      } finally {
-        setIsLoaded(true);
-      }
-
+    const initSettingsAndSummaries = async () => {
       try {
         const savedSummaries = await invoke<SummaryItem[]>("load_summaries");
         setSummaries(savedSummaries || []);
@@ -123,7 +104,7 @@ function App() {
         console.error("Failed to load settings:", e);
       }
     };
-    initHistory();
+    initSettingsAndSummaries();
   }, []);
 
   const fetchHosts = useCallback(async (hostToResolve?: string) => {
@@ -183,29 +164,7 @@ function App() {
     }
   }, [recentIPs[0], fetchHosts]);
 
-  // Save history to backend whenever it changes
-  useEffect(() => {
-    if (!isLoaded) return;
-    const save = async () => {
-      try {
-        await invoke("save_history", { history });
-      } catch (e) {
-        console.error("Failed to save history:", e);
-      }
-    };
-    save();
-  }, [history, isLoaded]);
 
-  const findFirstSession = (items: HistoryItem[]): ChatSession | undefined => {
-    for (const item of items) {
-      if (item.type === 'session') return item;
-      if (item.type === 'folder') {
-        const found = findFirstSession(item.items);
-        if (found) return found;
-      }
-    }
-    return undefined;
-  };
 
   // Poll model status
   useEffect(() => {
@@ -339,32 +298,12 @@ function App() {
     }, 500);
   };
 
-  // Helper to find a session in the tree
-  const findSession = (items: HistoryItem[], id: string): ChatSession | undefined => {
-    for (const item of items) {
-      if (item.type === 'session' && item.id === id) return item;
-      if (item.type === 'folder') {
-        const found = findSession(item.items, id);
-        if (found) return found;
-      }
-    }
-    return undefined;
-  };
-
   const scrollToMessage = (taskId: string) => {
     const element = document.getElementById(taskId);
     if (element) {
       element.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   };
-
-  // Sync messages when active session changes
-  useEffect(() => {
-    const session = findSession(history, activeSessionId);
-    if (session) {
-      setMessages(session.messages);
-    }
-  }, [activeSessionId]);
   
   const handleLoadModel = async () => {
     if (!modelPath) return;
@@ -378,24 +317,7 @@ function App() {
     }
   };
 
-  // Update history when messages change
-  useEffect(() => {
-    if (messages.length === 0) return;
-    setHistory(prev => {
-      const updateSessionMessages = (items: HistoryItem[]): HistoryItem[] => {
-        return items.map(item => {
-          if (item.id === activeSessionId && item.type === 'session') {
-            return { ...item, messages };
-          }
-          if (item.type === 'folder') {
-            return { ...item, items: updateSessionMessages(item.items) };
-          }
-          return item;
-        });
-      };
-      return updateSessionMessages(prev);
-    });
-  }, [messages, activeSessionId]);
+
 
     return (
     <div className="app-container">
@@ -418,65 +340,11 @@ function App() {
         history={history}
         activeSessionId={activeSessionId}
         messages={messages}
-        createNewFolder={() => {
-          const folderName = prompt("フォルダ名を入力してください");
-          if (folderName) {
-            setHistory(prev => [{
-              id: `folder-${Date.now()}`,
-              type: 'folder',
-              name: folderName,
-              isOpen: true,
-              items: []
-            }, ...prev]);
-          }
-        }}
-        createNewSession={() => {
-          const id = `session-${Date.now()}`;
-          setHistory(prev => [{
-            id,
-            type: 'session',
-            title: "新しいセッション",
-            messages: []
-          }, ...prev]);
-          setActiveSessionId(id);
-          setMessages([]);
-        }}
-        toggleFolder={(folderId: string) => {
-          setHistory(prev => {
-            const toggleNode = (items: HistoryItem[]): HistoryItem[] => {
-              return items.map(item => {
-                if (item.type === 'folder') {
-                  if (item.id === folderId) {
-                    return { ...item, isOpen: !item.isOpen };
-                  }
-                  return { ...item, items: toggleNode(item.items) };
-                }
-                return item;
-              });
-            };
-            return toggleNode(prev);
-          });
-        }}
+        createNewFolder={createNewFolder}
+        createNewSession={createNewSession}
+        toggleFolder={toggleFolder}
         onTimelineItemClick={scrollToMessage}
-        switchSession={async (sessionId: string) => {
-          setActiveSessionId(sessionId);
-          const findSession = (items: HistoryItem[]): ChatSession | null => {
-            for (const item of items) {
-              if (item.type === 'session' && item.id === sessionId) {
-                return item;
-              }
-              if (item.type === 'folder') {
-                const found = findSession(item.items);
-                if (found) return found;
-              }
-            }
-            return null;
-          };
-          const session = findSession(history);
-          if (session) {
-            setMessages(session.messages);
-          }
-        }}
+        switchSession={switchSession}
       />
 
       {/* Main Viewport (Grouping Chat and Settings) */}
