@@ -236,6 +236,76 @@ fn process_token_bytes(
     }
 }
 
+fn setup_context_and_batch<'a>(
+    model: &'a LlamaModel,
+    backend: &LlamaBackend,
+    formatted_prompt: &str,
+) -> Result<(llama_cpp_2::context::LlamaContext<'a>, LlamaBatch<'a>), String> {
+    let mut ctx_params = LlamaContextParams::default();
+    ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(2048));
+
+    let mut ctx = model
+        .new_context(backend, ctx_params)
+        .map_err(|e| format!("Failed to create context: {:?}", e))?;
+
+    let tokens = prepare_prompt_tokens(model, formatted_prompt)?;
+
+    let mut batch = LlamaBatch::new(2048, 1);
+    let last_index = tokens.len().saturating_sub(1);
+    for (i, token) in tokens.into_iter().enumerate() {
+        let is_last = i == last_index;
+        batch
+            .add(token, i as i32, &[0], is_last)
+            .map_err(|e| format!("Failed to add to batch: {:?}", e))?;
+    }
+
+    ctx.decode(&mut batch)
+        .map_err(|e| format!("Decode error: {:?}", e))?;
+
+    Ok((ctx, batch))
+}
+
+fn accumulate_token_stream(
+    mut sampler: LlamaSampler,
+    ctx: &mut llama_cpp_2::context::LlamaContext<'_>,
+    batch: &mut LlamaBatch<'_>,
+    model: &LlamaModel,
+    n_len: usize,
+    window: Option<&tauri::Window>,
+) -> Result<String, String> {
+    let mut result_string = String::new();
+    let mut n_cur = batch.n_tokens();
+    let mut bytes_accumulator = Vec::new();
+
+    let turn_end_tokens = model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
+    let turn_end_token = turn_end_tokens.first().copied();
+
+    for _ in 0..n_len {
+        let new_token_id = sampler.sample(ctx, batch.n_tokens() - 1);
+
+        if new_token_id == model.token_eos() || Some(new_token_id) == turn_end_token {
+            break;
+        }
+
+        let mut token_bytes = model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or_default();
+        bytes_accumulator.append(&mut token_bytes);
+
+        process_token_bytes(&mut bytes_accumulator, &mut result_string, window);
+
+        batch.clear();
+        batch.add(new_token_id, n_cur, &[0], true).map_err(|e| format!("Failed to add: {:?}", e))?;
+        n_cur += 1;
+
+        ctx.decode(batch).map_err(|e| format!("Decode error: {:?}", e))?;
+    }
+
+    if !bytes_accumulator.is_empty() {
+        result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
+    }
+
+    Ok(result_string)
+}
+
 #[tauri::command]
 pub async fn ask_llm(
     window: tauri::Window,
@@ -257,25 +327,8 @@ pub async fn ask_llm(
         prompt
     );
 
-    let mut ctx_params = LlamaContextParams::default();
-    ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(2048));
+    let (mut ctx, mut batch) = setup_context_and_batch(model, &llama_state.backend, &formatted_prompt)?;
 
-    let mut ctx = model.new_context(&llama_state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
-
-    let tokens = prepare_prompt_tokens(model, &formatted_prompt)?;
-    println!("Total tokens in prompt: {}", tokens.len());
-
-    let mut batch = LlamaBatch::new(2048, 1);
-    let last_index = tokens.len() - 1;
-    for (i, token) in tokens.into_iter().enumerate() {
-        let is_last = i == last_index;
-        batch.add(token, i as i32, &[0], is_last).map_err(|e| format!("Failed to add to batch: {:?}", e))?;
-    }
-
-    ctx.decode(&mut batch).map_err(|e| format!("Decode error: {:?}", e))?;
-
-    let mut result_string = String::new();
-    let mut n_cur = batch.n_tokens();
     let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
     println!("LLM Temperature setting: {}", settings.temperature);
 
@@ -291,39 +344,9 @@ pub async fn ask_llm(
             LlamaSampler::dist(42),
         ])
     };
-    let mut sampler = sampler;
-
-    let turn_end_tokens = model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
-    let turn_end_token = turn_end_tokens.first().copied();
 
     let n_len = 500; // max length
-
-    let mut bytes_accumulator = Vec::new();
-
-    for _ in 0..n_len {
-        let new_token_id = sampler.sample(&mut ctx, batch.n_tokens() - 1);
-
-        if new_token_id == model.token_eos() || Some(new_token_id) == turn_end_token {
-            break;
-        }
-
-        let mut token_bytes = model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
-        bytes_accumulator.append(&mut token_bytes);
-
-        process_token_bytes(&mut bytes_accumulator, &mut result_string, Some(&window));
-
-        batch.clear();
-        batch.add(new_token_id, n_cur, &[0], true).map_err(|e| format!("Failed to add: {:?}", e))?;
-        n_cur += 1;
-
-        ctx.decode(&mut batch).map_err(|e| format!("Decode error: {:?}", e))?;
-    }
-
-    if !bytes_accumulator.is_empty() {
-        result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
-    }
-
-    Ok(result_string)
+    accumulate_token_stream(sampler, &mut ctx, &mut batch, model, n_len, Some(&window))
 }
 
 #[tauri::command]
@@ -345,59 +368,14 @@ pub async fn ask_llm_background(
         prompt
     );
 
-    let mut ctx_params = LlamaContextParams::default();
-    ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(2048));
+    let (mut ctx, mut batch) = setup_context_and_batch(model, &state.backend, &formatted_prompt)?;
 
-    let mut ctx = model.new_context(&state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
-
-    let tokens = prepare_prompt_tokens(model, &formatted_prompt)?;
-
-    let mut batch = LlamaBatch::new(2048, 1);
-    let last_index = tokens.len() - 1;
-    for (i, token) in tokens.into_iter().enumerate() {
-        let is_last = i == last_index;
-        batch.add(token, i as i32, &[0], is_last).map_err(|e| format!("Failed to add to batch: {:?}", e))?;
-    }
-
-    ctx.decode(&mut batch).map_err(|e| format!("Decode error: {:?}", e))?;
-
-    let mut result_string = String::new();
-    let mut n_cur = batch.n_tokens();
     let settings = crate::settings::load_settings(app).unwrap_or_default();
-    let mut sampler = LlamaSampler::chain_simple([
+    let sampler = LlamaSampler::chain_simple([
         LlamaSampler::penalties(64, settings.repetition_penalty, 0.0, 0.0),
         LlamaSampler::greedy(),
     ]);
 
-    let turn_end_tokens = model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
-    let turn_end_token = turn_end_tokens.first().copied();
-
     let n_len = 500; // max length
-
-    let mut bytes_accumulator = Vec::new();
-
-    for _ in 0..n_len {
-        let new_token_id = sampler.sample(&mut ctx, batch.n_tokens() - 1);
-
-        if new_token_id == model.token_eos() || Some(new_token_id) == turn_end_token {
-            break;
-        }
-
-        let mut token_bytes = model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
-        bytes_accumulator.append(&mut token_bytes);
-
-        process_token_bytes(&mut bytes_accumulator, &mut result_string, None);
-
-        batch.clear();
-        batch.add(new_token_id, n_cur, &[0], true).map_err(|e| format!("Failed to add: {:?}", e))?;
-        n_cur += 1;
-
-        ctx.decode(&mut batch).map_err(|e| format!("Decode error: {:?}", e))?;
-    }
-
-    if !bytes_accumulator.is_empty() {
-        result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
-    }
-
-    Ok(result_string)
+    accumulate_token_stream(sampler, &mut ctx, &mut batch, model, n_len, None)
 }
