@@ -34,47 +34,75 @@ impl SidecarNetmikoWrapper {
         Self { app: app.clone() }
     }
 
-    async fn run_sidecar(&self, args: Vec<String>) -> Result<String, String> {
-        let sidecar = self.app.shell()
+    async fn run_sidecar(&self, payload: serde_json::Value) -> Result<String, String> {
+        let payload_str = serde_json::to_string(&payload)
+            .map_err(|e| format!("Failed to serialize payload: {}", e))?;
+
+        let (mut rx, mut child) = self.app.shell()
             .sidecar("netmiko_wrapper")
             .map_err(|e| format!("Failed to create sidecar command: {}", e))?
-            .args(args);
+            .arg("--stdin")
+            .spawn()
+            .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
-        let output = sidecar.output().await
-            .map_err(|e| format!("Failed to execute sidecar: {}", e))?;
+        child.write(format!("{}\n", payload_str).as_bytes())
+            .map_err(|e| format!("Failed to write to sidecar stdin: {}", e))?;
 
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-        } else {
-            Err(String::from_utf8_lossy(&output.stderr).to_string())
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+
+        while let Some(event) = rx.recv().await {
+            match event {
+                tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
+                    stdout.push_str(&String::from_utf8_lossy(&line));
+                    stdout.push('\n');
+                }
+                tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
+                    stderr.push_str(&String::from_utf8_lossy(&line));
+                    stderr.push('\n');
+                }
+                tauri_plugin_shell::process::CommandEvent::Error(err) => {
+                    return Err(format!("Sidecar error: {}", err));
+                }
+                tauri_plugin_shell::process::CommandEvent::Terminated(payload) => {
+                    let code = payload.code.unwrap_or(-1);
+                    if code == 0 {
+                        return Ok(stdout);
+                    } else {
+                        return Err(stderr.trim().to_string());
+                    }
+                }
+                _ => {}
+            }
         }
+
+        Err("Sidecar completed unexpectedly".to_string())
     }
 }
 
 impl NetworkInterface for SidecarNetmikoWrapper {
     async fn execute_show(&self, device: &DeviceConfig, command: &str) -> Result<String, String> {
-        let args = vec![
-            "--action".to_string(), "show".to_string(),
-            "--host".to_string(), device.host.clone(),
-            "--username".to_string(), device.username.clone(),
-            "--password".to_string(), device.password.clone().unwrap_or_default(),
-            "--device_type".to_string(), device.device_type.clone(),
-            "--command".to_string(), command.to_string()
-        ];
-        self.run_sidecar(args).await
+        let payload = serde_json::json!({
+            "action": "show",
+            "host": device.host,
+            "username": device.username,
+            "password": device.password.clone().unwrap_or_default(),
+            "device_type": device.device_type,
+            "command": command
+        });
+        self.run_sidecar(payload).await
     }
 
     async fn execute_config(&self, device: &DeviceConfig, commands: Vec<String>) -> Result<String, String> {
-        let commands_json = serde_json::to_string(&commands).unwrap_or_default();
-        let args = vec![
-            "--action".to_string(), "config".to_string(),
-            "--host".to_string(), device.host.clone(),
-            "--username".to_string(), device.username.clone(),
-            "--password".to_string(), device.password.clone().unwrap_or_default(),
-            "--device_type".to_string(), device.device_type.clone(),
-            "--commands".to_string(), commands_json
-        ];
-        self.run_sidecar(args).await
+        let payload = serde_json::json!({
+            "action": "config",
+            "host": device.host,
+            "username": device.username,
+            "password": device.password.clone().unwrap_or_default(),
+            "device_type": device.device_type,
+            "commands": commands
+        });
+        self.run_sidecar(payload).await
     }
 }
 
