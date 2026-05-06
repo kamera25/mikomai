@@ -5,6 +5,7 @@ mod history;
 mod connections;
 pub mod scheduled_tasks;
 pub(crate) mod settings;
+pub(crate) mod crypto;
 
 use tauri::Manager;
 

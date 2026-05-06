@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
+use crate::crypto::{encrypt, decrypt};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -15,6 +16,12 @@ pub struct Connection {
     #[serde(rename = "type")]
     pub conn_type: String,
     pub last_connected: String,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+    #[serde(default)]
+    pub device_type: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -41,13 +48,39 @@ pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, String
         return Ok(vec![]);
     }
     let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let connections: Vec<Connection> = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    let mut connections: Vec<Connection> = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+
+    // Decrypt passwords when loading
+    for conn in &mut connections {
+        if let Some(encrypted_password) = &conn.password {
+            if !encrypted_password.is_empty() {
+                match decrypt(&app, encrypted_password) {
+                    Ok(decrypted) => conn.password = Some(decrypted),
+                    Err(e) => eprintln!("Failed to decrypt password for connection {}: {}", conn.id, e),
+                }
+            }
+        }
+    }
+
     Ok(connections)
 }
 
 #[tauri::command]
-pub fn save_connections(app: tauri::AppHandle, connections: Vec<Connection>) -> Result<(), String> {
+pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>) -> Result<(), String> {
     let path = get_connections_path(&app);
+
+    // Encrypt passwords before saving
+    for conn in &mut connections {
+        if let Some(plain_password) = &conn.password {
+            if !plain_password.is_empty() {
+                match encrypt(&app, plain_password) {
+                    Ok(encrypted) => conn.password = Some(encrypted),
+                    Err(e) => return Err(format!("Failed to encrypt password for connection {}: {}", conn.id, e)),
+                }
+            }
+        }
+    }
+
     let data = serde_json::to_string_pretty(&connections).map_err(|e| e.to_string())?;
     fs::write(path, data).map_err(|e| e.to_string())?;
     Ok(())
@@ -78,28 +111,32 @@ pub fn resolve_host_with_mcp(app: &tauri::AppHandle, host: &str) -> String {
     host.to_string()
 }
 
-pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, String, String)> {
-    // Returns (IP, Username, DeviceType)
+pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, String, Option<String>, String)> {
+    // Returns (IP, Username, Password, DeviceType)
     
     // 1. Check local connections
     if let Ok(connections) = load_connections(app.clone()) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase()) {
-            let dtype = if conn.conn_type.contains("Cisco IOS") { "cisco_ios" }
-                        else if conn.conn_type.contains("Juniper") { "juniper_junos" }
-                        else if conn.conn_type.contains("Arista") { "arista_eos" }
-                        else { "cisco_ios" }; // Default
-            return Some((conn.ip.clone(), "admin".to_string(), dtype.to_string()));
+        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase() || c.ip == host) {
+            let dtype = if let Some(dt) = &conn.device_type {
+                dt.clone()
+            } else if conn.conn_type.contains("Cisco IOS") { "cisco_ios".to_string() }
+                        else if conn.conn_type.contains("Juniper") { "juniper_junos".to_string() }
+                        else if conn.conn_type.contains("Arista") { "arista_eos".to_string() }
+                        else { "cisco_ios".to_string() }; // Default
+
+            let user = conn.username.clone().unwrap_or_else(|| "admin".to_string());
+            return Some((conn.ip.clone(), user, conn.password.clone(), dtype));
         }
     }
 
     // 2. Check MCP registry
     if let Ok(mcp_hosts) = get_mcp_hosts() {
-        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == host.to_lowercase()) {
+        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == host.to_lowercase() || h.ip == host) {
             let dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios" }
                         else if mcp.device_type.contains("Juniper") { "juniper_junos" }
                         else if mcp.device_type.contains("Arista") { "arista_eos" }
                         else { "cisco_ios" };
-            return Some((mcp.ip.clone(), mcp.username.clone(), dtype.to_string()));
+            return Some((mcp.ip.clone(), mcp.username.clone(), None, dtype.to_string()));
         }
     }
 
@@ -120,6 +157,9 @@ mod tests {
             port: Some(22),
             conn_type: "SSH".to_string(),
             last_connected: "2023-10-27".to_string(),
+            username: None,
+            password: None,
+            device_type: None,
         };
 
         let serialized = serde_json::to_string(&conn).unwrap();
