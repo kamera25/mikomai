@@ -1,4 +1,5 @@
 mod llm;
+mod llm_manager;
 pub mod mcp;
 mod network;
 mod history;
@@ -76,8 +77,8 @@ pub fn run() {
         .run(|app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
                 let state = app_handle.state::<llm::LlamaState>();
-                let mut model = state.model.lock().unwrap();
-                *model = None;
+                let mut shared = state.shared.lock().unwrap();
+                *shared = None;
                 println!("Llama model cleared on exit.");
             }
             _ => {}

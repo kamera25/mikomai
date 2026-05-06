@@ -5285,6 +5285,7 @@ name = "mikomai"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "anyhow",
  "arrow",
  "arrow-array",
  "arrow-json",
