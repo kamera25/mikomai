@@ -1,7 +1,5 @@
-use hf_hub::api::tokio::Api;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::model::LlamaModel;
-use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::AddBos;
@@ -10,7 +8,7 @@ use std::sync::Mutex;
 use std::num::NonZeroU32;
 use tauri::Emitter;
 use tauri::Manager;
-use crate::llm_manager::{SharedModel, AgentManager};
+use crate::llm::llm_manager::SharedModel;
 use std::sync::Arc;
 
 #[derive(serde::Serialize)]
@@ -40,52 +38,7 @@ impl LlamaState {
     }
 }
 
-#[tauri::command]
-pub async fn download_model(repo: String, filename: String) -> Result<String, String> {
-    println!("Starting model download: {}/{}", repo, filename);
-    let api = Api::new().map_err(|e| e.to_string())?;
-    let api_repo = api.model(repo);
-    let path = api_repo.get(&filename).await.map_err(|e| e.to_string())?;
-    println!("Model available at: {:?}", path);
-    Ok(path.to_string_lossy().to_string())
-}
 
-#[tauri::command]
-pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
-    {
-        let mut status_lock = state.status.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-        *status_lock = ModelState::Loading;
-    }
-
-    let mut model_params = std::pin::pin!(LlamaModelParams::default());
-
-    // Add overrides to move Vision tensors to CPU (null backend to skip loading to VRAM/saving memory)
-    model_params.as_mut().add_cpu_buft_override(c".*vision.*");
-
-    let model = match LlamaModel::load_from_file(&*state.backend, &path, &model_params) {
-        Ok(m) => m,
-        Err(e) => {
-            let err_msg = format!("Failed to load model: {}", e);
-            if let Ok(mut status_lock) = state.status.lock() {
-                *status_lock = ModelState::Error(err_msg.clone());
-            }
-            return Err(err_msg);
-        }
-    };
-    
-    let mut shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-    *shared_lock = Some(SharedModel {
-        model: Arc::new(model),
-        backend: state.backend.clone(),
-    });
-    
-    {
-        let mut status_lock = state.status.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-        *status_lock = ModelState::Loaded;
-    }
-    
-    Ok("Model loaded successfully".to_string())
-}
 
 #[tauri::command]
 pub fn get_model_status(state: tauri::State<'_, LlamaState>) -> ModelState {
