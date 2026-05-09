@@ -165,7 +165,6 @@ export function useMcp({
         ));
         summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
         for (const nextToolCall of nextToolCalls) {
-          console.log("Extracted subsequent tool call:", nextToolCall);
           const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
                                      nextToolCall.tool === "network_traceroute" ? "Traceroute" : 
                                      nextToolCall.tool === "network_get_hosts" ? "Host List" :
@@ -296,7 +295,6 @@ export function useMcp({
         const response: string = await invoke("ask_llm", { prompt: promptWithContext });
         unlisten(); 
         
-        console.log("LLM Response:", response);
         summarizeAndSave(`ユーザー入力: ${userMessage}\n回答: ${response}`, thinkingTaskId);
         
         // Support multiple tool calls in parallel
@@ -315,7 +313,6 @@ export function useMcp({
             msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
           ));
           for (const toolCall of toolCalls) {
-            console.log("Extracted tool call:", toolCall);
             const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
                                    toolCall.tool === "network_traceroute" ? "Traceroute" : 
                                    toolCall.tool === "network_get_hosts" ? "Host List" :
