@@ -126,7 +126,7 @@ describe('SettingsPanel', () => {
     fireEvent.click(button);
 
     await waitFor(() => {
-      expect(screen.getByText('Error: Error: Network error')).toBeInTheDocument();
+      expect(screen.getByText('Error: Network error')).toBeInTheDocument();
     });
   });
 

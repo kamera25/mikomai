@@ -61,8 +61,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       });
       
       setDownloadStatus(`Success: ${loadResult}`);
-    } catch (e: any) {
-      setDownloadStatus(`Error: ${e.toString()}`);
+    } catch (e) {
+      setDownloadStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsLoading(false);
     }

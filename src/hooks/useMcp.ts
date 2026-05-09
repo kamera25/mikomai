@@ -143,7 +143,7 @@ export function useMcp({
       let responseStr = "";
       try {
         responseStr = await invoke("ask_llm", { prompt: analysisPrompt });
-      } catch (analysisError: any) {
+      } catch (analysisError) {
         console.error("Failed to get analysis", analysisError);
       } finally {
         analysisUnlisten();
@@ -210,8 +210,8 @@ export function useMcp({
         }
       }
 
-    } catch (e: any) {
-      const errorMsg = e.toString();
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
 
       setMessages(prev => prev.map(msg =>
         msg.task_id === taskId ? {
@@ -353,11 +353,11 @@ export function useMcp({
             ));
           }
         }
-      } catch (e: any) {
+      } catch (e) {
         setMessages(prev => prev.map(msg => 
           msg.task_id === thinkingTaskId ? { 
             ...msg, 
-            content: `Error: ${e.toString()}`, 
+            content: `Error: ${e instanceof Error ? e.message : String(e)}`,
             isHidden: false, 
             isToolLoading: false,
             status: "Failed"
