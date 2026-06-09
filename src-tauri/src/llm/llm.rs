@@ -124,14 +124,11 @@ pub async fn ask_llm(
             .unwrap_or(&prompt)
             .to_string()
     } else if prompt.starts_with("ユーザーの入力: \"") {
-        prompt.strip_prefix("ユーザーの入力: \"")
-            .unwrap()
-            .split("\"\nに対する")
-            .next()
-            .unwrap_or(&prompt)
-            .to_string()
+        "ツールの実行結果を分析・報告してください".to_string()
+    } else if prompt.starts_with("ユーザーの質問: \"") {
+        "提供された技術文書をもとにユーザーの質問に回答してください".to_string()
     } else {
-        prompt.chars().take(300).collect::<String>()
+        prompt.split("\n\n<memory>").next().unwrap_or(&prompt).chars().take(300).collect::<String>()
     };
 
     println!("Router clean query: '{}'", router_query);
@@ -217,12 +214,7 @@ pub async fn ask_llm(
 
     match inference_result {
         Ok(response) => Ok(response),
-        Err(e) => {
-            if e.contains("n_tokens == 0") || crate::llm::greeting::is_greeting(&router_query) {
-                return Ok(crate::llm::greeting::stream_self_introduction(&window).await);
-            }
-            Err(e)
-        }
+        Err(e) => Err(e),
     }
 }
 

@@ -155,6 +155,9 @@ export function useMcp({
       let responseStr = "";
       try {
         responseStr = await invoke("ask_llm", { prompt: analysisPrompt });
+        setMessages(prev => prev.map(msg =>
+          msg.task_id === analysisTaskId ? { ...msg, content: responseStr, isToolLoading: false, isHidden: false } : msg
+        ));
       } catch (analysisError: any) {
         console.error("Failed to get analysis", analysisError);
       } finally {
@@ -321,6 +324,10 @@ export function useMcp({
         const response: string = await invoke("ask_llm", { prompt: promptWithContext });
         unlisten(); 
         agentUnlisten();
+        
+        setMessages(prev => prev.map(msg => 
+          msg.task_id === thinkingTaskId ? { ...msg, content: response, isToolLoading: false, isHidden: false } : msg
+        ));
         
         console.log("LLM Response:", response);
         summarizeAndSave(`ユーザー入力: ${userMessage}\n回答: ${response}`, thinkingTaskId);

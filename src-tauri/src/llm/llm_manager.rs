@@ -72,8 +72,9 @@ impl<'a> AgentContext<'a> {
             tokens.truncate(max_sys_tokens);
         }
 
+        let tokens_len = tokens.len();
         let mut batch = LlamaBatch::new(2048, 1);
-        let last_index = tokens.len() - 1;
+        let last_index = tokens_len - 1;
 
         for (i, token) in tokens.into_iter().enumerate() {
             let is_last = i == last_index;
@@ -82,7 +83,7 @@ impl<'a> AgentContext<'a> {
 
         ctx.decode(&mut batch)?;
 
-        let base_n_past = batch.n_tokens() as u32;
+        let base_n_past = tokens_len as u32;
 
         Ok(Self { ctx, base_n_past, id })
     }
@@ -156,7 +157,7 @@ pub fn run_inference<'a>(
     agent_ctx.ctx.decode(&mut batch)?;
 
     let mut result_string = String::new();
-    let mut n_cur = batch.n_tokens();
+    let mut n_cur = current_pos;
 
     let sampler = if temperature <= 0.0 {
         LlamaSampler::chain_simple([
