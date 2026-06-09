@@ -140,6 +140,18 @@ export function useMcp({
         ));
       });
 
+      let agentUnlisten = () => {};
+      try {
+        agentUnlisten = await listen<string>("agent-selected", (event) => {
+          const agentName = event.payload;
+          setMessages(prev => prev.map(msg =>
+            msg.task_id === analysisTaskId ? { ...msg, summary_text: `${agentName} が分析中...`, isHidden: false } : msg
+          ));
+        });
+      } catch (err) {
+        console.error("Failed to listen to agent-selected:", err);
+      }
+
       let responseStr = "";
       try {
         responseStr = await invoke("ask_llm", { prompt: analysisPrompt });
@@ -147,6 +159,7 @@ export function useMcp({
         console.error("Failed to get analysis", analysisError);
       } finally {
         analysisUnlisten();
+        agentUnlisten();
       }
 
       // Support multiple tool calls in parallel
@@ -281,6 +294,7 @@ export function useMcp({
       
       let fullContent = "";
       let unlisten: () => void = () => {};
+      let agentUnlisten = () => {};
       
       try {
         unlisten = await listen<string>("llm-chunk", (event) => {
@@ -290,11 +304,23 @@ export function useMcp({
           ));
         });
 
+        try {
+          agentUnlisten = await listen<string>("agent-selected", (event) => {
+            const agentName = event.payload;
+            setMessages(prev => prev.map(msg =>
+              msg.task_id === thinkingTaskId ? { ...msg, summary_text: `${agentName} が処理中...`, isHidden: false } : msg
+            ));
+          });
+        } catch (err) {
+          console.error("Failed to listen to agent-selected:", err);
+        }
+
         const historyBlock = getHistoryBlock(summaries, historyLimit);
         const promptWithContext = `【ユーザー入力】\n${userMessage}${historyBlock}`;
 
         const response: string = await invoke("ask_llm", { prompt: promptWithContext });
         unlisten(); 
+        agentUnlisten();
         
         console.log("LLM Response:", response);
         summarizeAndSave(`ユーザー入力: ${userMessage}\n回答: ${response}`, thinkingTaskId);
