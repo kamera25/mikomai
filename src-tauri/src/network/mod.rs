@@ -223,6 +223,7 @@ pub async fn send_mcp_message(state: State<'_, McpState>, message: String) -> Re
 }
 
 pub mod dns;
+pub mod fact_graph;
 
 #[cfg(test)]
 mod tests {
