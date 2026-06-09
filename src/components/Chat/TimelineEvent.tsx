@@ -126,21 +126,8 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
         <div className="message-bubble markdown-body">
           {msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
             if (part.startsWith("```")) {
-              const isTerminal = part.startsWith("```terminal");
               const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
-
-              if (isTerminal) {
-                return <Terminal key={i} content={content} />;
-              }
-
-              return (
-                <div key={i} className="code-block-wrapper">
-                  <div className="code-block-header">
-                    <span>CODE</span>
-                  </div>
-                  <pre className="code-block"><code>{content}</code></pre>
-                </div>
-              );
+              return <Terminal key={i} content={content} />;
             }
             return (
               <ReactMarkdown
