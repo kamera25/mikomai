@@ -9,18 +9,12 @@ use llama_cpp_2::model::AddBos;
 use std::sync::Arc;
 use tauri::Emitter;
 
-pub const ROUTER_PROMPT: &str = "You are a professional router for a network operator assistant MIKOMAI.
-Analyze the user request and classify it into one of the following worker categories.
-Your options are:
-- INVESTIGATE: For requests requiring tools (ping, traceroute, show command, host list, ARP table, querying network database via query_nw_db, etc.), retrieving device stats, or gathering facts from the network.
-- KNOWLEDGE: For requests requiring general explanations of network concepts, explaining OSPF/BGP/VLAN protocols, theoretical questions, or explaining general network administration terms where no real-time commands or DB queries are needed.
-- ANALYSIS: For troubleshooting requests, analyzing logs, debugging errors (e.g. \"OSPF down\"), or breaking down a specific technical problem logically.
+pub const ROUTER_PROMPT: &str = include_str!("prompts/router.txt");
 
-You must respond with ONLY the single word in uppercase: 'INVESTIGATE', 'KNOWLEDGE', or 'ANALYSIS'. Do not include any markdown backticks, explanations, punctuation, or other text.";
-
-pub const INVESTIGATE_WORKER_PROMPT: &str = "You are an investigator. Gather facts from the network and database. If needed, call the appropriate tools (network_ping, network_traceroute, network_show, network_get_hosts, query_nw_db, network_arp, network_get_ip_info) to retrieve real-time details.";
-pub const KNOWLEDGE_WORKER_PROMPT: &str = "You are a knowledge expert. Provide domain-specific insights, explanations, and background theory for network concepts.";
-pub const ANALYSIS_WORKER_PROMPT: &str = "You are an analyst. Break down the problem logically, analyze logs/outputs, and troubleshoot issues to identify root causes.";
+pub const INVESTIGATE_WORKER_PROMPT: &str = include_str!("prompts/investigate_worker.txt");
+pub const KNOWLEDGE_WORKER_PROMPT: &str = include_str!("prompts/knowledge_worker.txt");
+pub const ANALYSIS_WORKER_PROMPT: &str = include_str!("prompts/analysis_worker.txt");
+pub const RAG_WORKER_PROMPT: &str = include_str!("prompts/rag_worker.txt");
 
 pub struct SharedModel {
     pub model: Arc<LlamaModel>,
@@ -32,6 +26,7 @@ pub struct AgentManager<'a> {
     pub investigate_worker_ctx: AgentContext<'a>,
     pub knowledge_worker_ctx: AgentContext<'a>,
     pub analysis_worker_ctx: AgentContext<'a>,
+    pub rag_worker_ctx: AgentContext<'a>,
 }
 
 pub struct AgentContext<'a> {
@@ -46,12 +41,14 @@ impl<'a> AgentManager<'a> {
         let investigate_worker_ctx = AgentContext::new(shared, INVESTIGATE_WORKER_PROMPT, 1)?;
         let knowledge_worker_ctx = AgentContext::new(shared, KNOWLEDGE_WORKER_PROMPT, 2)?;
         let analysis_worker_ctx = AgentContext::new(shared, ANALYSIS_WORKER_PROMPT, 3)?;
+        let rag_worker_ctx = AgentContext::new(shared, RAG_WORKER_PROMPT, 4)?;
 
         Ok(Self {
             router_ctx,
             investigate_worker_ctx,
             knowledge_worker_ctx,
             analysis_worker_ctx,
+            rag_worker_ctx,
         })
     }
 }

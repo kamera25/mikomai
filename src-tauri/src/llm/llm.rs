@@ -149,35 +149,40 @@ pub async fn ask_llm(
 
             let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
 
-            // 1. Initialize router and classify the request
-            let mut router_ctx = crate::llm::llm_manager::AgentContext::new(
-                shared,
-                crate::llm::llm_manager::ROUTER_PROMPT,
-                0
-            ).map_err(|e| format!("Failed to create router context: {:?}", e))?;
-
-            let route = crate::llm::llm_manager::run_inference(
-                &mut router_ctx,
-                &shared.model,
-                &router_query,
-                None, // No chunk emission for router
-                0.0,  // Greedy to ensure stable routing
-                settings.repetition_penalty,
-            ).map_err(|e| format!("Routing failed: {:?}", e))?;
-
-            let route_trimmed = route.trim().to_uppercase();
-            println!("Router raw decision: '{}'", route_trimmed);
-
-            // 2. Select appropriate worker context
-            let (selected_prompt, agent_name) = if route_trimmed.contains("INVESTIGATE") {
-                (crate::llm::llm_manager::INVESTIGATE_WORKER_PROMPT, "Investigator (調査員)")
-            } else if route_trimmed.contains("KNOWLEDGE") {
-                (crate::llm::llm_manager::KNOWLEDGE_WORKER_PROMPT, "Knowledge Expert (知識専門家)")
-            } else if route_trimmed.contains("ANALYSIS") {
-                (crate::llm::llm_manager::ANALYSIS_WORKER_PROMPT, "Analyst (分析官)")
+            // 1. Determine if this is a RAG query response (after query_nw_db) or requires standard routing
+            let (selected_prompt, agent_name) = if prompt.starts_with("ユーザーの質問: \"") {
+                (crate::llm::llm_manager::RAG_WORKER_PROMPT, "RAG Worker (RAG回答員)")
             } else {
-                println!("Warning: Router output invalid classification, falling back to Investigator");
-                (crate::llm::llm_manager::INVESTIGATE_WORKER_PROMPT, "Investigator (調査員)")
+                // Initialize router and classify the request
+                let mut router_ctx = crate::llm::llm_manager::AgentContext::new(
+                    shared,
+                    crate::llm::llm_manager::ROUTER_PROMPT,
+                    0
+                ).map_err(|e| format!("Failed to create router context: {:?}", e))?;
+
+                let route = crate::llm::llm_manager::run_inference(
+                    &mut router_ctx,
+                    &shared.model,
+                    &router_query,
+                    None, // No chunk emission for router
+                    0.0,  // Greedy to ensure stable routing
+                    settings.repetition_penalty,
+                ).map_err(|e| format!("Routing failed: {:?}", e))?;
+
+                let route_trimmed = route.trim().to_uppercase();
+                println!("Router raw decision: '{}'", route_trimmed);
+
+                // Select appropriate worker context
+                if route_trimmed.contains("INVESTIGATE") {
+                    (crate::llm::llm_manager::INVESTIGATE_WORKER_PROMPT, "Investigator (調査員)")
+                } else if route_trimmed.contains("KNOWLEDGE") {
+                    (crate::llm::llm_manager::KNOWLEDGE_WORKER_PROMPT, "Knowledge Expert (知識専門家)")
+                } else if route_trimmed.contains("ANALYSIS") {
+                    (crate::llm::llm_manager::ANALYSIS_WORKER_PROMPT, "Analyst (分析官)")
+                } else {
+                    println!("Warning: Router output invalid classification, falling back to Investigator");
+                    (crate::llm::llm_manager::INVESTIGATE_WORKER_PROMPT, "Investigator (調査員)")
+                }
             };
 
             // Emit the event to the frontend
