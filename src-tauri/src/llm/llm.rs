@@ -107,85 +107,6 @@ fn process_token_bytes(
     }
 }
 
-fn is_greeting(query: &str) -> bool {
-    let q = query.trim().to_lowercase();
-    if q.is_empty() {
-        return false;
-    }
-    
-    let greetings = [
-        "こんにちは",
-        "こんにちわ",
-        "はじめまして",
-        "おはよう",
-        "おはようございます",
-        "こんばんは",
-        "お疲れ様です",
-        "おつかれさま",
-        "お疲れ様",
-        "ハロー",
-        "はろー",
-        "自己紹介",
-        "じこしょうかい",
-        "hello",
-        "hi",
-        "hey",
-        "who are you",
-        "あなたは誰",
-        "あなたはだれ",
-        "お名前は",
-        "なまえは",
-        "名前は",
-        "おなまえは",
-    ];
-
-    for g in greetings {
-        if q.contains(g) && q.chars().count() <= 20 {
-            return true;
-        }
-    }
-    
-    let self_intro_keywords = [
-        "自己紹介して",
-        "自己紹介してください",
-        "自己紹介をおねがいします",
-        "自己紹介をお願いします",
-        "何ができますか",
-        "なにができますか",
-    ];
-    for kw in self_intro_keywords {
-        if q.contains(kw) {
-            return true;
-        }
-    }
-
-    false
-}
-
-async fn stream_self_introduction(window: &tauri::Window) -> String {
-    let intro = "はじめまして！私は「MIKOMAI (Managed Infrastructure Knowledge Operator ML Agent Interface)」です。\n\
-                 ネットワークインフラの診断、運用、トラブルシューティングを最高精度で支援するプロフェッショナルAIアシスタントです。\n\n\
-                 以下のような操作や調査をお手伝いできます：\n\
-                 - **ネットワーク機器のステータス確認** (例: `show ip int brief` など)\n\
-                 - **疎通確認・調査** (PingやTracerouteの実行)\n\
-                 - **ホスト一覧やARPテーブルの取得**\n\
-                 - **ネットワーク技術データベース (NW-DB) の検索と解説** (Cisco機器の設定手順など)\n\
-                 - **ログの分析とトラブルシューティング**\n\n\
-                 何かお手伝いできることはありますか？お気軽に話しかけてください！";
-
-    let _ = window.emit("agent-selected", "MIKOMAI (アシスタント)");
-
-    let chars: Vec<char> = intro.chars().collect();
-    let chunk_size = 5;
-    for chunk in chars.chunks(chunk_size) {
-        let chunk_str: String = chunk.iter().collect();
-        let _ = window.emit("llm-chunk", &chunk_str);
-        tokio::time::sleep(std::time::Duration::from_millis(15)).await;
-    }
-
-    intro.to_string()
-}
-
 #[tauri::command]
 pub async fn ask_llm(
     window: tauri::Window,
@@ -215,8 +136,8 @@ pub async fn ask_llm(
 
     println!("Router clean query: '{}'", router_query);
 
-    if is_greeting(&router_query) {
-        return Ok(stream_self_introduction(&window).await);
+    if crate::llm::greeting::is_greeting(&router_query) {
+        return Ok(crate::llm::greeting::stream_self_introduction(&window).await);
     }
 
     // Wrap the synchronous, non-Send inference logic in a separate scope
@@ -297,8 +218,8 @@ pub async fn ask_llm(
     match inference_result {
         Ok(response) => Ok(response),
         Err(e) => {
-            if e.contains("n_tokens == 0") || is_greeting(&router_query) {
-                return Ok(stream_self_introduction(&window).await);
+            if e.contains("n_tokens == 0") || crate::llm::greeting::is_greeting(&router_query) {
+                return Ok(crate::llm::greeting::stream_self_introduction(&window).await);
             }
             Err(e)
         }

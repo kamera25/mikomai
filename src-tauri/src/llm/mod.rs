@@ -2,6 +2,7 @@ pub mod llm;
 pub mod llm_manager;
 pub mod download;
 pub mod loader;
+pub mod greeting;
 
 pub use llm::*;
 pub use download::*;
