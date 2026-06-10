@@ -190,7 +190,8 @@ export function useMcp({
                                      nextToolCall.tool === "network_get_ip_info" ? "IP Info" :
                                      nextToolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
                                      nextToolCall.tool === "network_send_console_message" ? "Console Message" :
-                                     nextToolCall.tool === "network_show" ? "Show Command" : nextToolCall.tool;
+                                     nextToolCall.tool === "network_show" ? "Show Command" :
+                                     nextToolCall.tool === "fetch_config" ? "Fetch Config" : nextToolCall.tool;
           
           setTimeout(async () => {
             await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
@@ -206,7 +207,8 @@ export function useMcp({
             ));
             summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
             const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
-                                       nextToolCall.tool === "query_nw_db" || nextToolCall.tool === "network_query_nw_db" ? "NWDB検索" : "Tool";
+                                       nextToolCall.tool === "query_nw_db" || nextToolCall.tool === "network_query_nw_db" ? "NWDB検索" :
+                                       nextToolCall.tool === "fetch_config" ? "Fetch Config" : "Tool";
             setTimeout(async () => {
               await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
             }, 1000);
@@ -357,7 +359,8 @@ export function useMcp({
                                    toolCall.tool === "network_get_ip_info" ? "IP Info" :
                                    toolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
                                    toolCall.tool === "network_send_console_message" ? "Console Message" :
-                                   toolCall.tool === "network_show" ? "Show Command" : toolCall.tool;
+                                   toolCall.tool === "network_show" ? "Show Command" :
+                                   toolCall.tool === "fetch_config" ? "Fetch Config" : toolCall.tool;
             
             // Execute in parallel (no await here, or wrap in Promise.all)
             executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
@@ -371,7 +374,8 @@ export function useMcp({
                 msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
               ));
               const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
-                                     toolCall.tool === "query_nw_db" || toolCall.tool === "network_query_nw_db" ? "NWDB検索" : "Tool";
+                                     toolCall.tool === "query_nw_db" || toolCall.tool === "network_query_nw_db" ? "NWDB検索" :
+                                     toolCall.tool === "fetch_config" ? "Fetch Config" : "Tool";
               executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
             } catch (e) {
               // Final response: make it visible

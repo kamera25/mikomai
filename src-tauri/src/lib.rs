@@ -54,6 +54,7 @@ pub fn run() {
             mcp::ip_info::network_get_ip_info,
             mcp::console::network_list_serial_ports,
             mcp::console::network_send_console_message,
+            mcp::fetch_config::fetch_config,
             history::load_history,
             history::save_history,
             history::load_summaries,
