@@ -22,6 +22,8 @@ pub struct Connection {
     pub password: Option<String>,
     #[serde(default)]
     pub device_type: Option<String>,
+    #[serde(default)]
+    pub vendor_type: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -160,6 +162,7 @@ mod tests {
             username: None,
             password: None,
             device_type: None,
+            vendor_type: None,
         };
 
         let serialized = serde_json::to_string(&conn).unwrap();

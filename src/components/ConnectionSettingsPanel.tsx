@@ -7,7 +7,7 @@ interface ConnectionSettingsPanelProps {
   onClose: () => void;
 }
 
-interface Connection {
+export interface Connection {
   id: string;
   status: 'online' | 'offline';
   hostname: string;
@@ -17,6 +17,8 @@ interface Connection {
   lastConnected: string;
   username?: string;
   password?: string;
+  deviceType?: string;
+  vendorType?: string;
 }
 
 interface McpHost {
@@ -27,13 +29,115 @@ interface McpHost {
   username: string;
 }
 
+export const DEVICE_TYPES = [
+  "a10", "accedian", "adtran_os", "adva_fsp150f2", "adva_fsp150f3", "alaxala_ax36s", "alaxala_ax26s",
+  "alcatel_aos", "alcatel_sros", "allied_telesis_awplus", "apc_aos", "apresia_aeos", "arista_eos",
+  "arris_cer", "aruba_os", "aruba_aoscx", "aruba_osswitch", "aruba_procurve", "asterfusion_asternos",
+  "audiocode_72", "audiocode_66", "audiocode_shell", "avaya_ers", "avaya_vsp", "avara_aos",
+  "aviat_wtm", "bintec_boss", "broadcom_icos", "brocade_fos", "brocade_fastiron", "brocade_netiron",
+  "brocade_nos", "brocade_vdx", "brocade_vyos", "checkpoint_gaia", "calix_b6", "calix_exa",
+  "casa_cmts", "cdot_cros", "centec_os", "ciena_saos", "ciena_saos10", "ciena_waveserver",
+  "cisco_ap", "cisco_apic", "cisco_asa", "cisco_ftd", "cisco_ios", "cisco_nxos", "cisco_s200",
+  "cisco_s300", "cisco_s500", "cisco_tp", "cisco_viptela", "cisco_wlc", "cisco_ioswlc",
+  "cisco_xe", "cisco_xr", "cloudgenix_ion", "corelight_linux", "coriant", "cumulus_linux",
+  "dell_dnos9", "dell_force10", "dell_os6", "dell_os9", "dell_os10", "dell_sonic",
+  "dell_powerconnect", "dell_isilon", "dlink_ds", "digi_transport", "edgecore_sonic", "endace",
+  "ekinops_ek360", "eltex", "eltex_esr", "enterasys", "ericsson_ipos", "ericsson_mltn63",
+  "ericsson_mltn66", "extreme", "extreme_ers", "extreme_exos", "extreme_netiron", "extreme_nos",
+  "extreme_slx", "extreme_tierra", "extreme_vdx", "extreme_vsp", "extreme_wing", "f5_ltm",
+  "f5_tmsh", "f5_linux", "fiberstore_fsos", "fiberstore_fsosv2", "fiberstore_networkos",
+  "flexvnf", "fortinet", "fsas_sir", "fujitsu_sir", "furukawa_fitelnet", "garderos_grs",
+  "generic", "generic_termserver", "h3c_comware", "hillstone_stoneos", "hirschmann_hios",
+  "hp_comware", "hp_procurve", "huawei", "huawei_smartaxmmi", "huawei_smartax", "huawei_olt",
+  "huawei_ont", "huawei_vrp", "huawei_vrpv8", "infinera_packet", "ipinfusion_ocnos", "juniper",
+  "juniper_junos", "juniper_screenos", "keymile", "keymile_nos", "lancom_lcossx4", "lancom_lcossx5",
+  "linux", "mikrotik_routeros", "mikrotik_switchos", "mellanox", "mellanox_mlnxos", "moxa_nos",
+  "mrv_lx", "mrv_optiswitch", "nec_ix", "netapp_cdot", "netgear_prosafe", "netscaler",
+  "nokia_isam", "nokia_sros", "nokia_srl", "oneaccess_oneos", "opengear_linux", "ovs_linux",
+  "paloalto_panos", "pluribus", "perle_iolan", "quanta_mesh", "rad_etx", "raisecom_roap",
+  "raisecom_ros", "ruckus_fastiron", "ruijie_os", "iij_seilos", "silverpeak_vxoa", "sixwind_os",
+  "smartoptics_dwdm", "sophos_fos", "supermicro_smis", "telcosystems_binos", "teldat_cit",
+  "tplink_jetstream", "ubiquiti_edge", "ubiquiti_edgerouter", "ubiquiti_edgeswitch",
+  "ubiquiti_unifiswitch", "vertiv_mph", "vyatta_vyos", "vyos", "watchguard_fireware",
+  "zpe_nodegrid", "zte_zxros", "yamaha", "zyxel_os", "maipu"
+];
+
+export const DEVICE_TYPE_ALIASES: { [key: string]: string } = {
+  "a10": "A10 Networks",
+  "accedian": "Accedian",
+  "adtran_os": "Adtran OS",
+  "alaxala_ax36s": "ALAXALA AX36S",
+  "alaxala_ax26s": "ALAXALA AX26S",
+  "alcatel_aos": "Alcatel-Lucent AOS",
+  "alcatel_sros": "Alcatel-Lucent SROS",
+  "allied_telesis_awplus": "Allied Telesis AlliedWare Plus",
+  "apc_aos": "APC AOS",
+  "apresia_aeos": "APRESIA AEOS",
+  "arista_eos": "Arista EOS",
+  "arris_cer": "Arris CER",
+  "aruba_os": "ArubaOS",
+  "aruba_aoscx": "ArubaOS-CX",
+  "aruba_osswitch": "ArubaOS-Switch",
+  "aruba_procurve": "Aruba ProCurve",
+  "cisco_ios": "Cisco IOS",
+  "cisco_nxos": "Cisco NX-OS",
+  "cisco_xe": "Cisco IOS-XE",
+  "cisco_xr": "Cisco IOS-XR",
+  "cisco_asa": "Cisco ASA",
+  "cisco_ftd": "Cisco FTD",
+  "cisco_wlc": "Cisco WLC",
+  "cisco_apic": "Cisco APIC",
+  "dell_os6": "Dell OS6",
+  "dell_os9": "Dell OS9",
+  "dell_os10": "Dell OS10",
+  "dell_sonic": "Dell Enterprise SONiC",
+  "extreme_exos": "Extreme EXOS",
+  "fortinet": "Fortinet FortiOS",
+  "h3c_comware": "H3C Comware",
+  "hp_comware": "HP Comware",
+  "hp_procurve": "HP ProCurve",
+  "huawei": "Huawei VRP",
+  "huawei_vrpv8": "Huawei VRPv8",
+  "iij_seilos": "IIJ SEIL/OS",
+  "juniper_junos": "Juniper Junos",
+  "linux": "Linux",
+  "mikrotik_routeros": "MikroTik RouterOS",
+  "mikrotik_switchos": "MikroTik SwitchOS",
+  "nec_ix": "NEC UNIVERGE IX",
+  "nokia_sros": "Nokia SR OS",
+  "nokia_srl": "Nokia SR Linux",
+  "paloalto_panos": "Palo Alto PAN-OS",
+  "ruckus_fastiron": "Ruckus FastIron",
+  "ruijie_os": "Ruijie RGOS",
+  "yamaha": "Yamaha RT",
+  "zte_zxros": "ZTE ZXROS",
+  "zyxel_os": "ZyXEL ZyNOS",
+};
+
+export const getDeviceTypeAlias = (deviceType: string): string => {
+  if (!deviceType) return '';
+  if (DEVICE_TYPE_ALIASES[deviceType]) {
+    return DEVICE_TYPE_ALIASES[deviceType];
+  }
+  return deviceType
+    .split('_')
+    .map(word => {
+      const wLower = word.toLowerCase();
+      if (['ios', 'eos', 'junos', 'nxos', 'sros', 'srl', 'asa', 'apic', 'wlc', 'ftd', 'wtm', 'cer', 'grs', 'vxoa', 'dwdm', 'solt', 'olt', 'ont', 'mmi', 'vxoa', 'cit'].includes(wLower)) {
+        return word.toUpperCase();
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+};
+
 const mockConnections: Connection[] = [
-  { id: '1', status: 'online', hostname: 'Core-Switch-01', ip: '192.168.1.1', type: 'SSH (Cisco IOS)', lastConnected: '2024-05-02 14:20' },
-  { id: '2', status: 'offline', hostname: 'Edge-Router-02', ip: '192.168.2.1', type: 'SSH (Juniper JunOS)', lastConnected: '2024-04-30 09:15' },
-  { id: '3', status: 'online', hostname: 'Dist-Switch-03', ip: '192.168.1.10', type: 'Telnet (Arista)', lastConnected: '2024-05-02 17:45' },
-  { id: '4', status: 'online', hostname: 'Server-Farm-01', ip: '10.0.5.50', type: 'SSH (Ubuntu)', lastConnected: '2024-05-01 22:10' },
-  { id: '5', status: 'offline', hostname: 'Backup-Router', ip: '172.16.0.1', type: 'SSH (Cisco XE)', lastConnected: 'Never' },
-  { id: '6', status: 'online', hostname: 'Access-Point-04', ip: '192.168.5.25', type: 'SSH (Aruba)', lastConnected: '2024-05-02 10:30' },
+  { id: '1', status: 'online', hostname: 'Core-Switch-01', ip: '192.168.1.1', type: 'SSH (Cisco IOS)', lastConnected: '2024-05-02 14:20', deviceType: 'cisco_ios', vendorType: 'Cisco' },
+  { id: '2', status: 'offline', hostname: 'Edge-Router-02', ip: '192.168.2.1', type: 'SSH (Juniper JunOS)', lastConnected: '2024-04-30 09:15', deviceType: 'juniper_junos', vendorType: 'Juniper' },
+  { id: '3', status: 'online', hostname: 'Dist-Switch-03', ip: '192.168.1.10', type: 'Telnet (Arista)', lastConnected: '2024-05-02 17:45', deviceType: 'arista_eos', vendorType: 'Arista' },
+  { id: '4', status: 'online', hostname: 'Server-Farm-01', ip: '10.0.5.50', type: 'SSH (Ubuntu)', lastConnected: '2024-05-01 22:10', deviceType: 'linux', vendorType: 'Linux' },
+  { id: '5', status: 'offline', hostname: 'Backup-Router', ip: '172.16.0.1', type: 'SSH (Cisco XE)', lastConnected: 'Never', deviceType: 'cisco_xe', vendorType: 'Cisco' },
+  { id: '6', status: 'online', hostname: 'Access-Point-04', ip: '192.168.5.25', type: 'SSH (Aruba)', lastConnected: '2024-05-02 10:30', deviceType: 'aruba_os', vendorType: 'Aruba' },
 ];
 
 export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = ({ onClose }) => {
@@ -85,13 +189,17 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     authMethod: 'plain',
     privateKeyPath: '',
     consolePort: 'COM1',
-    baudRate: 9600
+    baudRate: 9600,
+    deviceType: 'cisco_ios',
+    vendorType: ''
   });
 
   const filteredConnections = connections.filter(conn =>
     conn.hostname.toLowerCase().includes(searchQuery.toLowerCase()) ||
     conn.ip.includes(searchQuery) ||
-    conn.type.toLowerCase().includes(searchQuery.toLowerCase())
+    conn.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (conn.vendorType && conn.vendorType.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (conn.deviceType && conn.deviceType.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const handleEdit = (conn: Connection) => {
@@ -109,7 +217,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       authMethod: 'plain',
       privateKeyPath: '',
       consolePort: 'COM1',
-      baudRate: 9600
+      baudRate: 9600,
+      deviceType: conn.deviceType || 'cisco_ios',
+      vendorType: conn.vendorType || ''
     });
     setErrors({});
     setIsEditing(true);
@@ -120,7 +230,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     setFormData({
       hostname: '',
       ip: '',
-    port: '',
+      port: '',
       type: 'SSH',
       username: '',
       password: '',
@@ -130,7 +240,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       authMethod: 'plain',
       privateKeyPath: '',
       consolePort: 'COM1',
-      baudRate: 9600
+      baudRate: 9600,
+      deviceType: 'cisco_ios',
+      vendorType: ''
     });
     setErrors({});
     setIsEditing(true);
@@ -148,11 +260,21 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const handleMcpLookup = () => {
     const mcpMatch = mcpHosts.find(h => h.hostname.toLowerCase() === formData.hostname.toLowerCase());
     if (mcpMatch) {
+      // Try to determine vendor from deviceType
+      let vendor = '';
+      if (mcpMatch.deviceType.toLowerCase().includes('cisco')) vendor = 'Cisco';
+      else if (mcpMatch.deviceType.toLowerCase().includes('juniper')) vendor = 'Juniper';
+      else if (mcpMatch.deviceType.toLowerCase().includes('arista')) vendor = 'Arista';
+      else if (mcpMatch.deviceType.toLowerCase().includes('yamaha')) vendor = 'Yamaha';
+      else if (mcpMatch.deviceType.toLowerCase().includes('linux')) vendor = 'Linux';
+
       setFormData({
         ...formData,
         ip: mcpMatch.ip,
         type: mcpMatch.deviceType.split(' ')[0] as any,
-        username: mcpMatch.username
+        username: mcpMatch.username,
+        deviceType: mcpMatch.deviceType,
+        vendorType: vendor
       });
       // Clear errors if we found it
       if (errors.ip) {
@@ -181,7 +303,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 port: formData.port ? parseInt(formData.port, 10) : undefined,
                 type: formData.type === 'Console' ? 'Console (Serial)' : `${formData.type} ${formData.authMethod === 'key' ? '(Key)' : '(Password)'}`,
                 username: formData.username,
-                password: formData.password
+                password: formData.password,
+                deviceType: formData.deviceType,
+                vendorType: formData.vendorType
               }
             : conn
         );
@@ -195,7 +319,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
           type: formData.type === 'Console' ? 'Console (Serial)' : `${formData.type} ${formData.authMethod === 'key' ? '(Key)' : '(Password)'}`,
           lastConnected: 'Never',
           username: formData.username,
-          password: formData.password
+          password: formData.password,
+          deviceType: formData.deviceType,
+          vendorType: formData.vendorType
         };
         updatedConnections = [...connections, newConnection];
       }
@@ -270,7 +396,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 ip: row.ip,
                 port: row.port ? parseInt(row.port, 10) : undefined,
                 type: row.type || 'SSH',
-                lastConnected: row.lastConnected || 'Never'
+                lastConnected: row.lastConnected || 'Never',
+                deviceType: row.deviceType || 'cisco_ios',
+                vendorType: row.vendorType || ''
               };
               newConnections.push(newConn);
             }
@@ -290,7 +418,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
             setConnections(updatedConnections);
             try {
               await invoke('save_connections', { connections: updatedConnections });
-              alert(`${newConnections.length}件のホストをインポートしました。`);
+              alert(`${newConnections.length}件 of hosts imported.`);
             } catch (error) {
               console.error("Failed to save imported connections:", error);
             }
@@ -317,7 +445,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       return str;
     };
 
-    const headers = ['id', 'status', 'hostname', 'ip', 'port', 'type', 'lastConnected'];
+    const headers = ['id', 'status', 'hostname', 'ip', 'port', 'type', 'lastConnected', 'deviceType', 'vendorType'];
     const csvRows = [];
 
     // Add header row
@@ -332,7 +460,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
         conn.ip,
         conn.port !== undefined ? conn.port.toString() : '',
         conn.type,
-        conn.lastConnected
+        conn.lastConnected,
+        conn.deviceType || '',
+        conn.vendorType || ''
       ];
       csvRows.push(row.map(escapeCsv).join(','));
     }
@@ -418,6 +548,33 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                   <option value="Console">Console (Serial)</option>
                 </select>
               </div>
+
+              {formData.type !== 'Console' && (
+                <>
+                  <div className="form-group">
+                    <label>ベンダー種別</label>
+                    <input
+                      type="text"
+                      value={formData.vendorType}
+                      onChange={(e) => setFormData({...formData, vendorType: e.target.value})}
+                      placeholder="例: Cisco, Juniper, Yamaha"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>ホスト種別 (device_type)</label>
+                    <select
+                      value={formData.deviceType}
+                      onChange={(e) => setFormData({...formData, deviceType: e.target.value})}
+                    >
+                      {DEVICE_TYPES.map(dt => (
+                        <option key={dt} value={dt}>
+                          {getDeviceTypeAlias(dt)} ({dt})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
 
               {formData.type !== 'Console' ? (
                 <>
@@ -661,6 +818,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 </th>
                 <th className="col-hostname">接続ホスト名</th>
                 <th className="col-ip">IP</th>
+                <th className="col-vendor">ベンダー種別</th>
+                <th className="col-device-type">ホスト種別</th>
                 <th className="col-type">接続方式</th>
                 <th className="col-last">最後の接続時刻</th>
                 <th className="col-actions">操作</th>
@@ -689,6 +848,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     </div>
                   </td>
                   <td className="col-ip">{conn.ip}</td>
+                  <td className="col-vendor">{conn.vendorType || '-'}</td>
+                  <td className="col-device-type">{conn.deviceType ? getDeviceTypeAlias(conn.deviceType) : '-'}</td>
                   <td className="col-type">
                     <div className="type-badge">
                       {conn.type.split(' ')[0]}
