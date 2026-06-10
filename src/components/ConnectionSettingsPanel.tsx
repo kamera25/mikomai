@@ -379,214 +379,220 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   };
 
   const renderForm = () => (
-    <div className="connection-form-container">
-      <div className="connection-form-content">
-        <div className="form-section">
-          <h3>基本設定</h3>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>接続ホスト名 (表示用)</label>
-              <input
-                type="text"
-                value={formData.hostname}
-                onChange={(e) => setFormData({...formData, hostname: e.target.value})}
-                placeholder="例: Core-Switch-01"
-              />
-              <button
-                className="btn-mcp-lookup"
-                onClick={handleMcpLookup}
-                disabled={!formData.hostname}
-                title="MCPから情報を取得"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                MCPから取得
-              </button>
-            </div>
-            <div className="form-group">
-              <label>接続方式</label>
-              <select
-                value={formData.type}
-                onChange={(e) => setFormData({...formData, type: e.target.value})}
-              >
-                <option value="SSH">SSH</option>
-                <option value="Telnet">Telnet</option>
-                <option value="Console">Console (Serial)</option>
-              </select>
-            </div>
+    <div className="connection-form-modal-overlay">
+      <div className="connection-form-card">
+        <header className="form-card-header">
+          <h3>{editingId ? '接続の編集' : '新規ホスト追加'}</h3>
+          <button className="close-card-btn" onClick={() => setIsEditing(false)}>&times;</button>
+        </header>
+        <div className="connection-form-content">
+          <div className="form-section">
+            <h3>基本設定</h3>
+            <div className="form-grid">
+              <div className="form-group">
+                <label>接続ホスト名 (表示用)</label>
+                <input
+                  type="text"
+                  value={formData.hostname}
+                  onChange={(e) => setFormData({...formData, hostname: e.target.value})}
+                  placeholder="例: Core-Switch-01"
+                />
+                <button
+                  className="btn-mcp-lookup"
+                  onClick={handleMcpLookup}
+                  disabled={!formData.hostname}
+                  title="MCPから情報を取得"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                  MCPから取得
+                </button>
+              </div>
+              <div className="form-group">
+                <label>接続方式</label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => setFormData({...formData, type: e.target.value})}
+                >
+                  <option value="SSH">SSH</option>
+                  <option value="Telnet">Telnet</option>
+                  <option value="Console">Console (Serial)</option>
+                </select>
+              </div>
 
-            {formData.type !== 'Console' ? (
-              <>
-                <div className="form-group full-width">
-                  <label>IPアドレス / ホスト名 <span style={{color: '#ef4444'}}>*</span></label>
-                  <input
-                    type="text"
-                    className={errors.ip ? 'error' : ''}
-                    value={formData.ip}
-                    onChange={(e) => setFormData({...formData, ip: e.target.value})}
-                    placeholder="192.168.1.1 or router.local"
-                  />
-                  {errors.ip && <span className="error-message">{errors.ip}</span>}
-                </div>
+              {formData.type !== 'Console' ? (
+                <>
+                  <div className="form-group full-width">
+                    <label>IPアドレス / ホスト名 <span style={{color: '#ef4444'}}>*</span></label>
+                    <input
+                      type="text"
+                      className={errors.ip ? 'error' : ''}
+                      value={formData.ip}
+                      onChange={(e) => setFormData({...formData, ip: e.target.value})}
+                      placeholder="192.168.1.1 or router.local"
+                    />
+                    {errors.ip && <span className="error-message">{errors.ip}</span>}
+                  </div>
+                  <div className="form-group">
+                    <label>ポート番号</label>
+                    <input
+                      type="text"
+                      value={formData.port}
+                      onChange={(e) => setFormData({...formData, port: e.target.value.replace(/[^0-9]/g, '')})}
+                      placeholder={formData.type === 'SSH' ? '22' : formData.type === 'Telnet' ? '23' : ''}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>ユーザ名</label>
+                    <input
+                      type="text"
+                      value={formData.username}
+                      onChange={(e) => setFormData({...formData, username: e.target.value})}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>パスワード</label>
+                    <input
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label>シリアルポート</label>
+                    <input
+                      type="text"
+                      value={formData.consolePort}
+                      onChange={(e) => setFormData({...formData, consolePort: e.target.value})}
+                      placeholder="COM1 or /dev/ttyUSB0"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>ボーレート</label>
+                    <select
+                      value={formData.baudRate}
+                      onChange={(e) => setFormData({...formData, baudRate: parseInt(e.target.value)})}
+                    >
+                      <option value="9600">9600</option>
+                      <option value="19200">19200</option>
+                      <option value="38400">38400</option>
+                      <option value="57600">57600</option>
+                      <option value="115200">115200</option>
+                    </select>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {formData.type === 'SSH' && (
+            <div className="form-section">
+              <h3>SSH認証設定</h3>
+              <div className="ssh-auth-grid">
                 <div className="form-group">
-                  <label>ポート番号</label>
-                  <input
-                    type="text"
-                    value={formData.port}
-                    onChange={(e) => setFormData({...formData, port: e.target.value.replace(/[^0-9]/g, '')})}
-                    placeholder={formData.type === 'SSH' ? '22' : formData.type === 'Telnet' ? '23' : ''}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>ユーザ名</label>
-                  <input
-                    type="text"
-                    value={formData.username}
-                    onChange={(e) => setFormData({...formData, username: e.target.value})}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>パスワード</label>
+                  <label>パスフレーズ</label>
                   <input
                     type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    value={formData.passphrase}
+                    onChange={(e) => setFormData({...formData, passphrase: e.target.value})}
                   />
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="form-group">
-                  <label>シリアルポート</label>
-                  <input
-                    type="text"
-                    value={formData.consolePort}
-                    onChange={(e) => setFormData({...formData, consolePort: e.target.value})}
-                    placeholder="COM1 or /dev/ttyUSB0"
-                  />
+
+                <div className="ssh-checkbox-group">
+                  <label className="checkbox-item">
+                    <input
+                      type="checkbox"
+                      checked={formData.rememberPassword}
+                      onChange={(e) => setFormData({...formData, rememberPassword: e.target.checked})}
+                    />
+                    パスワードをメモリ上に記憶する
+                  </label>
+                  <label className="checkbox-item">
+                    <input
+                      type="checkbox"
+                      checked={formData.agentForwarding}
+                      onChange={(e) => setFormData({...formData, agentForwarding: e.target.checked})}
+                    />
+                    エージェント転送する
+                  </label>
                 </div>
-                <div className="form-group">
-                  <label>ボーレート</label>
-                  <select
-                    value={formData.baudRate}
-                    onChange={(e) => setFormData({...formData, baudRate: parseInt(e.target.value)})}
-                  >
-                    <option value="9600">9600</option>
-                    <option value="19200">19200</option>
-                    <option value="38400">38400</option>
-                    <option value="57600">57600</option>
-                    <option value="115200">115200</option>
-                  </select>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
 
-        {formData.type === 'SSH' && (
-          <div className="form-section">
-            <h3>SSH認証設定</h3>
-            <div className="ssh-auth-grid">
-              <div className="form-group">
-                <label>パスフレーズ</label>
-                <input
-                  type="password"
-                  value={formData.passphrase}
-                  onChange={(e) => setFormData({...formData, passphrase: e.target.value})}
-                />
-              </div>
-
-              <div className="ssh-checkbox-group">
-                <label className="checkbox-item">
-                  <input
-                    type="checkbox"
-                    checked={formData.rememberPassword}
-                    onChange={(e) => setFormData({...formData, rememberPassword: e.target.checked})}
-                  />
-                  パスワードをメモリ上に記憶する
-                </label>
-                <label className="checkbox-item">
-                  <input
-                    type="checkbox"
-                    checked={formData.agentForwarding}
-                    onChange={(e) => setFormData({...formData, agentForwarding: e.target.checked})}
-                  />
-                  エージェント転送する
-                </label>
-              </div>
-
-              <div className="auth-methods-list">
-                <div className="auth-method-item">
-                  <input
-                    type="radio"
-                    name="authMethod"
-                    checked={formData.authMethod === 'plain'}
-                    onChange={() => setFormData({...formData, authMethod: 'plain'})}
-                  />
-                  <div className="auth-method-content">
-                    <span className="auth-method-label">プレインパスワードを使う</span>
+                <div className="auth-methods-list">
+                  <div className="auth-method-item">
+                    <input
+                      type="radio"
+                      name="authMethod"
+                      checked={formData.authMethod === 'plain'}
+                      onChange={() => setFormData({...formData, authMethod: 'plain'})}
+                    />
+                    <div className="auth-method-content">
+                      <span className="auth-method-label">プレインパスワードを使う</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="auth-method-item">
-                  <input
-                    type="radio"
-                    name="authMethod"
-                    checked={formData.authMethod === 'key'}
-                    onChange={() => setFormData({...formData, authMethod: 'key'})}
-                  />
-                  <div className="auth-method-content">
-                    <span className="auth-method-label">RSA/DSA/ECDSA/ED25519鍵を使う</span>
-                    <div className="auth-method-details">
-                      <button className="btn-file-select">秘密鍵(K):</button>
-                      <input
-                        type="text"
-                        className="path-input"
-                        placeholder="鍵ファイルのパス"
-                        value={formData.privateKeyPath}
-                        onChange={(e) => setFormData({...formData, privateKeyPath: e.target.value})}
-                        disabled={formData.authMethod !== 'key'}
-                      />
+                  <div className="auth-method-item">
+                    <input
+                      type="radio"
+                      name="authMethod"
+                      checked={formData.authMethod === 'key'}
+                      onChange={() => setFormData({...formData, authMethod: 'key'})}
+                    />
+                    <div className="auth-method-content">
+                      <span className="auth-method-label">RSA/DSA/ECDSA/ED25519鍵を使う</span>
+                      <div className="auth-method-details">
+                        <button className="btn-file-select">秘密鍵(K):</button>
+                        <input
+                          type="text"
+                          className="path-input"
+                          placeholder="鍵ファイルのパス"
+                          value={formData.privateKeyPath}
+                          onChange={(e) => setFormData({...formData, privateKeyPath: e.target.value})}
+                          disabled={formData.authMethod !== 'key'}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="auth-method-item">
+                    <input
+                      type="radio"
+                      name="authMethod"
+                      checked={formData.authMethod === 'keyboard'}
+                      onChange={() => setFormData({...formData, authMethod: 'keyboard'})}
+                    />
+                    <div className="auth-method-content">
+                      <span className="auth-method-label">キーボードインタラクティブ認証を使う</span>
+                    </div>
+                  </div>
+
+                  <div className="auth-method-item">
+                    <input
+                      type="radio"
+                      name="authMethod"
+                      checked={formData.authMethod === 'pageant'}
+                      onChange={() => setFormData({...formData, authMethod: 'pageant'})}
+                    />
+                    <div className="auth-method-content">
+                      <span className="auth-method-label">Pageantを使う</span>
                     </div>
                   </div>
                 </div>
-
-                <div className="auth-method-item">
-                  <input
-                    type="radio"
-                    name="authMethod"
-                    checked={formData.authMethod === 'keyboard'}
-                    onChange={() => setFormData({...formData, authMethod: 'keyboard'})}
-                  />
-                  <div className="auth-method-content">
-                    <span className="auth-method-label">キーボードインタラクティブ認証を使う</span>
-                  </div>
-                </div>
-
-                <div className="auth-method-item">
-                  <input
-                    type="radio"
-                    name="authMethod"
-                    checked={formData.authMethod === 'pageant'}
-                    onChange={() => setFormData({...formData, authMethod: 'pageant'})}
-                  />
-                  <div className="auth-method-content">
-                    <span className="auth-method-label">Pageantを使う</span>
-                  </div>
-                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        <footer className="form-footer">
+          {editingId && (
+            <button className="btn-cancel" style={{ marginRight: 'auto', backgroundColor: '#fee2e2', color: '#dc2626', borderColor: '#f87171' }} onClick={handleDeleteCurrent}>
+              削除
+            </button>
+          )}
+          <button className="btn-cancel" onClick={() => setIsEditing(false)}>キャンセル</button>
+          <button className="btn-save" onClick={handleSave}>{editingId ? '変更を保存' : 'ホストを登録'}</button>
+        </footer>
       </div>
-      <footer className="form-footer">
-        {editingId && (
-          <button className="btn-cancel" style={{ marginRight: 'auto', backgroundColor: '#fee2e2', color: '#dc2626', borderColor: '#f87171' }} onClick={handleDeleteCurrent}>
-            削除
-          </button>
-        )}
-        <button className="btn-cancel" onClick={() => setIsEditing(false)}>キャンセル</button>
-        <button className="btn-save" onClick={handleSave}>{editingId ? '変更を保存' : 'ホストを登録'}</button>
-      </footer>
     </div>
   );
 
@@ -595,131 +601,129 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       <div className="connection-settings-panel">
         <header className="connection-header-new">
           <div className="header-title-container">
-            <h2>{isEditing ? (editingId ? '接続の編集' : '新規ホスト追加') : '接続設定'}</h2>
+            <h2>接続設定</h2>
           </div>
           <button className="panel-close-btn" onClick={onClose}>&times;</button>
         </header>
 
-        {isEditing ? renderForm() : (
-          <>
-            <div className="connection-toolbar">
-              <div className="toolbar-left">
-                <span className="results-count">
-                  <strong>{filteredConnections.length}</strong> / <strong>{connections.length}</strong> ホストを表示
-                </span>
-                <div className="search-box-container">
-                  <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                  <input
-                    type="text"
-                    placeholder="ホストを検索…"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="toolbar-right">
-                <button className="toolbar-btn">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
-                  表示設定
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                </button>
-                <div className="csv-actions">
-                  <input
-                    type="file"
-                    accept=".csv"
-                    ref={fileInputRef}
-                    style={{ display: 'none' }}
-                    onChange={handleImportCsv}
-                  />
-                  <button className="toolbar-btn csv-btn" onClick={() => fileInputRef.current?.click()}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    CSVインポート
-                  </button>
-                  <button className="toolbar-btn csv-btn" onClick={handleExportCsv}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                    CSVエクスポート
-                  </button>
-                </div>
-              </div>
+        <div className="connection-toolbar">
+          <div className="toolbar-left">
+            <span className="results-count">
+              <strong>{filteredConnections.length}</strong> / <strong>{connections.length}</strong> ホストを表示
+            </span>
+            <div className="search-box-container">
+              <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input
+                type="text"
+                placeholder="ホストを検索…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
-
-            <div className="connection-table-wrapper">
-              <table className="connection-table">
-                <thead>
-                  <tr>
-                    <th className="col-status">
-                      <input
-                        type="checkbox"
-                        className="access-checkbox"
-                        checked={filteredConnections.length > 0 && selectedIds.length === filteredConnections.length}
-                        onChange={toggleSelectAll}
-                      />
-                    </th>
-                    <th className="col-hostname">接続ホスト名</th>
-                    <th className="col-ip">IP</th>
-                    <th className="col-type">接続方式</th>
-                    <th className="col-last">最後の接続時刻</th>
-                    <th className="col-actions">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredConnections.map(conn => (
-                    <tr key={conn.id} className={selectedIds.includes(conn.id) ? 'selected' : ''}>
-                      <td className="col-status">
-                        <input
-                          type="checkbox"
-                          className="access-checkbox"
-                          checked={selectedIds.includes(conn.id)}
-                          onChange={() => toggleSelect(conn.id)}
-                        />
-                      </td>
-                      <td className="col-hostname">
-                        <div className="hostname-cell">
-                          <div className="device-icon">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-                          </div>
-                                                    <span className="hostname-text" onClick={() => handleEdit(conn)}>{conn.hostname}</span>
-                                                    {mcpHosts.some(mh => mh.hostname === conn.hostname) && (
-                                                      <span className="mcp-badge" title="MCP同期済み">MCP</span>
-                                                    )}
-                        </div>
-                      </td>
-                      <td className="col-ip">{conn.ip}</td>
-                      <td className="col-type">
-                        <div className="type-badge">
-                          {conn.type.split(' ')[0]}
-                        </div>
-                        <span className="type-detail">{conn.type.split(' ').slice(1).join(' ') || ''}</span>
-                      </td>
-                      <td className="col-last">{conn.lastConnected}</td>
-                      <td className="col-actions">
-                        <button
-                          className="row-delete-btn"
-                          onClick={() => handleDeleteRow(conn.id)}
-                          title="ホストを削除"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <footer className="connection-panel-footer">
-              <button className="add-device-btn" onClick={handleAddHost}>ホスト追加</button>
-              <button
-                className="delete-selected-btn"
-                onClick={handleDeleteSelected}
-                disabled={selectedIds.length === 0}
-                style={{ opacity: selectedIds.length === 0 ? 0.5 : 1, cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }}
-              >
-                削除 {selectedIds.length > 0 && `(${selectedIds.length})`}
+          </div>
+          <div className="toolbar-right">
+            <button className="toolbar-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
+              表示設定
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div className="csv-actions">
+              <input
+                type="file"
+                accept=".csv"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                onChange={handleImportCsv}
+              />
+              <button className="toolbar-btn csv-btn" onClick={() => fileInputRef.current?.click()}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                CSVインポート
               </button>
-            </footer>
-          </>
-        )}
+              <button className="toolbar-btn csv-btn" onClick={handleExportCsv}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                CSVエクスポート
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="connection-table-wrapper">
+          <table className="connection-table">
+            <thead>
+              <tr>
+                <th className="col-status">
+                  <input
+                    type="checkbox"
+                    className="access-checkbox"
+                    checked={filteredConnections.length > 0 && selectedIds.length === filteredConnections.length}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
+                <th className="col-hostname">接続ホスト名</th>
+                <th className="col-ip">IP</th>
+                <th className="col-type">接続方式</th>
+                <th className="col-last">最後の接続時刻</th>
+                <th className="col-actions">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredConnections.map(conn => (
+                <tr key={conn.id} className={selectedIds.includes(conn.id) ? 'selected' : ''}>
+                  <td className="col-status">
+                    <input
+                      type="checkbox"
+                      className="access-checkbox"
+                      checked={selectedIds.includes(conn.id)}
+                      onChange={() => toggleSelect(conn.id)}
+                    />
+                  </td>
+                  <td className="col-hostname">
+                    <div className="hostname-cell">
+                      <div className="device-icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                      </div>
+                      <span className="hostname-text" onClick={() => handleEdit(conn)}>{conn.hostname}</span>
+                      {mcpHosts.some(mh => mh.hostname === conn.hostname) && (
+                        <span className="mcp-badge" title="MCP同期済み">MCP</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="col-ip">{conn.ip}</td>
+                  <td className="col-type">
+                    <div className="type-badge">
+                      {conn.type.split(' ')[0]}
+                    </div>
+                    <span className="type-detail">{conn.type.split(' ').slice(1).join(' ') || ''}</span>
+                  </td>
+                  <td className="col-last">{conn.lastConnected}</td>
+                  <td className="col-actions">
+                    <button
+                      className="row-delete-btn"
+                      onClick={() => handleDeleteRow(conn.id)}
+                      title="ホストを削除"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <footer className="connection-panel-footer">
+          <button className="add-device-btn" onClick={handleAddHost}>ホスト追加</button>
+          <button
+            className="delete-selected-btn"
+            onClick={handleDeleteSelected}
+            disabled={selectedIds.length === 0}
+            style={{ opacity: selectedIds.length === 0 ? 0.5 : 1, cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }}
+          >
+            削除 {selectedIds.length > 0 && `(${selectedIds.length})`}
+          </button>
+        </footer>
+
+        {isEditing && renderForm()}
       </div>
     </div>
   );
