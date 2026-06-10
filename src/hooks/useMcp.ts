@@ -76,6 +76,54 @@ export function useMcp({
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const isRag = toolId === "query_nw_db" || toolId === "network_query_nw_db";
     const statusMsg = isRag ? `NW-DBを検索中...` : `${toolLabel} を実行中...`;
+
+    const processedArgs: any = args && typeof args === "object" && !Array.isArray(args)
+      ? Object.keys(args).reduce((acc, key) => {
+          const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+          acc[camelKey] = args[key];
+          return acc;
+        }, {} as any)
+      : args;
+
+    // Robust normalization for arguments
+    if (processedArgs && typeof processedArgs === "object") {
+      if (["fetch_config", "fetch_routing", "fetch_arp"].includes(toolId)) {
+        let deviceVal = processedArgs.deviceName || processedArgs.device_name || processedArgs.device || processedArgs.host;
+        if (!deviceVal) {
+          try {
+            const [connections, mcpHosts] = await Promise.all([
+              invoke<any[]>("load_connections"),
+              invoke<any[]>("get_mcp_hosts").catch(() => [])
+            ]);
+            const lowerMessage = userMessage.toLowerCase();
+            let matched = connections?.find(c => 
+              (c.hostname && lowerMessage.includes(c.hostname.toLowerCase())) ||
+              (c.ip && lowerMessage.includes(c.ip))
+            );
+            if (!matched && mcpHosts) {
+              matched = mcpHosts.find(h => 
+                (h.hostname && lowerMessage.includes(h.hostname.toLowerCase())) ||
+                (h.ip && lowerMessage.includes(h.ip))
+              );
+            }
+            if (matched) {
+              deviceVal = matched.hostname;
+              console.log("[useMcp] Auto-extracted device name from user message:", deviceVal);
+            }
+          } catch (err) {
+            console.error("[useMcp] Failed to resolve connections for auto-extraction:", err);
+          }
+        }
+        if (deviceVal) {
+          processedArgs.deviceName = deviceVal;
+        }
+      } else if (["network_ping", "network_traceroute"].includes(toolId)) {
+        const hostVal = processedArgs.host || processedArgs.device || processedArgs.deviceName || processedArgs.device_name || processedArgs.ip;
+        if (hostVal) {
+          processedArgs.host = hostVal;
+        }
+      }
+    }
     
     // Add ToolExecution block
     setMessages(prev => [...prev, {
@@ -90,22 +138,17 @@ export function useMcp({
       tool_id: toolId,
       summary_text: statusMsg,
       raw_data: null,
-      args
+      args: processedArgs
     }]);
 
-    const processedArgs: any = args && typeof args === "object" && !Array.isArray(args)
-      ? Object.keys(args).reduce((acc, key) => {
-          const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-          acc[camelKey] = args[key];
-          return acc;
-        }, {} as any)
-      : args;
+
 
     try {
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("MCP execution timed out")), mcpTimeout * 1000)
       );
 
+      console.log("[useMcp] invoking Tauri command:", toolId, "with args:", JSON.stringify(processedArgs));
       const result: any = await Promise.race([
         invoke(toolId, processedArgs),
         timeoutPromise
@@ -200,6 +243,8 @@ export function useMcp({
                                       nextToolCall.tool === "network_send_console_message" ? "Console Message" :
                                       nextToolCall.tool === "network_show" ? "Show Command" :
                                       nextToolCall.tool === "fetch_config" ? "Fetch Config" :
+                                      nextToolCall.tool === "fetch_routing" ? "Fetch Routing" :
+                                      nextToolCall.tool === "fetch_arp" ? "Fetch ARP" :
                                       nextToolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : nextToolCall.tool;
           
           setTimeout(async () => {
@@ -218,6 +263,8 @@ export function useMcp({
              const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
                                         nextToolCall.tool === "query_nw_db" || nextToolCall.tool === "network_query_nw_db" ? "NWDB検索" :
                                         nextToolCall.tool === "fetch_config" ? "Fetch Config" :
+                                        nextToolCall.tool === "fetch_routing" ? "Fetch Routing" :
+                                        nextToolCall.tool === "fetch_arp" ? "Fetch ARP" :
                                         nextToolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : "Tool";
             setTimeout(async () => {
               await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
@@ -376,6 +423,8 @@ export function useMcp({
                                     toolCall.tool === "network_send_console_message" ? "Console Message" :
                                     toolCall.tool === "network_show" ? "Show Command" :
                                     toolCall.tool === "fetch_config" ? "Fetch Config" :
+                                    toolCall.tool === "fetch_routing" ? "Fetch Routing" :
+                                    toolCall.tool === "fetch_arp" ? "Fetch ARP" :
                                     toolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : toolCall.tool;
             
             // Execute in parallel (no await here, or wrap in Promise.all)
@@ -392,6 +441,8 @@ export function useMcp({
                const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
                                       toolCall.tool === "query_nw_db" || toolCall.tool === "network_query_nw_db" ? "NWDB検索" :
                                       toolCall.tool === "fetch_config" ? "Fetch Config" :
+                                      toolCall.tool === "fetch_routing" ? "Fetch Routing" :
+                                      toolCall.tool === "fetch_arp" ? "Fetch ARP" :
                                       toolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : "Tool";
               executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
             } catch (e) {

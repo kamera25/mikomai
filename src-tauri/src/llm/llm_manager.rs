@@ -1,3 +1,4 @@
+// LLM Manager for worker context and prompts
 use anyhow::Result;
 use llama_cpp_2::context::LlamaContext;
 use llama_cpp_2::model::LlamaModel;
