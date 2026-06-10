@@ -424,6 +424,7 @@ function App() {
         ) : isConnectionOpen ? (
           <ConnectionSettingsPanel 
             onClose={() => setIsConnectionOpen(false)} 
+            onConnectionsChanged={fetchHosts}
           />
         ) : isScheduledTasksOpen ? (
           <ScheduledTasksPanel 

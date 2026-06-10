@@ -5,6 +5,7 @@ import './ConnectionSettingsPanel.css';
 
 interface ConnectionSettingsPanelProps {
   onClose: () => void;
+  onConnectionsChanged?: () => void;
 }
 
 export interface Connection {
@@ -141,7 +142,7 @@ const mockConnections: Connection[] = [
   { id: '6', status: 'online', hostname: 'Access-Point-04', ip: '192.168.5.25', type: 'SSH (Aruba)', lastConnected: '2024-05-02 10:30', deviceType: 'aruba_os', vendorType: 'Aruba' },
 ];
 
-export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = ({ onClose }) => {
+export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = ({ onClose, onConnectionsChanged }) => {
   const [connections, setConnections] = useState<Connection[]>(mockConnections);
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -336,6 +337,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
       try {
         await invoke('save_connections', { connections: updatedConnections });
+        onConnectionsChanged?.();
       } catch (e) {
         console.error("Failed to save connections:", e);
       }
@@ -358,6 +360,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
     try {
       await invoke('save_connections', { connections: updatedConnections });
+      onConnectionsChanged?.();
     } catch (e) {
       console.error("Failed to delete connection:", e);
     }
@@ -373,6 +376,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
     try {
       await invoke('save_connections', { connections: updatedConnections });
+      onConnectionsChanged?.();
     } catch (e) {
       console.error("Failed to delete connection:", e);
     }
@@ -427,6 +431,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
             setConnections(updatedConnections);
             try {
               await invoke('save_connections', { connections: updatedConnections });
+              onConnectionsChanged?.();
               alert(`${newConnections.length}件 of hosts imported.`);
             } catch (error) {
               console.error("Failed to save imported connections:", error);
@@ -515,6 +520,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
     try {
       await invoke('save_connections', { connections: updatedConnections });
+      onConnectionsChanged?.();
     } catch (e) {
       console.error("Failed to delete connections:", e);
     }
