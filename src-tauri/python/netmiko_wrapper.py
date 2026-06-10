@@ -14,6 +14,7 @@ def main():
     parser.add_argument("--host", required=False)
     parser.add_argument("--username", required=False)
     parser.add_argument("--password", required=False, default="")
+    parser.add_argument("--secret", required=False, default="")
     parser.add_argument("--device_type", required=False)
     parser.add_argument("--command", required=False)
     parser.add_argument("--commands", required=False, help="JSON list of commands for config")
@@ -30,6 +31,7 @@ def main():
                 args.host = data.get("host")
                 args.username = data.get("username")
                 args.password = data.get("password", "")
+                args.secret = data.get("secret", "")
                 args.device_type = data.get("device_type")
                 args.command = data.get("command")
                 if "commands" in data:
@@ -47,6 +49,7 @@ def main():
         "host": args.host,
         "username": args.username,
         "password": args.password,
+        "secret": args.secret,
         "session_log": None
     }
 

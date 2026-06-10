@@ -17,6 +17,7 @@ export interface Connection {
   lastConnected: string;
   username?: string;
   password?: string;
+  enablePassword?: string;
   deviceType?: string;
   vendorType?: string;
 }
@@ -183,6 +184,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     type: 'SSH',
     username: '',
     password: '',
+    enablePassword: '',
     passphrase: '',
     rememberPassword: true,
     agentForwarding: false,
@@ -211,6 +213,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       type: conn.type.split(' ')[0] as any,
       username: conn.username || 'root', // Mock data doesn't have these, using defaults
       password: conn.password || '',
+      enablePassword: conn.enablePassword || '',
       passphrase: '',
       rememberPassword: true,
       agentForwarding: false,
@@ -234,6 +237,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       type: 'SSH',
       username: '',
       password: '',
+      enablePassword: '',
       passphrase: '',
       rememberPassword: true,
       agentForwarding: false,
@@ -304,6 +308,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 type: formData.type === 'Console' ? 'Console (Serial)' : `${formData.type} ${formData.authMethod === 'key' ? '(Key)' : '(Password)'}`,
                 username: formData.username,
                 password: formData.password,
+                enablePassword: formData.enablePassword,
                 deviceType: formData.deviceType,
                 vendorType: formData.vendorType
               }
@@ -320,6 +325,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
           lastConnected: 'Never',
           username: formData.username,
           password: formData.password,
+          enablePassword: formData.enablePassword,
           deviceType: formData.deviceType,
           vendorType: formData.vendorType
         };
@@ -397,6 +403,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 port: row.port ? parseInt(row.port, 10) : undefined,
                 type: row.type || 'SSH',
                 lastConnected: row.lastConnected || 'Never',
+                username: row.username || '',
+                password: row.password || '',
+                enablePassword: row.enablePassword || '',
                 deviceType: row.deviceType || 'cisco_ios',
                 vendorType: row.vendorType || ''
               };
@@ -445,7 +454,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       return str;
     };
 
-    const headers = ['id', 'status', 'hostname', 'ip', 'port', 'type', 'lastConnected', 'deviceType', 'vendorType'];
+    const headers = ['id', 'status', 'hostname', 'ip', 'port', 'type', 'lastConnected', 'deviceType', 'vendorType', 'username', 'password', 'enablePassword'];
     const csvRows = [];
 
     // Add header row
@@ -462,7 +471,10 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
         conn.type,
         conn.lastConnected,
         conn.deviceType || '',
-        conn.vendorType || ''
+        conn.vendorType || '',
+        conn.username || '',
+        conn.password || '',
+        conn.enablePassword || ''
       ];
       csvRows.push(row.map(escapeCsv).join(','));
     }
@@ -612,6 +624,14 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                       type="password"
                       value={formData.password}
                       onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>特権パスワード(Enable)</label>
+                    <input
+                      type="password"
+                      value={formData.enablePassword}
+                      onChange={(e) => setFormData({...formData, enablePassword: e.target.value})}
                     />
                   </div>
                 </>

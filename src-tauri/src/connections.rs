@@ -21,6 +21,8 @@ pub struct Connection {
     #[serde(default)]
     pub password: Option<String>,
     #[serde(default)]
+    pub enable_password: Option<String>,
+    #[serde(default)]
     pub device_type: Option<String>,
     #[serde(default)]
     pub vendor_type: Option<String>,
@@ -62,6 +64,14 @@ pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, String
                 }
             }
         }
+        if let Some(encrypted_enable_password) = &conn.enable_password {
+            if !encrypted_enable_password.is_empty() {
+                match decrypt(&app, encrypted_enable_password) {
+                    Ok(decrypted) => conn.enable_password = Some(decrypted),
+                    Err(e) => eprintln!("Failed to decrypt enable password for connection {}: {}", conn.id, e),
+                }
+            }
+        }
     }
 
     Ok(connections)
@@ -78,6 +88,14 @@ pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>)
                 match encrypt(&app, plain_password) {
                     Ok(encrypted) => conn.password = Some(encrypted),
                     Err(e) => return Err(format!("Failed to encrypt password for connection {}: {}", conn.id, e)),
+                }
+            }
+        }
+        if let Some(plain_enable_password) = &conn.enable_password {
+            if !plain_enable_password.is_empty() {
+                match encrypt(&app, plain_enable_password) {
+                    Ok(encrypted) => conn.enable_password = Some(encrypted),
+                    Err(e) => return Err(format!("Failed to encrypt enable password for connection {}: {}", conn.id, e)),
                 }
             }
         }
@@ -113,8 +131,8 @@ pub fn resolve_host_with_mcp(app: &tauri::AppHandle, host: &str) -> String {
     host.to_string()
 }
 
-pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, String, Option<String>, String)> {
-    // Returns (IP, Username, Password, DeviceType)
+pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, String, Option<String>, Option<String>, String)> {
+    // Returns (IP, Username, Password, EnablePassword, DeviceType)
     
     // 1. Check local connections
     if let Ok(connections) = load_connections(app.clone()) {
@@ -127,7 +145,7 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
                         else { "cisco_ios".to_string() }; // Default
 
             let user = conn.username.clone().unwrap_or_else(|| "admin".to_string());
-            return Some((conn.ip.clone(), user, conn.password.clone(), dtype));
+            return Some((conn.ip.clone(), user, conn.password.clone(), conn.enable_password.clone(), dtype));
         }
     }
 
@@ -138,7 +156,7 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
                         else if mcp.device_type.contains("Juniper") { "juniper_junos" }
                         else if mcp.device_type.contains("Arista") { "arista_eos" }
                         else { "cisco_ios" };
-            return Some((mcp.ip.clone(), mcp.username.clone(), None, dtype.to_string()));
+            return Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype.to_string()));
         }
     }
 
@@ -161,6 +179,7 @@ mod tests {
             last_connected: "2023-10-27".to_string(),
             username: None,
             password: None,
+            enable_password: None,
             device_type: None,
             vendor_type: None,
         };

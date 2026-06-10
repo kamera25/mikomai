@@ -89,7 +89,7 @@ pub async fn fetch_config(app: tauri::AppHandle, device_name: String) -> Result<
                         else { "cisco_ios".to_string() };
 
             let user = conn.username.clone().unwrap_or_else(|| "admin".to_string());
-            resolved_device = Some((conn.ip.clone(), user, conn.password.clone(), dtype));
+            resolved_device = Some((conn.ip.clone(), user, conn.password.clone(), conn.enable_password.clone(), dtype));
         }
     }
     
@@ -102,12 +102,12 @@ pub async fn fetch_config(app: tauri::AppHandle, device_name: String) -> Result<
                             else if mcp.device_type.contains("Yamaha") { "yamaha" }
                             else if mcp.device_type.contains("Furukawa") || mcp.device_type.contains("Fitelnet") { "furukawa_fitelnet" }
                             else { "cisco_ios" };
-                resolved_device = Some((mcp.ip.clone(), mcp.username.clone(), None, dtype.to_string()));
+                resolved_device = Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype.to_string()));
             }
         }
     }
     
-    let (ip, username, password, dtype) = match resolved_device {
+    let (ip, username, password, enable_password, dtype) = match resolved_device {
         Some(d) => d,
         None => return Err(format!("Error: Device '{}' is not registered. Only registered device names are allowed.", device_name)),
     };
@@ -124,6 +124,7 @@ pub async fn fetch_config(app: tauri::AppHandle, device_name: String) -> Result<
         host: ip,
         username,
         password,
+        enable_password,
         device_type: dtype,
     };
     
