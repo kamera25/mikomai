@@ -117,7 +117,7 @@ export function useMcp({
         if (deviceVal) {
           processedArgs.deviceName = deviceVal;
         }
-      } else if (["network_ping", "network_traceroute"].includes(toolId)) {
+      } else if (["self_network_ping", "self_network_traceroute"].includes(toolId)) {
         const hostVal = processedArgs.host || processedArgs.device || processedArgs.deviceName || processedArgs.device_name || processedArgs.ip;
         if (hostVal) {
           processedArgs.host = hostVal;
@@ -233,11 +233,11 @@ export function useMcp({
         summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
         for (const nextToolCall of nextToolCalls) {
           console.log("Extracted subsequent tool call:", nextToolCall);
-           const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
-                                      nextToolCall.tool === "network_traceroute" ? "Traceroute" : 
+           const nextToolActionName = nextToolCall.tool === "self_network_ping" ? "Ping" : 
+                                      nextToolCall.tool === "self_network_traceroute" ? "Traceroute" : 
                                       nextToolCall.tool === "network_get_hosts" ? "Host List" :
                                       nextToolCall.tool === "network_query_nw_db" || nextToolCall.tool === "query_nw_db" ? "NWDB検索" :
-                                      nextToolCall.tool === "network_arp" ? "ARP Table" :
+                                      nextToolCall.tool === "self_network_arp" ? "ARP Table" :
                                       nextToolCall.tool === "network_get_ip_info" ? "IP Info" :
                                       nextToolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
                                       nextToolCall.tool === "network_send_console_message" ? "Console Message" :
@@ -260,7 +260,7 @@ export function useMcp({
               msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
             ));
             summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
-             const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
+             const nextToolActionName = nextToolCall.tool === "self_network_ping" ? "Ping" : 
                                         nextToolCall.tool === "query_nw_db" || nextToolCall.tool === "network_query_nw_db" ? "NWDB検索" :
                                         nextToolCall.tool === "fetch_config" ? "Fetch Config" :
                                         nextToolCall.tool === "fetch_routing" ? "Fetch Routing" :
@@ -312,14 +312,14 @@ export function useMcp({
                           lowerInput.match(/(?:list|一覧|教え|見せ|確認).*(?:host|ホスト|接続先|ターゲット)/);
 
     if (pingArgs) {
-      await executeAndAnalyze(userMessage, "network_ping", "Ping", pingArgs);
+      await executeAndAnalyze(userMessage, "self_network_ping", "Ping", pingArgs);
     } else if (traceMatch) {
       const host = traceMatch[1] || traceMatch[2];
-      await executeAndAnalyze(userMessage, "network_traceroute", "Traceroute", { host });
+      await executeAndAnalyze(userMessage, "self_network_traceroute", "Traceroute", { host });
     } else if (hostListMatch) {
       await executeAndAnalyze(userMessage, "network_get_hosts", "Host List", {});
-    } else if (lowerInput.includes("arp")) {
-      await executeAndAnalyze(userMessage, "network_arp", "ARP Table", {});
+    } else if (lowerInput.includes("arp") && (lowerInput.includes("ローカル") || lowerInput.includes("自機") || lowerInput.includes("このpc") || lowerInput.includes("local"))) {
+      await executeAndAnalyze(userMessage, "self_network_arp", "ARP Table", {});
     } else if (lowerInput.includes("ip") || lowerInput.includes("ネットワーク情報") || lowerInput.includes("アドレス")) {
       await executeAndAnalyze(userMessage, "network_get_ip_info", "IP Info", {});
     } else if (lowerInput.includes("console") || lowerInput.includes("コンソール") || lowerInput.includes("シリアル")) {
@@ -413,11 +413,11 @@ export function useMcp({
           ));
           for (const toolCall of toolCalls) {
             console.log("Extracted tool call:", toolCall);
-             const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
-                                    toolCall.tool === "network_traceroute" ? "Traceroute" : 
+             const toolActionName = toolCall.tool === "self_network_ping" ? "Ping" : 
+                                    toolCall.tool === "self_network_traceroute" ? "Traceroute" : 
                                     toolCall.tool === "network_get_hosts" ? "Host List" :
                                     toolCall.tool === "network_query_nw_db" || toolCall.tool === "query_nw_db" ? "NWDB検索" :
-                                    toolCall.tool === "network_arp" ? "ARP Table" :
+                                    toolCall.tool === "self_network_arp" ? "ARP Table" :
                                     toolCall.tool === "network_get_ip_info" ? "IP Info" :
                                     toolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
                                     toolCall.tool === "network_send_console_message" ? "Console Message" :
@@ -438,7 +438,7 @@ export function useMcp({
               setMessages(prev => prev.map(msg => 
                 msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
               ));
-               const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
+               const toolActionName = toolCall.tool === "self_network_ping" ? "Ping" : 
                                       toolCall.tool === "query_nw_db" || toolCall.tool === "network_query_nw_db" ? "NWDB検索" :
                                       toolCall.tool === "fetch_config" ? "Fetch Config" :
                                       toolCall.tool === "fetch_routing" ? "Fetch Routing" :

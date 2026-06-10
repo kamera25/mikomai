@@ -77,7 +77,7 @@ pub async fn network_ping_core(
 }
 
 #[tauri::command]
-pub async fn network_ping(
+pub async fn self_network_ping(
     app: tauri::AppHandle,
     host: String,
     size: Option<usize>,

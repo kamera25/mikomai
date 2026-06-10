@@ -16,7 +16,7 @@ fn resolve_host(host: &str) -> Result<IpAddr, String> {
 }
 
 #[tauri::command]
-pub async fn network_traceroute(app: tauri::AppHandle, host: String) -> Result<TracerouteResult, String> {
+pub async fn self_network_traceroute(app: tauri::AppHandle, host: String) -> Result<TracerouteResult, String> {
     let resolved_host = resolve_host_with_mcp(&app, &host);
     let ip: IpAddr = match resolved_host.parse() {
         Ok(ip) => ip,

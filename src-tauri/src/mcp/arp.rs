@@ -8,7 +8,7 @@ pub struct ArpResult {
 }
 
 #[tauri::command]
-pub async fn network_arp() -> Result<ArpResult, String> {
+pub async fn self_network_arp() -> Result<ArpResult, String> {
     // On macOS and Linux, 'arp -an' is a standard way to get the ARP table
     // On Windows, 'arp -a' is used.
     

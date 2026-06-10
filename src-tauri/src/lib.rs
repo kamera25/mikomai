@@ -47,11 +47,10 @@ pub fn run() {
             mcp::rag::query_nw_db,
             network::network_show,
             network::network_config,
-            mcp::ping::network_ping,
-            mcp::traceroute::network_traceroute,
+            mcp::ping::self_network_ping,
+            mcp::traceroute::self_network_traceroute,
             mcp::hosts::network_get_hosts,
             mcp::hosts::require_host_regsterd,
-            mcp::arp::network_arp,
             mcp::ip_info::network_get_ip_info,
             mcp::console::network_list_serial_ports,
             mcp::console::network_send_console_message,
@@ -73,7 +72,8 @@ pub fn run() {
             scheduled_tasks::execute_task,
             settings::load_settings,
             settings::save_settings,
-            network::dns::resolve_ip
+            network::dns::resolve_ip,
+            mcp::arp::self_network_arp
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
