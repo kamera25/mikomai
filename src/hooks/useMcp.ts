@@ -190,16 +190,17 @@ export function useMcp({
         summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
         for (const nextToolCall of nextToolCalls) {
           console.log("Extracted subsequent tool call:", nextToolCall);
-          const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
-                                     nextToolCall.tool === "network_traceroute" ? "Traceroute" : 
-                                     nextToolCall.tool === "network_get_hosts" ? "Host List" :
-                                     nextToolCall.tool === "network_query_nw_db" || nextToolCall.tool === "query_nw_db" ? "NWDB検索" :
-                                     nextToolCall.tool === "network_arp" ? "ARP Table" :
-                                     nextToolCall.tool === "network_get_ip_info" ? "IP Info" :
-                                     nextToolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
-                                     nextToolCall.tool === "network_send_console_message" ? "Console Message" :
-                                     nextToolCall.tool === "network_show" ? "Show Command" :
-                                     nextToolCall.tool === "fetch_config" ? "Fetch Config" : nextToolCall.tool;
+           const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
+                                      nextToolCall.tool === "network_traceroute" ? "Traceroute" : 
+                                      nextToolCall.tool === "network_get_hosts" ? "Host List" :
+                                      nextToolCall.tool === "network_query_nw_db" || nextToolCall.tool === "query_nw_db" ? "NWDB検索" :
+                                      nextToolCall.tool === "network_arp" ? "ARP Table" :
+                                      nextToolCall.tool === "network_get_ip_info" ? "IP Info" :
+                                      nextToolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
+                                      nextToolCall.tool === "network_send_console_message" ? "Console Message" :
+                                      nextToolCall.tool === "network_show" ? "Show Command" :
+                                      nextToolCall.tool === "fetch_config" ? "Fetch Config" :
+                                      nextToolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : nextToolCall.tool;
           
           setTimeout(async () => {
             await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
@@ -214,9 +215,10 @@ export function useMcp({
               msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
             ));
             summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
-            const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
-                                       nextToolCall.tool === "query_nw_db" || nextToolCall.tool === "network_query_nw_db" ? "NWDB検索" :
-                                       nextToolCall.tool === "fetch_config" ? "Fetch Config" : "Tool";
+             const nextToolActionName = nextToolCall.tool === "network_ping" ? "Ping" : 
+                                        nextToolCall.tool === "query_nw_db" || nextToolCall.tool === "network_query_nw_db" ? "NWDB検索" :
+                                        nextToolCall.tool === "fetch_config" ? "Fetch Config" :
+                                        nextToolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : "Tool";
             setTimeout(async () => {
               await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
             }, 1000);
@@ -364,16 +366,17 @@ export function useMcp({
           ));
           for (const toolCall of toolCalls) {
             console.log("Extracted tool call:", toolCall);
-            const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
-                                   toolCall.tool === "network_traceroute" ? "Traceroute" : 
-                                   toolCall.tool === "network_get_hosts" ? "Host List" :
-                                   toolCall.tool === "network_query_nw_db" || toolCall.tool === "query_nw_db" ? "NWDB検索" :
-                                   toolCall.tool === "network_arp" ? "ARP Table" :
-                                   toolCall.tool === "network_get_ip_info" ? "IP Info" :
-                                   toolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
-                                   toolCall.tool === "network_send_console_message" ? "Console Message" :
-                                   toolCall.tool === "network_show" ? "Show Command" :
-                                   toolCall.tool === "fetch_config" ? "Fetch Config" : toolCall.tool;
+             const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
+                                    toolCall.tool === "network_traceroute" ? "Traceroute" : 
+                                    toolCall.tool === "network_get_hosts" ? "Host List" :
+                                    toolCall.tool === "network_query_nw_db" || toolCall.tool === "query_nw_db" ? "NWDB検索" :
+                                    toolCall.tool === "network_arp" ? "ARP Table" :
+                                    toolCall.tool === "network_get_ip_info" ? "IP Info" :
+                                    toolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
+                                    toolCall.tool === "network_send_console_message" ? "Console Message" :
+                                    toolCall.tool === "network_show" ? "Show Command" :
+                                    toolCall.tool === "fetch_config" ? "Fetch Config" :
+                                    toolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : toolCall.tool;
             
             // Execute in parallel (no await here, or wrap in Promise.all)
             executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
@@ -386,9 +389,10 @@ export function useMcp({
               setMessages(prev => prev.map(msg => 
                 msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
               ));
-              const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
-                                     toolCall.tool === "query_nw_db" || toolCall.tool === "network_query_nw_db" ? "NWDB検索" :
-                                     toolCall.tool === "fetch_config" ? "Fetch Config" : "Tool";
+               const toolActionName = toolCall.tool === "network_ping" ? "Ping" : 
+                                      toolCall.tool === "query_nw_db" || toolCall.tool === "network_query_nw_db" ? "NWDB検索" :
+                                      toolCall.tool === "fetch_config" ? "Fetch Config" :
+                                      toolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : "Tool";
               executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
             } catch (e) {
               // Final response: make it visible

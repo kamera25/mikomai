@@ -50,6 +50,7 @@ pub fn run() {
             mcp::ping::network_ping,
             mcp::traceroute::network_traceroute,
             mcp::hosts::network_get_hosts,
+            mcp::hosts::require_host_regsterd,
             mcp::arp::network_arp,
             mcp::ip_info::network_get_ip_info,
             mcp::console::network_list_serial_ports,

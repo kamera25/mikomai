@@ -43,6 +43,14 @@ pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, 
     })
 }
 
+#[tauri::command]
+pub fn require_host_regsterd() -> Result<HostListResult, String> {
+    Ok(HostListResult {
+        success: false,
+        output: "ホスト名の登録が必要です。IPアドレスおよびFQDNを直接指定したリモート接続は行えません。".to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
