@@ -93,13 +93,21 @@ export function useMcp({
       args
     }]);
 
+    const processedArgs: any = args && typeof args === "object" && !Array.isArray(args)
+      ? Object.keys(args).reduce((acc, key) => {
+          const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+          acc[camelKey] = args[key];
+          return acc;
+        }, {} as any)
+      : args;
+
     try {
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("MCP execution timed out")), mcpTimeout * 1000)
       );
 
       const result: any = await Promise.race([
-        invoke(toolId, args),
+        invoke(toolId, processedArgs),
         timeoutPromise
       ]);
 
@@ -279,7 +287,12 @@ export function useMcp({
           event_type: "AgentResponse"
         }]);
       }
-    } else if (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) {
+    } else if (
+      (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) &&
+      !lowerInput.includes("config") &&
+      !lowerInput.includes("設定") &&
+      !lowerInput.includes("構成")
+    ) {
       await executeAndAnalyze(userMessage, "network_show", "Show Command", {
         device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
         command: "show ip int brief"
