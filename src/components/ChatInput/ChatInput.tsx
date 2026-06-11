@@ -180,10 +180,14 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(({
                   </svg>
                 ) : (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8}}>
-                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
-                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                    <polygon points="2 10 5 6 19 6 22 10"></polygon>
+                    <rect x="2" y="10" width="20" height="9" rx="1"></rect>
+                    <line x1="6" y1="14" x2="6.01" y2="14"></line>
+                    <line x1="9" y1="14" x2="9.01" y2="14"></line>
+                    <line x1="12" y1="14" x2="12.01" y2="14"></line>
+                    <line x1="15" y1="14" x2="15.01" y2="14"></line>
+                    <line x1="18" y1="13" x2="18.01" y2="13"></line>
+                    <line x1="18" y1="16" x2="18.01" y2="16"></line>
                   </svg>
                 )}
                 <span className="suggestion-hostname">{hostObj.hostname}</span>
