@@ -110,7 +110,12 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(({
       // Check if there's space between @ and cursor
       if (!query.includes(' ')) {
         // Combine available hosts and recent IPs
-        const combined = [...availableHosts];
+        const combined = [{ hostname: "localhost", ip: "このコンピュータ" }];
+        availableHosts.forEach(h => {
+          if (h.hostname !== "localhost") {
+            combined.push(h);
+          }
+        });
         recentIPs.forEach(ip => {
           if (!combined.some(h => h.ip === ip)) {
             combined.push({ hostname: `${ip}`, ip: "過去に投入したIPアドレス" });
@@ -167,7 +172,20 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(({
                 className={`suggestion-item ${idx === suggestionIndex ? 'selected' : ''}`}
                 onClick={() => handleSelectSuggestion(hostObj)}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8}}><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                {hostObj.hostname === 'localhost' ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8}}>
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 8}}>
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                  </svg>
+                )}
                 <span className="suggestion-hostname">{hostObj.hostname}</span>
                 <span className="suggestion-ip">({hostObj.ip})</span>
               </div>
