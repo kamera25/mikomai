@@ -133,6 +133,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onChange={(e) => setEditingTitle(e.target.value)}
                   onBlur={() => handleSaveRename(item.id)}
                   onKeyDown={(e) => {
+                    if (e.nativeEvent.isComposing) {
+                      return;
+                    }
                     if (e.key === 'Enter') {
                       handleSaveRename(item.id);
                     } else if (e.key === 'Escape') {
