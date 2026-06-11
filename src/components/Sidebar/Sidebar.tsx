@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { HistoryItem, Message } from '../../types';
 
 interface SidebarProps {
@@ -11,6 +12,8 @@ interface SidebarProps {
   switchSession: (sessionId: string) => void;
   onTimelineItemClick?: (taskId: string) => void;
   formatDate?: (dateString: string) => string;
+  renameSession: (sessionId: string, newTitle: string) => void;
+  deleteSession: (sessionId: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -22,8 +25,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   createNewSession,
   toggleFolder,
   switchSession,
-  onTimelineItemClick
+  onTimelineItemClick,
+  renameSession,
+  deleteSession
 }) => {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState<string>("");
+
+  const handleSaveRename = (sessionId: string) => {
+    if (editingTitle.trim()) {
+      renameSession(sessionId, editingTitle.trim());
+    }
+    setEditingSessionId(null);
+  };
+
   const renderSessionTimeline = () => {
     const timelineEvents = messages.filter(m => !m.isHidden);
     if (timelineEvents.length === 0) return null;
@@ -97,14 +113,75 @@ export const Sidebar: React.FC<SidebarProps> = ({
         );
       } else {
         const isActive = activeSessionId === item.id;
+        const isMenuOpen = openMenuId === item.id;
+        const isEditing = editingSessionId === item.id;
         return (
           <div key={item.id} className="session-container">
             <div
               className={`session-item ${isActive ? 'active' : ''}`}
               style={{ paddingLeft: `${level * 12 + 28}px` }}
-              onClick={() => switchSession(item.id)}
+              onClick={() => {
+                if (!isEditing) {
+                  switchSession(item.id);
+                }
+              }}
             >
-              <span className="session-title">{item.title}</span>
+              {isEditing ? (
+                <input
+                  className="session-title-input"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  onBlur={() => handleSaveRename(item.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveRename(item.id);
+                    } else if (e.key === 'Escape') {
+                      setEditingSessionId(null);
+                    }
+                  }}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <>
+                  <span className="session-title">{item.title}</span>
+                  <div className={`session-actions ${isMenuOpen ? 'menu-open' : ''}`} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className="session-action-trigger"
+                      onClick={() => setOpenMenuId(isMenuOpen ? null : item.id)}
+                      title="メニュー"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1.5"></circle><circle cx="6" cy="12" r="1.5"></circle><circle cx="18" cy="12" r="1.5"></circle></svg>
+                    </button>
+                    {isMenuOpen && (
+                      <>
+                        <div className="session-menu-backdrop" onClick={() => setOpenMenuId(null)} />
+                        <div className="session-menu">
+                          <button
+                            className="session-menu-item"
+                            onClick={() => {
+                              setEditingSessionId(item.id);
+                              setEditingTitle(item.title);
+                              setOpenMenuId(null);
+                            }}
+                          >
+                            リネーム
+                          </button>
+                          <button
+                            className="session-menu-item delete"
+                            onClick={() => {
+                              deleteSession(item.id);
+                              setOpenMenuId(null);
+                            }}
+                          >
+                            削除
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
             {isActive && renderSessionTimeline()}
           </div>

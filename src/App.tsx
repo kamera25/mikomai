@@ -34,6 +34,8 @@ function App() {
     createNewSession,
     toggleFolder,
     switchSession,
+    renameSession,
+    deleteSession,
   } = useHistory();
 
   const [input, setInput] = useState("");
@@ -364,6 +366,8 @@ function App() {
         toggleFolder={toggleFolder}
         onTimelineItemClick={scrollToMessage}
         switchSession={switchSession}
+        renameSession={renameSession}
+        deleteSession={deleteSession}
       />
 
       {/* Main Viewport (Grouping Chat and Settings) */}

@@ -156,6 +156,75 @@ export function useHistory() {
     }
   };
 
+  const renameSession = (sessionId: string, newTitle: string) => {
+    if (newTitle && newTitle.trim()) {
+      setHistory(prev => {
+        const updateSessionTitle = (items: HistoryItem[]): HistoryItem[] => {
+          return items.map(item => {
+            if (item.id === sessionId && item.type === 'session') {
+              return { ...item, title: newTitle.trim() };
+            }
+            if (item.type === 'folder') {
+              return { ...item, items: updateSessionTitle(item.items) };
+            }
+            return item;
+          });
+        };
+        return updateSessionTitle(prev);
+      });
+    }
+  };
+
+  const deleteSession = (sessionId: string) => {
+    if (confirm("このセッションを削除してもよろしいですか？")) {
+      const removeSession = (items: HistoryItem[]): HistoryItem[] => {
+        return items
+          .filter(item => item.id !== sessionId)
+          .map(item => {
+            if (item.type === 'folder') {
+              return { ...item, items: removeSession(item.items) };
+            }
+            return item;
+          });
+      };
+      
+      let updated = removeSession(history);
+      
+      if (updated.length === 0) {
+        const defaultId = `session-${Date.now()}`;
+        updated = [{
+          id: defaultId,
+          type: 'session',
+          title: "新しいセッション",
+          messages: []
+        }];
+        setHistory(updated);
+        setActiveSessionId(defaultId);
+        setMessages([]);
+        return;
+      }
+
+      setHistory(updated);
+
+      if (activeSessionId === sessionId) {
+        const firstSession = findFirstSession(updated);
+        if (firstSession) {
+          setActiveSessionId(firstSession.id);
+        } else {
+          const defaultId = `session-${Date.now()}`;
+          setHistory(prev => [{
+            id: defaultId,
+            type: 'session',
+            title: "新しいセッション",
+            messages: []
+          }, ...prev]);
+          setActiveSessionId(defaultId);
+          setMessages([]);
+        }
+      }
+    }
+  };
+
   return {
     history,
     setHistory,
@@ -167,6 +236,9 @@ export function useHistory() {
     createNewSession,
     toggleFolder,
     switchSession,
+    renameSession,
+    deleteSession,
     isLoaded
   };
 }
+

@@ -1223,3 +1223,110 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Session Menu and Actions */
+.session-item {
+  position: relative;
+}
+
+.session-title {
+  flex-grow: 1;
+}
+
+.session-actions {
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.session-item:hover .session-actions,
+.session-item.active .session-actions,
+.session-actions.menu-open {
+  opacity: 1;
+}
+
+.session-action-trigger {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.session-action-trigger:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
+}
+
+.session-menu-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 998;
+}
+
+.session-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  min-width: 90px;
+}
+
+.session-menu-item {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.session-menu-item:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.session-menu-item.delete {
+  color: var(--danger);
+}
+
+.session-menu-item.delete:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+
+.session-title-input {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--accent-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  padding: 2px 6px;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+}
+
+
