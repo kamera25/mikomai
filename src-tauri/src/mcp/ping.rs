@@ -85,7 +85,15 @@ pub async fn self_network_ping(
     df: Option<bool>,
 ) -> Result<PingResult, String> {
     let resolved_host = resolve_host_with_mcp(&app, &host);
-    network_ping_core(resolved_host, size, count, df).await
+    let app_clone = app.clone();
+    let resolved_host_clone = resolved_host.clone();
+    let ip = tokio::task::spawn_blocking(move || {
+        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    
+    network_ping_core(ip.to_string(), size, count, df).await
 }
 
 async fn run_system_ping(host: &str, size: Option<usize>, count: Option<u32>, df: bool) -> Result<PingResult, String> {

@@ -29,6 +29,8 @@ describe('SettingsPanel', () => {
     onMcpTimeoutChange: vi.fn(),
     dbPath: '',
     onDbPathChange: vi.fn(),
+    ipVersion: 'auto',
+    onIpVersionChange: vi.fn(),
   };
 
   beforeEach(() => {
@@ -78,6 +80,13 @@ describe('SettingsPanel', () => {
     const slider = screen.getAllByRole('slider')[3]; // MCP Timeout
     fireEvent.change(slider, { target: { value: '60' } });
     expect(defaultProps.onMcpTimeoutChange).toHaveBeenCalledWith(60);
+  });
+
+  it('handles ip version change', () => {
+    render(<SettingsPanel {...defaultProps} />);
+    const select = screen.getByLabelText('利用するインターネットプロトコルの指定');
+    fireEvent.change(select, { target: { value: 'ipv6' } });
+    expect(defaultProps.onIpVersionChange).toHaveBeenCalledWith('ipv6');
   });
 
   it('handles model download and load success', async () => {

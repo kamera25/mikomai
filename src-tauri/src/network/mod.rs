@@ -130,6 +130,16 @@ pub async fn network_show(
         target_device.device_type = dtype;
     }
 
+    // Resolve using preference
+    let host_to_resolve = target_device.host.clone();
+    let app_clone = app.clone();
+    let ip = tokio::task::spawn_blocking(move || {
+        crate::connections::resolve_host_with_preference(&app_clone, &host_to_resolve)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    target_device.host = ip.to_string();
+
     println!("Executing read-only command on {}: {}", target_device.host, command);
     let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_show(&target_device, &command).await {
@@ -158,6 +168,16 @@ pub async fn network_config(
         }
         target_device.device_type = dtype;
     }
+
+    // Resolve using preference
+    let host_to_resolve = target_device.host.clone();
+    let app_clone = app.clone();
+    let ip = tokio::task::spawn_blocking(move || {
+        crate::connections::resolve_host_with_preference(&app_clone, &host_to_resolve)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    target_device.host = ip.to_string();
 
     println!("Executing WRITE command on {}: {:?}", target_device.host, commands);
     let wrapper = SidecarNetmikoWrapper::new(&app);

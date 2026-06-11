@@ -19,6 +19,8 @@ interface SettingsPanelProps {
   onMcpTimeoutChange: (timeout: number) => void;
   dbPath: string;
   onDbPathChange: (path: string) => void;
+  ipVersion: string;
+  onIpVersionChange: (version: string) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
@@ -35,7 +37,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   mcpTimeout,
   onMcpTimeoutChange,
   dbPath,
-  onDbPathChange
+  onDbPathChange,
+  ipVersion,
+  onIpVersionChange
 }) => {
   const [repoPath, setRepoPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E4B-it-Q4_K_M.gguf");
@@ -178,6 +182,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
               <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
                 ツール (MCP) 実行の最大待機時間です。時間を超えると処理を中断します。
+              </p>
+            </div>
+            <div className="form-control">
+              <label htmlFor="ip-version-select">利用するインターネットプロトコルの指定</label>
+              <select 
+                id="ip-version-select"
+                value={ipVersion} 
+                onChange={(e) => onIpVersionChange(e.target.value)}
+              >
+                <option value="auto">自動</option>
+                <option value="ipv4">IPv4のみ</option>
+                <option value="ipv6">IPv6のみ</option>
+              </select>
+              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+                ホスト名解決および接続時に使用するIPプロトコルの優先設定です。
               </p>
             </div>
           </section>

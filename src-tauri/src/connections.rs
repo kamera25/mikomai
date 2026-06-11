@@ -163,6 +163,45 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
     None
 }
 
+pub fn resolve_host_with_preference(app: &tauri::AppHandle, host: &str) -> Result<std::net::IpAddr, String> {
+    use std::net::{IpAddr, ToSocketAddrs};
+    
+    let parsed_ip = host.parse::<IpAddr>();
+    
+    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+    let pref = settings.ip_version.as_deref().unwrap_or("auto");
+    
+    if let Ok(ip) = parsed_ip {
+        match pref {
+            "ipv4" => {
+                if ip.is_ipv6() {
+                    return Err("Connection target is IPv6, but IP preference is set to IPv4 Only".to_string());
+                }
+            }
+            "ipv6" => {
+                if ip.is_ipv4() {
+                    return Err("Connection target is IPv4, but IP preference is set to IPv6 Only".to_string());
+                }
+            }
+            _ => {}
+        }
+        return Ok(ip);
+    }
+    
+    let addrs = format!("{}:80", host).to_socket_addrs().map_err(|e| e.to_string())?;
+    let filtered: Vec<IpAddr> = addrs.into_iter().map(|a| a.ip()).filter(|ip| {
+        match pref {
+            "ipv4" => ip.is_ipv4(),
+            "ipv6" => ip.is_ipv6(),
+            _ => true,
+        }
+    }).collect();
+    
+    filtered.first().cloned().ok_or_else(|| {
+        format!("Could not resolve host '{}' with IP preference '{}'", host, pref)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

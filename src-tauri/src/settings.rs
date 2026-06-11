@@ -14,6 +14,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub mcp_timeout: Option<u64>,
     pub db_path: Option<String>,
+    #[serde(default)]
+    pub ip_version: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -26,6 +28,7 @@ impl Default for AppSettings {
             recent_ips: Vec::new(),
             mcp_timeout: Some(30),
             db_path: None,
+            ip_version: Some("auto".to_string()),
         }
     }
 }
@@ -78,6 +81,7 @@ mod tests {
         assert!(settings.recent_ips.is_empty());
         assert_eq!(settings.mcp_timeout, Some(30));
         assert!(settings.db_path.is_none());
+        assert_eq!(settings.ip_version, Some("auto".to_string()));
     }
 
     #[test]
@@ -90,6 +94,7 @@ mod tests {
             recent_ips: vec!["192.168.1.1".to_string()],
             mcp_timeout: Some(60),
             db_path: Some("/path/to/db".to_string()),
+            ip_version: Some("ipv6".to_string()),
         };
 
         let serialized = serde_json::to_string(&settings).unwrap();
@@ -100,5 +105,6 @@ mod tests {
         assert!(serialized.contains(r#""recentIps":["192.168.1.1"]"#));
         assert!(serialized.contains(r#""mcpTimeout":60"#));
         assert!(serialized.contains(r#""dbPath":"/path/to/db""#));
+        assert!(serialized.contains(r#""ipVersion":"ipv6""#));
     }
 }

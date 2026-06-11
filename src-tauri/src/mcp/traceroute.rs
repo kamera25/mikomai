@@ -18,12 +18,13 @@ fn resolve_host(host: &str) -> Result<IpAddr, String> {
 #[tauri::command]
 pub async fn self_network_traceroute(app: tauri::AppHandle, host: String) -> Result<TracerouteResult, String> {
     let resolved_host = resolve_host_with_mcp(&app, &host);
-    let ip: IpAddr = match resolved_host.parse() {
-        Ok(ip) => ip,
-        Err(_) => tokio::task::spawn_blocking(move || resolve_host(&resolved_host))
-            .await
-            .map_err(|e| e.to_string())??,
-    };
+    let app_clone = app.clone();
+    let resolved_host_clone = resolved_host.clone();
+    let ip = tokio::task::spawn_blocking(move || {
+        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     let mut output = format!("Tracing route to {} over a maximum of 30 hops:\n\n", ip);
     let mut success = false;
