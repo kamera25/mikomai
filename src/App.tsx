@@ -28,6 +28,7 @@ function App() {
   const {
     history,
     activeSessionId,
+    activeSession,
     messages,
     setMessages,
     createNewFolder,
@@ -464,7 +465,7 @@ function App() {
                     <line x1="9" y1="3" x2="9" y2="21"></line>
                   </svg>
                 </button>
-                <h1 className="header-title">mikomai</h1>
+                <h1 className="header-title">{activeSession?.title || "mikomai"}</h1>
                 {recentIPs.length > 0 && (
                   <div>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>

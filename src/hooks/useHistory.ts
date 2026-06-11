@@ -225,11 +225,14 @@ export function useHistory() {
     }
   };
 
+  const activeSession = findSession(history, activeSessionId);
+
   return {
     history,
     setHistory,
     activeSessionId,
     setActiveSessionId,
+    activeSession,
     messages,
     setMessages,
     createNewFolder,
