@@ -5285,6 +5285,7 @@ dependencies = [
  "arrow-json",
  "base64 0.22.1",
  "chrono",
+ "dirs",
  "dns-lookup",
  "fastembed",
  "futures",

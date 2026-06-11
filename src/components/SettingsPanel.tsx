@@ -68,6 +68,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   };
 
+  const handleOpenModelDir = async () => {
+    try {
+      await invoke("open_model_dir", { modelPath: _savedModelPath });
+    } catch (e: any) {
+      setDownloadStatus(`Error: ${e.toString()}`);
+    }
+  };
+
   const handleSelectDbDir = async () => {
     try {
       const selected = await open({
@@ -185,13 +193,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <input type="text" value={modelFilename} onChange={e => setModelFilename(e.target.value)} placeholder="google_gemma-4-E2B-it-Q4_K_M.gguf" />
             </div>
             <div className="form-control">
-              <button 
-                className="btn btn-secondary" 
-                onClick={handleDownloadAndLoad}
-                disabled={isLoading}
-              >
-                {isLoading ? "ダウンロード中..." : "モデルをダウンロードして読み込む"}
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={handleDownloadAndLoad}
+                  disabled={isLoading}
+                  style={{ flexGrow: 1 }}
+                >
+                  {isLoading ? "ダウンロード中..." : "モデルをダウンロードして読み込む"}
+                </button>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={handleOpenModelDir}
+                  title="モデルが格納されているフォルダを開きます"
+                >
+                  フォルダを開く
+                </button>
+              </div>
               {downloadStatus && <div className="status-text" style={{ marginTop: '12px', color: downloadStatus.startsWith('Error') ? 'var(--danger)' : 'var(--success)' }}>{downloadStatus}</div>}
             </div>
           </section>

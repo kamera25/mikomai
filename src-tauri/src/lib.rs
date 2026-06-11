@@ -1,6 +1,7 @@
 mod llm;
 pub mod mcp;
 mod network;
+pub mod snapshot;
 mod history;
 mod connections;
 pub mod scheduled_tasks;
@@ -38,6 +39,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             llm::download_model,
+            llm::open_model_dir,
             llm::load_model,
             llm::ask_llm,
             llm::ask_llm_background,

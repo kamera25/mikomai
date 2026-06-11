@@ -5,6 +5,7 @@ description = "Managed Infrastructure Knowledge Operator of Ml Agent Interface."
 authors = ["NAKAOKU Takahiro"]
 license = "MIT"
 edition = "2021"
+default-run = "mikomai"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -38,6 +39,7 @@ mcp-core = "0.1.50"
 mcp-server = "0.1.0"
 mcp-client = "0.1.0"
 chrono = "0.4.44"
+dirs = "6.0.0"
 uuid = { version = "1.23.1", features = ["v4"] }
 tokio-cron-scheduler = "0.15.1"
 tauri-plugin-dialog = "2.7.1"
