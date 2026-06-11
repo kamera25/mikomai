@@ -123,22 +123,40 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
         <span className="message-time">{formatMessageTime(msg.timestamp)}</span>
       </div>
       <div className={`message ${msg.role}`}>
-        <div className="message-bubble markdown-body">
-          {msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
-            if (part.startsWith("```")) {
-              const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
-              return <Terminal key={i} content={content} />;
-            }
-            return (
-              <ReactMarkdown
-                key={i}
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-              >
-                {part}
-              </ReactMarkdown>
-            );
-          })}
+        <div className="message-content-wrapper" style={{ display: 'flex', flexDirection: 'column', width: '100%', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+          <div className="message-bubble markdown-body">
+            {msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
+              if (part.startsWith("```")) {
+                const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
+                return <Terminal key={i} content={content} />;
+              }
+              return (
+                <ReactMarkdown
+                  key={i}
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                >
+                  {part}
+                </ReactMarkdown>
+              );
+            })}
+          </div>
+          {msg.role === 'ai' && (
+            <div className="message-actions">
+              <button className="message-action-btn" title="コピー" onClick={() => handleCopy(msg.content)}>
+                {copied ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--success)' }}>
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

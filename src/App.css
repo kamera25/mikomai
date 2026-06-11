@@ -466,6 +466,43 @@
   justify-content: flex-end;
 }
 
+.message-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.message-content-wrapper:hover .message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.message-action-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.message-action-btn:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
+}
+
+.message-action-btn svg {
+  display: block;
+}
+
 .message-header {
   margin-top: 0;
   margin-bottom: 8px;

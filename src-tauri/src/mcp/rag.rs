@@ -106,6 +106,12 @@ pub async fn query_nw_db(
     state: tauri::State<'_, RagState>,
     app: tauri::AppHandle
 ) -> Result<RagResult, String> {
+    if let Some(info) = crate::mcp::devices::get_registered_device_info(&query, &app) {
+        return Ok(RagResult {
+            success: true,
+            output: info,
+        });
+    }
 
     let mut brand_filter: Option<String> = None;
     let mut processed_query = query.clone();
