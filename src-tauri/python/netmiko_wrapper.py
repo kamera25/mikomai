@@ -2,6 +2,7 @@ import argparse
 import sys
 import json
 try:
+    import netmiko_patches
     from netmiko import ConnectHandler
 except ImportError:
     print("Error: netmiko is not installed. Please run 'pip install netmiko'")

@@ -10,6 +10,7 @@ except ImportError:
     sys.exit(1)
 
 try:
+    import netmiko_patches
     from netmiko import ConnectHandler, NetmikoAuthenticationException, NetmikoTimeoutException
 except ImportError:
     print("Error: netmiko is not installed. Please run 'pip install netmiko'", file=sys.stderr)
