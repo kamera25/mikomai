@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 
@@ -21,6 +21,10 @@ interface SettingsPanelProps {
   onDbPathChange: (path: string) => void;
   ipVersion: string;
   onIpVersionChange: (version: string) => void;
+  consolePort: string | null;
+  onConsolePortChange: (port: string) => void;
+  consoleBaudRate: number;
+  onConsoleBaudRateChange: (rate: number) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
@@ -39,10 +43,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   dbPath,
   onDbPathChange,
   ipVersion,
-  onIpVersionChange
+  onIpVersionChange,
+  consolePort,
+  onConsolePortChange,
+  consoleBaudRate,
+  onConsoleBaudRateChange
 }) => {
   const [repoPath, setRepoPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E4B-it-Q4_K_M.gguf");
+  const [availablePorts, setAvailablePorts] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchPorts = async () => {
+      try {
+        const result: any = await invoke("network_list_serial_ports");
+        if (result && result.success && result.output) {
+          const ports: string[] = [];
+          const lines = result.output.split("\n");
+          for (const line of lines) {
+            if (line.trim().startsWith("- ")) {
+              const parts = line.trim().substring(2).split(":");
+              if (parts[0]) {
+                ports.push(parts[0].trim());
+              }
+            }
+          }
+          setAvailablePorts(ports);
+        }
+      } catch (e) {
+        console.error("Failed to fetch serial ports for settings:", e);
+      }
+    };
+    fetchPorts();
+  }, []);
   const [downloadStatus, setDownloadStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -199,6 +232,60 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 ホスト名解決および接続時に使用するIPプロトコルの優先設定です。
               </p>
             </div>
+            <div className="form-control">
+              <label htmlFor="console-port-select">コンソールポート (MCP用)</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <select
+                  id="console-port-select"
+                  value={availablePorts.includes(consolePort || '') ? (consolePort || '') : (consolePort ? 'custom' : '')}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'custom') {
+                      onConsolePortChange('/dev/ttyUSB0');
+                    } else if (val === '') {
+                      onConsolePortChange('');
+                    } else {
+                      onConsolePortChange(val);
+                    }
+                  }}
+                  style={{ flexGrow: 1 }}
+                >
+                  <option value="">None (使用しない)</option>
+                  {availablePorts.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                  <option value="custom">手動入力...</option>
+                </select>
+                {(!availablePorts.includes(consolePort || '') && consolePort) || consolePort === 'custom' ? (
+                  <input
+                    type="text"
+                    value={consolePort === 'custom' ? '' : (consolePort || '')}
+                    onChange={(e) => onConsolePortChange(e.target.value)}
+                    placeholder="例: /dev/ttyUSB0, COM1"
+                    style={{ width: '200px' }}
+                  />
+                ) : null}
+              </div>
+              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+                指定されている場合、MCPの呼び出し(fetch_arp, config, routing等)は内部でこのシリアルコンソール経由で実行されます。
+              </p>
+            </div>
+            {(consolePort && consolePort !== '') && (
+              <div className="form-control">
+                <label htmlFor="console-baudrate-select">コンソールボーレート</label>
+                <select
+                  id="console-baudrate-select"
+                  value={consoleBaudRate}
+                  onChange={(e) => onConsoleBaudRateChange(parseInt(e.target.value))}
+                >
+                  <option value="9600">9600 bps</option>
+                  <option value="19200">19200 bps</option>
+                  <option value="38400">38400 bps</option>
+                  <option value="57600">57600 bps</option>
+                  <option value="115200">115200 bps</option>
+                </select>
+              </div>
+            )}
           </section>
 
           <section className="settings-group">

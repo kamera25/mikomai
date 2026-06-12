@@ -19,8 +19,12 @@ def main():
     parser.add_argument("--device_type", required=False)
     parser.add_argument("--command", required=False)
     parser.add_argument("--commands", required=False, help="JSON list of commands for config")
+    parser.add_argument("--console_port", required=False)
+    parser.add_argument("--console_baud_rate", required=False)
     
     args = parser.parse_args()
+    args.console_port = None
+    args.console_baud_rate = None
 
     if args.stdin or not sys.stdin.isatty():
         try:
@@ -35,24 +39,47 @@ def main():
                 args.secret = data.get("secret", "")
                 args.device_type = data.get("device_type")
                 args.command = data.get("command")
+                args.console_port = data.get("console_port")
+                args.console_baud_rate = data.get("console_baud_rate")
                 if "commands" in data:
                     args.commands = json.dumps(data["commands"]) if isinstance(data["commands"], list) else data["commands"]
         except json.JSONDecodeError as e:
             print(f"Error parsing stdin JSON: {str(e)}", file=sys.stderr)
             sys.exit(1)
 
-    if not all([args.action, args.host, args.username, args.device_type]):
-        print("Error: action, host, username, and device_type are required.", file=sys.stderr)
+    required_fields = [args.action, args.device_type]
+    if not args.console_port:
+        required_fields.append(args.host)
+
+    if not all(required_fields):
+        print("Error: action, host (if not using console), and device_type are required.", file=sys.stderr)
         sys.exit(1)
 
-    device = {
-        "device_type": args.device_type,
-        "host": args.host,
-        "username": args.username,
-        "password": args.password,
-        "secret": args.secret,
-        "session_log": None
-    }
+    if args.console_port:
+        device_type = args.device_type
+        if not device_type.endswith("_serial"):
+            device_type = f"{device_type}_serial"
+        
+        device = {
+            "device_type": device_type,
+            "username": args.username or "",
+            "password": args.password or "",
+            "secret": args.secret or "",
+            "serial_settings": {
+                "port": args.console_port,
+                "baudrate": int(args.console_baud_rate) if args.console_baud_rate else 9600
+            },
+            "session_log": None
+        }
+    else:
+        device = {
+            "device_type": args.device_type,
+            "host": args.host,
+            "username": args.username or "",
+            "password": args.password or "",
+            "secret": args.secret or "",
+            "session_log": None
+        }
 
     try:
         net_connect = ConnectHandler(**device)

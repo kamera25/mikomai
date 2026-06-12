@@ -5,12 +5,17 @@ use tauri_plugin_shell::{process::CommandChild, ShellExt};
 use crate::connections::get_device_config;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceConfig {
     pub host: String,
     pub username: String,
     pub password: Option<String>,
     pub enable_password: Option<String>,
     pub device_type: String,
+    #[serde(default)]
+    pub console_port: Option<String>,
+    #[serde(default)]
+    pub console_baud_rate: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -83,28 +88,36 @@ impl SidecarNetmikoWrapper {
 
 impl NetworkInterface for SidecarNetmikoWrapper {
     async fn execute_show(&self, device: &DeviceConfig, command: &str) -> Result<String, String> {
-        let payload = serde_json::json!({
+        let mut payload = serde_json::json!({
             "action": "show",
-            "host": device.host,
             "username": device.username,
             "password": device.password.clone().unwrap_or_default(),
             "secret": device.enable_password.clone().unwrap_or_default(),
             "device_type": device.device_type,
-            "command": command
+            "command": command,
+            "console_port": device.console_port,
+            "console_baud_rate": device.console_baud_rate,
         });
+        if device.console_port.is_none() {
+            payload["host"] = serde_json::json!(device.host);
+        }
         self.run_sidecar(payload).await
     }
 
     async fn execute_config(&self, device: &DeviceConfig, commands: Vec<String>) -> Result<String, String> {
-        let payload = serde_json::json!({
+        let mut payload = serde_json::json!({
             "action": "config",
-            "host": device.host,
             "username": device.username,
             "password": device.password.clone().unwrap_or_default(),
             "secret": device.enable_password.clone().unwrap_or_default(),
             "device_type": device.device_type,
-            "commands": commands
+            "commands": commands,
+            "console_port": device.console_port,
+            "console_baud_rate": device.console_baud_rate,
         });
+        if device.console_port.is_none() {
+            payload["host"] = serde_json::json!(device.host);
+        }
         self.run_sidecar(payload).await
     }
 }
@@ -130,17 +143,30 @@ pub async fn network_show(
         target_device.device_type = dtype;
     }
 
-    // Resolve using preference
-    let host_to_resolve = target_device.host.clone();
-    let app_clone = app.clone();
-    let ip = tokio::task::spawn_blocking(move || {
-        crate::connections::resolve_host_with_preference(&app_clone, &host_to_resolve)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    target_device.host = ip.to_string();
+    // Load settings for console override
+    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+    if let Some(ref port) = settings.console_port {
+        if !port.trim().is_empty() && port != "None" {
+            target_device.console_port = Some(port.clone());
+            target_device.console_baud_rate = settings.console_baud_rate;
+        }
+    }
 
-    println!("Executing read-only command on {}: {}", target_device.host, command);
+    if target_device.console_port.is_none() {
+        // Resolve using preference
+        let host_to_resolve = target_device.host.clone();
+        let app_clone = app.clone();
+        let ip = tokio::task::spawn_blocking(move || {
+            crate::connections::resolve_host_with_preference(&app_clone, &host_to_resolve)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        target_device.host = ip.to_string();
+        println!("Executing read-only command on {}: {}", target_device.host, command);
+    } else {
+        println!("Executing read-only command via console port {}: {}", target_device.console_port.as_ref().unwrap(), command);
+    }
+
     let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_show(&target_device, &command).await {
         Ok(output) => Ok(CommandResult { success: true, output }),
@@ -169,17 +195,30 @@ pub async fn network_config(
         target_device.device_type = dtype;
     }
 
-    // Resolve using preference
-    let host_to_resolve = target_device.host.clone();
-    let app_clone = app.clone();
-    let ip = tokio::task::spawn_blocking(move || {
-        crate::connections::resolve_host_with_preference(&app_clone, &host_to_resolve)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    target_device.host = ip.to_string();
+    // Load settings for console override
+    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+    if let Some(ref port) = settings.console_port {
+        if !port.trim().is_empty() && port != "None" {
+            target_device.console_port = Some(port.clone());
+            target_device.console_baud_rate = settings.console_baud_rate;
+        }
+    }
 
-    println!("Executing WRITE command on {}: {:?}", target_device.host, commands);
+    if target_device.console_port.is_none() {
+        // Resolve using preference
+        let host_to_resolve = target_device.host.clone();
+        let app_clone = app.clone();
+        let ip = tokio::task::spawn_blocking(move || {
+            crate::connections::resolve_host_with_preference(&app_clone, &host_to_resolve)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        target_device.host = ip.to_string();
+        println!("Executing WRITE command on {}: {:?}", target_device.host, commands);
+    } else {
+        println!("Executing WRITE command via console port {:?}: {:?}", target_device.console_port.as_ref().unwrap(), commands);
+    }
+
     let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_config(&target_device, commands).await {
         Ok(output) => Ok(CommandResult { success: true, output }),
@@ -266,6 +305,8 @@ mod tests {
             password: Some("pass".to_string()),
             enable_password: None,
             device_type: "cisco_ios".to_string(),
+            console_port: None,
+            console_baud_rate: None,
         };
         let serialized = serde_json::to_string(&config).unwrap();
         assert!(serialized.contains(r#""host":"10.0.0.1""#));

@@ -16,6 +16,10 @@ pub struct AppSettings {
     pub db_path: Option<String>,
     #[serde(default)]
     pub ip_version: Option<String>,
+    #[serde(default)]
+    pub console_port: Option<String>,
+    #[serde(default)]
+    pub console_baud_rate: Option<u32>,
 }
 
 impl Default for AppSettings {
@@ -29,6 +33,8 @@ impl Default for AppSettings {
             mcp_timeout: Some(30),
             db_path: None,
             ip_version: Some("auto".to_string()),
+            console_port: None,
+            console_baud_rate: Some(9600),
         }
     }
 }
@@ -82,6 +88,8 @@ mod tests {
         assert_eq!(settings.mcp_timeout, Some(30));
         assert!(settings.db_path.is_none());
         assert_eq!(settings.ip_version, Some("auto".to_string()));
+        assert!(settings.console_port.is_none());
+        assert_eq!(settings.console_baud_rate, Some(9600));
     }
 
     #[test]
@@ -95,6 +103,8 @@ mod tests {
             mcp_timeout: Some(60),
             db_path: Some("/path/to/db".to_string()),
             ip_version: Some("ipv6".to_string()),
+            console_port: Some("/dev/ttyUSB0".to_string()),
+            console_baud_rate: Some(115200),
         };
 
         let serialized = serde_json::to_string(&settings).unwrap();
@@ -106,5 +116,7 @@ mod tests {
         assert!(serialized.contains(r#""mcpTimeout":60"#));
         assert!(serialized.contains(r#""dbPath":"/path/to/db""#));
         assert!(serialized.contains(r#""ipVersion":"ipv6""#));
+        assert!(serialized.contains(r#""consolePort":"/dev/ttyUSB0""#));
+        assert!(serialized.contains(r#""consoleBaudRate":115200"#));
     }
 }

@@ -567,32 +567,28 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 </select>
               </div>
 
-              {formData.type !== 'Console' && (
-                <>
-                  <div className="form-group">
-                    <label>ベンダー種別</label>
-                    <input
-                      type="text"
-                      value={formData.vendorType}
-                      onChange={(e) => setFormData({...formData, vendorType: e.target.value})}
-                      placeholder="例: Cisco, Juniper, Yamaha"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>ホスト種別 (device_type)</label>
-                    <select
-                      value={formData.deviceType}
-                      onChange={(e) => setFormData({...formData, deviceType: e.target.value})}
-                    >
-                      {DEVICE_TYPES.map(dt => (
-                        <option key={dt} value={dt}>
-                          {getDeviceTypeAlias(dt)} ({dt})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              )}
+              <div className="form-group">
+                <label>ベンダー種別</label>
+                <input
+                  type="text"
+                  value={formData.vendorType}
+                  onChange={(e) => setFormData({...formData, vendorType: e.target.value})}
+                  placeholder="例: Cisco, Juniper, Yamaha"
+                />
+              </div>
+              <div className="form-group">
+                <label>ホスト種別 (device_type)</label>
+                <select
+                  value={formData.deviceType}
+                  onChange={(e) => setFormData({...formData, deviceType: e.target.value})}
+                >
+                  {DEVICE_TYPES.map(dt => (
+                    <option key={dt} value={dt}>
+                      {getDeviceTypeAlias(dt)} ({dt})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {formData.type !== 'Console' ? (
                 <>

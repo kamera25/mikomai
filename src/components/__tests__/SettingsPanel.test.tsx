@@ -31,6 +31,10 @@ describe('SettingsPanel', () => {
     onDbPathChange: vi.fn(),
     ipVersion: 'auto',
     onIpVersionChange: vi.fn(),
+    consolePort: null,
+    onConsolePortChange: vi.fn(),
+    consoleBaudRate: 9600,
+    onConsoleBaudRateChange: vi.fn(),
   };
 
   beforeEach(() => {

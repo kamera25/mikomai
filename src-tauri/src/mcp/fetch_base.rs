@@ -71,14 +71,38 @@ pub fn get_template_for_dtype<'a>(templates: &'a CommandTemplates, dtype: &str) 
 }
 
 pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) -> Result<DeviceConfig, String> {
-    if device_name.parse::<std::net::IpAddr>().is_ok() {
-        return Err("IP address input is not allowed. Please specify the registered device name.".to_string());
+    let mut resolved_name = device_name.to_string();
+    if resolved_name.trim().is_empty() {
+        if let Ok(connections) = load_connections(app.clone()) {
+            if let Some(conn) = connections.iter().find(|c| c.conn_type.contains("Console") || c.conn_type.contains("Serial")) {
+                resolved_name = conn.hostname.clone();
+            }
+        }
+
+        if resolved_name.trim().is_empty() {
+            let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+            if let Some(first_recent) = settings.recent_ips.first() {
+                resolved_name = first_recent.clone();
+            }
+        }
     }
 
+    if resolved_name.trim().is_empty() {
+        return Err("Error: device_name (機器名) is required but was not provided or is empty.".to_string());
+    }
+
+    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+    let console_port = match settings.console_port {
+        Some(ref p) if !p.trim().is_empty() && p != "None" => Some(p.clone()),
+        _ => None,
+    };
+
+    // Find the device in connections or mcp_hosts first to check if it's a console connection
+    let mut is_console = console_port.is_some();
     let mut resolved_device = None;
     
     if let Ok(connections) = load_connections(app.clone()) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == device_name.to_lowercase()) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip == resolved_name) {
             let dtype = if let Some(dt) = &conn.device_type {
                 dt.clone()
             } else if conn.conn_type.contains("Cisco IOS") { "cisco_ios".to_string() }
@@ -88,6 +112,10 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
                         else if conn.conn_type.contains("Furukawa") || conn.conn_type.contains("Fitelnet") { "furukawa_fitelnet".to_string() }
                         else { "cisco_ios".to_string() };
 
+            if conn.conn_type.contains("Console") || conn.conn_type.contains("Serial") {
+                is_console = true;
+            }
+
             let user = conn.username.clone().unwrap_or_else(|| "admin".to_string());
             resolved_device = Some((conn.ip.clone(), user, conn.password.clone(), conn.enable_password.clone(), dtype));
         }
@@ -95,22 +123,53 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     
     if resolved_device.is_none() {
         if let Ok(mcp_hosts) = get_mcp_hosts() {
-            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == device_name.to_lowercase()) {
+            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip == resolved_name) {
                 let dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios" }
                             else if mcp.device_type.contains("Juniper") { "juniper_junos" }
                             else if mcp.device_type.contains("Arista") { "arista_eos" }
                             else if mcp.device_type.contains("Yamaha") { "yamaha" }
                             else if mcp.device_type.contains("Furukawa") || mcp.device_type.contains("Fitelnet") { "furukawa_fitelnet" }
                             else { "cisco_ios" };
+
+                if mcp.device_type.contains("Console") || mcp.device_type.contains("Serial") {
+                    is_console = true;
+                }
+
                 resolved_device = Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype.to_string()));
             }
         }
     }
+
+    // Now check IP validation
+    if !is_console && resolved_name.parse::<std::net::IpAddr>().is_ok() {
+        return Err("IP address input is not allowed. Please specify the registered device name.".to_string());
+    }
     
     let (ip, username, password, enable_password, dtype) = match resolved_device {
         Some(d) => d,
-        None => return Err(format!("Error: Device '{}' is not registered. Only registered device names are allowed.", device_name)),
+        None => return Err(format!("Error: Device '{}' is not registered. Only registered device names are allowed.", resolved_name)),
     };
+
+    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+    let mut console_port = match settings.console_port {
+        Some(ref p) if !p.trim().is_empty() && p != "None" => Some(p.clone()),
+        _ => None,
+    };
+    let console_baud_rate = settings.console_baud_rate;
+
+    if is_console && console_port.is_none() {
+        if let Ok(ports) = serialport::available_ports() {
+            if let Some(p) = ports.first() {
+                console_port = Some(p.port_name.clone());
+            }
+        }
+        if console_port.is_none() {
+            #[cfg(target_os = "windows")]
+            { console_port = Some("COM1".to_string()); }
+            #[cfg(not(target_os = "windows"))]
+            { console_port = Some("/dev/ttyUSB0".to_string()); }
+        }
+    }
 
     Ok(DeviceConfig {
         host: ip,
@@ -118,6 +177,8 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
         password,
         enable_password,
         device_type: dtype,
+        console_port,
+        console_baud_rate,
     })
 }
 
@@ -137,7 +198,11 @@ pub trait McpCommandFetcher {
             None => return Err(format!("Error: No command template found for device type '{}'.", target_device.device_type)),
         };
         let command = self.get_command_from_template(template);
-        println!("Fetching {} for registered device '{}' using command '{}'", self.get_log_prefix(), device_name, command);
+        if let Some(ref port) = target_device.console_port {
+            println!("Fetching {} for registered device '{}' via console port '{}' using command '{}'", self.get_log_prefix(), device_name, port, command);
+        } else {
+            println!("Fetching {} for registered device '{}' using command '{}'", self.get_log_prefix(), device_name, command);
+        }
         let wrapper = SidecarNetmikoWrapper::new(app);
         match wrapper.execute_show(&target_device, &command).await {
             Ok(output) => Ok(CommandResult { success: true, output }),

@@ -15,11 +15,8 @@ impl McpCommandFetcher for ConfigFetcher {
 
 #[tauri::command]
 pub async fn fetch_config(app: tauri::AppHandle, device_name: Option<String>) -> Result<CommandResult, String> {
-    let device_name = match device_name {
-        Some(name) if !name.trim().is_empty() => name,
-        _ => return Err("Error: device_name (機器名) is required but was not provided or is empty.".to_string()),
-    };
-    ConfigFetcher.fetch_device_info(&app, &device_name).await
+    let name = device_name.unwrap_or_default();
+    ConfigFetcher.fetch_device_info(&app, &name).await
 }
 
 
