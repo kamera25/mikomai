@@ -8,8 +8,12 @@ const KEY_STORE_FILE: &str = "key.bin";
 
 pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, String> {
     let path = tauri::Manager::path(app).app_data_dir().expect("Failed to get app data dir");
+    get_or_create_key_from_dir(&path)
+}
+
+pub fn get_or_create_key_from_dir(path: &std::path::Path) -> Result<Key<Aes256Gcm>, String> {
     if !path.exists() {
-        let _ = std::fs::create_dir_all(&path);
+        let _ = std::fs::create_dir_all(path);
     }
     let key_path = path.join(KEY_STORE_FILE);
 
@@ -36,11 +40,16 @@ pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, Strin
 }
 
 pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, String> {
+    let path = tauri::Manager::path(app).app_data_dir().expect("Failed to get app data dir");
+    encrypt_with_dir(&path, data)
+}
+
+pub fn encrypt_with_dir(path: &std::path::Path, data: &str) -> Result<String, String> {
     if data.is_empty() {
         return Ok("".to_string());
     }
 
-    let key = get_or_create_key(app)?;
+    let key = get_or_create_key_from_dir(path)?;
     let cipher = Aes256Gcm::new(&key);
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
 
@@ -53,11 +62,16 @@ pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, String> {
 }
 
 pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, String> {
+    let path = tauri::Manager::path(app).app_data_dir().expect("Failed to get app data dir");
+    decrypt_with_dir(&path, encrypted_data)
+}
+
+pub fn decrypt_with_dir(path: &std::path::Path, encrypted_data: &str) -> Result<String, String> {
     if encrypted_data.is_empty() {
         return Ok("".to_string());
     }
 
-    let key = get_or_create_key(app)?;
+    let key = get_or_create_key_from_dir(path)?;
     let cipher = Aes256Gcm::new(&key);
 
     let decoded = STANDARD.decode(encrypted_data)
@@ -74,4 +88,59 @@ pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, S
         .map_err(|e| format!("Decryption failed: {:?}", e))?;
 
     String::from_utf8(plaintext).map_err(|e| format!("Invalid UTF-8: {:?}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn get_temp_dir() -> std::path::PathBuf {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros();
+        let path = env::temp_dir().join(format!("test_crypto_{}", now));
+        let _ = std::fs::create_dir_all(&path);
+        path
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_empty() {
+        let dir = get_temp_dir();
+        let encrypted = encrypt_with_dir(&dir, "").unwrap();
+        assert_eq!(encrypted, "");
+        let decrypted = decrypt_with_dir(&dir, "").unwrap();
+        assert_eq!(decrypted, "");
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_normal() {
+        let dir = get_temp_dir();
+        let text = "Secret Password 123!@#";
+
+        let encrypted = encrypt_with_dir(&dir, text).unwrap();
+        assert_ne!(encrypted, text);
+        assert!(!encrypted.is_empty());
+
+        let decrypted = decrypt_with_dir(&dir, &encrypted).unwrap();
+        assert_eq!(decrypted, text);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_key_persistence() {
+        let dir = get_temp_dir();
+
+        // Key should be generated on first call
+        let key1 = get_or_create_key_from_dir(&dir).unwrap();
+
+        // Key should be read from file on second call
+        let key2 = get_or_create_key_from_dir(&dir).unwrap();
+
+        assert_eq!(key1, key2);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
