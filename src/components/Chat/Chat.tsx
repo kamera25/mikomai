@@ -30,7 +30,7 @@ export const Chat = forwardRef<HTMLDivElement, ChatProps>(({ messages, formatMes
       {messages.length === 0 ? (
         <div className="empty-state">
           <div>
-            <img width="64px" height="64px" src="/public/mikomai.png" alt="mikomai" />
+            <img width="64px" height="64px" src="/mikomai.png" alt="mikomai" />
           </div>
           <h3>mikomai</h3>
           <p>ネットワーク構築やトラブルシュートをサポートします。サポートして欲しいことを伝えてみてください。</p>
