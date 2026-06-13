@@ -1,4 +1,4 @@
-import React, { forwardRef, MutableRefObject } from 'react';
+import React, { forwardRef, useRef } from 'react';
 import { isGlobalIP } from '../../utils/ipUtils';
 
 interface ChatInputProps {
@@ -19,7 +19,6 @@ interface ChatInputProps {
   availableHosts: {hostname: string, ip: string}[];
   recentIPs: string[];
   setFilteredSuggestions: (value: {hostname: string, ip: string}[]) => void;
-  isComposing: MutableRefObject<boolean>;
 }
 
 export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(({
@@ -39,9 +38,10 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(({
   setCursorPos,
   availableHosts,
   recentIPs,
-  setFilteredSuggestions,
-  isComposing
+  setFilteredSuggestions
 }, ref) => {
+
+  const isComposing = useRef(false);
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showSuggestions && filteredSuggestions.length > 0) {

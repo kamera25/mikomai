@@ -7,4 +7,6 @@ export interface UseMcpProps {
   setSummaries: React.Dispatch<React.SetStateAction<SummaryItem[]>>;
   historyLimit: number;
   mcpTimeout?: number;
+  updateRecentHosts?: (hosts: string[]) => void;
 }
+

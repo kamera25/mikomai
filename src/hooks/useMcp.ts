@@ -12,7 +12,8 @@ export function useMcp({
   summaries, 
   setSummaries, 
   historyLimit,
-  mcpTimeout = 30
+  mcpTimeout = 30,
+  updateRecentHosts
 }: UseMcpProps) {
 
   // Setup Tauri event listeners using sub-hook
@@ -25,7 +26,8 @@ export function useMcp({
     summaries,
     setSummaries,
     historyLimit,
-    mcpTimeout
+    mcpTimeout,
+    updateRecentHosts
   });
 
   const handleMcpResponse = async (userMessage: string) => {

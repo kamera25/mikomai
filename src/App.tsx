@@ -39,6 +39,23 @@ function App() {
     deleteSession,
   } = useHistory();
 
+  const [isEditingHeader, setIsEditingHeader] = useState(false);
+  const [headerTitle, setHeaderTitle] = useState("");
+
+  const handleStartRenameHeader = () => {
+    if (activeSession) {
+      setHeaderTitle(activeSession.title);
+      setIsEditingHeader(true);
+    }
+  };
+
+  const handleSaveRenameHeader = () => {
+    if (activeSessionId && headerTitle.trim()) {
+      renameSession(activeSessionId, headerTitle.trim());
+    }
+    setIsEditingHeader(false);
+  };
+
   const [input, setInput] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConnectionOpen, setIsConnectionOpen] = useState(false);
@@ -64,17 +81,44 @@ function App() {
   const [suggestionIndex, setSuggestionIndex] = useState(0);
   const [cursorPos, setCursorPos] = useState(0);
 
+  const updateRecentHosts = useCallback((hosts: string[]) => {
+    if (hosts.length === 0) return;
+    setRecentIPs(prev => {
+      const newRecent = [
+        ...new Set([...hosts, ...prev])
+      ].slice(0, 10);
+      
+      invoke("save_settings", { 
+        settings: { 
+          historyLimit, 
+          temperature, 
+          repetitionPenalty, 
+          modelPath,
+          recentIps: newRecent,
+          mcpTimeout,
+          dbPath,
+          ipVersion,
+          consolePort,
+          consoleBaudRate
+        } 
+      }).catch(e => {
+        console.error("Failed to save recent hosts to settings:", e);
+      });
+      
+      return newRecent;
+    });
+  }, [historyLimit, temperature, repetitionPenalty, modelPath, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate]);
+
   const { handleMcpResponse } = useMcp({
     messages,
     setMessages,
     summaries,
     setSummaries,
     historyLimit,
-    mcpTimeout
+    mcpTimeout,
+    updateRecentHosts
   });
 
-  const isComposing = useRef(false);
-  
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -286,30 +330,7 @@ function App() {
     const allFound = [...new Set([...foundMentions, ...foundIPs])];
     
     if (allFound.length > 0) {
-      const newRecent = [
-        ...new Set([...allFound, ...recentIPs])
-      ].slice(0, 10);
-      setRecentIPs(newRecent);
-      
-      // Save updated hosts to backend settings
-      try {
-        await invoke("save_settings", { 
-          settings: { 
-            historyLimit, 
-            temperature, 
-            repetitionPenalty, 
-            modelPath,
-            recentIps: newRecent,
-            mcpTimeout,
-            dbPath,
-            ipVersion,
-            consolePort,
-            consoleBaudRate
-          } 
-        });
-      } catch (e) {
-        console.error("Failed to save recent hosts to settings:", e);
-      }
+      updateRecentHosts(allFound);
     }
 
     setInput("");
@@ -493,7 +514,44 @@ function App() {
                     <line x1="9" y1="3" x2="9" y2="21"></line>
                   </svg>
                 </button>
-                <h1 className="header-title">{activeSession?.title || "mikomai"}</h1>
+                {isEditingHeader ? (
+                  <input
+                    className="header-title-input"
+                    value={headerTitle}
+                    onChange={(e) => setHeaderTitle(e.target.value)}
+                    onBlur={handleSaveRenameHeader}
+                    onKeyDown={(e) => {
+                      if (e.nativeEvent.isComposing) {
+                        return;
+                      }
+                      if (e.key === 'Enter') {
+                        handleSaveRenameHeader();
+                      } else if (e.key === 'Escape') {
+                        setIsEditingHeader(false);
+                      }
+                    }}
+                    autoFocus
+                    style={{
+                      fontSize: '1.25rem',
+                      fontWeight: '600',
+                      background: 'transparent',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-color)',
+                      borderRadius: '4px',
+                      padding: '2px 8px',
+                      outline: 'none',
+                    }}
+                  />
+                ) : (
+                  <h1 
+                    className="header-title" 
+                    onDoubleClick={handleStartRenameHeader}
+                    style={{ cursor: 'pointer' }}
+                    title="ダブルクリックしてリネーム"
+                  >
+                    {activeSession?.title || "mikomai"}
+                  </h1>
+                )}
                 {recentIPs.length > 0 && (
                   <div>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
@@ -539,7 +597,6 @@ function App() {
               availableHosts={availableHosts}
               recentIPs={recentIPs}
               setFilteredSuggestions={setFilteredSuggestions}
-              isComposing={isComposing}
             />
           </div>
         </main>

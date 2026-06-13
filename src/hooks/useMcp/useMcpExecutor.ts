@@ -8,7 +8,8 @@ export function useMcpExecutor({
   summaries,
   setSummaries,
   historyLimit,
-  mcpTimeout = 30
+  mcpTimeout = 30,
+  updateRecentHosts
 }: UseMcpProps) {
 
   const summarizeAndSave = async (content: string, taskId?: string) => {
@@ -64,6 +65,25 @@ export function useMcpExecutor({
     // Normalize arguments using helper function
     const processedArgs = await normalizeArgs(toolId, userMessage, args);
     
+    // Extract target host and update recent hosts
+    if (updateRecentHosts && processedArgs) {
+      let host: string | null = null;
+      if (processedArgs.deviceName) {
+        host = processedArgs.deviceName;
+      } else if (processedArgs.host) {
+        host = processedArgs.host;
+      } else if (processedArgs.device) {
+        if (typeof processedArgs.device === 'string') {
+          host = processedArgs.device;
+        } else if (typeof processedArgs.device === 'object') {
+          host = processedArgs.device.host || processedArgs.device.hostname;
+        }
+      }
+      if (host && typeof host === 'string' && host.trim()) {
+        updateRecentHosts([host.trim()]);
+      }
+    }
+
     // Add ToolExecution block
     setMessages(prev => [...prev, {
       role: "ai",

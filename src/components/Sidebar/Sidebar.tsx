@@ -124,6 +124,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   switchSession(item.id);
                 }
               }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                if (!isEditing) {
+                  setEditingSessionId(item.id);
+                  setEditingTitle(item.title);
+                }
+              }}
             >
               {isEditing ? (
                 <input
