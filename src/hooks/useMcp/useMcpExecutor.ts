@@ -9,7 +9,8 @@ export function useMcpExecutor({
   setSummaries,
   historyLimit,
   mcpTimeout = 30,
-  updateRecentHosts
+  updateRecentHosts,
+  recentIPs
 }: UseMcpProps) {
 
   const summarizeAndSave = async (content: string, taskId?: string) => {
@@ -63,7 +64,7 @@ export function useMcpExecutor({
     const statusMsg = isRag ? `NW-DBを検索中...` : `${toolLabel} を実行中...`;
 
     // Normalize arguments using helper function
-    const processedArgs = await normalizeArgs(toolId, userMessage, args);
+    const processedArgs = await normalizeArgs(toolId, userMessage, args, recentIPs);
     
     // Extract target host and update recent hosts
     if (updateRecentHosts && processedArgs) {

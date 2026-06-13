@@ -8,5 +8,6 @@ export interface UseMcpProps {
   historyLimit: number;
   mcpTimeout?: number;
   updateRecentHosts?: (hosts: string[]) => void;
+  recentIPs?: string[];
 }
 

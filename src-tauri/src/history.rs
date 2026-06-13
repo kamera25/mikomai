@@ -34,6 +34,8 @@ pub struct ChatSession {
     pub id: String,
     pub title: String,
     pub messages: Vec<Message>,
+    #[serde(rename = "recentIps", skip_serializing_if = "Option::is_none")]
+    pub recent_ips: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -129,6 +131,7 @@ mod tests {
                 raw_data: None,
                 args: None,
             }],
+            recent_ips: None,
         };
         let item = HistoryItem::Session(session);
         let serialized = serde_json::to_string(&item).unwrap();

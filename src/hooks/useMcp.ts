@@ -13,7 +13,8 @@ export function useMcp({
   setSummaries, 
   historyLimit,
   mcpTimeout = 30,
-  updateRecentHosts
+  updateRecentHosts,
+  recentIPs
 }: UseMcpProps) {
 
   // Setup Tauri event listeners using sub-hook
@@ -27,7 +28,8 @@ export function useMcp({
     setSummaries,
     historyLimit,
     mcpTimeout,
-    updateRecentHosts
+    updateRecentHosts,
+    recentIPs
   });
 
   const handleMcpResponse = async (userMessage: string) => {
@@ -68,16 +70,7 @@ export function useMcp({
           event_type: "AgentResponse"
         }]);
       }
-    } else if (
-      (lowerInput.includes("show") || lowerInput.includes("status") || lowerInput.includes("check")) &&
-      !lowerInput.includes("config") &&
-      !lowerInput.includes("設定") &&
-      !lowerInput.includes("構成")
-    ) {
-      await executeAndAnalyze(userMessage, "network_show", "Show Command", {
-        device: { host: "192.168.1.1", username: "admin", device_type: "cisco_ios" },
-        command: "show ip int brief"
-      });
+
     } else {
       const thinkingTaskId = `task_think_${Date.now()}`;
       // Intermediate thinking message (hidden)

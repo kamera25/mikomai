@@ -37,6 +37,7 @@ function App() {
     switchSession,
     renameSession,
     deleteSession,
+    updateSessionRecentIps,
   } = useHistory();
 
   const [isEditingHeader, setIsEditingHeader] = useState(false);
@@ -81,33 +82,48 @@ function App() {
   const [suggestionIndex, setSuggestionIndex] = useState(0);
   const [cursorPos, setCursorPos] = useState(0);
 
+  // Sync recentIPs with the active session's cached recent IPs when session changes
+  useEffect(() => {
+    const sessionIps = activeSession?.recentIps || [];
+    const isDifferent = sessionIps.length !== recentIPs.length || sessionIps.some((val, idx) => val !== recentIPs[idx]);
+    if (isDifferent) {
+      setRecentIPs(sessionIps);
+    }
+  }, [activeSessionId, activeSession?.recentIps]);
+
   const updateRecentHosts = useCallback((hosts: string[]) => {
     if (hosts.length === 0) return;
-    setRecentIPs(prev => {
-      const newRecent = [
-        ...new Set([...hosts, ...prev])
-      ].slice(0, 10);
-      
-      invoke("save_settings", { 
-        settings: { 
-          historyLimit, 
-          temperature, 
-          repetitionPenalty, 
-          modelPath,
-          recentIps: newRecent,
-          mcpTimeout,
-          dbPath,
-          ipVersion,
-          consolePort,
-          consoleBaudRate
-        } 
-      }).catch(e => {
-        console.error("Failed to save recent hosts to settings:", e);
-      });
-      
-      return newRecent;
+    
+    const newRecent = [
+      ...new Set([...hosts, ...recentIPs])
+    ].slice(0, 10);
+    
+    const isChanged = newRecent.length !== recentIPs.length || newRecent.some((val, idx) => val !== recentIPs[idx]);
+    if (!isChanged) return;
+    
+    setRecentIPs(newRecent);
+    
+    if (activeSessionId) {
+      updateSessionRecentIps(activeSessionId, newRecent);
+    }
+    
+    invoke("save_settings", { 
+      settings: { 
+        historyLimit, 
+        temperature, 
+        repetitionPenalty, 
+        modelPath,
+        recentIps: newRecent,
+        mcpTimeout,
+        dbPath,
+        ipVersion,
+        consolePort,
+        consoleBaudRate
+      } 
+    }).catch(e => {
+      console.error("Failed to save recent hosts to settings:", e);
     });
-  }, [historyLimit, temperature, repetitionPenalty, modelPath, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate]);
+  }, [recentIPs, activeSessionId, updateSessionRecentIps, historyLimit, temperature, repetitionPenalty, modelPath, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate]);
 
   const { handleMcpResponse } = useMcp({
     messages,
@@ -116,7 +132,8 @@ function App() {
     setSummaries,
     historyLimit,
     mcpTimeout,
-    updateRecentHosts
+    updateRecentHosts,
+    recentIPs
   });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);

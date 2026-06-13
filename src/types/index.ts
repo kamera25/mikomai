@@ -45,6 +45,7 @@ export interface ChatSession {
   type: 'session';
   title: string;
   messages: Message[];
+  recentIps?: string[];
 }
 
 export interface Folder {

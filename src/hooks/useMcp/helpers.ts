@@ -8,7 +8,7 @@ export function getHistoryBlock(items: SummaryItem[], limit: number): string {
   return `\n\n<memory>\n${text}\n</memory>`;
 }
 
-export async function normalizeArgs(toolId: string, userMessage: string, args: any): Promise<any> {
+export async function normalizeArgs(toolId: string, userMessage: string, args: any, recentIPs?: string[]): Promise<any> {
   const processedArgs: any = args && typeof args === "object" && !Array.isArray(args)
     ? Object.keys(args).reduce((acc, key) => {
         const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
@@ -46,11 +46,25 @@ export async function normalizeArgs(toolId: string, userMessage: string, args: a
           console.error("[useMcp] Failed to resolve connections for auto-extraction:", err);
         }
       }
+      
+      // Fallback to session recent host if not found in args or message
+      if (!deviceVal && recentIPs && recentIPs.length > 0) {
+        deviceVal = recentIPs[0];
+        console.log("[useMcp] Omitted device name, fallback to session's recent host:", deviceVal);
+      }
+
       if (deviceVal) {
         processedArgs.deviceName = deviceVal;
       }
     } else if (["self_network_ping", "self_network_traceroute"].includes(toolId)) {
-      const hostVal = processedArgs.host || processedArgs.device || processedArgs.deviceName || processedArgs.device_name || processedArgs.ip;
+      let hostVal = processedArgs.host || processedArgs.device || processedArgs.deviceName || processedArgs.device_name || processedArgs.ip;
+      
+      // Fallback to session recent host if not found in args or message
+      if (!hostVal && recentIPs && recentIPs.length > 0) {
+        hostVal = recentIPs[0];
+        console.log("[useMcp] Omitted host, fallback to session's recent host:", hostVal);
+      }
+
       if (hostVal) {
         processedArgs.host = hostVal;
       }

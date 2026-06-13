@@ -225,6 +225,23 @@ export function useHistory() {
     }
   };
 
+  const updateSessionRecentIps = (sessionId: string, ips: string[]) => {
+    setHistory(prev => {
+      const updateIps = (items: HistoryItem[]): HistoryItem[] => {
+        return items.map(item => {
+          if (item.id === sessionId && item.type === 'session') {
+            return { ...item, recentIps: ips };
+          }
+          if (item.type === 'folder') {
+            return { ...item, items: updateIps(item.items) };
+          }
+          return item;
+        });
+      };
+      return updateIps(prev);
+    });
+  };
+
   const activeSession = findSession(history, activeSessionId);
 
   return {
@@ -241,6 +258,7 @@ export function useHistory() {
     switchSession,
     renameSession,
     deleteSession,
+    updateSessionRecentIps,
     isLoaded
   };
 }
