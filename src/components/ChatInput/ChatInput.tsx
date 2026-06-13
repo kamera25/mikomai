@@ -44,6 +44,10 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(({
   const isComposing = useRef(false);
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isComposing.current || (e.nativeEvent as any).isComposing || e.keyCode === 229) {
+      return;
+    }
+
     if (showSuggestions && filteredSuggestions.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();

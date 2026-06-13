@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { HistoryItem, Message } from '../../types';
 
 interface SidebarProps {
@@ -31,6 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState<string>("");
+  const isComposingSidebar = useRef(false);
 
   const handleSaveRename = (sessionId: string) => {
     if (editingTitle.trim()) {
@@ -138,8 +139,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   value={editingTitle}
                   onChange={(e) => setEditingTitle(e.target.value)}
                   onBlur={() => handleSaveRename(item.id)}
+                  onCompositionStart={() => { isComposingSidebar.current = true; }}
+                  onCompositionEnd={() => {
+                    setTimeout(() => { isComposingSidebar.current = false; }, 150);
+                  }}
                   onKeyDown={(e) => {
-                    if (e.nativeEvent.isComposing) {
+                    if (isComposingSidebar.current || e.nativeEvent.isComposing || e.keyCode === 229) {
                       return;
                     }
                     if (e.key === 'Enter') {
