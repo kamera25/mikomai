@@ -15,7 +15,7 @@ pub fn get_registered_device_info_from_lists(
     let target = query.trim().to_lowercase();
     
     // Check local connections
-    if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == target || c.ip == target) {
+    if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == target || c.ip.as_str() == target) {
         let mut info = format!("登録済み機器 '{}' の接続情報:\n\n", conn.hostname);
         info.push_str(&format!("- ホスト名: {}\n", conn.hostname));
         info.push_str(&format!("- IPアドレス: {}\n", conn.ip));
@@ -38,7 +38,7 @@ pub fn get_registered_device_info_from_lists(
     }
 
     // Check MCP hosts
-    if let Some(host) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == target || h.ip == target) {
+    if let Some(host) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == target || h.ip.as_str() == target) {
         let mut info = format!("登録済み機器 '{}' の接続情報 (MCPレジストリ):\n\n", host.hostname);
         info.push_str(&format!("- ホスト名: {}\n", host.hostname));
         info.push_str(&format!("- IPアドレス: {}\n", host.ip));
@@ -58,18 +58,18 @@ mod tests {
     fn test_get_registered_device_info_from_lists_match_hostname() {
         let connections = vec![
             Connection {
-                id: "1".to_string(),
-                status: "active".to_string(),
-                hostname: "router-cisco".to_string(),
-                ip: "192.168.1.1".to_string(),
+                id: crate::connections::ConnectionId::try_from("1").unwrap(),
+                status: crate::connections::ConnectionStatus::try_from("active").unwrap(),
+                hostname: crate::connections::Hostname::try_from("router-cisco").unwrap(),
+                ip: crate::connections::IpAddress::try_from("192.168.1.1").unwrap(),
                 port: Some(22),
-                conn_type: "SSH".to_string(),
-                last_connected: "2026-06-11".to_string(),
-                username: Some("admin".to_string()),
+                conn_type: crate::connections::ConnectionType::try_from("SSH").unwrap(),
+                last_connected: crate::connections::LastConnected::try_from("2026-06-11").unwrap(),
+                username: Some(crate::connections::Username::try_from("admin").unwrap()),
                 password: None,
                 enable_password: None,
-                device_type: Some("Router".to_string()),
-                vendor_type: Some("Cisco".to_string()),
+                device_type: Some(crate::connections::DeviceType::try_from("Router").unwrap()),
+                vendor_type: Some(crate::connections::VendorType::try_from("Cisco").unwrap()),
             }
         ];
         let mcp_hosts = vec![];
@@ -91,10 +91,10 @@ mod tests {
         let connections = vec![];
         let mcp_hosts = vec![
             McpHost {
-                hostname: "switch-juniper".to_string(),
-                ip: "192.168.1.2".to_string(),
-                device_type: "Switch".to_string(),
-                username: "juniper-user".to_string(),
+                hostname: crate::connections::Hostname::try_from("switch-juniper").unwrap(),
+                ip: crate::connections::IpAddress::try_from("192.168.1.2").unwrap(),
+                device_type: crate::connections::DeviceType::try_from("Switch").unwrap(),
+                username: crate::connections::Username::try_from("juniper-user").unwrap(),
             }
         ];
 

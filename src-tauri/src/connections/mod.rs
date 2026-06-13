@@ -1,3 +1,27 @@
+pub mod id;
+pub mod status;
+pub mod hostname;
+pub mod ip_address;
+pub mod conn_type;
+pub mod last_connected;
+pub mod username;
+pub mod password;
+pub mod enable_password;
+pub mod device_type;
+pub mod vendor_type;
+
+pub use id::ConnectionId;
+pub use status::ConnectionStatus;
+pub use hostname::Hostname;
+pub use ip_address::IpAddress;
+pub use conn_type::ConnectionType;
+pub use last_connected::LastConnected;
+pub use username::Username;
+pub use password::Password;
+pub use enable_password::EnablePassword;
+pub use device_type::DeviceType;
+pub use vendor_type::VendorType;
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -7,34 +31,34 @@ use crate::crypto::{encrypt, decrypt};
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Connection {
-    pub id: String,
-    pub status: String,
-    pub hostname: String,
-    pub ip: String,
+    pub id: ConnectionId,
+    pub status: ConnectionStatus,
+    pub hostname: Hostname,
+    pub ip: IpAddress,
     #[serde(default)]
     pub port: Option<u16>,
     #[serde(rename = "type")]
-    pub conn_type: String,
-    pub last_connected: String,
+    pub conn_type: ConnectionType,
+    pub last_connected: LastConnected,
     #[serde(default)]
-    pub username: Option<String>,
+    pub username: Option<Username>,
     #[serde(default)]
-    pub password: Option<String>,
+    pub password: Option<Password>,
     #[serde(default)]
-    pub enable_password: Option<String>,
+    pub enable_password: Option<EnablePassword>,
     #[serde(default)]
-    pub device_type: Option<String>,
+    pub device_type: Option<DeviceType>,
     #[serde(default)]
-    pub vendor_type: Option<String>,
+    pub vendor_type: Option<VendorType>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct McpHost {
-    pub hostname: String,
-    pub ip: String,
-    pub device_type: String,
-    pub username: String,
+    pub hostname: Hostname,
+    pub ip: IpAddress,
+    pub device_type: DeviceType,
+    pub username: Username,
 }
 
 fn get_connections_path(app: &tauri::AppHandle) -> PathBuf {
@@ -58,16 +82,26 @@ pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, String
     for conn in &mut connections {
         if let Some(encrypted_password) = &conn.password {
             if !encrypted_password.is_empty() {
-                match decrypt(&app, encrypted_password) {
-                    Ok(decrypted) => conn.password = Some(decrypted),
+                match decrypt(&app, encrypted_password.as_str()) {
+                    Ok(decrypted) => {
+                        match Password::try_from(decrypted) {
+                            Ok(p) => conn.password = Some(p),
+                            Err(e) => eprintln!("Failed to validate decrypted password for connection {}: {}", conn.id, e),
+                        }
+                    }
                     Err(e) => eprintln!("Failed to decrypt password for connection {}: {}", conn.id, e),
                 }
             }
         }
         if let Some(encrypted_enable_password) = &conn.enable_password {
             if !encrypted_enable_password.is_empty() {
-                match decrypt(&app, encrypted_enable_password) {
-                    Ok(decrypted) => conn.enable_password = Some(decrypted),
+                match decrypt(&app, encrypted_enable_password.as_str()) {
+                    Ok(decrypted) => {
+                        match EnablePassword::try_from(decrypted) {
+                            Ok(ep) => conn.enable_password = Some(ep),
+                            Err(e) => eprintln!("Failed to validate decrypted enable password for connection {}: {}", conn.id, e),
+                        }
+                    }
                     Err(e) => eprintln!("Failed to decrypt enable password for connection {}: {}", conn.id, e),
                 }
             }
@@ -85,16 +119,26 @@ pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>)
     for conn in &mut connections {
         if let Some(plain_password) = &conn.password {
             if !plain_password.is_empty() {
-                match encrypt(&app, plain_password) {
-                    Ok(encrypted) => conn.password = Some(encrypted),
+                match encrypt(&app, plain_password.as_str()) {
+                    Ok(encrypted) => {
+                        match Password::try_from(encrypted) {
+                            Ok(p) => conn.password = Some(p),
+                            Err(e) => return Err(format!("Failed to validate encrypted password for connection {}: {}", conn.id, e)),
+                        }
+                    }
                     Err(e) => return Err(format!("Failed to encrypt password for connection {}: {}", conn.id, e)),
                 }
             }
         }
         if let Some(plain_enable_password) = &conn.enable_password {
             if !plain_enable_password.is_empty() {
-                match encrypt(&app, plain_enable_password) {
-                    Ok(encrypted) => conn.enable_password = Some(encrypted),
+                match encrypt(&app, plain_enable_password.as_str()) {
+                    Ok(encrypted) => {
+                        match EnablePassword::try_from(encrypted) {
+                            Ok(ep) => conn.enable_password = Some(ep),
+                            Err(e) => return Err(format!("Failed to validate encrypted enable password for connection {}: {}", conn.id, e)),
+                        }
+                    }
                     Err(e) => return Err(format!("Failed to encrypt enable password for connection {}: {}", conn.id, e)),
                 }
             }
@@ -116,14 +160,14 @@ pub fn resolve_host_with_mcp(app: &tauri::AppHandle, host: &str) -> String {
     // 1. Check local connections first
     if let Ok(connections) = load_connections(app.clone()) {
         if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase()) {
-            return conn.ip.clone();
+            return conn.ip.to_string();
         }
     }
 
     // 2. Check MCP registry
     if let Ok(mcp_hosts) = get_mcp_hosts() {
         if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == host.to_lowercase()) {
-            return mcp.ip.clone();
+            return mcp.ip.to_string();
         }
     }
 
@@ -136,9 +180,9 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
     
     // 1. Check local connections
     if let Ok(connections) = load_connections(app.clone()) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase() || c.ip == host) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase() || c.ip.as_str() == host) {
             let mut dtype = if let Some(dt) = &conn.device_type {
-                dt.clone()
+                dt.as_str().to_string()
             } else if conn.conn_type.contains("Cisco IOS") { "cisco_ios".to_string() }
                         else if conn.conn_type.contains("Juniper") { "juniper_junos".to_string() }
                         else if conn.conn_type.contains("Arista") { "arista_eos".to_string() }
@@ -148,14 +192,14 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
                 dtype = format!("{}_telnet", dtype);
             }
 
-            let user = conn.username.clone().unwrap_or_else(|| "admin".to_string());
-            return Some((conn.ip.clone(), user, conn.password.clone(), conn.enable_password.clone(), dtype));
+            let user = conn.username.as_ref().map(|u| u.as_str().to_string()).unwrap_or_else(|| "admin".to_string());
+            return Some((conn.ip.to_string(), user, conn.password.as_ref().map(|p| p.to_string()), conn.enable_password.as_ref().map(|ep| ep.to_string()), dtype));
         }
     }
 
     // 2. Check MCP registry
     if let Ok(mcp_hosts) = get_mcp_hosts() {
-        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == host.to_lowercase() || h.ip == host) {
+        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == host.to_lowercase() || h.ip.as_str() == host) {
             let mut dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios".to_string() }
                         else if mcp.device_type.contains("Juniper") { "juniper_junos".to_string() }
                         else if mcp.device_type.contains("Arista") { "arista_eos".to_string() }
@@ -165,7 +209,7 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
                 dtype = format!("{}_telnet", dtype);
             }
 
-            return Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype));
+            return Some((mcp.ip.to_string(), mcp.username.to_string(), None, None, dtype));
         }
     }
 
@@ -218,13 +262,13 @@ mod tests {
     #[test]
     fn test_connection_serialization() {
         let conn = Connection {
-            id: "test-1".to_string(),
-            status: "active".to_string(),
-            hostname: "router-1".to_string(),
-            ip: "10.0.0.1".to_string(),
+            id: ConnectionId::try_from("test-1").unwrap(),
+            status: ConnectionStatus::try_from("active").unwrap(),
+            hostname: Hostname::try_from("router-1").unwrap(),
+            ip: IpAddress::try_from("10.0.0.1").unwrap(),
             port: Some(22),
-            conn_type: "SSH".to_string(),
-            last_connected: "2023-10-27".to_string(),
+            conn_type: ConnectionType::try_from("SSH").unwrap(),
+            last_connected: LastConnected::try_from("2023-10-27").unwrap(),
             username: None,
             password: None,
             enable_password: None,
@@ -241,10 +285,10 @@ mod tests {
     #[test]
     fn test_mcp_host_serialization() {
         let host = McpHost {
-            hostname: "switch-1".to_string(),
-            ip: "10.0.0.2".to_string(),
-            device_type: "Telnet".to_string(),
-            username: "admin".to_string(),
+            hostname: Hostname::try_from("switch-1").unwrap(),
+            ip: IpAddress::try_from("10.0.0.2").unwrap(),
+            device_type: DeviceType::try_from("Telnet").unwrap(),
+            username: Username::try_from("admin").unwrap(),
         };
 
         let serialized = serde_json::to_string(&host).unwrap();

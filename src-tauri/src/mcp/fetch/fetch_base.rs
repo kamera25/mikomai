@@ -12,7 +12,7 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     if resolved_name.trim().is_empty() {
         if let Ok(connections) = load_connections(app.clone()) {
             if let Some(conn) = connections.iter().find(|c| ConnectionType::from_str(&c.conn_type) == Some(ConnectionType::Console)) {
-                resolved_name = conn.hostname.clone();
+                resolved_name = conn.hostname.to_string();
             }
         }
 
@@ -33,9 +33,9 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     let mut resolved_device = None;
     
     if let Ok(connections) = load_connections(app.clone()) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip == resolved_name) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip.as_str() == resolved_name) {
             let dtype = if let Some(dt) = &conn.device_type {
-                dt.clone()
+                dt.to_string()
             } else {
                 map_vendor_type(&conn.conn_type)
             };
@@ -43,20 +43,26 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
             let resolved_type = ConnectionType::from_str(&conn.conn_type).unwrap_or(ConnectionType::SSH);
             conn_type = resolved_type;
 
-            let user = conn.username.clone().unwrap_or_else(|| "admin".to_string());
-            resolved_device = Some((conn.ip.clone(), user, conn.password.clone(), conn.enable_password.clone(), dtype));
+            let user = conn.username.as_ref().map(|u| u.to_string()).unwrap_or_else(|| "admin".to_string());
+            resolved_device = Some((
+                conn.ip.to_string(),
+                user,
+                conn.password.as_ref().map(|p| p.to_string()),
+                conn.enable_password.as_ref().map(|ep| ep.to_string()),
+                dtype,
+            ));
         }
     }
     
     if resolved_device.is_none() {
         if let Ok(mcp_hosts) = get_mcp_hosts() {
-            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip == resolved_name) {
+            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip.as_str() == resolved_name) {
                 let dtype = map_vendor_type(&mcp.device_type);
 
                 let resolved_type = ConnectionType::from_str(&mcp.device_type).unwrap_or(ConnectionType::SSH);
                 conn_type = resolved_type;
 
-                resolved_device = Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype));
+                resolved_device = Some((mcp.ip.to_string(), mcp.username.to_string(), None, None, dtype));
             }
         }
     }
