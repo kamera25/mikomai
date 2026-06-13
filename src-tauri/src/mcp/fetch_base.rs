@@ -205,8 +205,25 @@ pub trait McpCommandFetcher {
         }
         let wrapper = SidecarNetmikoWrapper::new(app);
         match wrapper.execute_show(&target_device, &command).await {
-            Ok(output) => Ok(CommandResult { success: true, output }),
-            Err(err) => Ok(CommandResult { success: false, output: err }),
+            Ok(output) => {
+                let saved_path = if !output.trim().is_empty() {
+                    if let Ok(mut manager) = crate::snapshot::SnapshotManager::new() {
+                        let data_type = self.get_log_prefix().to_lowercase();
+                        if let Ok(path) = manager.save_artifact(device_name, &data_type, &output) {
+                            let _ = manager.update_current_link(path.parent().unwrap());
+                            Some(path.to_string_lossy().to_string())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                Ok(CommandResult { success: true, output, saved_path })
+            }
+            Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None }),
         }
     }
 }

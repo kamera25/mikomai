@@ -12,6 +12,7 @@ export interface Message {
   summary_text?: string;
   raw_data?: string | null;
   args?: any;
+  saved_path?: string;
 }
 
 export interface SummaryItem {

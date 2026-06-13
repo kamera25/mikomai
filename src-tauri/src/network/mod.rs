@@ -22,6 +22,8 @@ pub struct DeviceConfig {
 pub struct CommandResult {
     pub success: bool,
     pub output: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saved_path: Option<String>,
 }
 
 // Abstract trait for network operations
@@ -169,8 +171,8 @@ pub async fn network_show(
 
     let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_show(&target_device, &command).await {
-        Ok(output) => Ok(CommandResult { success: true, output }),
-        Err(err) => Ok(CommandResult { success: false, output: err }),
+        Ok(output) => Ok(CommandResult { success: true, output, saved_path: None }),
+        Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None }),
     }
 }
 
@@ -221,8 +223,8 @@ pub async fn network_config(
 
     let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_config(&target_device, commands).await {
-        Ok(output) => Ok(CommandResult { success: true, output }),
-        Err(err) => Ok(CommandResult { success: false, output: err }),
+        Ok(output) => Ok(CommandResult { success: true, output, saved_path: None }),
+        Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None }),
     }
 }
 
@@ -318,6 +320,7 @@ mod tests {
         let result = CommandResult {
             success: true,
             output: "show run output".to_string(),
+            saved_path: None,
         };
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(serialized, r#"{"success":true,"output":"show run output"}"#);

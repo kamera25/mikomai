@@ -161,7 +161,8 @@ export function useMcp({
           isToolLoading: false,
           status: result.success ? "Success" : "Failed",
           summary_text: result.success ? `${toolLabel} 完了` : `${toolLabel} 失敗`,
-          raw_data: result.output || "No output provided"
+          raw_data: result.output || "No output provided",
+          saved_path: result.saved_path
         } : msg
       ));
 
