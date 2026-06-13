@@ -38,8 +38,7 @@ impl LlmWorker for AnalysisWorker {
             let out_formatted = if label == "Fetch Config" {
                 format!(
                     "<config_data>\n{}\n</config_data>\n\n=== FINAL INSTRUCTION ===\n上記の <config_data> を分析し、ユーザーの「Subsequent Task」に対する回答を以下のフォーマットに厳密に従って日本語で出力してください。生データの出力のみは禁止します。\n\n=== Output Format & Example ===\nあなたは必ず以下のフォーマットで回答しなければなりません。生データやタグの出力のみは厳禁です。\n\n<Example_Input>\nユーザーの入力: \"NakaokuGWのDNS設定を教えて\"\nConfig: dns server 192.168.1.1\n</Example_Input>\n\n<Example_Output>\n【結論】\nNakaokuGWのDNSサーバーは、192.168.1.1 に設定されています。\n\n【該当コンフィグ】\ndns server 192.168.1.1\n\n【分析・解説】\nこの設定により、名前解決のクエリは指定されたDNSサーバーに転送されます。必要であれば疎通確認を行いますか？\n</Example_Output>\n\n【結論】\n（例: NakaokuGWのデフォルトルートはTunnel 2に設定されています。）\n\n【該当コンフィグ】\n（抽出した設定行を記載）\n\n【分析・解説】\n（なぜその設定になっているのか、関連するインターフェースやNAT、ルーティングの現在の状態などのコンテキストを運用者向けに分かりやすく解説してください。）",
-                    //out
-                    ""
+                    out
                 )
             } else {
                 out.to_string()
