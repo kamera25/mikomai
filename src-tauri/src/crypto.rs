@@ -35,13 +35,12 @@ pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, Strin
     }
 }
 
-pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, String> {
+pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, String> {
     if data.is_empty() {
         return Ok("".to_string());
     }
 
-    let key = get_or_create_key(app)?;
-    let cipher = Aes256Gcm::new(&key);
+    let cipher = Aes256Gcm::new(key);
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
 
     let ciphertext = cipher.encrypt(&nonce, data.as_bytes())
@@ -52,13 +51,12 @@ pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, String> {
     Ok(STANDARD.encode(result))
 }
 
-pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, String> {
+pub fn decrypt_with_key(key: &Key<Aes256Gcm>, encrypted_data: &str) -> Result<String, String> {
     if encrypted_data.is_empty() {
         return Ok("".to_string());
     }
 
-    let key = get_or_create_key(app)?;
-    let cipher = Aes256Gcm::new(&key);
+    let cipher = Aes256Gcm::new(key);
 
     let decoded = STANDARD.decode(encrypted_data)
         .map_err(|e| format!("Base64 decoding failed: {:?}", e))?;
@@ -74,4 +72,82 @@ pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, S
         .map_err(|e| format!("Decryption failed: {:?}", e))?;
 
     String::from_utf8(plaintext).map_err(|e| format!("Invalid UTF-8: {:?}", e))
+}
+
+pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, String> {
+    if data.is_empty() {
+        return Ok("".to_string());
+    }
+
+    let key = get_or_create_key(app)?;
+    encrypt_with_key(&key, data)
+}
+
+pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, String> {
+    if encrypted_data.is_empty() {
+        return Ok("".to_string());
+    }
+
+    let key = get_or_create_key(app)?;
+    decrypt_with_key(&key, encrypted_data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aes_gcm::aead::OsRng;
+    use aes_gcm::Aes256Gcm;
+
+    fn get_test_key() -> Key<Aes256Gcm> {
+        Aes256Gcm::generate_key(OsRng)
+    }
+
+    #[test]
+    fn test_encrypt_decrypt() {
+        let key = get_test_key();
+        let plain_text = "Hello, World! This is a secret message.";
+
+        let encrypted = encrypt_with_key(&key, plain_text).unwrap();
+        let decrypted = decrypt_with_key(&key, &encrypted).unwrap();
+
+        assert_eq!(plain_text, decrypted);
+    }
+
+    #[test]
+    fn test_decrypt_empty_string() {
+        let key = get_test_key();
+        let result = decrypt_with_key(&key, "");
+        assert_eq!(result, Ok("".to_string()));
+    }
+
+    #[test]
+    fn test_decrypt_invalid_base64() {
+        let key = get_test_key();
+        let result = decrypt_with_key(&key, "invalid_base64!!!");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Base64 decoding failed"));
+    }
+
+    #[test]
+    fn test_decrypt_too_short() {
+        let key = get_test_key();
+        // A valid base64 string that decodes to less than 12 bytes
+        let short_data = base64::engine::general_purpose::STANDARD.encode(b"short");
+        let result = decrypt_with_key(&key, &short_data);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Encrypted data is too short");
+    }
+
+    #[test]
+    fn test_decrypt_invalid_ciphertext() {
+        let key = get_test_key();
+        // Create valid base64 but invalid ciphertext/nonce combo
+        let mut invalid_data = vec![0u8; 32]; // 12 bytes nonce + 20 bytes random data
+        invalid_data[0] = 1; // Just to have some data
+        let encoded = base64::engine::general_purpose::STANDARD.encode(invalid_data);
+
+        let result = decrypt_with_key(&key, &encoded);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Decryption failed"));
+    }
 }
