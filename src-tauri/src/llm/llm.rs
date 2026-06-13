@@ -120,9 +120,34 @@ fn process_token_bytes(
 #[tauri::command]
 pub async fn ask_llm(
     window: tauri::Window,
-    prompt: String,
+    prompt: Option<String>,
+    user_message: Option<String>,
+    tool_label: Option<String>,
+    output: Option<String>,
+    is_rag: Option<bool>,
+    history_block: Option<String>,
     llama_state: tauri::State<'_, LlamaState>,
 ) -> Result<String, String> {
+    let prompt = if let Some(p) = prompt {
+        p
+    } else {
+        let user_msg = user_message.unwrap_or_default();
+        let out = output.unwrap_or_default();
+        let hist = history_block.unwrap_or_default();
+        if is_rag.unwrap_or(false) {
+            format!(
+                "ユーザーの質問: \"{}\"\nに対して、技術文書データベース(NW-DB)から以下の情報を取得しました:\n\n{}\n\nこの内容に基づき、ネットワークエンジニアの視点で、ユーザーの質問に対する的確な回答を日本語で生成してください。回答には、参照した資料の内容を具体的に含めてください。{}",
+                user_msg, out, hist
+            )
+        } else {
+            let label = tool_label.unwrap_or_default();
+            format!(
+                "ユーザーの入力: \"{}\"\nに対する{}の実行結果は以下の通りです:\n\n{}\n\nこの結果を分析し、ネットワークエンジニアの視点で状況を日本語で簡潔に報告してください。\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。{}",
+                user_msg, label, out, hist
+            )
+        }
+    };
+
     println!("Received prompt: {}", prompt);
 
     // Extract clean query for the router to avoid passing huge histories/tool outputs and hitting context limit
