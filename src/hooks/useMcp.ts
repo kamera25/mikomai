@@ -25,7 +25,10 @@ export function useMcp({
     let unlistenFn: (() => void) | undefined;
     
     const setupListener = async () => {
-      unlistenFn = await listen<{ deviceName: string; savedPath: string }>("arp-yaml-saved", (event) => {
+      let unlistenArp: (() => void) | undefined;
+      let unlistenRoute: (() => void) | undefined;
+
+      unlistenArp = await listen<{ deviceName: string; savedPath: string }>("arp-yaml-saved", (event) => {
         const { deviceName, savedPath } = event.payload;
         setMessages(prev => prev.map(msg => {
           const msgDevice = msg.args?.deviceName || msg.args?.device_name;
@@ -43,6 +46,30 @@ export function useMcp({
           return msg;
         }));
       });
+
+      unlistenRoute = await listen<{ deviceName: string; savedPath: string }>("route-yaml-saved", (event) => {
+        const { deviceName, savedPath } = event.payload;
+        setMessages(prev => prev.map(msg => {
+          const msgDevice = msg.args?.deviceName || msg.args?.device_name;
+          if (
+            msg.event_type === "ToolExecution" &&
+            msg.tool_id === "fetch_routing" &&
+            msgDevice === deviceName &&
+            !msg.saved_path
+          ) {
+            return {
+              ...msg,
+              saved_path: savedPath
+            };
+          }
+          return msg;
+        }));
+      });
+
+      unlistenFn = () => {
+        if (unlistenArp) unlistenArp();
+        if (unlistenRoute) unlistenRoute();
+      };
     };
     
     setupListener();
@@ -274,6 +301,7 @@ export function useMcp({
                                       nextToolCall.tool === "network_get_hosts" ? "Host List" :
                                       nextToolCall.tool === "network_query_nw_db" || nextToolCall.tool === "query_nw_db" ? "NWDB検索" :
                                       nextToolCall.tool === "self_network_arp" ? "ARP Table" :
+                                      nextToolCall.tool === "self_network_route" ? "Route Table" :
                                       nextToolCall.tool === "network_get_ip_info" ? "IP Info" :
                                       nextToolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
                                       nextToolCall.tool === "network_send_console_message" ? "Console Message" :
@@ -298,6 +326,7 @@ export function useMcp({
             summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
              const nextToolActionName = nextToolCall.tool === "self_network_ping" ? "Ping" : 
                                         nextToolCall.tool === "query_nw_db" || nextToolCall.tool === "network_query_nw_db" ? "NWDB検索" :
+                                        nextToolCall.tool === "self_network_route" ? "Route Table" :
                                         nextToolCall.tool === "fetch_config" ? "Fetch Config" :
                                         nextToolCall.tool === "fetch_routing" ? "Fetch Routing" :
                                         nextToolCall.tool === "fetch_arp" ? "Fetch ARP" :
@@ -356,6 +385,8 @@ export function useMcp({
       await executeAndAnalyze(userMessage, "network_get_hosts", "Host List", {});
     } else if (lowerInput.includes("arp") && (lowerInput.includes("ローカル") || lowerInput.includes("自機") || lowerInput.includes("このpc") || lowerInput.includes("local"))) {
       await executeAndAnalyze(userMessage, "self_network_arp", "ARP Table", {});
+    } else if (lowerInput.includes("route") && (lowerInput.includes("ローカル") || lowerInput.includes("自機") || lowerInput.includes("このpc") || lowerInput.includes("local") || lowerInput.includes("ルーティング"))) {
+      await executeAndAnalyze(userMessage, "self_network_route", "Route Table", {});
     } else if (lowerInput.includes("ip") || lowerInput.includes("ネットワーク情報") || lowerInput.includes("アドレス")) {
       await executeAndAnalyze(userMessage, "network_get_ip_info", "IP Info", {});
     } else if (lowerInput.includes("console") || lowerInput.includes("コンソール") || lowerInput.includes("シリアル")) {
@@ -398,6 +429,7 @@ export function useMcp({
       let fullContent = "";
       let unlisten: () => void = () => {};
       let agentUnlisten = () => {};
+      let routeUnlisten = () => {};
       
       try {
         unlisten = await listen<string>("llm-chunk", (event) => {
@@ -414,8 +446,13 @@ export function useMcp({
               msg.task_id === thinkingTaskId ? { ...msg, summary_text: `${agentName} が処理中...`, isHidden: false } : msg
             ));
           });
+          routeUnlisten = await listen<string>("route-yaml-saved", (event) => {
+            setMessages(prev => prev.map(msg =>
+              msg.task_id === thinkingTaskId ? { ...msg, summary_text: "ルーティングテーブルを更新しました", isHidden: false } : msg
+            ));
+          });
         } catch (err) {
-          console.error("Failed to listen to agent-selected:", err);
+          console.error("Failed to listen to events:", err);
         }
 
         const historyBlock = getHistoryBlock(summaries, historyLimit);
@@ -424,6 +461,7 @@ export function useMcp({
         const response: string = await invoke("ask_llm", { prompt: promptWithContext });
         unlisten(); 
         agentUnlisten();
+        routeUnlisten();
         
         setMessages(prev => prev.map(msg => 
           msg.task_id === thinkingTaskId ? { ...msg, content: response, isToolLoading: false, isHidden: false } : msg
@@ -476,6 +514,7 @@ export function useMcp({
               ));
                const toolActionName = toolCall.tool === "self_network_ping" ? "Ping" : 
                                       toolCall.tool === "query_nw_db" || toolCall.tool === "network_query_nw_db" ? "NWDB検索" :
+                                      toolCall.tool === "self_network_route" ? "Route Table" :
                                       toolCall.tool === "fetch_config" ? "Fetch Config" :
                                       toolCall.tool === "fetch_routing" ? "Fetch Routing" :
                                       toolCall.tool === "fetch_arp" ? "Fetch ARP" :

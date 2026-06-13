@@ -8,4 +8,5 @@ pub mod ip_info;
 pub mod console;
 pub mod fetch;
 pub mod devices;
+pub mod route;
 
