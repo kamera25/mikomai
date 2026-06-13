@@ -14,12 +14,14 @@ impl McpCommandFetcher for ArpFetcher {
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
 pub async fn fetch_arp(
     app: tauri::AppHandle, 
     llama_state: tauri::State<'_, crate::llm::llm::LlamaState>,
-    device_name: Option<String>
+    device_name: Option<String>,
+    deviceName: Option<String>,
 ) -> Result<CommandResult, String> {
-    let name = device_name.unwrap_or_default();
+    let name = device_name.or(deviceName).unwrap_or_default();
     
     // 1. Fetch raw ARP table output
     let mut command_res = ArpFetcher.fetch_device_info(&app, &name).await?;

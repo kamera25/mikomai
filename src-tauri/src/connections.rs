@@ -137,12 +137,16 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
     // 1. Check local connections
     if let Ok(connections) = load_connections(app.clone()) {
         if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase() || c.ip == host) {
-            let dtype = if let Some(dt) = &conn.device_type {
+            let mut dtype = if let Some(dt) = &conn.device_type {
                 dt.clone()
             } else if conn.conn_type.contains("Cisco IOS") { "cisco_ios".to_string() }
                         else if conn.conn_type.contains("Juniper") { "juniper_junos".to_string() }
                         else if conn.conn_type.contains("Arista") { "arista_eos".to_string() }
                         else { "cisco_ios".to_string() }; // Default
+
+            if conn.conn_type.contains("Telnet") && !dtype.ends_with("_telnet") {
+                dtype = format!("{}_telnet", dtype);
+            }
 
             let user = conn.username.clone().unwrap_or_else(|| "admin".to_string());
             return Some((conn.ip.clone(), user, conn.password.clone(), conn.enable_password.clone(), dtype));
@@ -152,11 +156,16 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
     // 2. Check MCP registry
     if let Ok(mcp_hosts) = get_mcp_hosts() {
         if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == host.to_lowercase() || h.ip == host) {
-            let dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios" }
-                        else if mcp.device_type.contains("Juniper") { "juniper_junos" }
-                        else if mcp.device_type.contains("Arista") { "arista_eos" }
-                        else { "cisco_ios" };
-            return Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype.to_string()));
+            let mut dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios".to_string() }
+                        else if mcp.device_type.contains("Juniper") { "juniper_junos".to_string() }
+                        else if mcp.device_type.contains("Arista") { "arista_eos".to_string() }
+                        else { "cisco_ios".to_string() };
+
+            if mcp.device_type.contains("Telnet") && !dtype.ends_with("_telnet") {
+                dtype = format!("{}_telnet", dtype);
+            }
+
+            return Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype));
         }
     }
 

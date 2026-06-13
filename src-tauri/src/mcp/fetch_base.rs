@@ -98,12 +98,12 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     };
 
     // Find the device in connections or mcp_hosts first to check if it's a console connection
-    let mut is_console = console_port.is_some();
+    let mut is_console = false;
     let mut resolved_device = None;
     
     if let Ok(connections) = load_connections(app.clone()) {
         if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip == resolved_name) {
-            let dtype = if let Some(dt) = &conn.device_type {
+            let mut dtype = if let Some(dt) = &conn.device_type {
                 dt.clone()
             } else if conn.conn_type.contains("Cisco IOS") { "cisco_ios".to_string() }
                         else if conn.conn_type.contains("Juniper") { "juniper_junos".to_string() }
@@ -116,6 +116,10 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
                 is_console = true;
             }
 
+            if conn.conn_type.contains("Telnet") && !dtype.ends_with("_telnet") {
+                dtype = format!("{}_telnet", dtype);
+            }
+
             let user = conn.username.clone().unwrap_or_else(|| "admin".to_string());
             resolved_device = Some((conn.ip.clone(), user, conn.password.clone(), conn.enable_password.clone(), dtype));
         }
@@ -124,24 +128,28 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     if resolved_device.is_none() {
         if let Ok(mcp_hosts) = get_mcp_hosts() {
             if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip == resolved_name) {
-                let dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios" }
-                            else if mcp.device_type.contains("Juniper") { "juniper_junos" }
-                            else if mcp.device_type.contains("Arista") { "arista_eos" }
-                            else if mcp.device_type.contains("Yamaha") { "yamaha" }
-                            else if mcp.device_type.contains("Furukawa") || mcp.device_type.contains("Fitelnet") { "furukawa_fitelnet" }
-                            else { "cisco_ios" };
+                let mut dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios".to_string() }
+                            else if mcp.device_type.contains("Juniper") { "juniper_junos".to_string() }
+                            else if mcp.device_type.contains("Arista") { "arista_eos".to_string() }
+                            else if mcp.device_type.contains("Yamaha") { "yamaha".to_string() }
+                            else if mcp.device_type.contains("Furukawa") || mcp.device_type.contains("Fitelnet") { "furukawa_fitelnet".to_string() }
+                            else { "cisco_ios".to_string() };
 
                 if mcp.device_type.contains("Console") || mcp.device_type.contains("Serial") {
                     is_console = true;
                 }
 
-                resolved_device = Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype.to_string()));
+                if mcp.device_type.contains("Telnet") && !dtype.ends_with("_telnet") {
+                    dtype = format!("{}_telnet", dtype);
+                }
+
+                resolved_device = Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype));
             }
         }
     }
 
     // Now check IP validation
-    if !is_console && resolved_name.parse::<std::net::IpAddr>().is_ok() {
+    if !is_console && resolved_name.parse::<std::net::IpAddr>().is_ok() && resolved_device.is_none() {
         return Err("IP address input is not allowed. Please specify the registered device name.".to_string());
     }
     
@@ -150,26 +158,28 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
         None => return Err(format!("Error: Device '{}' is not registered. Only registered device names are allowed.", resolved_name)),
     };
 
-    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-    let mut console_port = match settings.console_port {
-        Some(ref p) if !p.trim().is_empty() && p != "None" => Some(p.clone()),
-        _ => None,
-    };
-    let console_baud_rate = settings.console_baud_rate;
-
-    if is_console && console_port.is_none() {
-        if let Ok(ports) = serialport::available_ports() {
-            if let Some(p) = ports.first() {
-                console_port = Some(p.port_name.clone());
+    let (final_console_port, final_console_baud_rate) = if is_console {
+        let mut port = match settings.console_port {
+            Some(ref p) if !p.trim().is_empty() && p != "None" => Some(p.clone()),
+            _ => None,
+        };
+        if port.is_none() {
+            if let Ok(ports) = serialport::available_ports() {
+                if let Some(p) = ports.first() {
+                    port = Some(p.port_name.clone());
+                }
+            }
+            if port.is_none() {
+                #[cfg(target_os = "windows")]
+                { port = Some("COM1".to_string()); }
+                #[cfg(not(target_os = "windows"))]
+                { port = Some("/dev/ttyUSB0".to_string()); }
             }
         }
-        if console_port.is_none() {
-            #[cfg(target_os = "windows")]
-            { console_port = Some("COM1".to_string()); }
-            #[cfg(not(target_os = "windows"))]
-            { console_port = Some("/dev/ttyUSB0".to_string()); }
-        }
-    }
+        (port, settings.console_baud_rate)
+    } else {
+        (None, None)
+    };
 
     Ok(DeviceConfig {
         host: ip,
@@ -177,8 +187,8 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
         password,
         enable_password,
         device_type: dtype,
-        console_port,
-        console_baud_rate,
+        console_port: final_console_port,
+        console_baud_rate: final_console_baud_rate,
     })
 }
 

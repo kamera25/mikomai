@@ -14,8 +14,13 @@ impl McpCommandFetcher for RoutingFetcher {
 }
 
 #[tauri::command]
-pub async fn fetch_routing(app: tauri::AppHandle, device_name: Option<String>) -> Result<CommandResult, String> {
-    let name = device_name.unwrap_or_default();
+#[allow(non_snake_case)]
+pub async fn fetch_routing(
+    app: tauri::AppHandle, 
+    device_name: Option<String>,
+    deviceName: Option<String>,
+) -> Result<CommandResult, String> {
+    let name = device_name.or(deviceName).unwrap_or_default();
     RoutingFetcher.fetch_device_info(&app, &name).await
 }
 

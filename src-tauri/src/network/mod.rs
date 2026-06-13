@@ -10,11 +10,13 @@ pub struct DeviceConfig {
     pub host: String,
     pub username: String,
     pub password: Option<String>,
+    #[serde(alias = "enable_password")]
     pub enable_password: Option<String>,
+    #[serde(alias = "device_type")]
     pub device_type: String,
-    #[serde(default)]
+    #[serde(default, alias = "console_port")]
     pub console_port: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "console_baud_rate")]
     pub console_baud_rate: Option<u32>,
 }
 
@@ -145,13 +147,38 @@ pub async fn network_show(
         target_device.device_type = dtype;
     }
 
-    // Load settings for console override
-    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-    if let Some(ref port) = settings.console_port {
-        if !port.trim().is_empty() && port != "None" {
-            target_device.console_port = Some(port.clone());
-            target_device.console_baud_rate = settings.console_baud_rate;
+    // Load settings for console override if connection type is console/serial
+    let mut is_console = target_device.console_port.is_some();
+    if !is_console {
+        if let Ok(connections) = crate::connections::load_connections(app.clone()) {
+            if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == target_device.host.to_lowercase() || c.ip == target_device.host) {
+                if conn.conn_type.contains("Console") || conn.conn_type.contains("Serial") {
+                    is_console = true;
+                }
+            }
         }
+    }
+    if !is_console {
+        if let Ok(mcp_hosts) = crate::connections::get_mcp_hosts() {
+            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == target_device.host.to_lowercase() || h.ip == target_device.host) {
+                if mcp.device_type.contains("Console") || mcp.device_type.contains("Serial") {
+                    is_console = true;
+                }
+            }
+        }
+    }
+
+    if is_console {
+        let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+        if let Some(ref port) = settings.console_port {
+            if !port.trim().is_empty() && port != "None" {
+                target_device.console_port = Some(port.clone());
+                target_device.console_baud_rate = settings.console_baud_rate;
+            }
+        }
+    } else {
+        target_device.console_port = None;
+        target_device.console_baud_rate = None;
     }
 
     if target_device.console_port.is_none() {
@@ -197,13 +224,38 @@ pub async fn network_config(
         target_device.device_type = dtype;
     }
 
-    // Load settings for console override
-    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-    if let Some(ref port) = settings.console_port {
-        if !port.trim().is_empty() && port != "None" {
-            target_device.console_port = Some(port.clone());
-            target_device.console_baud_rate = settings.console_baud_rate;
+    // Load settings for console override if connection type is console/serial
+    let mut is_console = target_device.console_port.is_some();
+    if !is_console {
+        if let Ok(connections) = crate::connections::load_connections(app.clone()) {
+            if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == target_device.host.to_lowercase() || c.ip == target_device.host) {
+                if conn.conn_type.contains("Console") || conn.conn_type.contains("Serial") {
+                    is_console = true;
+                }
+            }
         }
+    }
+    if !is_console {
+        if let Ok(mcp_hosts) = crate::connections::get_mcp_hosts() {
+            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == target_device.host.to_lowercase() || h.ip == target_device.host) {
+                if mcp.device_type.contains("Console") || mcp.device_type.contains("Serial") {
+                    is_console = true;
+                }
+            }
+        }
+    }
+
+    if is_console {
+        let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+        if let Some(ref port) = settings.console_port {
+            if !port.trim().is_empty() && port != "None" {
+                target_device.console_port = Some(port.clone());
+                target_device.console_baud_rate = settings.console_baud_rate;
+            }
+        }
+    } else {
+        target_device.console_port = None;
+        target_device.console_baud_rate = None;
     }
 
     if target_device.console_port.is_none() {
