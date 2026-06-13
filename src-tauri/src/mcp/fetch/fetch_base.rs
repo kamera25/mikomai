@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use crate::connections::{load_connections, get_mcp_hosts};
-use crate::network::{DeviceConfig, CommandResult};
+use crate::network::{NetmikoDeviceConfig, CommandResult};
 use crate::mcp::fetch::netmiko_connection_wraper::NetmikoConnectionWrapper;
 use tauri::Manager;
 
@@ -99,10 +99,12 @@ fn map_vendor_type(conn_type: &str) -> String {
             }
         }
     }
+
+    // フェイルオーバーとして「Cisco IOS」を選択
     "cisco_ios".to_string()
 }
 
-pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) -> Result<DeviceConfig, String> {
+pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) -> Result<NetmikoDeviceConfig, String> {
     let mut resolved_name = device_name.to_string();
     if resolved_name.trim().is_empty() {
         if let Ok(connections) = load_connections(app.clone()) {
@@ -123,35 +125,20 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
         return Err("Error: device_name (機器名) is required but was not provided or is empty.".to_string());
     }
 
-    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-    let _console_port = match settings.console_port {
-        Some(ref p) if !p.trim().is_empty() && p != "None" => Some(p.clone()),
-        _ => None,
-    };
-
     // Find the device in connections or mcp_hosts first to check if it's a console connection
-    let mut is_console = false;
+    let mut conn_type = ConnectionType::SSH;
     let mut resolved_device = None;
     
     if let Ok(connections) = load_connections(app.clone()) {
         if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip == resolved_name) {
-            let mut dtype = if let Some(dt) = &conn.device_type {
+            let dtype = if let Some(dt) = &conn.device_type {
                 dt.clone()
             } else {
                 map_vendor_type(&conn.conn_type)
             };
 
-            match ConnectionType::from_str(&conn.conn_type) {
-                Some(ConnectionType::Console) => {
-                    is_console = true;
-                }
-                Some(ConnectionType::Telnet) => {
-                    if !dtype.ends_with("_telnet") {
-                        dtype = format!("{}_telnet", dtype);
-                    }
-                }
-                _ => {}
-            }
+            let resolved_type = ConnectionType::from_str(&conn.conn_type).unwrap_or(ConnectionType::SSH);
+            conn_type = resolved_type;
 
             let user = conn.username.clone().unwrap_or_else(|| "admin".to_string());
             resolved_device = Some((conn.ip.clone(), user, conn.password.clone(), conn.enable_password.clone(), dtype));
@@ -161,19 +148,10 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     if resolved_device.is_none() {
         if let Ok(mcp_hosts) = get_mcp_hosts() {
             if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip == resolved_name) {
-                let mut dtype = map_vendor_type(&mcp.device_type);
+                let dtype = map_vendor_type(&mcp.device_type);
 
-                match ConnectionType::from_str(&mcp.device_type) {
-                    Some(ConnectionType::Console) => {
-                        is_console = true;
-                    }
-                    Some(ConnectionType::Telnet) => {
-                        if !dtype.ends_with("_telnet") {
-                            dtype = format!("{}_telnet", dtype);
-                        }
-                    }
-                    _ => {}
-                }
+                let resolved_type = ConnectionType::from_str(&mcp.device_type).unwrap_or(ConnectionType::SSH);
+                conn_type = resolved_type;
 
                 resolved_device = Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype));
             }
@@ -181,6 +159,7 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     }
 
     // Now check IP validation
+    let is_console = conn_type == ConnectionType::Console;
     if !is_console && resolved_name.parse::<std::net::IpAddr>().is_ok() && resolved_device.is_none() {
         return Err("IP address input is not allowed. Please specify the registered device name.".to_string());
     }
@@ -190,38 +169,36 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
         None => return Err(format!("Error: Device '{}' is not registered. Only registered device names are allowed.", resolved_name)),
     };
 
-    let (final_console_port, final_console_baud_rate) = if is_console {
-        let mut port = match settings.console_port {
-            Some(ref p) if !p.trim().is_empty() && p != "None" => Some(p.clone()),
-            _ => None,
-        };
-        if port.is_none() {
-            if let Ok(ports) = serialport::available_ports() {
-                if let Some(p) = ports.first() {
-                    port = Some(p.port_name.clone());
-                }
-            }
-            if port.is_none() {
-                #[cfg(target_os = "windows")]
-                { port = Some("COM1".to_string()); }
-                #[cfg(not(target_os = "windows"))]
-                { port = Some("/dev/ttyUSB0".to_string()); }
-            }
+    match conn_type {
+        ConnectionType::Console => {
+            super::netmiko_device_config_console::resolve_console_device_config(
+                app,
+                ip,
+                username,
+                password,
+                enable_password,
+                dtype,
+            )
         }
-        (port, settings.console_baud_rate)
-    } else {
-        (None, None)
-    };
-
-    Ok(DeviceConfig {
-        host: ip,
-        username,
-        password,
-        enable_password,
-        device_type: dtype,
-        console_port: final_console_port,
-        console_baud_rate: final_console_baud_rate,
-    })
+        ConnectionType::Telnet => {
+            super::netmiko_device_config_telnet::resolve_telnet_device_config(
+                ip,
+                username,
+                password,
+                enable_password,
+                dtype,
+            )
+        }
+        ConnectionType::SSH => {
+            super::netmiko_device_config_ssh::resolve_ssh_device_config(
+                ip,
+                username,
+                password,
+                enable_password,
+                dtype,
+            )
+        }
+    }
 }
 
 pub trait McpCommandFetcher {

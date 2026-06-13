@@ -6,7 +6,7 @@ use crate::connections::get_device_config;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct DeviceConfig {
+pub struct NetmikoDeviceConfig {
     pub host: String,
     pub username: String,
     pub password: Option<String>,
@@ -30,8 +30,8 @@ pub struct CommandResult {
 
 // Abstract trait for network operations
 pub trait NetworkInterface {
-    async fn execute_show(&self, device: &DeviceConfig, command: &str) -> Result<String, String>;
-    async fn execute_config(&self, device: &DeviceConfig, commands: Vec<String>) -> Result<String, String>;
+    async fn execute_show(&self, device: &NetmikoDeviceConfig, command: &str) -> Result<String, String>;
+    async fn execute_config(&self, device: &NetmikoDeviceConfig, commands: Vec<String>) -> Result<String, String>;
 }
 
 // Implementation using a Tauri Sidecar fallback
@@ -91,7 +91,7 @@ impl SidecarNetmikoWrapper {
 }
 
 impl NetworkInterface for SidecarNetmikoWrapper {
-    async fn execute_show(&self, device: &DeviceConfig, command: &str) -> Result<String, String> {
+    async fn execute_show(&self, device: &NetmikoDeviceConfig, command: &str) -> Result<String, String> {
         let mut payload = serde_json::json!({
             "action": "show",
             "username": device.username,
@@ -108,7 +108,7 @@ impl NetworkInterface for SidecarNetmikoWrapper {
         self.run_sidecar(payload).await
     }
 
-    async fn execute_config(&self, device: &DeviceConfig, commands: Vec<String>) -> Result<String, String> {
+    async fn execute_config(&self, device: &NetmikoDeviceConfig, commands: Vec<String>) -> Result<String, String> {
         let mut payload = serde_json::json!({
             "action": "config",
             "username": device.username,
@@ -129,7 +129,7 @@ impl NetworkInterface for SidecarNetmikoWrapper {
 #[tauri::command]
 pub async fn network_show(
     app: AppHandle,
-    device: DeviceConfig,
+    device: NetmikoDeviceConfig,
     command: String,
 ) -> Result<CommandResult, String> {
     let mut target_device = device.clone();
@@ -206,7 +206,7 @@ pub async fn network_show(
 #[tauri::command]
 pub async fn network_config(
     app: AppHandle,
-    device: DeviceConfig,
+    device: NetmikoDeviceConfig,
     commands: Vec<String>,
 ) -> Result<CommandResult, String> {
     let mut target_device = device.clone();
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn test_device_config_serialization() {
-        let config = DeviceConfig {
+        let config = NetmikoDeviceConfig {
             host: "10.0.0.1".to_string(),
             username: "admin".to_string(),
             password: Some("pass".to_string()),
