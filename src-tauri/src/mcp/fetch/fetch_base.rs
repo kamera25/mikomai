@@ -7,29 +7,15 @@ pub use super::command_template::{CommandTemplate, CommandTemplates, load_templa
 
 
 
-pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) -> Result<NetmikoDeviceConfig, String> {
-    let mut resolved_name = device_name.to_string();
-    if resolved_name.trim().is_empty() {
-        if let Ok(connections) = load_connections(app.clone()) {
-            if let Some(conn) = connections.iter().find(|c| c.conn_type == ConnectionType::Console) {
-                resolved_name = conn.hostname.to_string();
-            }
-        }
+pub struct ResolvedDevice {
+    pub ip: String,
+    pub username: String,
+    pub password: Option<String>,
+    pub enable_password: Option<String>,
+    pub device_type: String,
+}
 
-        if resolved_name.trim().is_empty() {
-            let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-            if let Some(first_recent) = settings.recent_ips.first() {
-                resolved_name = first_recent.clone();
-            }
-        }
-    }
-
-    if resolved_name.trim().is_empty() {
-        return Err("Error: device_name (機器名) is required but was not provided or is empty.".to_string());
-    }
-
-    // Find the device in connections or mcp_hosts first to check if it's a console connection
-    let mut conn_type = ConnectionType::SSH;
+pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<ResolvedDevice, String> {
     let mut resolved_device = None;
     
     if let Ok(connections) = load_connections(app.clone()) {
@@ -42,16 +28,14 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
                 "cisco_ios".to_string()
             };
 
-            conn_type = conn.conn_type;
-
             let user = conn.username.as_ref().map(|u| u.to_string()).unwrap_or_else(|| "admin".to_string());
-            resolved_device = Some((
-                conn.ip.to_string(),
-                user,
-                conn.password.as_ref().map(|p| p.to_string()),
-                conn.enable_password.as_ref().map(|ep| ep.to_string()),
-                dtype,
-            ));
+            resolved_device = Some(ResolvedDevice {
+                ip: conn.ip.to_string(),
+                username: user,
+                password: conn.password.as_ref().map(|p| p.to_string()),
+                enable_password: conn.enable_password.as_ref().map(|ep| ep.to_string()),
+                device_type: dtype,
+            });
         }
     }
     
@@ -60,53 +44,52 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
             if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip.as_str() == resolved_name) {
                 let dtype = map_vendor_type(mcp.device_type.as_str());
 
-                let resolved_type = ConnectionType::from_str(mcp.device_type.as_str()).unwrap_or(ConnectionType::SSH);
-                conn_type = resolved_type;
-
-                resolved_device = Some((mcp.ip.to_string(), mcp.username.to_string(), None, None, dtype));
+                resolved_device = Some(ResolvedDevice {
+                    ip: mcp.ip.to_string(),
+                    username: mcp.username.to_string(),
+                    password: None,
+                    enable_password: None,
+                    device_type: dtype,
+                });
             }
         }
     }
 
-    // Now check IP validation
-    let is_console = conn_type == ConnectionType::Console;
-    if !is_console && resolved_name.parse::<std::net::IpAddr>().is_ok() && resolved_device.is_none() {
-        return Err("IP address input is not allowed. Please specify the registered device name.".to_string());
+    match resolved_device {
+        Some(d) => Ok(d),
+        None => Err(format!("Error: Device '{}' is not registered. Only registered device names are allowed.", resolved_name)),
     }
-    
-    let (ip, username, password, enable_password, dtype) = match resolved_device {
-        Some(d) => d,
-        None => return Err(format!("Error: Device '{}' is not registered. Only registered device names are allowed.", resolved_name)),
-    };
+}
+
+pub fn detect_connection_type(app: &tauri::AppHandle, resolved_name: &str) -> ConnectionType {
+    if let Ok(connections) = load_connections(app.clone()) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip.as_str() == resolved_name) {
+            return conn.conn_type;
+        }
+    }
+    if let Ok(mcp_hosts) = get_mcp_hosts() {
+        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip.as_str() == resolved_name) {
+            return ConnectionType::from_str(mcp.device_type.as_str()).unwrap_or(ConnectionType::SSH);
+        }
+    }
+    ConnectionType::SSH
+}
+
+pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) -> Result<NetmikoDeviceConfig, String> {
+    let (resolved_name, conn_type) = super::device_resolver::resolve_device_name_and_type(app, device_name)?;
 
     match conn_type {
         ConnectionType::Console => {
-            super::netmiko::device_config_console::resolve(
-                app,
-                ip,
-                username,
-                password,
-                enable_password,
-                dtype,
-            )
+            use super::netmiko::device_config_console::{ConsoleDeviceConfigBuilder, ConsoleBuilder};
+            ConsoleBuilder.build(app, &resolved_name)
         }
         ConnectionType::Telnet => {
-            super::netmiko::device_config_telnet::resolve(
-                ip,
-                username,
-                password,
-                enable_password,
-                dtype,
-            )
+            use super::netmiko::device_config_telnet::{TelnetDeviceConfigBuilder, TelnetBuilder};
+            TelnetBuilder.build(app, &resolved_name)
         }
         ConnectionType::SSH => {
-            super::netmiko::device_config_ssh::resolve(
-                ip,
-                username,
-                password,
-                enable_password,
-                dtype,
-            )
+            use super::netmiko::device_config_ssh::{SshDeviceConfigBuilder, SshBuilder};
+            SshBuilder.build(app, &resolved_name)
         }
     }
 }
