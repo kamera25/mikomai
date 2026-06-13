@@ -6,11 +6,6 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 
 const KEY_STORE_FILE: &str = "key.bin";
 
-pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, String> {
-    let path = tauri::Manager::path(app).app_data_dir().expect("Failed to get app data dir");
-    get_or_create_key_from_dir(&path)
-}
-
 pub fn get_or_create_key_from_dir(path: &std::path::Path) -> Result<Key<Aes256Gcm>, String> {
     if !path.exists() {
         let _ = std::fs::create_dir_all(path);
