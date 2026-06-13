@@ -89,7 +89,7 @@
   background-color: #0d1117;
   padding: 16px;
   border-radius: 8px;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-family);
   font-size: 0.9rem;
   overflow-x: auto;
   border: 1px solid var(--border-color);
@@ -109,7 +109,7 @@
   background-color: #0d1117;
   padding: 16px;
   border-radius: 8px;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-family);
   font-size: 0.9rem;
   overflow-x: auto;
   border: 1px solid var(--border-color);
