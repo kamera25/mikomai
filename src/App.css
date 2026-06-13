@@ -702,7 +702,7 @@
 .timeline-saved-path-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-primary);
@@ -712,12 +712,32 @@
   color: var(--text-muted);
 }
 
-.timeline-saved-path {
-  font-size: 0.8rem;
-  color: var(--accent-color);
-  font-family: var(--font-mono);
-  word-break: break-all;
-  text-align: right;
+.copy-path-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.copy-path-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.copy-path-btn.copied {
+  color: var(--success);
+  background: rgba(39, 201, 63, 0.1);
+  border-color: var(--success);
 }
 
 /* Global loading indicator */

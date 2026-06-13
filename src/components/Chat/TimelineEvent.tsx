@@ -16,12 +16,23 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
   const defaultExpanded = msg.event_type === "ToolExecution" && !isNwDb;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
+  const [pathCopied, setPathCopied] = useState(false);
 
   const handleCopy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+    }
+  };
+
+  const handleCopyPath = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setPathCopied(true);
+      setTimeout(() => setPathCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy: ', err);
     }
@@ -120,8 +131,32 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                       <line x1="12" y1="22.08" x2="12" y2="12"></line>
                     </svg>
                     <span>ログを保存しました。</span>
+                    <button 
+                      className={`copy-path-btn ${pathCopied ? 'copied' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopyPath(msg.saved_path || '');
+                      }}
+                      title="パスをコピー"
+                    >
+                      {pathCopied ? (
+                        <>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                          <span>コピー済み</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                          </svg>
+                          <span>保存先パスをコピー</span>
+                        </>
+                      )}
+                    </button>
                   </div>
-                  <div className="timeline-saved-path">{msg.saved_path}</div>
                 </div>
               </div>
             )}
