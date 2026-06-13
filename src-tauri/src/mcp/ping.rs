@@ -99,7 +99,10 @@ pub async fn self_network_ping(
 async fn run_system_ping(host: &str, size: Option<usize>, count: Option<u32>, df: bool) -> Result<PingResult, String> {
     use std::process::Command;
     
-    let mut cmd = Command::new("ping");
+    let is_ipv6 = host.parse::<std::net::Ipv6Addr>().is_ok();
+    let ping_cmd = if is_ipv6 { "ping6" } else { "ping" };
+
+    let mut cmd = Command::new(ping_cmd);
     
     // Mac and Linux differ slightly in arguments
     // On Mac: -s size -c count -D (for DF)
@@ -117,30 +120,20 @@ async fn run_system_ping(host: &str, size: Option<usize>, count: Option<u32>, df
     
     if df {
         #[cfg(target_os = "macos")]
-        cmd.arg("-D");
+        {
+            if !is_ipv6 {
+                cmd.arg("-D");
+            }
+        }
         #[cfg(target_os = "linux")]
-        cmd.arg("-M").arg("do");
+        {
+            cmd.arg("-M").arg("do");
+        }
     }
     
     cmd.arg(host);
     
-    let is_ipv6 = host.parse::<std::net::Ipv6Addr>().is_ok();
-    let ping_cmd = if is_ipv6 { "ping6" } else { "ping" };
-
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(format!("{} {} {} {} {}", 
-            ping_cmd,
-            if let Some(s) = size { format!("-s {}", s) } else { "".to_string() },
-            if let Some(c) = count { format!("-c {}", c) } else { "-c 4".to_string() },
-            if df { 
-                #[cfg(target_os = "macos")] { if is_ipv6 { "" } else { "-D" } } // ping6 on mac doesn't have -D for DF the same way?
-                #[cfg(target_os = "linux")] { "-M do" }
-                #[cfg(not(any(target_os = "macos", target_os = "linux")))] { "" }
-            } else { "" },
-            host
-        ))
-        .output()
+    let output = cmd.output()
         .map_err(|e| format!("Failed to execute system ping ({}): {}", ping_cmd, e))?;
     
     Ok(PingResult {
