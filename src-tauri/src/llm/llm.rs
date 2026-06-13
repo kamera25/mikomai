@@ -197,23 +197,32 @@ pub async fn ask_llm(
                     0.0,
                     settings.repetition_penalty,
                 ).map_err(|e| format!("Routing failed: {:?}", e))?;
+                println!("--- ROUTER OUTPUT ---\n{}\n-------------------------", route_output);
 
-                println!("Router raw output:\n{}", route_output);
-
-                let mut route_category = "INVESTIGATE";
+                let mut first_route = "INVESTIGATE";
+                let mut subsequent_route = "NONE";
                 let mut subsequent_task: Option<String> = None;
 
                 for line in route_output.lines() {
                     let trimmed = line.trim();
                     let trimmed_upper = trimmed.to_uppercase();
-                    if trimmed_upper.starts_with("ROUTE:") {
-                        let val = trimmed["ROUTE:".len()..].trim().to_uppercase();
+                    if trimmed_upper.starts_with("FIRST_ROUTE:") {
+                        let val = trimmed["FIRST_ROUTE:".len()..].trim().to_uppercase();
                         if val.contains("KNOWLEDGE") {
-                            route_category = "KNOWLEDGE";
+                            first_route = "KNOWLEDGE";
                         } else if val.contains("ANALYSIS") {
-                            route_category = "ANALYSIS";
+                            first_route = "ANALYSIS";
                         } else {
-                            route_category = "INVESTIGATE";
+                            first_route = "INVESTIGATE";
+                        }
+                    } else if trimmed_upper.starts_with("SUBSEQUENT_ROUTE:") {
+                        let val = trimmed["SUBSEQUENT_ROUTE:".len()..].trim().to_uppercase();
+                        if val.contains("KNOWLEDGE") {
+                            subsequent_route = "KNOWLEDGE";
+                        } else if val.contains("ANALYSIS") {
+                            subsequent_route = "ANALYSIS";
+                        } else {
+                            subsequent_route = "NONE";
                         }
                     } else if trimmed_upper.starts_with("TASK:") {
                         let val = trimmed["TASK:".len()..].trim();
@@ -224,27 +233,36 @@ pub async fn ask_llm(
                     }
                 }
 
-                // Fallback for single-word outputs
-                if !route_output.to_uppercase().contains("ROUTE:") {
+                // Fallback for single-word outputs or older output style
+                if !route_output.to_uppercase().contains("FIRST_ROUTE:") {
                     let route_trimmed = route_output.trim().to_uppercase();
                     if route_trimmed.contains("KNOWLEDGE") {
-                        route_category = "KNOWLEDGE";
+                        first_route = "KNOWLEDGE";
                     } else if route_trimmed.contains("ANALYSIS") {
-                        route_category = "ANALYSIS";
+                        first_route = "ANALYSIS";
                     } else {
-                        route_category = "INVESTIGATE";
+                        first_route = "INVESTIGATE";
                     }
                 }
 
-                println!("Parsed ROUTE: {}, TASK: {:?}", route_category, subsequent_task);
-
-                // If this is the second call (post-MCP execution) and there's no subsequent task, complete early
-                if user_message.is_some() && subsequent_task.is_none() {
-                    return Ok("実行が完了しました。".to_string());
+                if subsequent_route == "NONE" && subsequent_task.is_some() {
+                    subsequent_route = "ANALYSIS";
                 }
 
+                println!("Parsed FIRST_ROUTE: {}, SUBSEQUENT_ROUTE: {}, TASK: {:?}", first_route, subsequent_route, subsequent_task);
+
+                // Select which route is active depending on whether this is the first call or the second call
+                let active_route = if user_message.is_some() {
+                    if subsequent_route == "NONE" {
+                        return Ok("実行が完了しました。".to_string());
+                    }
+                    subsequent_route
+                } else {
+                    first_route
+                };
+
                 // Select base prompt and agent name
-                let (base_worker_prompt, agent_name) = match route_category {
+                let (base_worker_prompt, agent_name) = match active_route {
                     "KNOWLEDGE" => (crate::llm::llm_manager::KNOWLEDGE_WORKER_PROMPT, "Knowledge Expert (知識専門家)"),
                     "ANALYSIS" => (crate::llm::llm_manager::ANALYSIS_WORKER_PROMPT, "Analyst (分析官)"),
                     _ => (crate::llm::llm_manager::INVESTIGATE_WORKER_PROMPT, "Investigator (調査員)"),
@@ -254,7 +272,7 @@ pub async fn ask_llm(
                 let mut selected_prompt = base_worker_prompt.to_string();
                 if let Some(ref task) = subsequent_task {
                     selected_prompt.push_str(&format!(
-                        "\n\n=== Subsequent Task / 後続のタスク ===\nユーザーは以下の確認・解決を望んでいます:\n{}\n必ずこの確認・解決のために必要な処理・回答を行ってください。",
+                        "\n\n=== Subsequent Task / 後続のタスク ===\nユーザーは以下の確認・解決を望んでいます:\n{}\n必ずこの確認・解決のために必要な処理・回答を行ってください。かつ、設定の意図や現在の状態を含めて分かりやすく報告してください。",
                         task
                     ));
                 }
@@ -268,20 +286,25 @@ pub async fn ask_llm(
                     let hist = history_block.as_deref().unwrap_or_default();
                     let label = tool_label.as_deref().unwrap_or_default();
 
+                    let out_formatted = if label == "Fetch Config" {
+                        format!(
+                            "<config_data>\n{}\n</config_data>\n\n=== FINAL INSTRUCTION ===\n上記の <config_data> を分析し、ユーザーの「Subsequent Task」に対する回答を以下のフォーマットに厳密に従って日本語で出力してください。生データの出力のみは禁止します。\n\n【結論】\n（例: NakaokuGWのデフォルトルートはTunnel 2に設定されています。）\n\n【該当コンフィグ】\n（抽出した設定行を記載）\n\n【分析・解説】\n（なぜその設定になっているのか、関連するインターフェースやNAT、ルーティングの現在の状態などのコンテキストを運用者向けに分かりやすく解説してください。）",
+                            out
+                        )
+                    } else {
+                        out.to_string()
+                    };
+
+
                     let mut prompt_modified = format!(
                         "ユーザーの入力: \"{}\"\nに対する{}の実行結果は以下の通りです:\n\n{}\n\n",
-                        user_msg, label, out
+                        user_msg, label, out_formatted
                     );
-                    if let Some(ref task) = subsequent_task {
-                        prompt_modified.push_str(&format!(
-                            "【重要】以下のタスクまたは確認事項を、上記の実行結果を元に解決・回答してください:\n{}\n\n",
-                            task
-                        ));
-                    }
+
                     prompt_modified.push_str(&format!(
-                        "この結果を分析し、状況を報告してください。\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。結果の解説と、次にユーザーが実行すべきアクションの提案のみを行ってください。{}",
+                        "\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。{}",
                         hist
-                    ));
+                    )); 
                     prompt_modified
                 };
 
