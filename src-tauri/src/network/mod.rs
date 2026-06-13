@@ -152,7 +152,7 @@ pub async fn network_show(
     if !is_console {
         if let Ok(connections) = crate::connections::load_connections(app.clone()) {
             if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == target_device.host.to_lowercase() || c.ip.as_str() == target_device.host) {
-                if conn.conn_type.contains("Console") || conn.conn_type.contains("Serial") {
+                if conn.conn_type == crate::connections::ConnectionType::Console {
                     is_console = true;
                 }
             }
@@ -229,7 +229,7 @@ pub async fn network_config(
     if !is_console {
         if let Ok(connections) = crate::connections::load_connections(app.clone()) {
             if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == target_device.host.to_lowercase() || c.ip.as_str() == target_device.host) {
-                if conn.conn_type.contains("Console") || conn.conn_type.contains("Serial") {
+                if conn.conn_type == crate::connections::ConnectionType::Console {
                     is_console = true;
                 }
             }

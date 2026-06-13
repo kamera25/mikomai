@@ -1,68 +1,75 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer, Serializer};
 use std::convert::TryFrom;
 use std::fmt;
 
-#[derive(Serialize, Clone, Debug, PartialEq, Eq, Hash)]
-#[serde(transparent)]
-pub struct ConnectionType(String);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConnectionType {
+    SSH,
+    Console,
+    Telnet,
+}
 
 impl ConnectionType {
-    pub fn new(value: String) -> Result<Self, String> {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            return Err("ConnectionType cannot be empty".to_string());
+    pub fn from_str(s: &str) -> Option<Self> {
+        let s_lower = s.to_lowercase();
+        if s_lower.contains("console") || s_lower.contains("serial") {
+            Some(ConnectionType::Console)
+        } else if s_lower.contains("telnet") {
+            Some(ConnectionType::Telnet)
+        } else if s_lower.contains("ssh") {
+            Some(ConnectionType::SSH)
+        } else {
+            None
         }
-        if trimmed.len() > 100 {
-            return Err("ConnectionType cannot exceed 100 characters".to_string());
-        }
-        Ok(Self(trimmed.to_string()))
     }
 
-    pub fn as_str(&self) -> &str {
-        &self.0
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ConnectionType::SSH => "SSH",
+            ConnectionType::Console => "Console",
+            ConnectionType::Telnet => "Telnet",
+        }
     }
 }
 
-impl TryFrom<String> for ConnectionType {
-    type Error = String;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(value)
+impl fmt::Display for ConnectionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
-impl TryFrom<&str> for ConnectionType {
-    type Error = String;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new(value.to_string())
+impl Serialize for ConnectionType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
     }
 }
 
 impl<'de> Deserialize<'de> for ConnectionType {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Self::try_from(s).map_err(serde::de::Error::custom)
+        Self::from_str(&s).ok_or_else(|| {
+            serde::de::Error::custom(format!("Unknown connection type: {}", s))
+        })
     }
 }
 
-impl std::ops::Deref for ConnectionType {
-    type Target = str;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl TryFrom<&str> for ConnectionType {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::from_str(value).ok_or_else(|| format!("Invalid ConnectionType: {}", value))
     }
 }
 
-impl AsRef<str> for ConnectionType {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for ConnectionType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+impl TryFrom<String> for ConnectionType {
+    type Error = String;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_str())
     }
 }
 
@@ -71,19 +78,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_valid_conn_type() {
-        let ct = ConnectionType::try_from("Cisco IOS (SSH)").unwrap();
-        assert_eq!(ct.as_str(), "Cisco IOS (SSH)");
+    fn test_connection_type_from_str() {
+        assert_eq!(ConnectionType::from_str("SSH"), Some(ConnectionType::SSH));
+        assert_eq!(ConnectionType::from_str("Cisco IOS (SSH)"), Some(ConnectionType::SSH));
+        assert_eq!(ConnectionType::from_str("console"), Some(ConnectionType::Console));
+        assert_eq!(ConnectionType::from_str("serial-port"), Some(ConnectionType::Console));
+        assert_eq!(ConnectionType::from_str("telnet"), Some(ConnectionType::Telnet));
+        assert_eq!(ConnectionType::from_str("unknown"), None);
     }
 
     #[test]
-    fn test_empty_conn_type() {
-        assert!(ConnectionType::try_from("").is_err());
+    fn test_connection_type_serialization() {
+        let ct = ConnectionType::SSH;
+        let serialized = serde_json::to_string(&ct).unwrap();
+        assert_eq!(serialized, r#""SSH""#);
     }
 
     #[test]
-    fn test_too_long_conn_type() {
-        let long_ct = "a".repeat(101);
-        assert!(ConnectionType::try_from(long_ct.as_str()).is_err());
+    fn test_connection_type_deserialization() {
+        let deserialized: ConnectionType = serde_json::from_str(r#""Cisco IOS (SSH)""#).unwrap();
+        assert_eq!(deserialized, ConnectionType::SSH);
+
+        let deserialized_console: ConnectionType = serde_json::from_str(r#""Console""#).unwrap();
+        assert_eq!(deserialized_console, ConnectionType::Console);
     }
 }

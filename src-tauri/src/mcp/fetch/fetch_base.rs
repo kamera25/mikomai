@@ -11,7 +11,7 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     let mut resolved_name = device_name.to_string();
     if resolved_name.trim().is_empty() {
         if let Ok(connections) = load_connections(app.clone()) {
-            if let Some(conn) = connections.iter().find(|c| ConnectionType::from_str(&c.conn_type) == Some(ConnectionType::Console)) {
+            if let Some(conn) = connections.iter().find(|c| c.conn_type == ConnectionType::Console) {
                 resolved_name = conn.hostname.to_string();
             }
         }
@@ -36,12 +36,13 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
         if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip.as_str() == resolved_name) {
             let dtype = if let Some(dt) = &conn.device_type {
                 dt.to_string()
+            } else if let Some(vt) = &conn.vendor_type {
+                map_vendor_type(vt.as_str())
             } else {
-                map_vendor_type(&conn.conn_type)
+                "cisco_ios".to_string()
             };
 
-            let resolved_type = ConnectionType::from_str(&conn.conn_type).unwrap_or(ConnectionType::SSH);
-            conn_type = resolved_type;
+            conn_type = conn.conn_type;
 
             let user = conn.username.as_ref().map(|u| u.to_string()).unwrap_or_else(|| "admin".to_string());
             resolved_device = Some((
@@ -57,9 +58,9 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     if resolved_device.is_none() {
         if let Ok(mcp_hosts) = get_mcp_hosts() {
             if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip.as_str() == resolved_name) {
-                let dtype = map_vendor_type(&mcp.device_type);
+                let dtype = map_vendor_type(mcp.device_type.as_str());
 
-                let resolved_type = ConnectionType::from_str(&mcp.device_type).unwrap_or(ConnectionType::SSH);
+                let resolved_type = ConnectionType::from_str(mcp.device_type.as_str()).unwrap_or(ConnectionType::SSH);
                 conn_type = resolved_type;
 
                 resolved_device = Some((mcp.ip.to_string(), mcp.username.to_string(), None, None, dtype));

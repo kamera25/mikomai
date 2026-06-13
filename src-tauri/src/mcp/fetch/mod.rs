@@ -3,9 +3,7 @@ pub mod fetch_arp;
 pub mod fetch_config;
 pub mod fetch_routing;
 pub mod netmiko;
-#[path = "ConnectionType.rs"]
-pub mod connection_type;
-pub use connection_type::ConnectionType;
+pub use crate::connections::ConnectionType;
 pub mod command_template;
 
 

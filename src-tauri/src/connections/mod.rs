@@ -183,12 +183,19 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
         if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase() || c.ip.as_str() == host) {
             let mut dtype = if let Some(dt) = &conn.device_type {
                 dt.as_str().to_string()
-            } else if conn.conn_type.contains("Cisco IOS") { "cisco_ios".to_string() }
-                        else if conn.conn_type.contains("Juniper") { "juniper_junos".to_string() }
-                        else if conn.conn_type.contains("Arista") { "arista_eos".to_string() }
-                        else { "cisco_ios".to_string() }; // Default
+            } else if let Some(vt) = &conn.vendor_type {
+                let vt_str = vt.as_str().to_lowercase();
+                if vt_str.contains("cisco") { "cisco_ios".to_string() }
+                else if vt_str.contains("juniper") || vt_str.contains("junos") { "juniper_junos".to_string() }
+                else if vt_str.contains("arista") || vt_str.contains("eos") { "arista_eos".to_string() }
+                else if vt_str.contains("yamaha") { "yamaha".to_string() }
+                else if vt_str.contains("furukawa") || vt_str.contains("fitelnet") { "furukawa_fitelnet".to_string() }
+                else { "cisco_ios".to_string() }
+            } else {
+                "cisco_ios".to_string()
+            };
 
-            if conn.conn_type.contains("Telnet") && !dtype.ends_with("_telnet") {
+            if conn.conn_type == ConnectionType::Telnet && !dtype.ends_with("_telnet") {
                 dtype = format!("{}_telnet", dtype);
             }
 
