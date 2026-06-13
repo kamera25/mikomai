@@ -10,6 +10,8 @@ use tauri::Emitter;
 use tauri::Manager;
 use crate::llm::llm_manager::SharedModel;
 use std::sync::Arc;
+use crate::llm::worker::{LlmWorker, RagWorker, KnowledgeWorker, AnalysisWorker, InvestigateWorker, Route};
+
 
 #[derive(serde::Serialize)]
 pub enum ModelState {
@@ -166,20 +168,9 @@ pub async fn ask_llm(
 
             let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
 
-            let (selected_prompt, agent_name, worker_prompt) = if is_rag_query {
-                // RAG path - bypass routing
-                let user_msg = user_message.as_deref().unwrap_or_default();
-                let out = output.as_deref().unwrap_or_default();
-                let hist = history_block.as_deref().unwrap_or_default();
-                let rag_prompt = if let Some(p) = prompt.clone() {
-                    p
-                } else {
-                    format!(
-                        "ユーザーの質問: \"{}\"\nに対して、技術文書データベース(NW-DB)から以下の情報を取得しました:\n\n{}\n\nこの内容に基づき、ネットワークエンジニアの視点で、ユーザーの質問に対する的確な回答を日本語で生成してください。回答には、参照した資料の内容を具体的に含めてください。{}",
-                        user_msg, out, hist
-                    )
-                };
-                (crate::llm::llm_manager::RAG_WORKER_PROMPT.to_string(), "RAG Worker (RAG回答員)", rag_prompt)
+            let mut subsequent_task: Option<String> = None;
+            let worker: Box<dyn LlmWorker> = if is_rag_query {
+                Box::new(RagWorker)
             } else {
                 // Route classification
                 let mut router_ctx = crate::llm::llm_manager::AgentContext::new(
@@ -199,31 +190,18 @@ pub async fn ask_llm(
                 ).map_err(|e| format!("Routing failed: {:?}", e))?;
                 println!("--- ROUTER OUTPUT ---\n{}\n-------------------------", route_output);
 
-                let mut first_route = "INVESTIGATE";
-                let mut subsequent_route = "NONE";
-                let mut subsequent_task: Option<String> = None;
+                let mut first_route = Route::Investigate;
+                let mut subsequent_route = Route::None;
 
                 for line in route_output.lines() {
                     let trimmed = line.trim();
                     let trimmed_upper = trimmed.to_uppercase();
                     if trimmed_upper.starts_with("FIRST_ROUTE:") {
-                        let val = trimmed["FIRST_ROUTE:".len()..].trim().to_uppercase();
-                        if val.contains("KNOWLEDGE") {
-                            first_route = "KNOWLEDGE";
-                        } else if val.contains("ANALYSIS") {
-                            first_route = "ANALYSIS";
-                        } else {
-                            first_route = "INVESTIGATE";
-                        }
+                        let val = trimmed["FIRST_ROUTE:".len()..].trim();
+                        first_route = Route::from_str(val);
                     } else if trimmed_upper.starts_with("SUBSEQUENT_ROUTE:") {
-                        let val = trimmed["SUBSEQUENT_ROUTE:".len()..].trim().to_uppercase();
-                        if val.contains("KNOWLEDGE") {
-                            subsequent_route = "KNOWLEDGE";
-                        } else if val.contains("ANALYSIS") {
-                            subsequent_route = "ANALYSIS";
-                        } else {
-                            subsequent_route = "NONE";
-                        }
+                        let val = trimmed["SUBSEQUENT_ROUTE:".len()..].trim();
+                        subsequent_route = Route::from_str(val);
                     } else if trimmed_upper.starts_with("TASK:") {
                         let val = trimmed["TASK:".len()..].trim();
                         let val_upper = val.to_uppercase();
@@ -235,25 +213,18 @@ pub async fn ask_llm(
 
                 // Fallback for single-word outputs or older output style
                 if !route_output.to_uppercase().contains("FIRST_ROUTE:") {
-                    let route_trimmed = route_output.trim().to_uppercase();
-                    if route_trimmed.contains("KNOWLEDGE") {
-                        first_route = "KNOWLEDGE";
-                    } else if route_trimmed.contains("ANALYSIS") {
-                        first_route = "ANALYSIS";
-                    } else {
-                        first_route = "INVESTIGATE";
-                    }
+                    first_route = Route::from_str(&route_output);
                 }
 
-                if subsequent_route == "NONE" && subsequent_task.is_some() {
-                    subsequent_route = "ANALYSIS";
+                if subsequent_route == Route::None && subsequent_task.is_some() {
+                    subsequent_route = Route::Analysis;
                 }
 
-                println!("Parsed FIRST_ROUTE: {}, SUBSEQUENT_ROUTE: {}, TASK: {:?}", first_route, subsequent_route, subsequent_task);
+                println!("Parsed FIRST_ROUTE: {:?}, SUBSEQUENT_ROUTE: {:?}, TASK: {:?}", first_route, subsequent_route, subsequent_task);
 
                 // Select which route is active depending on whether this is the first call or the second call
                 let active_route = if user_message.is_some() {
-                    if subsequent_route == "NONE" {
+                    if subsequent_route == Route::None {
                         return Ok("実行が完了しました。".to_string());
                     }
                     subsequent_route
@@ -261,55 +232,22 @@ pub async fn ask_llm(
                     first_route
                 };
 
-                // Select base prompt and agent name
-                let (base_worker_prompt, agent_name) = match active_route {
-                    "KNOWLEDGE" => (crate::llm::llm_manager::KNOWLEDGE_WORKER_PROMPT, "Knowledge Expert (知識専門家)"),
-                    "ANALYSIS" => (crate::llm::llm_manager::ANALYSIS_WORKER_PROMPT, "Analyst (分析官)"),
-                    _ => (crate::llm::llm_manager::INVESTIGATE_WORKER_PROMPT, "Investigator (調査員)"),
-                };
-
-                // Modify worker system prompt to append the task if present
-                let mut selected_prompt = base_worker_prompt.to_string();
-                if let Some(ref task) = subsequent_task {
-                    selected_prompt.push_str(&format!(
-                        "\n\n=== Subsequent Task / 後続のタスク ===\nユーザーは以下の確認・解決を望んでいます:\n{}\n必ずこの確認・解決のために必要な処理・回答を行ってください。かつ、設定の意図や現在の状態を含めて分かりやすく報告してください。",
-                        task
-                    ));
+                match active_route {
+                    Route::Knowledge => Box::new(KnowledgeWorker) as Box<dyn LlmWorker>,
+                    Route::Analysis => Box::new(AnalysisWorker) as Box<dyn LlmWorker>,
+                    _ => Box::new(InvestigateWorker) as Box<dyn LlmWorker>,
                 }
-
-                // Construct worker prompt
-                let worker_prompt = if let Some(p) = prompt.clone() {
-                    p
-                } else {
-                    let user_msg = user_message.as_deref().unwrap_or_default();
-                    let out = output.as_deref().unwrap_or_default();
-                    let hist = history_block.as_deref().unwrap_or_default();
-                    let label = tool_label.as_deref().unwrap_or_default();
-
-                    let out_formatted = if label == "Fetch Config" {
-                        format!(
-                            "<config_data>\n{}\n</config_data>\n\n=== FINAL INSTRUCTION ===\n上記の <config_data> を分析し、ユーザーの「Subsequent Task」に対する回答を以下のフォーマットに厳密に従って日本語で出力してください。生データの出力のみは禁止します。\n\n【結論】\n（例: NakaokuGWのデフォルトルートはTunnel 2に設定されています。）\n\n【該当コンフィグ】\n（抽出した設定行を記載）\n\n【分析・解説】\n（なぜその設定になっているのか、関連するインターフェースやNAT、ルーティングの現在の状態などのコンテキストを運用者向けに分かりやすく解説してください。）",
-                            out
-                        )
-                    } else {
-                        out.to_string()
-                    };
-
-
-                    let mut prompt_modified = format!(
-                        "ユーザーの入力: \"{}\"\nに対する{}の実行結果は以下の通りです:\n\n{}\n\n",
-                        user_msg, label, out_formatted
-                    );
-
-                    prompt_modified.push_str(&format!(
-                        "\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。{}",
-                        hist
-                    )); 
-                    prompt_modified
-                };
-
-                (selected_prompt, agent_name, worker_prompt)
             };
+
+            let agent_name = worker.agent_name();
+            let selected_prompt = worker.system_prompt(subsequent_task.as_deref());
+            let worker_prompt = worker.build_prompt(
+                prompt.clone(),
+                user_message.clone(),
+                tool_label.clone(),
+                output.clone(),
+                history_block.clone(),
+            );
 
             // Emit the event to the frontend
             let _ = window.emit("agent-selected", agent_name);
@@ -378,6 +316,7 @@ pub async fn ask_llm_internal(
 
     let mut ctx_params = LlamaContextParams::default();
     ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(n_ctx as u32));
+    ctx_params = ctx_params.with_n_batch(n_ctx as u32);
 
     let mut ctx = shared.model.new_context(&state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
 

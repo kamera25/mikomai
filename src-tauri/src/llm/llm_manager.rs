@@ -34,6 +34,7 @@ pub struct AgentContext<'a> {
     pub ctx: LlamaContext<'a>,
     pub base_n_past: u32,
     pub id: i32,
+    pub n_ctx: u32,
 }
 
 impl<'a> AgentManager<'a> {
@@ -56,22 +57,25 @@ impl<'a> AgentManager<'a> {
 
 impl<'a> AgentContext<'a> {
     pub fn new(shared: &'a SharedModel, system_prompt: &str, id: i32) -> Result<Self> {
-        let mut ctx_params = LlamaContextParams::default();
-        ctx_params = ctx_params.with_n_ctx(std::num::NonZeroU32::new(2048));
-
-        let mut ctx = shared.model.new_context(&shared.backend, ctx_params)?;
-
         let formatted_sys = format!("<|turn>system\n{}<turn|>\n", system_prompt);
         let mut tokens = shared.model.str_to_token(&formatted_sys, AddBos::Always)?;
 
-        // Ensure system prompt doesn't exceed 1200 tokens to leave room for user query + generation
-        let max_sys_tokens = 1200;
+        // Ensure system prompt doesn't exceed 8192 tokens to leave room for user query + generation
+        let max_sys_tokens = 8192;
         if tokens.len() > max_sys_tokens {
             tokens.truncate(max_sys_tokens);
         }
 
         let tokens_len = tokens.len();
-        let mut batch = LlamaBatch::new(2048, 1);
+        let n_ctx = (tokens_len + 2048).max(2048) as u32;
+
+        let mut ctx_params = LlamaContextParams::default();
+        ctx_params = ctx_params.with_n_ctx(std::num::NonZeroU32::new(n_ctx));
+        ctx_params = ctx_params.with_n_batch(n_ctx);
+
+        let mut ctx = shared.model.new_context(&shared.backend, ctx_params)?;
+
+        let mut batch = LlamaBatch::new(n_ctx as usize, 1);
         let last_index = tokens_len - 1;
 
         for (i, token) in tokens.into_iter().enumerate() {
@@ -83,7 +87,7 @@ impl<'a> AgentContext<'a> {
 
         let base_n_past = tokens_len as u32;
 
-        Ok(Self { ctx, base_n_past, id })
+        Ok(Self { ctx, base_n_past, id, n_ctx })
     }
 }
 
@@ -131,10 +135,11 @@ pub fn run_inference<'a>(
         tokens = model.str_to_token("hi", AddBos::Never)?;
     }
 
-    // Truncate to avoid context exhaustion (n_ctx is 2048, leave 512 for generation)
+    // Truncate to avoid context exhaustion (use dynamic n_ctx, leave 512 for generation)
     // Use i32 logic to prevent unsigned underflow panics/wraps.
     let base_n_past = agent_ctx.base_n_past as i32;
-    let max_tokens = (2048 - base_n_past - 512).max(16) as usize;
+    let n_ctx = agent_ctx.n_ctx as i32;
+    let max_tokens = (n_ctx - base_n_past - 512).max(16) as usize;
     if tokens.len() > max_tokens {
         tokens.truncate(max_tokens);
     }
@@ -143,7 +148,7 @@ pub fn run_inference<'a>(
         return Err(anyhow::anyhow!("Tokens list is empty after truncation"));
     }
 
-    let mut batch = LlamaBatch::new(2048, 1);
+    let mut batch = LlamaBatch::new(n_ctx as usize, 1);
     let mut current_pos = agent_ctx.base_n_past as i32;
     let last_index = tokens.len() - 1;
     for (i, token) in tokens.into_iter().enumerate() {
