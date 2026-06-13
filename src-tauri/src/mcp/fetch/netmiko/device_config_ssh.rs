@@ -17,9 +17,7 @@ impl SshDeviceConfigBuilder for SshBuilder {
         resolved_name: &str,
     ) -> Result<NetmikoDeviceConfig, String> {
         let device = crate::mcp::fetch::fetch_base::find_device(app, resolved_name);
-        if resolved_name.parse::<std::net::IpAddr>().is_ok() && device.is_err() {
-            return Err("IP address input is not allowed. Please specify the registered device name.".to_string());
-        }
+
         let device = device?;
         
         Ok(NetmikoDeviceConfig {

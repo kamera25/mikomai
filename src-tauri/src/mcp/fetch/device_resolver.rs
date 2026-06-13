@@ -13,6 +13,12 @@ pub fn resolve_device_name_and_type(
                 .iter()
                 .find(|c| c.conn_type == ConnectionType::Console)
                 .map(|c| c.hostname.to_string())
+                .or_else(|| {
+                    conns
+                        .iter()
+                        .find(|c| !c.hostname.as_str().trim().is_empty())
+                        .map(|c| c.hostname.to_string())
+                })
         })
         .filter(|name| !name.trim().is_empty())
     {

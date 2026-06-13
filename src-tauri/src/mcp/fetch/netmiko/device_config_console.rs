@@ -24,6 +24,7 @@ impl ConsoleDeviceConfigBuilder for ConsoleBuilder {
             Some(ref p) if !p.trim().is_empty() && p != "None" => Some(p.clone()),
             _ => None,
         };
+        
         if port.is_none() {
             if let Ok(ports) = serialport::available_ports() {
                 if let Some(p) = ports.first() {
