@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UniversalArpTable",
+  "description": "Universal ARP table schema for mikomai and configuration management",
+  "type": "object",
+  "required": ["version", "metadata", "arp_table"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "enum": ["1.0"]
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["generated_at", "source_device", "os_type"],
+      "additionalProperties": false,
+      "properties": {
+        "generated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the ARP table was generated"
+        },
+        "source_device": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The hostname or device name from which the ARP table was retrieved"
+        },
+        "os_type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The operating system or device type, e.g., macos, windows, linux, cisco_ios, junos, routeros, etc."
+        }
+      }
+    },
+    "arp_table": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ip_address", "mac_address", "type", "interface"],
+        "additionalProperties": false,
+        "properties": {
+          "ip_address": {
+            "type": "string",
+            "anyOf": [
+              { "format": "ipv4" },
+              { "format": "ipv6" }
+            ],
+            "description": "The IP address of the ARP entry"
+          },
+          "mac_address": {
+            "type": "string",
+            "pattern": "^([0-9a-f]{2}:){5}[0-9a-f]{2}$",
+            "description": "The MAC address of the ARP entry in standard colon-separated lowercase format"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["dynamic", "static", "incomplete", "permanent"],
+            "description": "The type of the ARP entry (dynamic, static, incomplete, permanent)"
+          },
+          "interface": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The network interface associated with the ARP entry"
+          },
+          "age_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Optional age or time-to-live of the ARP entry in seconds"
+          }
+        }
+      }
+    }
+  }
+}
