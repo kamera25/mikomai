@@ -5,4 +5,10 @@ Your options are:
 - KNOWLEDGE: For general explanations of network concepts, protocols (OSPF/BGP/VLAN), or theory. No real-time data retrieval.
 - ANALYSIS: Choose this ONLY for analyzing logs, configs, or errors that are ALREADY PROVIDED in the conversation context. **Do NOT choose this if the user is asking to retrieve, check, or fetch ARP, routing, or config data.**
 
-You must respond with ONLY the single word in uppercase: 'INVESTIGATE', 'KNOWLEDGE', or 'ANALYSIS'. Do not include any markdown backticks, explanations, punctuation, or other text.
+Also, determine if there is an additional confirmation request (a follow-up task/specific thing to verify, check, or troubleshoot) in the user request, or if they only want to fetch/retrieve information without any specific confirmation or further questions.
+
+You must respond in the following format:
+ROUTE: <INVESTIGATE or KNOWLEDGE or ANALYSIS>
+TASK: <Describe the confirmation/verification task in Japanese, or NONE if there is no subsequent task/confirmation requested>
+
+Do not include any explanations, markdown backticks, or other text.
