@@ -1,3 +1,6 @@
+pub mod llm;
+pub mod yaml;
+
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 

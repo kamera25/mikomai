@@ -224,11 +224,11 @@ pub async fn ask_llm(
 }
 
 
-#[tauri::command]
-pub async fn ask_llm_background(
-    prompt: String, 
-    app: tauri::AppHandle,
-    state: tauri::State<'_, LlamaState>
+pub async fn ask_llm_internal(
+    prompt: &str,
+    system_prompt: &str,
+    app: &tauri::AppHandle,
+    state: &LlamaState,
 ) -> Result<String, String> {
     let _inference_guard = state.inference_lock.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
     let shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
@@ -239,7 +239,7 @@ pub async fn ask_llm_background(
 
     let formatted_prompt = format!(
         "<|turn>system\n{}<turn|>\n<|turn>user\n{}<turn|>\n<|turn>model\n",
-        SUMMARIZATION_SYSTEM_PROMPT,
+        system_prompt,
         prompt
     );
 
@@ -261,7 +261,7 @@ pub async fn ask_llm_background(
 
     let mut result_string = String::new();
     let mut n_cur = batch.n_tokens();
-    let settings = crate::settings::load_settings(app).unwrap_or_default();
+    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
     let mut sampler = LlamaSampler::chain_simple([
         LlamaSampler::penalties(64, settings.repetition_penalty, 0.0, 0.0),
         LlamaSampler::greedy(),
@@ -298,4 +298,13 @@ pub async fn ask_llm_background(
     }
 
     Ok(result_string)
+}
+
+#[tauri::command]
+pub async fn ask_llm_background(
+    prompt: String, 
+    app: tauri::AppHandle,
+    state: tauri::State<'_, LlamaState>
+) -> Result<String, String> {
+    ask_llm_internal(&prompt, SUMMARIZATION_SYSTEM_PROMPT, &app, &state).await
 }
