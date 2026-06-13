@@ -1,0 +1,22 @@
+[
+  {
+    "patterns": ["Cisco IOS", "cisco_ios", "cisco"],
+    "device_type": "cisco_ios"
+  },
+  {
+    "patterns": ["Juniper", "juniper", "junos"],
+    "device_type": "juniper_junos"
+  },
+  {
+    "patterns": ["Arista", "arista", "eos"],
+    "device_type": "arista_eos"
+  },
+  {
+    "patterns": ["Yamaha", "yamaha"],
+    "device_type": "yamaha"
+  },
+  {
+    "patterns": ["Furukawa", "Fitelnet", "furukawa", "fitelnet"],
+    "device_type": "furukawa_fitelnet"
+  }
+]

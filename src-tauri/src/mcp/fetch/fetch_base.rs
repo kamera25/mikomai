@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use crate::connections::{load_connections, get_mcp_hosts};
-use crate::network::{SidecarNetmikoWrapper, DeviceConfig, CommandResult, NetworkInterface};
+use crate::network::{DeviceConfig, CommandResult};
+use crate::mcp::fetch::netmiko_connection_wraper::NetmikoConnectionWrapper;
 use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -51,30 +52,61 @@ pub fn get_template_for_dtype<'a>(templates: &'a CommandTemplates, dtype: &str) 
         return templates.get(&dtype_lower);
     }
     
-    if dtype_lower.contains("cisco_ios") || dtype_lower.contains("cisco") {
-        return templates.get("cisco_ios");
+    let mapped = map_vendor_type(dtype);
+    templates.get(&mapped).or_else(|| templates.get("cisco_ios"))
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionType {
+    SSH,
+    Console,
+    Telnet,
+}
+
+impl ConnectionType {
+    pub fn from_str(s: &str) -> Option<Self> {
+        let s_lower = s.to_lowercase();
+        if s_lower.contains("console") || s_lower.contains("serial") {
+            Some(ConnectionType::Console)
+        } else if s_lower.contains("telnet") {
+            Some(ConnectionType::Telnet)
+        } else if s_lower.contains("ssh") {
+            Some(ConnectionType::SSH)
+        } else {
+            None
+        }
     }
-    if dtype_lower.contains("juniper") || dtype_lower.contains("junos") {
-        return templates.get("juniper_junos");
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct VendorPattern {
+    patterns: Vec<String>,
+    device_type: String,
+}
+
+fn map_vendor_type(conn_type: &str) -> String {
+    static MAPPINGS: std::sync::OnceLock<Vec<VendorPattern>> = std::sync::OnceLock::new();
+    let mappings = MAPPINGS.get_or_init(|| {
+        let json_str = include_str!("vender_mapping.json");
+        serde_json::from_str(json_str).expect("Failed to parse vender_mapping.json")
+    });
+
+    let conn_type_lower = conn_type.to_lowercase();
+    for mapping in mappings {
+        for pattern in &mapping.patterns {
+            if conn_type_lower.contains(&pattern.to_lowercase()) {
+                return mapping.device_type.clone();
+            }
+        }
     }
-    if dtype_lower.contains("arista") || dtype_lower.contains("eos") {
-        return templates.get("arista_eos");
-    }
-    if dtype_lower.contains("yamaha") {
-        return templates.get("yamaha");
-    }
-    if dtype_lower.contains("furukawa") || dtype_lower.contains("fitelnet") {
-        return templates.get("furukawa_fitelnet");
-    }
-    
-    templates.get("cisco_ios")
+    "cisco_ios".to_string()
 }
 
 pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) -> Result<DeviceConfig, String> {
     let mut resolved_name = device_name.to_string();
     if resolved_name.trim().is_empty() {
         if let Ok(connections) = load_connections(app.clone()) {
-            if let Some(conn) = connections.iter().find(|c| c.conn_type.contains("Console") || c.conn_type.contains("Serial")) {
+            if let Some(conn) = connections.iter().find(|c| ConnectionType::from_str(&c.conn_type) == Some(ConnectionType::Console)) {
                 resolved_name = conn.hostname.clone();
             }
         }
@@ -92,7 +124,7 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     }
 
     let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-    let console_port = match settings.console_port {
+    let _console_port = match settings.console_port {
         Some(ref p) if !p.trim().is_empty() && p != "None" => Some(p.clone()),
         _ => None,
     };
@@ -105,19 +137,20 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
         if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip == resolved_name) {
             let mut dtype = if let Some(dt) = &conn.device_type {
                 dt.clone()
-            } else if conn.conn_type.contains("Cisco IOS") { "cisco_ios".to_string() }
-                        else if conn.conn_type.contains("Juniper") { "juniper_junos".to_string() }
-                        else if conn.conn_type.contains("Arista") { "arista_eos".to_string() }
-                        else if conn.conn_type.contains("Yamaha") { "yamaha".to_string() }
-                        else if conn.conn_type.contains("Furukawa") || conn.conn_type.contains("Fitelnet") { "furukawa_fitelnet".to_string() }
-                        else { "cisco_ios".to_string() };
+            } else {
+                map_vendor_type(&conn.conn_type)
+            };
 
-            if conn.conn_type.contains("Console") || conn.conn_type.contains("Serial") {
-                is_console = true;
-            }
-
-            if conn.conn_type.contains("Telnet") && !dtype.ends_with("_telnet") {
-                dtype = format!("{}_telnet", dtype);
+            match ConnectionType::from_str(&conn.conn_type) {
+                Some(ConnectionType::Console) => {
+                    is_console = true;
+                }
+                Some(ConnectionType::Telnet) => {
+                    if !dtype.ends_with("_telnet") {
+                        dtype = format!("{}_telnet", dtype);
+                    }
+                }
+                _ => {}
             }
 
             let user = conn.username.clone().unwrap_or_else(|| "admin".to_string());
@@ -128,19 +161,18 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     if resolved_device.is_none() {
         if let Ok(mcp_hosts) = get_mcp_hosts() {
             if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip == resolved_name) {
-                let mut dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios".to_string() }
-                            else if mcp.device_type.contains("Juniper") { "juniper_junos".to_string() }
-                            else if mcp.device_type.contains("Arista") { "arista_eos".to_string() }
-                            else if mcp.device_type.contains("Yamaha") { "yamaha".to_string() }
-                            else if mcp.device_type.contains("Furukawa") || mcp.device_type.contains("Fitelnet") { "furukawa_fitelnet".to_string() }
-                            else { "cisco_ios".to_string() };
+                let mut dtype = map_vendor_type(&mcp.device_type);
 
-                if mcp.device_type.contains("Console") || mcp.device_type.contains("Serial") {
-                    is_console = true;
-                }
-
-                if mcp.device_type.contains("Telnet") && !dtype.ends_with("_telnet") {
-                    dtype = format!("{}_telnet", dtype);
+                match ConnectionType::from_str(&mcp.device_type) {
+                    Some(ConnectionType::Console) => {
+                        is_console = true;
+                    }
+                    Some(ConnectionType::Telnet) => {
+                        if !dtype.ends_with("_telnet") {
+                            dtype = format!("{}_telnet", dtype);
+                        }
+                    }
+                    _ => {}
                 }
 
                 resolved_device = Some((mcp.ip.clone(), mcp.username.clone(), None, None, dtype));
@@ -213,7 +245,7 @@ pub trait McpCommandFetcher {
         } else {
             println!("Fetching {} for registered device '{}' using command '{}'", self.get_log_prefix(), device_name, command);
         }
-        let wrapper = SidecarNetmikoWrapper::new(app);
+        let wrapper = NetmikoConnectionWrapper::new(app);
         match wrapper.execute_show(&target_device, &command).await {
             Ok(output) => {
                 let saved_path = if !output.trim().is_empty() {
@@ -235,5 +267,65 @@ pub trait McpCommandFetcher {
             }
             Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_command_template_serialization() {
+        let template = CommandTemplate {
+            fetch_config: "show run".to_string(),
+            fetch_route: "show ip route".to_string(),
+            fetch_bgp: "show ip bgp".to_string(),
+            fetch_arp: "show ip arp".to_string(),
+        };
+        let serialized = serde_json::to_string(&template).unwrap();
+        assert!(serialized.contains(r#""fetch_config":"show run""#));
+        assert!(serialized.contains(r#""fetch_route":"show ip route""#));
+        assert!(serialized.contains(r#""fetch_bgp":"show ip bgp""#));
+        assert!(serialized.contains(r#""fetch_arp":"show ip arp""#));
+    }
+
+    #[test]
+    fn test_default_templates_loading() {
+        let templates = get_default_templates();
+        assert!(templates.contains_key("cisco_ios"));
+        assert!(templates.contains_key("juniper_junos"));
+        assert!(templates.contains_key("arista_eos"));
+        assert!(templates.contains_key("yamaha"));
+        assert!(templates.contains_key("furukawa_fitelnet"));
+
+        let cisco = templates.get("cisco_ios").unwrap();
+        assert_eq!(cisco.fetch_config, "show running-config");
+        assert_eq!(cisco.fetch_arp, "show ip arp");
+    }
+
+    #[test]
+    fn test_get_template_for_dtype() {
+        let templates = get_default_templates();
+
+        // Exact match
+        let t1 = get_template_for_dtype(&templates, "cisco_ios").unwrap();
+        assert_eq!(t1.fetch_config, "show running-config");
+
+        // Substring and fallback checks
+        let t2 = get_template_for_dtype(&templates, "Cisco IOS Switch").unwrap();
+        assert_eq!(t2.fetch_config, "show running-config");
+
+        let t3 = get_template_for_dtype(&templates, "Juniper SRX").unwrap();
+        assert_eq!(t3.fetch_config, "show configuration");
+
+        let t4 = get_template_for_dtype(&templates, "Arista EOS").unwrap();
+        assert_eq!(t4.fetch_config, "show running-config");
+
+        let t_yamaha = get_template_for_dtype(&templates, "Yamaha RTX").unwrap();
+        assert_eq!(t_yamaha.fetch_config, "show config");
+
+        // Unknown fallback
+        let t_fallback = get_template_for_dtype(&templates, "unknown_vendor").unwrap();
+        assert_eq!(t_fallback.fetch_config, "show running-config");
     }
 }
