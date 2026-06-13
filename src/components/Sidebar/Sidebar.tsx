@@ -21,7 +21,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   history,
   activeSessionId,
   messages,
-  createNewFolder,
   createNewSession,
   toggleFolder,
   switchSession,
