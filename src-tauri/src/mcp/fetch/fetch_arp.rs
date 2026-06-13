@@ -31,7 +31,7 @@ pub async fn fetch_arp(
     }
     
     // 2. Resolve OS type for metadata
-    let target_device = match crate::mcp::fetch_base::resolve_device_config(&app, &name).await {
+    let target_device = match crate::mcp::fetch::fetch_base::resolve_device_config(&app, &name).await {
         Ok(cfg) => cfg,
         Err(e) => {
             println!("Warning: failed to resolve device config for metadata: {}", e);

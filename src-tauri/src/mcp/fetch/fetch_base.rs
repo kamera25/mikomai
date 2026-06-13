@@ -25,7 +25,7 @@ pub fn get_templates_path(app: &tauri::AppHandle) -> PathBuf {
 }
 
 pub fn get_default_templates() -> CommandTemplates {
-    const DEFAULT_JSON: &str = include_str!("default_templates.json");
+    const DEFAULT_JSON: &str = include_str!("../default_templates.json");
     serde_json::from_str(DEFAULT_JSON).expect("Failed to parse default_templates.json")
 }
 
