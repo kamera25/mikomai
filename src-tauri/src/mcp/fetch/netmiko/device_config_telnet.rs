@@ -1,6 +1,6 @@
 use crate::network::NetmikoDeviceConfig;
 
-pub fn resolve_telnet_device_config(
+pub fn resolve(
     host: String,
     username: String,
     password: Option<String>,

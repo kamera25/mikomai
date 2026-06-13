@@ -1,7 +1,7 @@
 use crate::network::NetmikoDeviceConfig;
 use crate::settings::load_settings;
 
-pub fn resolve_console_device_config(
+pub fn resolve(
     app: &tauri::AppHandle,
     host: String,
     username: String,

@@ -1,108 +1,11 @@
-use std::fs;
-use std::path::PathBuf;
-use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
 use crate::connections::{load_connections, get_mcp_hosts};
 use crate::network::{NetmikoDeviceConfig, CommandResult};
-use crate::mcp::fetch::netmiko_connection_wraper::NetmikoConnectionWrapper;
-use tauri::Manager;
+use crate::mcp::fetch::netmiko::connection_wraper::NetmikoConnectionWrapper;
+use super::ConnectionType;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CommandTemplate {
-    pub fetch_config: String,
-    pub fetch_route: String,
-    pub fetch_bgp: String,
-    pub fetch_arp: String,
-}
+pub use super::command_template::{CommandTemplate, CommandTemplates, load_templates, get_default_templates, get_templates_path, get_template_for_dtype, map_vendor_type};
 
-pub type CommandTemplates = HashMap<String, CommandTemplate>;
 
-pub fn get_templates_path(app: &tauri::AppHandle) -> PathBuf {
-    let path = app.path().app_data_dir().expect("Failed to get app data dir");
-    if !path.exists() {
-        let _ = fs::create_dir_all(&path);
-    }
-    path.join("command_templates.json")
-}
-
-pub fn get_default_templates() -> CommandTemplates {
-    const DEFAULT_JSON: &str = include_str!("../default_templates.json");
-    serde_json::from_str(DEFAULT_JSON).expect("Failed to parse default_templates.json")
-}
-
-pub fn load_templates(app: &tauri::AppHandle) -> CommandTemplates {
-    let path = get_templates_path(app);
-    if !path.exists() {
-        let defaults = get_default_templates();
-        if let Ok(data) = serde_json::to_string_pretty(&defaults) {
-            let _ = fs::write(&path, data);
-        }
-        defaults
-    } else {
-        match fs::read_to_string(&path) {
-            Ok(data) => serde_json::from_str(&data).unwrap_or_else(|_| get_default_templates()),
-            Err(_) => get_default_templates(),
-        }
-    }
-}
-
-pub fn get_template_for_dtype<'a>(templates: &'a CommandTemplates, dtype: &str) -> Option<&'a CommandTemplate> {
-    let dtype_lower = dtype.to_lowercase();
-    if templates.contains_key(&dtype_lower) {
-        return templates.get(&dtype_lower);
-    }
-    
-    let mapped = map_vendor_type(dtype);
-    templates.get(&mapped).or_else(|| templates.get("cisco_ios"))
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectionType {
-    SSH,
-    Console,
-    Telnet,
-}
-
-impl ConnectionType {
-    pub fn from_str(s: &str) -> Option<Self> {
-        let s_lower = s.to_lowercase();
-        if s_lower.contains("console") || s_lower.contains("serial") {
-            Some(ConnectionType::Console)
-        } else if s_lower.contains("telnet") {
-            Some(ConnectionType::Telnet)
-        } else if s_lower.contains("ssh") {
-            Some(ConnectionType::SSH)
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct VendorPattern {
-    patterns: Vec<String>,
-    device_type: String,
-}
-
-fn map_vendor_type(conn_type: &str) -> String {
-    static MAPPINGS: std::sync::OnceLock<Vec<VendorPattern>> = std::sync::OnceLock::new();
-    let mappings = MAPPINGS.get_or_init(|| {
-        let json_str = include_str!("vender_mapping.json");
-        serde_json::from_str(json_str).expect("Failed to parse vender_mapping.json")
-    });
-
-    let conn_type_lower = conn_type.to_lowercase();
-    for mapping in mappings {
-        for pattern in &mapping.patterns {
-            if conn_type_lower.contains(&pattern.to_lowercase()) {
-                return mapping.device_type.clone();
-            }
-        }
-    }
-
-    // フェイルオーバーとして「Cisco IOS」を選択
-    "cisco_ios".to_string()
-}
 
 pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) -> Result<NetmikoDeviceConfig, String> {
     let mut resolved_name = device_name.to_string();
@@ -171,7 +74,7 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
 
     match conn_type {
         ConnectionType::Console => {
-            super::netmiko_device_config_console::resolve_console_device_config(
+            super::netmiko::device_config_console::resolve(
                 app,
                 ip,
                 username,
@@ -181,7 +84,7 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
             )
         }
         ConnectionType::Telnet => {
-            super::netmiko_device_config_telnet::resolve_telnet_device_config(
+            super::netmiko::device_config_telnet::resolve(
                 ip,
                 username,
                 password,
@@ -190,7 +93,7 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
             )
         }
         ConnectionType::SSH => {
-            super::netmiko_device_config_ssh::resolve_ssh_device_config(
+            super::netmiko::device_config_ssh::resolve(
                 ip,
                 username,
                 password,
@@ -225,7 +128,7 @@ pub trait McpCommandFetcher {
         let wrapper = NetmikoConnectionWrapper::new(app);
         match wrapper.execute_show(&target_device, &command).await {
             Ok(output) => {
-                let saved_path = if !output.trim().is_empty() {
+                let saved_path: Option<String> = if !output.trim().is_empty() {
                     if let Ok(mut manager) = crate::snapshot::SnapshotManager::new() {
                         let data_type = self.get_log_prefix().to_lowercase();
                         if let Ok(path) = manager.save_artifact(device_name, &data_type, &output) {
