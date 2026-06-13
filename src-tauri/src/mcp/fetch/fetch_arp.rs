@@ -32,8 +32,24 @@ pub async fn fetch_arp(
 ) -> Result<CommandResult, String> {
     let name = device_name.or(deviceName).unwrap_or_default();
     
-    // 1. Fetch raw ARP table output
-    let command_res = ArpFetcher.fetch_device_info(&app, &name).await?;
+    // Resolve the device name using device_resolver
+    let (resolved_name, _) = super::device_resolver::resolve_device_name_and_type(&app, &name)?;
+    
+    // Resolve the registered host name from connections
+    let registered_name = {
+        if let Ok(connections) = crate::connections::load_connections(app.clone()) {
+            if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip.as_str() == resolved_name) {
+                conn.hostname.as_str().to_string()
+            } else {
+                resolved_name
+            }
+        } else {
+            resolved_name
+        }
+    };
+    
+    // 1. Fetch raw ARP table output using the registered host name
+    let command_res = ArpFetcher.fetch_device_info(&app, &registered_name).await?;
     
     if !command_res.success || command_res.output.trim().is_empty() {
         return Ok(command_res);
@@ -41,7 +57,7 @@ pub async fn fetch_arp(
     
     // 2. Spawn background task to resolve OS, convert to YAML via LLM, validate and save
     let app_clone = app.clone();
-    let name_clone = name.clone();
+    let name_clone = registered_name.clone();
     let raw_output_clone = command_res.output.clone();
     
     tauri::async_runtime::spawn(async move {
