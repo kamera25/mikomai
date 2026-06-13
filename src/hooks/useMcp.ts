@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Message, SummaryItem } from "../types";
@@ -19,6 +20,40 @@ export function useMcp({
   historyLimit,
   mcpTimeout = 30
 }: UseMcpProps) {
+
+  useEffect(() => {
+    let unlistenFn: (() => void) | undefined;
+    
+    const setupListener = async () => {
+      unlistenFn = await listen<{ deviceName: string; savedPath: string }>("arp-yaml-saved", (event) => {
+        const { deviceName, savedPath } = event.payload;
+        setMessages(prev => prev.map(msg => {
+          const msgDevice = msg.args?.deviceName || msg.args?.device_name;
+          if (
+            msg.event_type === "ToolExecution" &&
+            msg.tool_id === "fetch_arp" &&
+            msgDevice === deviceName &&
+            !msg.saved_path
+          ) {
+            return {
+              ...msg,
+              saved_path: savedPath
+            };
+          }
+          return msg;
+        }));
+      });
+    };
+    
+    setupListener();
+    
+    return () => {
+      if (unlistenFn) {
+        unlistenFn();
+      }
+    };
+  }, [setMessages]);
+
 
   const summarizeAndSave = async (content: string, taskId?: string) => {
     try {

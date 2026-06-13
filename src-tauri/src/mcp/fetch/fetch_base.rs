@@ -61,20 +61,6 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
     }
 }
 
-pub fn detect_connection_type(app: &tauri::AppHandle, resolved_name: &str) -> ConnectionType {
-    if let Ok(connections) = load_connections(app.clone()) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip.as_str() == resolved_name) {
-            return conn.conn_type;
-        }
-    }
-    if let Ok(mcp_hosts) = get_mcp_hosts() {
-        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip.as_str() == resolved_name) {
-            return ConnectionType::from_str(mcp.device_type.as_str()).unwrap_or(ConnectionType::SSH);
-        }
-    }
-    ConnectionType::SSH
-}
-
 pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) -> Result<NetmikoDeviceConfig, String> {
     let (resolved_name, conn_type) = super::device_resolver::resolve_device_name_and_type(app, device_name)?;
 
@@ -109,12 +95,16 @@ pub trait McpCommandFetcher {
             Some(t) => t,
             None => return Err(format!("Error: No command template found for device type '{}'.", target_device.device_type)),
         };
+
+        
         let command = self.get_command_from_template(template);
         if let Some(ref port) = target_device.console_port {
             println!("Fetching {} for registered device '{}' via console port '{}' using command '{}'", self.get_log_prefix(), device_name, port, command);
         } else {
             println!("Fetching {} for registered device '{}' using command '{}'", self.get_log_prefix(), device_name, command);
         }
+
+
         let wrapper = NetmikoConnectionWrapper::new(app);
         match wrapper.execute_show(&target_device, &command).await {
             Ok(output) => {
