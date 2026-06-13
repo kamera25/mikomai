@@ -58,13 +58,15 @@ const SYSTEM_PROMPT: &str = include_str!("system_prompt.txt");
 
 const SUMMARIZATION_SYSTEM_PROMPT: &str = include_str!("summarization_prompt.txt");
 
-fn prepare_prompt_tokens(
+fn prepare_prompt_tokens_with_limit(
     model: &LlamaModel,
     prompt: &str,
+    n_ctx: usize,
+    max_gen: usize,
 ) -> Result<Vec<llama_cpp_2::token::LlamaToken>, String> {
     let mut tokens = model.str_to_token(prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
 
-    let max_tokens = 2048 - 512;
+    let max_tokens = n_ctx.saturating_sub(max_gen);
     if tokens.len() > max_tokens {
         let to_remove = tokens.len() - max_tokens;
         let start_keep = 500;
@@ -76,6 +78,14 @@ fn prepare_prompt_tokens(
         }
     }
     Ok(tokens)
+}
+
+#[allow(dead_code)]
+fn prepare_prompt_tokens(
+    model: &LlamaModel,
+    prompt: &str,
+) -> Result<Vec<llama_cpp_2::token::LlamaToken>, String> {
+    prepare_prompt_tokens_with_limit(model, prompt, 2048, 512)
 }
 
 fn process_token_bytes(
@@ -243,14 +253,17 @@ pub async fn ask_llm_internal(
         prompt
     );
 
+    let n_ctx = 4096;
+    let max_gen = 2048;
+
     let mut ctx_params = LlamaContextParams::default();
-    ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(2048));
+    ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(n_ctx as u32));
 
     let mut ctx = shared.model.new_context(&state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
 
-    let tokens = prepare_prompt_tokens(&shared.model, &formatted_prompt)?;
+    let tokens = prepare_prompt_tokens_with_limit(&shared.model, &formatted_prompt, n_ctx, max_gen)?;
 
-    let mut batch = LlamaBatch::new(2048, 1);
+    let mut batch = LlamaBatch::new(n_ctx, 1);
     let last_index = tokens.len() - 1;
     for (i, token) in tokens.into_iter().enumerate() {
         let is_last = i == last_index;
@@ -270,7 +283,7 @@ pub async fn ask_llm_internal(
     let turn_end_tokens = shared.model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
     let turn_end_token = turn_end_tokens.first().copied();
 
-    let n_len = 500; // max length
+    let n_len = max_gen; // max length
 
     let mut bytes_accumulator = Vec::new();
 
