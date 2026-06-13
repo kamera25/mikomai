@@ -39,11 +39,11 @@ pub struct AgentContext<'a> {
 
 impl<'a> AgentManager<'a> {
     pub fn new(shared: &'a SharedModel) -> Result<Self> {
-        let router_ctx = AgentContext::new(shared, ROUTER_PROMPT, 0)?;
-        let investigate_worker_ctx = AgentContext::new(shared, INVESTIGATE_WORKER_PROMPT, 1)?;
-        let knowledge_worker_ctx = AgentContext::new(shared, KNOWLEDGE_WORKER_PROMPT, 2)?;
-        let analysis_worker_ctx = AgentContext::new(shared, ANALYSIS_WORKER_PROMPT, 3)?;
-        let rag_worker_ctx = AgentContext::new(shared, RAG_WORKER_PROMPT, 4)?;
+        let router_ctx = AgentContext::new(shared, ROUTER_PROMPT, 0, 2048)?;
+        let investigate_worker_ctx = AgentContext::new(shared, INVESTIGATE_WORKER_PROMPT, 1, 2048)?;
+        let knowledge_worker_ctx = AgentContext::new(shared, KNOWLEDGE_WORKER_PROMPT, 2, 2048)?;
+        let analysis_worker_ctx = AgentContext::new(shared, ANALYSIS_WORKER_PROMPT, 3, 8192)?;
+        let rag_worker_ctx = AgentContext::new(shared, RAG_WORKER_PROMPT, 4, 2048)?;
 
         Ok(Self {
             router_ctx,
@@ -56,7 +56,7 @@ impl<'a> AgentManager<'a> {
 }
 
 impl<'a> AgentContext<'a> {
-    pub fn new(shared: &'a SharedModel, system_prompt: &str, id: i32) -> Result<Self> {
+    pub fn new(shared: &'a SharedModel, system_prompt: &str, id: i32, max_new_tokens: u32) -> Result<Self> {
         let formatted_sys = format!("<|turn>system\n{}<turn|>\n", system_prompt);
         let mut tokens = shared.model.str_to_token(&formatted_sys, AddBos::Always)?;
 
@@ -67,7 +67,7 @@ impl<'a> AgentContext<'a> {
         }
 
         let tokens_len = tokens.len();
-        let n_ctx = (tokens_len + 2048).max(2048) as u32;
+        let n_ctx = (tokens_len + max_new_tokens as usize).max(2048) as u32;
 
         let mut ctx_params = LlamaContextParams::default();
         ctx_params = ctx_params.with_n_ctx(std::num::NonZeroU32::new(n_ctx));

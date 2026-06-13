@@ -176,7 +176,8 @@ pub async fn ask_llm(
                 let mut router_ctx = crate::llm::llm_manager::AgentContext::new(
                     shared,
                     crate::llm::llm_manager::ROUTER_PROMPT,
-                    0
+                    0,
+                    2048
                 ).map_err(|e| format!("Failed to create router context: {:?}", e))?;
                 println!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", original_query);
 
@@ -267,7 +268,8 @@ pub async fn ask_llm(
             let mut worker_ctx = crate::llm::llm_manager::AgentContext::new(
                 shared,
                 &full_worker_system_prompt,
-                1
+                1,
+                worker.max_new_tokens()
             ).map_err(|e| format!("Failed to create worker context: {:?}", e))?;
 
             let response = crate::llm::llm_manager::run_inference(

@@ -56,4 +56,8 @@ impl LlmWorker for AnalysisWorker {
             prompt_modified
         }
     }
+
+    fn max_new_tokens(&self) -> u32 {
+        8192
+    }
 }

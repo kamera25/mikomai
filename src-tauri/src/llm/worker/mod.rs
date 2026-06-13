@@ -43,6 +43,9 @@ pub trait LlmWorker {
         output: Option<String>,
         history_block: Option<String>,
     ) -> String;
+    fn max_new_tokens(&self) -> u32 {
+        2048
+    }
 }
 
 pub fn build_common_worker_prompt(
