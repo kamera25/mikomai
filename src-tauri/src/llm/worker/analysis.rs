@@ -1,22 +1,38 @@
 use crate::llm::worker::LlmWorker;
-use crate::llm::llm_manager::ANALYSIS_WORKER_PROMPT;
+use crate::llm::llm_manager::{ANALYSIS_WORKER_PROMPT, AgentContext};
+use llama_cpp_2::model::LlamaModel;
+use llama_cpp_2::llama_backend::LlamaBackend;
+use crate::llm::llm::SYSTEM_PROMPT;
 
-pub struct AnalysisWorker;
+pub struct AnalysisWorker {
+    pub ctx: AgentContext<'static>,
+}
+
+impl AnalysisWorker {
+    pub fn new(model: &LlamaModel, backend: &LlamaBackend) -> Result<Self, String> {
+        let full_system_prompt = format!(
+            "{}\n\n=== Current Role ===\nあなたは現在「Analyst (分析官)」として動作しています。以下の役割指示に特化してください:\n{}",
+            SYSTEM_PROMPT,
+            ANALYSIS_WORKER_PROMPT
+        );
+        let ctx = AgentContext::new(model, backend, &full_system_prompt, 3, 8192)
+            .map_err(|e| format!("Failed to create Analysis context: {:?}", e))?;
+        
+        let ctx_static = unsafe {
+            std::mem::transmute::<AgentContext<'_>, AgentContext<'static>>(ctx)
+        };
+        
+        Ok(Self { ctx: ctx_static })
+    }
+}
 
 impl LlmWorker for AnalysisWorker {
     fn agent_name(&self) -> &'static str {
         "Analyst (分析官)"
     }
 
-    fn system_prompt(&self, subsequent_task: Option<&str>) -> String {
-        let mut prompt = ANALYSIS_WORKER_PROMPT.to_string();
-        if let Some(task) = subsequent_task {
-            prompt.push_str(&format!(
-                "\n\n=== Subsequent Task / 後続のタスク ===\nユーザーは以下の確認・解決を望んでいます:\n{}\n必ずこの確認・解決のために必要な処理・回答を行ってください。かつ、設定の意図や現在の状態を含めて分かりやすく報告してください。",
-                task
-            ));
-        }
-        prompt
+    fn context_mut(&mut self) -> &mut AgentContext<'static> {
+        &mut self.ctx
     }
 
     fn build_prompt(
@@ -26,6 +42,7 @@ impl LlmWorker for AnalysisWorker {
         tool_label: Option<String>,
         output: Option<String>,
         history_block: Option<String>,
+        subsequent_task: Option<&str>,
     ) -> String {
         if let Some(p) = prompt {
             p
@@ -48,6 +65,13 @@ impl LlmWorker for AnalysisWorker {
                 "ユーザーの入力: \"{}\"\nに対する{}の実行結果は以下の通りです:\n\n{}\n\n",
                 user_msg, label, out_formatted
             );
+
+            if let Some(task) = subsequent_task {
+                prompt_modified.push_str(&format!(
+                    "\n\n=== Subsequent Task / 後続のタスク ===\nユーザーは以下の確認・解決を望んでいます:\n{}\n必ずこの確認・解決のために必要な処理・回答を行ってください。かつ、設定の意図や現在の状態を含めて分かりやすく報告してください。",
+                    task
+                ));
+            }
 
             prompt_modified.push_str(&format!(
                 "\n\n # 重要! \n\n既にツールは実行済みです。この回答内で再度同じコマンド、かつ同じ引数でツール呼び出し（JSONフォーマット）を出力することは絶対に避けてください。{}\n\n【結論】",

@@ -3,6 +3,9 @@ use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::model::LlamaModel;
 use crate::llm::llm_manager::SharedModel;
 use crate::llm::llm::{LlamaState, ModelState};
+use crate::llm::worker::{
+    Router, InvestigateWorker, KnowledgeWorker, AnalysisWorker, RagWorker
+};
 
 #[tauri::command]
 pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
@@ -27,9 +30,23 @@ pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<S
         }
     };
     
+    let model_arc = Arc::new(model);
+    
+    // Instantiate router and all worker contexts at model load time
+    let router = Router::new(&model_arc, &state.backend)?;
+    let investigate = InvestigateWorker::new(&model_arc, &state.backend)?;
+    let knowledge = KnowledgeWorker::new(&model_arc, &state.backend)?;
+    let analysis = AnalysisWorker::new(&model_arc, &state.backend)?;
+    let rag = RagWorker::new(&model_arc, &state.backend)?;
+    
     let mut shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
     *shared_lock = Some(SharedModel {
-        model: Arc::new(model),
+        router,
+        investigate,
+        knowledge,
+        analysis,
+        rag,
+        model: model_arc,
         backend: state.backend.clone(),
     });
     

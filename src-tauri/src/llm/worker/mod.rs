@@ -1,8 +1,10 @@
+pub mod router;
 pub mod rag;
 pub mod knowledge;
 pub mod analysis;
 pub mod investigate;
 
+pub use router::Router;
 pub use rag::RagWorker;
 pub use knowledge::KnowledgeWorker;
 pub use analysis::AnalysisWorker;
@@ -31,10 +33,9 @@ impl Route {
     }
 }
 
-
 pub trait LlmWorker {
     fn agent_name(&self) -> &'static str;
-    fn system_prompt(&self, subsequent_task: Option<&str>) -> String;
+    fn context_mut(&mut self) -> &mut crate::llm::llm_manager::AgentContext<'static>;
     fn build_prompt(
         &self,
         prompt: Option<String>,
@@ -42,9 +43,41 @@ pub trait LlmWorker {
         tool_label: Option<String>,
         output: Option<String>,
         history_block: Option<String>,
+        subsequent_task: Option<&str>,
     ) -> String;
     fn max_new_tokens(&self) -> u32 {
         2048
+    }
+
+    fn ask(
+        &mut self,
+        model: &llama_cpp_2::model::LlamaModel,
+        prompt: Option<String>,
+        user_message: Option<String>,
+        tool_label: Option<String>,
+        output: Option<String>,
+        history_block: Option<String>,
+        subsequent_task: Option<&str>,
+        window: Option<&tauri::Window>,
+        temperature: f32,
+        repetition_penalty: f32,
+    ) -> Result<String, String> {
+        let worker_prompt = self.build_prompt(
+            prompt,
+            user_message,
+            tool_label,
+            output,
+            history_block,
+            subsequent_task,
+        );
+        crate::llm::llm_manager::run_inference(
+            self.context_mut(),
+            model,
+            &worker_prompt,
+            window,
+            temperature,
+            repetition_penalty,
+        ).map_err(|e| format!("Worker inference failed: {:?}", e))
     }
 }
 
@@ -54,8 +87,9 @@ pub fn build_common_worker_prompt(
     tool_label: Option<String>,
     output: Option<String>,
     history_block: Option<String>,
+    subsequent_task: Option<&str>,
 ) -> String {
-    if let Some(p) = prompt {
+    let mut base = if let Some(p) = prompt {
         p
     } else {
         let user_msg = user_message.as_deref().unwrap_or_default();
@@ -75,5 +109,13 @@ pub fn build_common_worker_prompt(
             hist
         ));
         prompt_modified
+    };
+
+    if let Some(task) = subsequent_task {
+        base.push_str(&format!(
+            "\n\n=== Subsequent Task / 後続のタスク ===\nユーザーは以下の確認・解決を望んでいます:\n{}\n必ずこの確認・解決のために必要な処理・回答を行ってください。かつ、設定の意図や現在の状態を含めて分かりやすく報告してください。",
+            task
+        ));
     }
+    base
 }

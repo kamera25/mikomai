@@ -18,16 +18,16 @@ pub const ANALYSIS_WORKER_PROMPT: &str = include_str!("prompts/analysis_worker.t
 pub const RAG_WORKER_PROMPT: &str = include_str!("prompts/rag_worker.txt");
 
 pub struct SharedModel {
+    // Note: Due to lifetime transmutation to 'static, router and workers
+    // contain contexts that borrow LlamaModel. Thus, we declare router and
+    // workers BEFORE model and backend to ensure they are dropped first.
+    pub router: crate::llm::worker::Router,
+    pub investigate: crate::llm::worker::InvestigateWorker,
+    pub knowledge: crate::llm::worker::KnowledgeWorker,
+    pub analysis: crate::llm::worker::AnalysisWorker,
+    pub rag: crate::llm::worker::RagWorker,
     pub model: Arc<LlamaModel>,
     pub backend: Arc<LlamaBackend>,
-}
-
-pub struct AgentManager<'a> {
-    pub router_ctx: AgentContext<'a>,
-    pub investigate_worker_ctx: AgentContext<'a>,
-    pub knowledge_worker_ctx: AgentContext<'a>,
-    pub analysis_worker_ctx: AgentContext<'a>,
-    pub rag_worker_ctx: AgentContext<'a>,
 }
 
 pub struct AgentContext<'a> {
@@ -37,28 +37,19 @@ pub struct AgentContext<'a> {
     pub n_ctx: u32,
 }
 
-impl<'a> AgentManager<'a> {
-    pub fn new(shared: &'a SharedModel) -> Result<Self> {
-        let router_ctx = AgentContext::new(shared, ROUTER_PROMPT, 0, 2048)?;
-        let investigate_worker_ctx = AgentContext::new(shared, INVESTIGATE_WORKER_PROMPT, 1, 2048)?;
-        let knowledge_worker_ctx = AgentContext::new(shared, KNOWLEDGE_WORKER_PROMPT, 2, 2048)?;
-        let analysis_worker_ctx = AgentContext::new(shared, ANALYSIS_WORKER_PROMPT, 3, 8192)?;
-        let rag_worker_ctx = AgentContext::new(shared, RAG_WORKER_PROMPT, 4, 2048)?;
-
-        Ok(Self {
-            router_ctx,
-            investigate_worker_ctx,
-            knowledge_worker_ctx,
-            analysis_worker_ctx,
-            rag_worker_ctx,
-        })
-    }
-}
+unsafe impl<'a> Send for AgentContext<'a> {}
+unsafe impl<'a> Sync for AgentContext<'a> {}
 
 impl<'a> AgentContext<'a> {
-    pub fn new(shared: &'a SharedModel, system_prompt: &str, id: i32, max_new_tokens: u32) -> Result<Self> {
+    pub fn new(
+        model: &'a LlamaModel,
+        backend: &'a LlamaBackend,
+        system_prompt: &str,
+        id: i32,
+        max_new_tokens: u32,
+    ) -> Result<Self> {
         let formatted_sys = format!("<|turn>system\n{}<turn|>\n", system_prompt);
-        let mut tokens = shared.model.str_to_token(&formatted_sys, AddBos::Always)?;
+        let mut tokens = model.str_to_token(&formatted_sys, AddBos::Always)?;
 
         // Ensure system prompt doesn't exceed 8192 tokens to leave room for user query + generation
         let max_sys_tokens = 8192;
@@ -73,7 +64,7 @@ impl<'a> AgentContext<'a> {
         ctx_params = ctx_params.with_n_ctx(std::num::NonZeroU32::new(n_ctx));
         ctx_params = ctx_params.with_n_batch(n_ctx);
 
-        let mut ctx = shared.model.new_context(&shared.backend, ctx_params)?;
+        let mut ctx = model.new_context(backend, ctx_params)?;
 
         let mut batch = LlamaBatch::new(n_ctx as usize, 1);
         let last_index = tokens_len - 1;

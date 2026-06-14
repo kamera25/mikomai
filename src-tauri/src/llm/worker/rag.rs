@@ -1,15 +1,38 @@
 use crate::llm::worker::LlmWorker;
-use crate::llm::llm_manager::RAG_WORKER_PROMPT;
+use crate::llm::llm_manager::{RAG_WORKER_PROMPT, AgentContext};
+use llama_cpp_2::model::LlamaModel;
+use llama_cpp_2::llama_backend::LlamaBackend;
+use crate::llm::llm::SYSTEM_PROMPT;
 
-pub struct RagWorker;
+pub struct RagWorker {
+    pub ctx: AgentContext<'static>,
+}
+
+impl RagWorker {
+    pub fn new(model: &LlamaModel, backend: &LlamaBackend) -> Result<Self, String> {
+        let full_system_prompt = format!(
+            "{}\n\n=== Current Role ===\nあなたは現在「RAG Worker (RAG回答員)」として動作しています。以下の役割指示に特化してください:\n{}",
+            SYSTEM_PROMPT,
+            RAG_WORKER_PROMPT
+        );
+        let ctx = AgentContext::new(model, backend, &full_system_prompt, 4, 2048)
+            .map_err(|e| format!("Failed to create Rag context: {:?}", e))?;
+        
+        let ctx_static = unsafe {
+            std::mem::transmute::<AgentContext<'_>, AgentContext<'static>>(ctx)
+        };
+        
+        Ok(Self { ctx: ctx_static })
+    }
+}
 
 impl LlmWorker for RagWorker {
     fn agent_name(&self) -> &'static str {
         "RAG Worker (RAG回答員)"
     }
 
-    fn system_prompt(&self, _subsequent_task: Option<&str>) -> String {
-        RAG_WORKER_PROMPT.to_string()
+    fn context_mut(&mut self) -> &mut AgentContext<'static> {
+        &mut self.ctx
     }
 
     fn build_prompt(
@@ -19,6 +42,7 @@ impl LlmWorker for RagWorker {
         _tool_label: Option<String>,
         output: Option<String>,
         history_block: Option<String>,
+        _subsequent_task: Option<&str>,
     ) -> String {
         if let Some(p) = prompt {
             p

@@ -10,7 +10,7 @@ use tauri::Emitter;
 use tauri::Manager;
 use crate::llm::llm_manager::SharedModel;
 use std::sync::Arc;
-use crate::llm::worker::{LlmWorker, RagWorker, KnowledgeWorker, AnalysisWorker, InvestigateWorker, Route};
+use crate::llm::worker::{LlmWorker, Route};
 
 
 #[derive(serde::Serialize)]
@@ -56,7 +56,7 @@ pub fn get_model_status(state: tauri::State<'_, LlamaState>) -> ModelState {
     }
 }
 
-const SYSTEM_PROMPT: &str = include_str!("system_prompt.txt");
+pub const SYSTEM_PROMPT: &str = include_str!("system_prompt.txt");
 
 const SUMMARIZATION_SYSTEM_PROMPT: &str = include_str!("summarization_prompt.txt");
 
@@ -160,128 +160,76 @@ pub async fn ask_llm(
     let inference_result = {
         let run = || -> Result<String, String> {
             let _inference_guard = llama_state.inference_lock.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-            let shared_lock = llama_state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-            let shared = match &*shared_lock {
+            let mut shared_lock = llama_state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+            let shared = match &mut *shared_lock {
                 Some(s) => s,
                 None => return Err("Model not loaded. Please configure and load a model first.".to_string()),
             };
 
             let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
 
-            let mut subsequent_task: Option<String> = None;
-            let worker: Box<dyn LlmWorker> = if is_rag_query {
-                Box::new(RagWorker)
+            if is_rag_query {
+                let worker = &mut shared.rag;
+                let agent_name = worker.agent_name();
+                let _ = window.emit("agent-selected", agent_name);
+
+                worker.ask(
+                    &shared.model,
+                    prompt.clone(),
+                    user_message.clone(),
+                    tool_label.clone(),
+                    output.clone(),
+                    history_block.clone(),
+                    None,
+                    Some(&window),
+                    settings.temperature,
+                    settings.repetition_penalty,
+                )
             } else {
                 // Route classification
-                let mut router_ctx = crate::llm::llm_manager::AgentContext::new(
-                    shared,
-                    crate::llm::llm_manager::ROUTER_PROMPT,
-                    0,
-                    2048
-                ).map_err(|e| format!("Failed to create router context: {:?}", e))?;
                 println!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", original_query);
-
-                let route_output = crate::llm::llm_manager::run_inference(
-                    &mut router_ctx,
+                let route_result = shared.router.route(
                     &shared.model,
                     &original_query,
-                    None,
-                    0.0,
                     settings.repetition_penalty,
                 ).map_err(|e| format!("Routing failed: {:?}", e))?;
-                println!("--- ROUTER OUTPUT ---\n{}\n-------------------------", route_output);
-
-                let mut first_route = Route::Investigate;
-                let mut subsequent_route = Route::None;
-
-                for line in route_output.lines() {
-                    let trimmed = line.trim();
-                    let trimmed_upper = trimmed.to_uppercase();
-                    if trimmed_upper.starts_with("FIRST_ROUTE:") {
-                        let val = trimmed["FIRST_ROUTE:".len()..].trim();
-                        first_route = Route::from_str(val);
-                    } else if trimmed_upper.starts_with("SUBSEQUENT_ROUTE:") {
-                        let val = trimmed["SUBSEQUENT_ROUTE:".len()..].trim();
-                        subsequent_route = Route::from_str(val);
-                    } else if trimmed_upper.starts_with("TASK:") {
-                        let val = trimmed["TASK:".len()..].trim();
-                        let val_upper = val.to_uppercase();
-                        if val_upper != "NONE" && !val.is_empty() {
-                            subsequent_task = Some(val.to_string());
-                        }
-                    }
-                }
-
-                // Fallback for single-word outputs or older output style
-                if !route_output.to_uppercase().contains("FIRST_ROUTE:") {
-                    first_route = Route::from_str(&route_output);
-                }
-
-                if subsequent_route == Route::None && subsequent_task.is_some() {
-                    subsequent_route = Route::Analysis;
-                }
-
-                println!("Parsed FIRST_ROUTE: {:?}, SUBSEQUENT_ROUTE: {:?}, TASK: {:?}", first_route, subsequent_route, subsequent_task);
+                println!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
 
                 // Select which route is active depending on whether this is the first call or the second call
-                let active_route = if user_message.is_some() {
-                    if subsequent_route == Route::None {
+                let is_subsequent = user_message.is_some();
+                let active_route = if is_subsequent {
+                    if route_result.routes.len() > 1 {
+                        route_result.routes[1]
+                    } else {
                         return Ok("実行が完了しました。".to_string());
                     }
-                    subsequent_route
                 } else {
-                    first_route
+                    route_result.routes[0]
                 };
 
-                match active_route {
-                    Route::Knowledge => Box::new(KnowledgeWorker) as Box<dyn LlmWorker>,
-                    Route::Analysis => Box::new(AnalysisWorker) as Box<dyn LlmWorker>,
-                    _ => Box::new(InvestigateWorker) as Box<dyn LlmWorker>,
-                }
-            };
+                let worker: &mut dyn LlmWorker = match active_route {
+                    Route::Investigate => &mut shared.investigate,
+                    Route::Knowledge => &mut shared.knowledge,
+                    Route::Analysis => &mut shared.analysis,
+                    Route::None => return Ok("実行が完了しました。".to_string()),
+                };
 
-            let agent_name = worker.agent_name();
-            let selected_prompt = worker.system_prompt(subsequent_task.as_deref());
-            let worker_prompt = worker.build_prompt(
-                prompt.clone(),
-                user_message.clone(),
-                tool_label.clone(),
-                output.clone(),
-                history_block.clone(),
-            );
+                let agent_name = worker.agent_name();
+                let _ = window.emit("agent-selected", agent_name);
 
-            // Emit the event to the frontend
-            let _ = window.emit("agent-selected", agent_name);
-
-            // Combine base system rules with worker instructions to maintain features
-            let full_worker_system_prompt = format!(
-                "{}\n\n=== Current Role ===\nあなたは現在「{}」として動作しています。以下の役割指示に特化してください:\n{}",
-                SYSTEM_PROMPT,
-                agent_name,
-                selected_prompt
-            );
-
-            println!("--- WORKER SYSTEM PROMPT ---\n{}\n-------------------------", full_worker_system_prompt);
-            println!("--- WORKER INPUT PROMPT ---\n{}\n-------------------------", worker_prompt);
-
-            // 3. Initialize and run selected worker
-            let mut worker_ctx = crate::llm::llm_manager::AgentContext::new(
-                shared,
-                &full_worker_system_prompt,
-                1,
-                worker.max_new_tokens()
-            ).map_err(|e| format!("Failed to create worker context: {:?}", e))?;
-
-            let response = crate::llm::llm_manager::run_inference(
-                &mut worker_ctx,
-                &shared.model,
-                &worker_prompt,
-                Some(&window),
-                settings.temperature,
-                settings.repetition_penalty,
-            ).map_err(|e| format!("Worker inference failed: {:?}", e))?;
-
-            Ok(response)
+                worker.ask(
+                    &shared.model,
+                    prompt.clone(),
+                    user_message.clone(),
+                    tool_label.clone(),
+                    output.clone(),
+                    history_block.clone(),
+                    route_result.subsequent_task.as_deref(),
+                    Some(&window),
+                    settings.temperature,
+                    settings.repetition_penalty,
+                )
+            }
         };
         run()
     };
