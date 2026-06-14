@@ -3,6 +3,14 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_false() -> bool {
+    false
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -20,6 +28,14 @@ pub struct AppSettings {
     pub console_port: Option<String>,
     #[serde(default)]
     pub console_baud_rate: Option<u32>,
+    #[serde(default = "default_true")]
+    pub preload_investigate: bool,
+    #[serde(default = "default_false")]
+    pub preload_knowledge: bool,
+    #[serde(default = "default_false")]
+    pub preload_analysis: bool,
+    #[serde(default = "default_false")]
+    pub preload_rag: bool,
 }
 
 impl Default for AppSettings {
@@ -35,6 +51,10 @@ impl Default for AppSettings {
             ip_version: Some("auto".to_string()),
             console_port: None,
             console_baud_rate: Some(9600),
+            preload_investigate: true,
+            preload_knowledge: true,
+            preload_analysis: true,
+            preload_rag: true,
         }
     }
 }
@@ -90,6 +110,10 @@ mod tests {
         assert_eq!(settings.ip_version, Some("auto".to_string()));
         assert!(settings.console_port.is_none());
         assert_eq!(settings.console_baud_rate, Some(9600));
+        assert!(settings.preload_investigate);
+        assert!(settings.preload_knowledge);
+        assert!(settings.preload_analysis);
+        assert!(settings.preload_rag);
     }
 
     #[test]
@@ -105,6 +129,10 @@ mod tests {
             ip_version: Some("ipv6".to_string()),
             console_port: Some("/dev/ttyUSB0".to_string()),
             console_baud_rate: Some(115200),
+            preload_investigate: false,
+            preload_knowledge: true,
+            preload_analysis: false,
+            preload_rag: true,
         };
 
         let serialized = serde_json::to_string(&settings).unwrap();
@@ -118,5 +146,6 @@ mod tests {
         assert!(serialized.contains(r#""ipVersion":"ipv6""#));
         assert!(serialized.contains(r#""consolePort":"/dev/ttyUSB0""#));
         assert!(serialized.contains(r#""consoleBaudRate":115200"#));
+        assert!(serialized.contains(r#""preloadInvestigate":false"#));
     }
 }

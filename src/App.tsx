@@ -75,6 +75,10 @@ function App() {
   const [ipVersion, setIpVersion] = useState<string>(DEFAULT_IP_VERSION);
   const [consolePort, setConsolePort] = useState<string | null>(null);
   const [consoleBaudRate, setConsoleBaudRate] = useState<number>(9600);
+  const [preloadInvestigate, setPreloadInvestigate] = useState<boolean>(true);
+  const [preloadKnowledge, setPreloadKnowledge] = useState<boolean>(true);
+  const [preloadAnalysis, setPreloadAnalysis] = useState<boolean>(true);
+  const [preloadRag, setPreloadRag] = useState<boolean>(true);
   
   // Host Suggestion states
   const [availableHosts, setAvailableHosts] = useState<{hostname: string, ip: string}[]>([]);
@@ -93,6 +97,30 @@ function App() {
     }
   }, [activeSessionId, activeSession?.recentIps]);
 
+  const saveAllSettings = async (overrides: Partial<any>) => {
+    const payload = {
+      historyLimit: overrides.historyLimit !== undefined ? overrides.historyLimit : historyLimit,
+      temperature: overrides.temperature !== undefined ? overrides.temperature : temperature,
+      repetitionPenalty: overrides.repetitionPenalty !== undefined ? overrides.repetitionPenalty : repetitionPenalty,
+      modelPath: overrides.modelPath !== undefined ? overrides.modelPath : modelPath,
+      recentIps: overrides.recentIps !== undefined ? overrides.recentIps : recentIPs,
+      mcpTimeout: overrides.mcpTimeout !== undefined ? overrides.mcpTimeout : mcpTimeout,
+      dbPath: overrides.dbPath !== undefined ? overrides.dbPath : dbPath,
+      ipVersion: overrides.ipVersion !== undefined ? overrides.ipVersion : ipVersion,
+      consolePort: overrides.consolePort !== undefined ? overrides.consolePort : consolePort,
+      consoleBaudRate: overrides.consoleBaudRate !== undefined ? overrides.consoleBaudRate : consoleBaudRate,
+      preloadInvestigate: overrides.preloadInvestigate !== undefined ? overrides.preloadInvestigate : preloadInvestigate,
+      preloadKnowledge: overrides.preloadKnowledge !== undefined ? overrides.preloadKnowledge : preloadKnowledge,
+      preloadAnalysis: overrides.preloadAnalysis !== undefined ? overrides.preloadAnalysis : preloadAnalysis,
+      preloadRag: overrides.preloadRag !== undefined ? overrides.preloadRag : preloadRag,
+    };
+    try {
+      await invoke("save_settings", { settings: payload });
+    } catch (e) {
+      console.error("Failed to save settings:", e);
+    }
+  };
+
   const updateRecentHosts = useCallback((hosts: string[]) => {
     if (hosts.length === 0) return;
     
@@ -109,23 +137,10 @@ function App() {
       updateSessionRecentIps(activeSessionId, newRecent);
     }
     
-    invoke("save_settings", { 
-      settings: { 
-        historyLimit, 
-        temperature, 
-        repetitionPenalty, 
-        modelPath,
-        recentIps: newRecent,
-        mcpTimeout,
-        dbPath,
-        ipVersion,
-        consolePort,
-        consoleBaudRate
-      } 
-    }).catch(e => {
+    saveAllSettings({ recentIps: newRecent }).catch(e => {
       console.error("Failed to save recent hosts to settings:", e);
     });
-  }, [recentIPs, activeSessionId, updateSessionRecentIps, historyLimit, temperature, repetitionPenalty, modelPath, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate]);
+  }, [recentIPs, activeSessionId, updateSessionRecentIps, historyLimit, temperature, repetitionPenalty, modelPath, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate, preloadInvestigate, preloadKnowledge, preloadAnalysis, preloadRag]);
 
   const { handleMcpResponse } = useMcp({
     messages,
@@ -186,6 +201,24 @@ function App() {
         }
         if (settings && settings.consoleBaudRate !== undefined) {
           setConsoleBaudRate(settings.consoleBaudRate);
+        }
+        if (settings && settings.preloadRouter !== undefined) {
+          setPreloadRouter(settings.preloadRouter);
+        }
+        if (settings && settings.preloadInvestigate !== undefined) {
+          setPreloadInvestigate(settings.preloadInvestigate);
+        }
+        if (settings && settings.preloadKnowledge !== undefined) {
+          setPreloadKnowledge(settings.preloadKnowledge);
+        }
+        if (settings && settings.preloadAnalysis !== undefined) {
+          setPreloadAnalysis(settings.preloadAnalysis);
+        }
+        if (settings && settings.preloadRag !== undefined) {
+          setPreloadRag(settings.preloadRag);
+        }
+        if (settings && settings.preloadSummarization !== undefined) {
+          setPreloadSummarization(settings.preloadSummarization);
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -428,85 +461,69 @@ function App() {
             isOpen={isSettingsOpen} 
             onClose={() => setIsSettingsOpen(false)} 
             historyLimit={historyLimit}
-            onHistoryLimitChange={async (newLimit) => {
+            onHistoryLimitChange={(newLimit) => {
               setHistoryLimit(newLimit);
-              try {
-                await invoke("save_settings", { settings: { historyLimit: newLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate } });
-              } catch (e) {
-                console.error("Failed to save settings:", e);
-              }
+              saveAllSettings({ historyLimit: newLimit });
             }}
             temperature={temperature}
-            onTemperatureChange={async (newTemp) => {
+            onTemperatureChange={(newTemp) => {
               setTemperature(newTemp);
-              try {
-                await invoke("save_settings", { settings: { historyLimit, temperature: newTemp, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate } });
-              } catch (e) {
-                console.error("Failed to save settings:", e);
-              }
+              saveAllSettings({ temperature: newTemp });
             }}
             repetitionPenalty={repetitionPenalty}
-            onRepetitionPenaltyChange={async (newPenalty) => {
+            onRepetitionPenaltyChange={(newPenalty) => {
               setRepetitionPenalty(newPenalty);
-              try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty: newPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate } });
-              } catch (e) {
-                console.error("Failed to save settings:", e);
-              }
+              saveAllSettings({ repetitionPenalty: newPenalty });
             }}
             modelPath={modelPath}
-            onModelPathChange={async (newPath) => {
+            onModelPathChange={(newPath) => {
               setModelPath(newPath);
-              try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath: newPath, recentIps: recentIPs, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate } });
-              } catch (e) {
-                console.error("Failed to save settings:", e);
-              }
+              saveAllSettings({ modelPath: newPath });
             }}
             mcpTimeout={mcpTimeout}
-            onMcpTimeoutChange={async (newTimeout: number) => {
+            onMcpTimeoutChange={(newTimeout: number) => {
               setMcpTimeout(newTimeout);
-              try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout: newTimeout, dbPath, ipVersion, consolePort, consoleBaudRate } });
-              } catch (e) {
-                console.error("Failed to save settings:", e);
-              }
+              saveAllSettings({ mcpTimeout: newTimeout });
             }}
             dbPath={dbPath}
-            onDbPathChange={async (newDbPath) => {
+            onDbPathChange={(newDbPath) => {
               setDbPath(newDbPath);
-              try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath: newDbPath, ipVersion, consolePort, consoleBaudRate } });
-              } catch (e) {
-                console.error("Failed to save settings:", e);
-              }
+              saveAllSettings({ dbPath: newDbPath });
             }}
             ipVersion={ipVersion}
-            onIpVersionChange={async (newIpVersion) => {
+            onIpVersionChange={(newIpVersion) => {
               setIpVersion(newIpVersion);
-              try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath, ipVersion: newIpVersion, consolePort, consoleBaudRate } });
-              } catch (e) {
-                console.error("Failed to save settings:", e);
-              }
+              saveAllSettings({ ipVersion: newIpVersion });
             }}
             consolePort={consolePort}
-            onConsolePortChange={async (newPort) => {
+            onConsolePortChange={(newPort) => {
               setConsolePort(newPort);
-              try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath, ipVersion, consolePort: newPort, consoleBaudRate } });
-              } catch (e) {
-                console.error("Failed to save settings:", e);
-              }
+              saveAllSettings({ consolePort: newPort });
             }}
             consoleBaudRate={consoleBaudRate}
-            onConsoleBaudRateChange={async (newRate) => {
+            onConsoleBaudRateChange={(newRate) => {
               setConsoleBaudRate(newRate);
-              try {
-                await invoke("save_settings", { settings: { historyLimit, temperature, repetitionPenalty, modelPath, recentIps: recentIPs, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate: newRate } });
-              } catch (e) {
-                console.error("Failed to save settings:", e);
-              }
+              saveAllSettings({ consoleBaudRate: newRate });
+            }}
+            preloadInvestigate={preloadInvestigate}
+            onPreloadInvestigateChange={(val) => {
+              setPreloadInvestigate(val);
+              saveAllSettings({ preloadInvestigate: val });
+            }}
+            preloadKnowledge={preloadKnowledge}
+            onPreloadKnowledgeChange={(val) => {
+              setPreloadKnowledge(val);
+              saveAllSettings({ preloadKnowledge: val });
+            }}
+            preloadAnalysis={preloadAnalysis}
+            onPreloadAnalysisChange={(val) => {
+              setPreloadAnalysis(val);
+              saveAllSettings({ preloadAnalysis: val });
+            }}
+            preloadRag={preloadRag}
+            onPreloadRagChange={(val) => {
+              setPreloadRag(val);
+              saveAllSettings({ preloadRag: val });
             }}
           />
         ) : isConnectionOpen ? (

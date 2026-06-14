@@ -25,6 +25,14 @@ interface SettingsPanelProps {
   onConsolePortChange: (port: string) => void;
   consoleBaudRate: number;
   onConsoleBaudRateChange: (rate: number) => void;
+  preloadInvestigate: boolean;
+  onPreloadInvestigateChange: (val: boolean) => void;
+  preloadKnowledge: boolean;
+  onPreloadKnowledgeChange: (val: boolean) => void;
+  preloadAnalysis: boolean;
+  onPreloadAnalysisChange: (val: boolean) => void;
+  preloadRag: boolean;
+  onPreloadRagChange: (val: boolean) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
@@ -47,7 +55,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   consolePort,
   onConsolePortChange,
   consoleBaudRate,
-  onConsoleBaudRateChange
+  onConsoleBaudRateChange,
+  preloadInvestigate,
+  onPreloadInvestigateChange,
+  preloadKnowledge,
+  onPreloadKnowledgeChange,
+  preloadAnalysis,
+  onPreloadAnalysisChange,
+  preloadRag,
+  onPreloadRagChange
 }) => {
   const [repoPath, setRepoPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E4B-it-Q4_K_M.gguf");
@@ -297,6 +313,30 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="form-control">
               <label>ファイル名 (GGUF)</label>
               <input type="text" value={modelFilename} onChange={e => setModelFilename(e.target.value)} placeholder="google_gemma-4-E2B-it-Q4_K_M.gguf" />
+            </div>
+            <div className="form-control">
+              <label>起動時・モデル読込時のKVキャッシュ プリロード設定</label>
+              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '8px' }}>
+                チェックを外したワーカーは、初回呼出時（遅延読込）にキャッシュを生成するため、起動時のメモリ消費量と起動時間を削減できます。
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                  <input type="checkbox" checked={preloadInvestigate} onChange={(e) => onPreloadInvestigateChange(e.target.checked)} />
+                  Investigator (調査員)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                  <input type="checkbox" checked={preloadKnowledge} onChange={(e) => onPreloadKnowledgeChange(e.target.checked)} />
+                  Knowledge (知識専門家)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                  <input type="checkbox" checked={preloadAnalysis} onChange={(e) => onPreloadAnalysisChange(e.target.checked)} />
+                  Analyst (分析官)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                  <input type="checkbox" checked={preloadRag} onChange={(e) => onPreloadRagChange(e.target.checked)} />
+                  RAG Worker (RAG回答員)
+                </label>
+              </div>
             </div>
             <div className="form-control">
               <div style={{ display: 'flex', gap: '8px' }}>

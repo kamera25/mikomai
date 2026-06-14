@@ -34,6 +34,14 @@ impl LlmWorker for SummarizationWorker {
         &mut self.ctx
     }
 
+    fn ensure_initialized(
+        &mut self,
+        _model: &LlamaModel,
+        _backend: &LlamaBackend,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
     fn build_prompt(
         &self,
         prompt: Option<String>,

@@ -38,6 +38,11 @@ impl Route {
 pub trait LlmWorker {
     fn agent_name(&self) -> &'static str;
     fn context_mut(&mut self) -> &mut crate::llm::llm_manager::AgentContext<'static>;
+    fn ensure_initialized(
+        &mut self,
+        model: &llama_cpp_2::model::LlamaModel,
+        backend: &llama_cpp_2::llama_backend::LlamaBackend,
+    ) -> Result<(), String>;
     fn build_prompt(
         &self,
         prompt: Option<String>,
@@ -55,6 +60,7 @@ pub trait LlmWorker {
     fn ask(
         &mut self,
         model: &llama_cpp_2::model::LlamaModel,
+        backend: &llama_cpp_2::llama_backend::LlamaBackend,
         prompt: Option<String>,
         user_message: Option<String>,
         tool_label: Option<String>,
@@ -65,6 +71,7 @@ pub trait LlmWorker {
         temperature: f32,
         repetition_penalty: f32,
     ) -> Result<String, String> {
+        self.ensure_initialized(model, backend)?;
         let worker_prompt = self.build_prompt(
             prompt,
             user_message,

@@ -8,7 +8,11 @@ use crate::llm::worker::{
 };
 
 #[tauri::command]
-pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<String, String> {
+pub fn load_model(
+    app: tauri::AppHandle,
+    path: String,
+    state: tauri::State<'_, LlamaState>,
+) -> Result<String, String> {
     {
         let mut status_lock = state.status.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
         *status_lock = ModelState::Loading;
@@ -32,12 +36,14 @@ pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<S
     
     let model_arc = Arc::new(model);
     
+    let settings = crate::settings::load_settings(app).unwrap_or_default();
+
     // Instantiate router and all worker contexts at model load time
     let router = Router::new(&model_arc, &state.backend)?;
-    let investigate = InvestigateWorker::new(&model_arc, &state.backend)?;
-    let knowledge = KnowledgeWorker::new(&model_arc, &state.backend)?;
-    let analysis = AnalysisWorker::new(&model_arc, &state.backend)?;
-    let rag = RagWorker::new(&model_arc, &state.backend)?;
+    let investigate = InvestigateWorker::new(&model_arc, &state.backend, settings.preload_investigate)?;
+    let knowledge = KnowledgeWorker::new(&model_arc, &state.backend, settings.preload_knowledge)?;
+    let analysis = AnalysisWorker::new(&model_arc, &state.backend, settings.preload_analysis)?;
+    let rag = RagWorker::new(&model_arc, &state.backend, settings.preload_rag)?;
     let summarization = SummarizationWorker::new(&model_arc, &state.backend)?;
     
     let mut shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;

@@ -173,6 +173,7 @@ pub async fn ask_llm(
 
                 worker.ask(
                     &shared.model,
+                    &shared.backend,
                     prompt.clone(),
                     user_message.clone(),
                     tool_label.clone(),
@@ -217,6 +218,7 @@ pub async fn ask_llm(
 
                 worker.ask(
                     &shared.model,
+                    &shared.backend,
                     prompt.clone(),
                     user_message.clone(),
                     tool_label.clone(),
@@ -339,6 +341,7 @@ pub async fn ask_llm_background(
 
         worker.ask(
             &shared.model,
+            &shared.backend,
             Some(prompt),
             None,
             None,
