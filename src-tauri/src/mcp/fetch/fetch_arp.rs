@@ -65,7 +65,7 @@ pub async fn fetch_arp(
         let target_device = match crate::mcp::fetch::fetch_base::resolve_device_config(&app_clone, &name_clone).await {
             Ok(cfg) => cfg,
             Err(e) => {
-                println!("Warning: failed to resolve device config for metadata in background: {}", e);
+                log::warn!("Warning: failed to resolve device config for metadata in background: {}", e);
                 return;
             }
         };
@@ -77,7 +77,7 @@ pub async fn fetch_arp(
         let validated_yaml = match crate::mcp::arp::llm::convert_raw_to_yaml(&app_clone, &llama_state, &raw_output_clone, &name_clone, &os_type).await {
             Ok(yaml) => yaml,
             Err(e) => {
-                println!("LLM ARP conversion/validation failed in background: {}", e);
+                log::error!("LLM ARP conversion/validation failed in background: {}", e);
                 return;
             }
         };
@@ -85,17 +85,17 @@ pub async fn fetch_arp(
         // Save YAML log
         match crate::mcp::arp::yaml::save_validated_yaml(&name_clone, &validated_yaml) {
             Ok(saved_path) => {
-                println!("Background YAML normalization succeeded, saved to: {}", saved_path);
+                log::info!("Background YAML normalization succeeded, saved to: {}", saved_path);
                 let payload = ArpYamlSavedPayload {
                     device_name: name_clone,
                     saved_path,
                 };
                 if let Err(e) = app_clone.emit("arp-yaml-saved", payload) {
-                    println!("Error emitting arp-yaml-saved event: {}", e);
+                    log::error!("Error emitting arp-yaml-saved event: {}", e);
                 }
             }
             Err(e) => {
-                println!("Warning: failed to save validated YAML artifact in background: {}", e);
+                log::warn!("Warning: failed to save validated YAML artifact in background: {}", e);
             }
         }
     });

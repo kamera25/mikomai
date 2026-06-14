@@ -55,11 +55,11 @@ Strict Rules:
     let max_retries = 3;
     
     while retry_count <= max_retries {
-        println!("Prompting LLM to convert route table (Attempt {})...", retry_count + 1);
+        log::info!("Prompting LLM to convert route table (Attempt {})...", retry_count + 1);
         let llm_res = match crate::llm::llm::ask_llm_internal(&current_user_prompt, &system_prompt, app, state).await {
             Ok(res) => res,
             Err(e) => {
-                println!("LLM call failed: {}", e);
+                log::error!("LLM call failed: {}", e);
                 return Err(format!("LLM inference failed: {}", e));
             }
         };
@@ -71,11 +71,11 @@ Strict Rules:
             Ok(parsed) => {
                 match parsed.validate() {
                     Ok(_) => {
-                        println!("Route table successfully parsed and validated!");
+                        log::info!("Route table successfully parsed and validated!");
                         return Ok(clean_yaml);
                     }
                     Err(validation_errors) => {
-                        println!("Validation failed: {:?}", validation_errors);
+                        log::warn!("Validation failed: {:?}", validation_errors);
                         if retry_count < max_retries {
                             retry_count += 1;
                             current_user_prompt = format!(
@@ -89,7 +89,7 @@ Strict Rules:
                 }
             }
             Err(parse_err) => {
-                println!("YAML parsing failed: {}", parse_err);
+                log::warn!("YAML parsing failed: {}", parse_err);
                 if retry_count < max_retries {
                     retry_count += 1;
                     current_user_prompt = format!(

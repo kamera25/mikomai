@@ -54,7 +54,7 @@ pub async fn self_network_route() -> Result<RouteResult, String> {
                         saved_path = Some(path);
                     }
                     Err(e) => {
-                        println!("Failed to save local route table yaml: {}", e);
+                        log::error!("Failed to save local route table yaml: {}", e);
                     }
                 }
             }

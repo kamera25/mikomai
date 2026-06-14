@@ -86,10 +86,10 @@ pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, String
                     Ok(decrypted) => {
                         match Password::try_from(decrypted) {
                             Ok(p) => conn.password = Some(p),
-                            Err(e) => eprintln!("Failed to validate decrypted password for connection {}: {}", conn.id, e),
+                            Err(e) => log::error!("Failed to validate decrypted password for connection {}: {}", conn.id, e),
                         }
                     }
-                    Err(e) => eprintln!("Failed to decrypt password for connection {}: {}", conn.id, e),
+                    Err(e) => log::error!("Failed to decrypt password for connection {}: {}", conn.id, e),
                 }
             }
         }
@@ -99,10 +99,10 @@ pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, String
                     Ok(decrypted) => {
                         match EnablePassword::try_from(decrypted) {
                             Ok(ep) => conn.enable_password = Some(ep),
-                            Err(e) => eprintln!("Failed to validate decrypted enable password for connection {}: {}", conn.id, e),
+                            Err(e) => log::error!("Failed to validate decrypted enable password for connection {}: {}", conn.id, e),
                         }
                     }
-                    Err(e) => eprintln!("Failed to decrypt enable password for connection {}: {}", conn.id, e),
+                    Err(e) => log::error!("Failed to decrypt enable password for connection {}: {}", conn.id, e),
                 }
             }
         }

@@ -148,7 +148,7 @@ pub async fn ask_llm(
         "".to_string()
     };
 
-    println!("Received original query: '{}'", original_query);
+    log::info!("Received original query: '{}'", original_query);
 
     if !is_rag_query && crate::llm::greeting::is_greeting(&original_query) {
         return Ok(crate::llm::greeting::stream_self_introduction(&window).await);
@@ -186,13 +186,13 @@ pub async fn ask_llm(
                 )
             } else {
                 // Route classification
-                println!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", original_query);
+                log::info!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", original_query);
                 let route_result = shared.router.route(
                     &shared.model,
                     &original_query,
                     settings.repetition_penalty,
                 ).map_err(|e| format!("Routing failed: {:?}", e))?;
-                println!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
+                log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
 
                 // Select which route is active depending on whether this is the first call or the second call
                 let is_subsequent = user_message.is_some();
@@ -234,8 +234,14 @@ pub async fn ask_llm(
         run()
     };
     match inference_result {
-        Ok(response) => Ok(response),
-        Err(e) => Err(e),
+        Ok(response) => {
+            log::info!("LLM Prompt: {:?}\nUser Message: {:?}\nResponse: {}", prompt, user_message, response);
+            Ok(response)
+        }
+        Err(e) => {
+            log::error!("LLM Prompt: {:?}\nUser Message: {:?}\nError: {}", prompt, user_message, e);
+            Err(e)
+        }
     }
 }
 
@@ -259,7 +265,7 @@ pub async fn ask_llm_internal(
         prompt
     );
 
-    println!("--- INTERNAL LLM PROMPT ---\n{}\n-------------------------", formatted_prompt);
+    log::info!("--- INTERNAL LLM PROMPT ---\n{}\n-------------------------", formatted_prompt);
 
     let n_ctx = 4096;
     let max_gen = 2048;
@@ -319,6 +325,7 @@ pub async fn ask_llm_internal(
         result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
     }
 
+    log::info!("--- INTERNAL LLM RESPONSE ---\n{}\n-------------------------", result_string);
     Ok(result_string)
 }
 
@@ -339,7 +346,8 @@ pub async fn ask_llm_background(
         let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
         let worker = &mut shared.summarization;
 
-        worker.ask(
+        log::info!("LLM Background Prompt: {}", prompt);
+        let res = worker.ask(
             &shared.model,
             &shared.backend,
             Some(prompt),
@@ -351,7 +359,12 @@ pub async fn ask_llm_background(
             None,
             settings.temperature,
             settings.repetition_penalty,
-        )
+        );
+        match &res {
+            Ok(out) => log::info!("LLM Background Response: {}", out),
+            Err(e) => log::error!("LLM Background Error: {}", e),
+        }
+        res
     };
     run()
 }

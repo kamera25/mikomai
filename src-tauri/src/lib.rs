@@ -8,6 +8,7 @@ pub mod scheduled_tasks;
 pub(crate) mod settings;
 pub(crate) mod crypto;
 pub mod schema;
+mod logger;
 
 use tauri::Manager;
 
@@ -19,8 +20,10 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    logger::init().expect("Failed to initialize logger");
     let llama_state = llm::LlamaState::new().expect("Failed to initialize Llama backend");
     let rag_state = mcp::rag::RagState::new();
+
 
     tauri::Builder::default()
         .setup(|app| {
@@ -86,7 +89,7 @@ pub fn run() {
                 let state = app_handle.state::<llm::LlamaState>();
                 let mut shared = state.shared.lock().unwrap();
                 *shared = None;
-                println!("Llama model cleared on exit.");
+                log::info!("Llama model cleared on exit.");
             }
             _ => {}
         });

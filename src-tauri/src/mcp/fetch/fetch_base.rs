@@ -99,9 +99,9 @@ pub trait McpCommandFetcher {
         
         let command = self.get_command_from_template(template);
         if let Some(ref port) = target_device.console_port {
-            println!("Fetching {} for registered device '{}' via console port '{}' using command '{}'", self.get_log_prefix(), device_name, port, command);
+            log::info!("Fetching {} for registered device '{}' via console port '{}' using command '{}'", self.get_log_prefix(), device_name, port, command);
         } else {
-            println!("Fetching {} for registered device '{}' using command '{}'", self.get_log_prefix(), device_name, command);
+            log::info!("Fetching {} for registered device '{}' using command '{}'", self.get_log_prefix(), device_name, command);
         }
 
 

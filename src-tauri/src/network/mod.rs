@@ -191,9 +191,9 @@ pub async fn network_show(
         .await
         .map_err(|e| e.to_string())??;
         target_device.host = ip.to_string();
-        println!("Executing read-only command on {}: {}", target_device.host, command);
+        log::info!("Executing read-only command on {}: {}", target_device.host, command);
     } else {
-        println!("Executing read-only command via console port {}: {}", target_device.console_port.as_ref().unwrap(), command);
+        log::info!("Executing read-only command via console port {}: {}", target_device.console_port.as_ref().unwrap(), command);
     }
 
     let wrapper = SidecarNetmikoWrapper::new(&app);
@@ -268,9 +268,9 @@ pub async fn network_config(
         .await
         .map_err(|e| e.to_string())??;
         target_device.host = ip.to_string();
-        println!("Executing WRITE command on {}: {:?}", target_device.host, commands);
+        log::info!("Executing WRITE command on {}: {:?}", target_device.host, commands);
     } else {
-        println!("Executing WRITE command via console port {:?}: {:?}", target_device.console_port.as_ref().unwrap(), commands);
+        log::info!("Executing WRITE command via console port {:?}: {:?}", target_device.console_port.as_ref().unwrap(), commands);
     }
 
     let wrapper = SidecarNetmikoWrapper::new(&app);
@@ -286,7 +286,7 @@ pub struct McpState {
 
 #[tauri::command]
 pub async fn start_ns_mcp_server(app: AppHandle, state: State<'_, McpState>) -> Result<String, String> {
-    println!("Starting Network Sketcher MCP Server...");
+    log::info!("Starting Network Sketcher MCP Server...");
 
     let mut process_lock = state.process.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
     if process_lock.is_some() {
@@ -311,15 +311,15 @@ pub async fn start_ns_mcp_server(app: AppHandle, state: State<'_, McpState>) -> 
                 }
                 tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
                     let err = String::from_utf8_lossy(&line).to_string();
-                    eprintln!("[MCP Server stderr] {}", err);
+                    log::error!("[MCP Server stderr] {}", err);
                     let _ = app_handle.emit("mcp-error", err);
                 }
                 tauri_plugin_shell::process::CommandEvent::Error(err) => {
-                    eprintln!("[MCP Server error] {}", err);
+                    log::error!("[MCP Server error] {}", err);
                     let _ = app_handle.emit("mcp-error", err.to_string());
                 }
                 tauri_plugin_shell::process::CommandEvent::Terminated(payload) => {
-                    println!("[MCP Server terminated] code: {:?}", payload.code);
+                    log::info!("[MCP Server terminated] code: {:?}", payload.code);
                     let _ = app_handle.emit("mcp-terminated", payload.code);
                     // We ideally want to clear the state here, but we can't easily access it
                 }

@@ -5293,6 +5293,7 @@ dependencies = [
  "hf-hub 0.5.0",
  "lancedb",
  "llama-cpp-2",
+ "log",
  "mcp-client",
  "mcp-core",
  "mcp-server",

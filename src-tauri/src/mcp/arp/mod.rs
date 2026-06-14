@@ -57,7 +57,7 @@ pub async fn self_network_arp() -> Result<ArpResult, String> {
                         saved_path = Some(path);
                     }
                     Err(e) => {
-                        println!("Failed to save local ARP table yaml: {}", e);
+                        log::error!("Failed to save local ARP table yaml: {}", e);
                     }
                 }
             }
