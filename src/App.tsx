@@ -6,7 +6,7 @@ import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
 import { ScheduledTasksPanel } from "./components/ScheduledTasksPanel";
 import "./App.css";
 
-import { SummaryItem, Connection, McpHost } from './types';
+import { SummaryItem, Connection, McpHost, SystemSettings } from './types';
 import { Chat } from "./components/Chat/Chat";
 import { ChatInput } from "./components/ChatInput/ChatInput";
 import { Sidebar } from "./components/Sidebar/Sidebar";
@@ -174,7 +174,7 @@ function App() {
       }
 
       try {
-        const settings: any = await invoke("load_settings");
+        const settings = await invoke<SystemSettings>("load_settings");
         if (settings && settings.historyLimit !== undefined) {
           setHistoryLimit(settings.historyLimit);
         }

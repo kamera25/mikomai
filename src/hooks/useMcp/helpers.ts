@@ -32,67 +32,92 @@ export function extractJsonBlocks(text: string): string[] {
   return blocks;
 }
 
+function keysToCamelCase(obj: Record<string, any>): Record<string, any> {
+  return Object.keys(obj).reduce((acc, key) => {
+    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    acc[camelKey] = obj[key];
+    return acc;
+  }, {} as Record<string, any>);
+}
+
+let cachePromise: Promise<[any[], any[]]> | null = null;
+let cacheTime = 0;
+const CACHE_DURATION = 30000; // 30 seconds
+
+async function fetchConnectionsAndHosts(): Promise<[any[], any[]]> {
+  const now = Date.now();
+  if (cachePromise && now - cacheTime < CACHE_DURATION) {
+    return cachePromise;
+  }
+
+  cacheTime = now;
+  cachePromise = Promise.all([
+    invoke<any[]>("load_connections"),
+    invoke<any[]>("get_mcp_hosts").catch(() => [])
+  ]).catch((err) => {
+    cachePromise = null;
+    cacheTime = 0;
+    throw err;
+  });
+
+  return cachePromise;
+}
+
+async function resolveDeviceFromConnections(userMessage: string): Promise<string | undefined> {
+  try {
+    const [connections, mcpHosts] = await fetchConnectionsAndHosts();
+    const lowerMessage = userMessage.toLowerCase();
+    const matchCondition = (c: any) =>
+      (c.hostname && lowerMessage.includes(c.hostname.toLowerCase())) ||
+      (c.ip && lowerMessage.includes(c.ip));
+
+    const matched = connections?.find(matchCondition) || mcpHosts?.find(matchCondition);
+    if (matched) {
+      console.log("[useMcp] Auto-extracted device name from user message:", matched.hostname);
+      return matched.hostname;
+    }
+  } catch (err) {
+    console.error("[useMcp] Failed to resolve connections for auto-extraction:", err);
+  }
+  return undefined;
+}
+
+
 export async function normalizeArgs(toolId: string, userMessage: string, args: any, recentIPs?: string[]): Promise<any> {
-  const processedArgs: any = args && typeof args === "object" && !Array.isArray(args)
-    ? Object.keys(args).reduce((acc, key) => {
-        const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-        acc[camelKey] = args[key];
-        return acc;
-      }, {} as any)
-    : args;
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    return args;
+  }
 
-  // Robust normalization for arguments
-  if (processedArgs && typeof processedArgs === "object") {
-    if (["fetch_config", "fetch_routing", "fetch_arp"].includes(toolId)) {
-      let deviceVal = processedArgs.deviceName || processedArgs.device_name || processedArgs.device || processedArgs.host;
-      if (!deviceVal) {
-        try {
-          const [connections, mcpHosts] = await Promise.all([
-            invoke<any[]>("load_connections"),
-            invoke<any[]>("get_mcp_hosts").catch(() => [])
-          ]);
-          const lowerMessage = userMessage.toLowerCase();
-          let matched = connections?.find(c => 
-            (c.hostname && lowerMessage.includes(c.hostname.toLowerCase())) ||
-            (c.ip && lowerMessage.includes(c.ip))
-          );
-          if (!matched && mcpHosts) {
-            matched = mcpHosts.find(h => 
-              (h.hostname && lowerMessage.includes(h.hostname.toLowerCase())) ||
-              (h.ip && lowerMessage.includes(h.ip))
-            );
-          }
-          if (matched) {
-            deviceVal = matched.hostname;
-            console.log("[useMcp] Auto-extracted device name from user message:", deviceVal);
-          }
-        } catch (err) {
-          console.error("[useMcp] Failed to resolve connections for auto-extraction:", err);
-        }
-      }
-      
-      // Fallback to session recent host if not found in args or message
-      if (!deviceVal && recentIPs && recentIPs.length > 0) {
-        deviceVal = recentIPs[0];
-        console.log("[useMcp] Omitted device name, fallback to session's recent host:", deviceVal);
-      }
+  const processedArgs = keysToCamelCase(args);
 
-      if (deviceVal) {
-        processedArgs.deviceName = deviceVal;
-      }
-    } else if (["self_network_ping", "self_network_traceroute"].includes(toolId)) {
-      let hostVal = processedArgs.host || processedArgs.device || processedArgs.deviceName || processedArgs.device_name || processedArgs.ip;
-      
-      // Fallback to session recent host if not found in args or message
-      if (!hostVal && recentIPs && recentIPs.length > 0) {
-        hostVal = recentIPs[0];
-        console.log("[useMcp] Omitted host, fallback to session's recent host:", hostVal);
-      }
+  if (["fetch_config", "fetch_routing", "fetch_arp"].includes(toolId)) {
+    let deviceVal = processedArgs.deviceName || processedArgs.device_name || processedArgs.device || processedArgs.host;
+    if (!deviceVal) {
+      deviceVal = await resolveDeviceFromConnections(userMessage);
+    }
+    
+    // Fallback to session recent host if not found in args or message
+    if (!deviceVal && recentIPs?.[0]) {
+      deviceVal = recentIPs[0];
+      console.log("[useMcp] Omitted device name, fallback to session's recent host:", deviceVal);
+    }
 
-      if (hostVal) {
-        processedArgs.host = hostVal;
-      }
+    if (deviceVal) {
+      processedArgs.deviceName = deviceVal;
+    }
+  } else if (["self_network_ping", "self_network_traceroute"].includes(toolId)) {
+    let hostVal = processedArgs.host || processedArgs.device || processedArgs.deviceName || processedArgs.device_name || processedArgs.ip;
+    
+    // Fallback to session recent host if not found in args or message
+    if (!hostVal && recentIPs?.[0]) {
+      hostVal = recentIPs[0];
+      console.log("[useMcp] Omitted host, fallback to session's recent host:", hostVal);
+    }
+
+    if (hostVal) {
+      processedArgs.host = hostVal;
     }
   }
+
   return processedArgs;
 }

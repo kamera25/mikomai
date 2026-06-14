@@ -118,8 +118,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       });
       
       setDownloadStatus(`Success: ${loadResult}`);
-    } catch (e: any) {
-      setDownloadStatus(`Error: ${e.toString()}`);
+    } catch (e: unknown) {
+      setDownloadStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsLoading(false);
     }
@@ -128,8 +128,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const handleOpenModelDir = async () => {
     try {
       await invoke("open_model_dir", { modelPath: _savedModelPath });
-    } catch (e: any) {
-      setDownloadStatus(`Error: ${e.toString()}`);
+    } catch (e: unknown) {
+      setDownloadStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 

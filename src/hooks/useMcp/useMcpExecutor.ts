@@ -229,8 +229,8 @@ export function useMcpExecutor({
         summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
       }
 
-    } catch (e: any) {
-      const errorMsg = e.toString();
+    } catch (e: unknown) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
 
       setMessages(prev => prev.map(msg =>
         msg.task_id === taskId ? {

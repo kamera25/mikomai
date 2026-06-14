@@ -174,11 +174,11 @@ export function useMcp({
             msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答" } : msg
           ));
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         setMessages(prev => prev.map(msg => 
           msg.task_id === thinkingTaskId ? { 
             ...msg, 
-            content: `Error: ${e.toString()}`, 
+            content: `Error: ${e instanceof Error ? e.message : String(e)}`, 
             isHidden: false, 
             isToolLoading: false,
             status: "Failed"

@@ -59,3 +59,22 @@ export interface Folder {
 }
 
 export type HistoryItem = Folder | ChatSession;
+
+export interface SystemSettings {
+  historyLimit?: number;
+  temperature?: number;
+  repetitionPenalty?: number;
+  modelPath?: string | null;
+  recentIps?: string[];
+  mcpTimeout?: number;
+  cacheExpiryMinutes?: number;
+  dbPath?: string;
+  ipVersion?: string;
+  consolePort?: string | null;
+  consoleBaudRate?: number;
+  preloadInvestigate?: boolean;
+  preloadKnowledge?: boolean;
+  preloadAnalysis?: boolean;
+  preloadRag?: boolean;
+}
+
