@@ -563,6 +563,17 @@
   background-color: var(--bg-tertiary);
   border-radius: 50%;
   flex-shrink: 0;
+  border: 1.5px solid transparent;
+}
+
+.timeline-block.success .timeline-status-icon {
+  border-color: var(--success);
+  background-color: #ffffff;
+}
+
+.timeline-block.failed .timeline-status-icon {
+  border-color: var(--danger);
+  background-color: #ffffff;
 }
 
 .status-spinner-small {
@@ -1217,18 +1228,6 @@
   color: var(--text-muted);
 }
 
-.sidebar-timeline-item.success .sidebar-timeline-icon {
-  border-color: var(--success);
-  background-color: var(--success);
-  color: white;
-}
-
-.sidebar-timeline-item.failed .sidebar-timeline-icon {
-  border-color: var(--danger);
-  background-color: var(--danger);
-  color: white;
-}
-
 .sidebar-timeline-item.toolexecution .sidebar-timeline-icon {
   border-color: var(--warning);
   color: var(--warning);
@@ -1242,6 +1241,18 @@
 .sidebar-timeline-item.running .sidebar-timeline-icon {
   border-color: var(--accent-color);
   color: var(--accent-color);
+}
+
+.sidebar-timeline-item.success .sidebar-timeline-icon {
+  border-color: var(--success);
+  background-color: #ffffff;
+  color: var(--success);
+}
+
+.sidebar-timeline-item.failed .sidebar-timeline-icon {
+  border-color: var(--danger);
+  background-color: #ffffff;
+  color: var(--danger);
 }
 
 .sidebar-timeline-content {
