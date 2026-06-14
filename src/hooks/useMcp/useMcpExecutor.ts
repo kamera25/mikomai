@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { UseMcpProps } from "./types";
-import { getHistoryBlock, normalizeArgs, extractJsonBlocks, getToolLabel } from "./helpers";
+import { getHistoryBlock, normalizeArgs } from "./helpers";
 
 export function useMcpExecutor({
   setMessages,
@@ -38,27 +38,8 @@ export function useMcpExecutor({
     userMessage: string,
     toolId: string, 
     toolLabel: string, 
-    args: any, 
-    depth: number = 0, 
-    executedTools: Set<string> = new Set()
+    args: any
   ) => {
-    const toolSignature = `${toolId}:${JSON.stringify(args)}`;
-    if (executedTools.has(toolSignature)) {
-      setMessages(prev => [...prev, { 
-        role: "ai", 
-        content: "以上、報告いたします。", 
-        timestamp: new Date().toISOString(),
-        event_type: "AgentResponse"
-      }]);
-      return;
-    }
-    executedTools.add(toolSignature);
-
-    if (depth > 3) {
-      setMessages(prev => [...prev, { role: "ai", content: "エラー: ツール呼び出しのループが深すぎるため中断しました。", timestamp: new Date().toISOString() }]);
-      return;
-    }
-
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const isRag = toolId === "query_nw_db" || toolId === "network_query_nw_db";
     const statusMsg = isRag ? `NW-DBを検索中...` : `${toolLabel} を実行中...`;
@@ -173,42 +154,11 @@ export function useMcpExecutor({
         agentUnlisten();
       }
 
-      // Support multiple tool calls in parallel using robust brace counting
-      const nextJsonBlocks = extractJsonBlocks(responseStr);
-      const nextToolCalls = nextJsonBlocks.map(block => {
-        try {
-          const parsed = JSON.parse(block);
-          const tool = parsed.tool_name;
-          const args = parsed.params || {};
-          if (tool) {
-            return { tool, args };
-          }
-          return null;
-        } catch (e) {
-          return null;
-        }
-      }).filter(tc => tc !== null);
-
-      if (nextToolCalls.length > 0) {
-        setMessages(prev => prev.map(msg => 
-          msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
-        ));
-        summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
-        for (const nextToolCall of nextToolCalls) {
-          console.log("Extracted subsequent tool call:", nextToolCall);
-           const nextToolActionName = getToolLabel(nextToolCall.tool);
-          
-          setTimeout(async () => {
-            await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
-          }, 1000);
-        }
-      } else {
-        // Final response: make it visible
-        setMessages(prev => prev.map(msg => 
-          msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
-        ));
-        summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
-      }
+      // Final response: make it visible
+      setMessages(prev => prev.map(msg => 
+        msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
+      ));
+      summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
 
     } catch (e: unknown) {
       const errorMsg = e instanceof Error ? e.message : String(e);
