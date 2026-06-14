@@ -24,6 +24,8 @@ pub fn is_greeting(query: &str) -> bool {
         "hi",
         "hey",
         "who are you",
+        "あなたは",
+        "あなたは？",
         "あなたは誰",
         "あなたはだれ",
         "お名前は",
