@@ -58,8 +58,6 @@ pub fn get_model_status(state: tauri::State<'_, LlamaState>) -> ModelState {
 
 pub const SYSTEM_PROMPT: &str = include_str!("system_prompt.txt");
 
-const SUMMARIZATION_SYSTEM_PROMPT: &str = include_str!("summarization_prompt.txt");
-
 fn prepare_prompt_tokens_with_limit(
     model: &LlamaModel,
     prompt: &str,
@@ -328,5 +326,29 @@ pub async fn ask_llm_background(
     app: tauri::AppHandle,
     state: tauri::State<'_, LlamaState>
 ) -> Result<String, String> {
-    ask_llm_internal(&prompt, SUMMARIZATION_SYSTEM_PROMPT, &app, &state).await
+    let run = || -> Result<String, String> {
+        let _inference_guard = state.inference_lock.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+        let mut shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+        let shared = match &mut *shared_lock {
+            Some(s) => s,
+            None => return Err("Model not loaded. Please configure and load a model first.".to_string()),
+        };
+
+        let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+        let worker = &mut shared.summarization;
+
+        worker.ask(
+            &shared.model,
+            Some(prompt),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            settings.temperature,
+            settings.repetition_penalty,
+        )
+    };
+    run()
 }

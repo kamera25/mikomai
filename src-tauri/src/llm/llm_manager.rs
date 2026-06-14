@@ -18,6 +18,7 @@ pub struct SharedModel {
     pub knowledge: crate::llm::worker::KnowledgeWorker,
     pub analysis: crate::llm::worker::AnalysisWorker,
     pub rag: crate::llm::worker::RagWorker,
+    pub summarization: crate::llm::worker::SummarizationWorker,
     pub model: Arc<LlamaModel>,
     pub backend: Arc<LlamaBackend>,
 }

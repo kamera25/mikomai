@@ -4,7 +4,7 @@ use llama_cpp_2::model::LlamaModel;
 use crate::llm::llm_manager::SharedModel;
 use crate::llm::llm::{LlamaState, ModelState};
 use crate::llm::worker::{
-    Router, InvestigateWorker, KnowledgeWorker, AnalysisWorker, RagWorker
+    Router, InvestigateWorker, KnowledgeWorker, AnalysisWorker, RagWorker, SummarizationWorker
 };
 
 #[tauri::command]
@@ -38,6 +38,7 @@ pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<S
     let knowledge = KnowledgeWorker::new(&model_arc, &state.backend)?;
     let analysis = AnalysisWorker::new(&model_arc, &state.backend)?;
     let rag = RagWorker::new(&model_arc, &state.backend)?;
+    let summarization = SummarizationWorker::new(&model_arc, &state.backend)?;
     
     let mut shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
     *shared_lock = Some(SharedModel {
@@ -46,6 +47,7 @@ pub fn load_model(path: String, state: tauri::State<'_, LlamaState>) -> Result<S
         knowledge,
         analysis,
         rag,
+        summarization,
         model: model_arc,
         backend: state.backend.clone(),
     });

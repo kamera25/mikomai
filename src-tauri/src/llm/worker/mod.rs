@@ -3,12 +3,14 @@ pub mod rag;
 pub mod knowledge;
 pub mod analysis;
 pub mod investigate;
+pub mod summarization;
 
 pub use router::Router;
 pub use rag::RagWorker;
 pub use knowledge::KnowledgeWorker;
 pub use analysis::AnalysisWorker;
 pub use investigate::InvestigateWorker;
+pub use summarization::SummarizationWorker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
