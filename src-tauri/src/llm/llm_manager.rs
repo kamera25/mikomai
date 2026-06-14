@@ -55,6 +55,8 @@ impl<'a> AgentContext<'a> {
         let mut ctx_params = LlamaContextParams::default();
         ctx_params = ctx_params.with_n_ctx(std::num::NonZeroU32::new(n_ctx));
         ctx_params = ctx_params.with_n_batch(n_ctx);
+        ctx_params = ctx_params.with_type_k(llama_cpp_2::context::params::KvCacheType::Q4_0);
+        ctx_params = ctx_params.with_type_v(llama_cpp_2::context::params::KvCacheType::Q4_0);
 
         let mut ctx = model.new_context(backend, ctx_params)?;
 
