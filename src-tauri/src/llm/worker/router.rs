@@ -5,6 +5,9 @@ use llama_cpp_2::llama_backend::LlamaBackend;
 
 const ROUTER_PROMPT: &str = include_str!("../prompts/router.txt");
 
+const MAX_NEW_TOKENS: u32 = 256;
+const N_CTX: u32 = 2048;
+
 #[derive(Debug, Clone)]
 pub struct RouteResult {
     pub routes: Vec<Route>,
@@ -17,7 +20,7 @@ pub struct Router {
 
 impl Router {
     pub fn new(model: &LlamaModel, backend: &LlamaBackend) -> Result<Self, String> {
-        let ctx = AgentContext::new(model, backend, ROUTER_PROMPT, 0, 2048)
+        let ctx = AgentContext::new(model, backend, ROUTER_PROMPT, 0, MAX_NEW_TOKENS, N_CTX)
             .map_err(|e| format!("Failed to create router context: {:?}", e))?;
         
         // Safety: We transmute LlamaContext to 'static lifetime.

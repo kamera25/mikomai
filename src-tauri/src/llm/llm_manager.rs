@@ -27,6 +27,7 @@ pub struct AgentContext<'a> {
     pub base_n_past: u32,
     pub id: i32,
     pub n_ctx: u32,
+    pub max_new_tokens: u32,
 }
 
 unsafe impl<'a> Send for AgentContext<'a> {}
@@ -39,6 +40,7 @@ impl<'a> AgentContext<'a> {
         system_prompt: &str,
         id: i32,
         max_new_tokens: u32,
+        n_ctx: u32,
     ) -> Result<Self> {
         let formatted_sys = format!("<|turn>system\n{}<turn|>\n", system_prompt);
         let mut tokens = model.str_to_token(&formatted_sys, AddBos::Always)?;
@@ -50,7 +52,6 @@ impl<'a> AgentContext<'a> {
         }
 
         let tokens_len = tokens.len();
-        let n_ctx = (tokens_len + max_new_tokens as usize).max(2048) as u32;
 
         let mut ctx_params = LlamaContextParams::default();
         ctx_params = ctx_params.with_n_ctx(std::num::NonZeroU32::new(n_ctx));
@@ -72,7 +73,7 @@ impl<'a> AgentContext<'a> {
 
         let base_n_past = tokens_len as u32;
 
-        Ok(Self { ctx, base_n_past, id, n_ctx })
+        Ok(Self { ctx, base_n_past, id, n_ctx, max_new_tokens })
     }
 }
 
@@ -120,11 +121,12 @@ pub fn run_inference<'a>(
         tokens = model.str_to_token("hi", AddBos::Never)?;
     }
 
-    // Truncate to avoid context exhaustion (use dynamic n_ctx, leave 512 for generation)
+    // Truncate to avoid context exhaustion (use dynamic n_ctx, leave max_new_tokens for generation)
     // Use i32 logic to prevent unsigned underflow panics/wraps.
     let base_n_past = agent_ctx.base_n_past as i32;
     let n_ctx = agent_ctx.n_ctx as i32;
-    let max_tokens = (n_ctx - base_n_past - 512).max(16) as usize;
+    let max_gen = agent_ctx.max_new_tokens as i32;
+    let max_tokens = (n_ctx - base_n_past - max_gen).max(16) as usize;
     if tokens.len() > max_tokens {
         tokens.truncate(max_tokens);
     }
@@ -164,7 +166,7 @@ pub fn run_inference<'a>(
     let turn_end_tokens = model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
     let turn_end_token = turn_end_tokens.first().copied();
 
-    let n_len = 500; // max length
+    let n_len = agent_ctx.max_new_tokens; // max length
     let mut bytes_accumulator = Vec::new();
 
     for _ in 0..n_len {

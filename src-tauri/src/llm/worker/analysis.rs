@@ -6,6 +6,9 @@ use crate::llm::llm::SYSTEM_PROMPT;
 
 const ANALYSIS_WORKER_PROMPT: &str = include_str!("../prompts/analysis_worker.txt");
 
+const MAX_NEW_TOKENS: u32 = 256;
+const N_CTX: u32 = 8740;
+
 pub struct AnalysisWorker {
     pub ctx: AgentContext<'static>,
 }
@@ -17,7 +20,7 @@ impl AnalysisWorker {
             SYSTEM_PROMPT,
             ANALYSIS_WORKER_PROMPT
         );
-        let ctx = AgentContext::new(model, backend, &full_system_prompt, 3, 8192)
+        let ctx = AgentContext::new(model, backend, &full_system_prompt, 3, MAX_NEW_TOKENS, N_CTX)
             .map_err(|e| format!("Failed to create Analysis context: {:?}", e))?;
         
         let ctx_static = unsafe {

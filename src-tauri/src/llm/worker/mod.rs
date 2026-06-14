@@ -45,6 +45,7 @@ pub trait LlmWorker {
         history_block: Option<String>,
         subsequent_task: Option<&str>,
     ) -> String;
+    #[allow(dead_code)]
     fn max_new_tokens(&self) -> u32 {
         2048
     }

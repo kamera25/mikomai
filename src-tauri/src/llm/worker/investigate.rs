@@ -6,6 +6,9 @@ use crate::llm::llm::SYSTEM_PROMPT;
 
 const INVESTIGATE_WORKER_PROMPT: &str = include_str!("../prompts/investigate_worker.txt");
 
+const MAX_NEW_TOKENS: u32 = 256;
+const N_CTX: u32 = 2048;
+
 pub struct InvestigateWorker {
     pub ctx: AgentContext<'static>,
 }
@@ -17,7 +20,7 @@ impl InvestigateWorker {
             SYSTEM_PROMPT,
             INVESTIGATE_WORKER_PROMPT
         );
-        let ctx = AgentContext::new(model, backend, &full_system_prompt, 1, 2048)
+        let ctx = AgentContext::new(model, backend, &full_system_prompt, 1, MAX_NEW_TOKENS, N_CTX)
             .map_err(|e| format!("Failed to create Investigate context: {:?}", e))?;
         
         let ctx_static = unsafe {

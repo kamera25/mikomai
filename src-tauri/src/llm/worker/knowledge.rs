@@ -6,6 +6,9 @@ use crate::llm::llm::SYSTEM_PROMPT;
 
 const KNOWLEDGE_WORKER_PROMPT: &str = include_str!("../prompts/knowledge_worker.txt");
 
+const MAX_NEW_TOKENS: u32 = 2048;
+const N_CTX: u32 = 4096;
+
 pub struct KnowledgeWorker {
     pub ctx: AgentContext<'static>,
 }
@@ -17,7 +20,7 @@ impl KnowledgeWorker {
             SYSTEM_PROMPT,
             KNOWLEDGE_WORKER_PROMPT
         );
-        let ctx = AgentContext::new(model, backend, &full_system_prompt, 2, 2048)
+        let ctx = AgentContext::new(model, backend, &full_system_prompt, 2, MAX_NEW_TOKENS, N_CTX)
             .map_err(|e| format!("Failed to create Knowledge context: {:?}", e))?;
         
         let ctx_static = unsafe {
