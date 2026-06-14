@@ -113,24 +113,47 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(({
       const query = textBeforeCursor.slice(atIndex + 1);
       // Check if there's space between @ and cursor
       if (!query.includes(' ')) {
-        // Combine available hosts and recent IPs
-        const combined = [{ hostname: "localhost", ip: "このコンピュータ" }];
+        const queryLower = query.toLowerCase();
+        const combined: { hostname: string; ip: string }[] = [];
+        const seenIPs = new Set<string>();
+
+        // localhost
+        if (
+          "localhost".includes(queryLower) ||
+          "このコンピュータ".includes(query)
+        ) {
+          combined.push({ hostname: "localhost", ip: "このコンピュータ" });
+          seenIPs.add("127.0.0.1");
+          seenIPs.add("localhost");
+        }
+
+        // Available hosts
         availableHosts.forEach(h => {
           if (h.hostname !== "localhost") {
-            combined.push(h);
+            if (
+              h.hostname.toLowerCase().includes(queryLower) ||
+              h.ip.includes(query)
+            ) {
+              combined.push(h);
+            }
           }
+          seenIPs.add(h.ip);
         });
+
+        // Recent IPs
         recentIPs.forEach(ip => {
-          if (!combined.some(h => h.ip === ip)) {
-            combined.push({ hostname: `${ip}`, ip: "過去に投入したIPアドレス" });
+          if (
+            ip.toLowerCase().includes(queryLower) ||
+            "過去に投入したIPアドレス".includes(query)
+          ) {
+            if (!seenIPs.has(ip)) {
+              combined.push({ hostname: ip, ip: "過去に投入したIPアドレス" });
+              seenIPs.add(ip);
+            }
           }
         });
 
-        const filtered = combined.filter(h =>
-          h.hostname.toLowerCase().includes(query.toLowerCase()) ||
-          h.ip.includes(query)
-        );
-        setFilteredSuggestions(filtered);
+        setFilteredSuggestions(combined);
         setShowSuggestions(true);
         setSuggestionIndex(0);
       } else {
