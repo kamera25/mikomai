@@ -130,7 +130,7 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                       <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                       <line x1="12" y1="22.08" x2="12" y2="12"></line>
                     </svg>
-                    <span>ログを保存しました。</span>
+                    <span>{msg.is_cached ? `更新日時: ${msg.cache_time || ''} (キャッシュ)` : 'ログを保存しました。'}</span>
                     <button 
                       className={`copy-path-btn ${pathCopied ? 'copied' : ''}`}
                       onClick={(e) => {

@@ -17,6 +17,8 @@ interface SettingsPanelProps {
   onModelPathChange: (path: string) => void;
   mcpTimeout: number;
   onMcpTimeoutChange: (timeout: number) => void;
+  cacheExpiryMinutes: number;
+  onCacheExpiryMinutesChange: (expiry: number) => void;
   dbPath: string;
   onDbPathChange: (path: string) => void;
   ipVersion: string;
@@ -48,6 +50,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onModelPathChange,
   mcpTimeout,
   onMcpTimeoutChange,
+  cacheExpiryMinutes,
+  onCacheExpiryMinutesChange,
   dbPath,
   onDbPathChange,
   ipVersion,
@@ -231,6 +235,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
               <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
                 ツール (MCP) 実行の最大待機時間です。時間を超えると処理を中断します。
+              </p>
+            </div>
+            <div className="form-control">
+              <label>キャッシュ有効時間 (分)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <input
+                  type="range"
+                  min="0"
+                  max="60"
+                  step="1"
+                  value={cacheExpiryMinutes}
+                  onChange={(e) => onCacheExpiryMinutesChange(parseInt(e.target.value))}
+                  style={{ flexGrow: 1 }}
+                />
+                <span style={{ minWidth: '32px', fontWeight: 'bold', color: 'var(--accent-color)' }}>{cacheExpiryMinutes}</span>
+              </div>
+              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+                前回データ取得からの経過時間（分）です。この時間内であれば、実機に接続せず保存済みのYAMLデータから応答します。0にするとキャッシュを使用しません。
               </p>
             </div>
             <div className="form-control">

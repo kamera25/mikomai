@@ -13,6 +13,8 @@ export interface Message {
   raw_data?: string | null;
   args?: any;
   saved_path?: string;
+  is_cached?: boolean;
+  cache_time?: string;
 }
 
 export interface SummaryItem {

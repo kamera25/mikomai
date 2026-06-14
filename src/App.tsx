@@ -22,6 +22,7 @@ import {
   DEFAULT_MCP_TIMEOUT,
   DEFAULT_DB_PATH,
   DEFAULT_IP_VERSION,
+  DEFAULT_CACHE_EXPIRY_MINUTES,
 } from "./constants/defaults";
 
 function App() {
@@ -71,6 +72,7 @@ function App() {
   const [repetitionPenalty, setRepetitionPenalty] = useState<number>(DEFAULT_REPETITION_PENALTY);
   const [modelPath, setModelPath] = useState<string | null>(DEFAULT_MODEL_PATH);
   const [mcpTimeout, setMcpTimeout] = useState<number>(DEFAULT_MCP_TIMEOUT);
+  const [cacheExpiryMinutes, setCacheExpiryMinutes] = useState<number>(DEFAULT_CACHE_EXPIRY_MINUTES);
   const [dbPath, setDbPath] = useState<string>(DEFAULT_DB_PATH);
   const [ipVersion, setIpVersion] = useState<string>(DEFAULT_IP_VERSION);
   const [consolePort, setConsolePort] = useState<string | null>(null);
@@ -105,6 +107,7 @@ function App() {
       modelPath: overrides.modelPath !== undefined ? overrides.modelPath : modelPath,
       recentIps: overrides.recentIps !== undefined ? overrides.recentIps : recentIPs,
       mcpTimeout: overrides.mcpTimeout !== undefined ? overrides.mcpTimeout : mcpTimeout,
+      cacheExpiryMinutes: overrides.cacheExpiryMinutes !== undefined ? overrides.cacheExpiryMinutes : cacheExpiryMinutes,
       dbPath: overrides.dbPath !== undefined ? overrides.dbPath : dbPath,
       ipVersion: overrides.ipVersion !== undefined ? overrides.ipVersion : ipVersion,
       consolePort: overrides.consolePort !== undefined ? overrides.consolePort : consolePort,
@@ -140,7 +143,7 @@ function App() {
     saveAllSettings({ recentIps: newRecent }).catch(e => {
       console.error("Failed to save recent hosts to settings:", e);
     });
-  }, [recentIPs, activeSessionId, updateSessionRecentIps, historyLimit, temperature, repetitionPenalty, modelPath, mcpTimeout, dbPath, ipVersion, consolePort, consoleBaudRate, preloadInvestigate, preloadKnowledge, preloadAnalysis, preloadRag]);
+  }, [recentIPs, activeSessionId, updateSessionRecentIps, historyLimit, temperature, repetitionPenalty, modelPath, mcpTimeout, cacheExpiryMinutes, dbPath, ipVersion, consolePort, consoleBaudRate, preloadInvestigate, preloadKnowledge, preloadAnalysis, preloadRag]);
 
   const { handleMcpResponse } = useMcp({
     messages,
@@ -189,6 +192,9 @@ function App() {
         }
         if (settings && settings.mcpTimeout !== undefined) {
           setMcpTimeout(settings.mcpTimeout);
+        }
+        if (settings && settings.cacheExpiryMinutes !== undefined) {
+          setCacheExpiryMinutes(settings.cacheExpiryMinutes);
         }
         if (settings && settings.dbPath) {
           setDbPath(settings.dbPath);
@@ -478,6 +484,11 @@ function App() {
             onMcpTimeoutChange={(newTimeout: number) => {
               setMcpTimeout(newTimeout);
               saveAllSettings({ mcpTimeout: newTimeout });
+            }}
+            cacheExpiryMinutes={cacheExpiryMinutes}
+            onCacheExpiryMinutesChange={(newExpiry: number) => {
+              setCacheExpiryMinutes(newExpiry);
+              saveAllSettings({ cacheExpiryMinutes: newExpiry });
             }}
             dbPath={dbPath}
             onDbPathChange={(newDbPath) => {

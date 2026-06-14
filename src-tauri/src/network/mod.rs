@@ -26,6 +26,10 @@ pub struct CommandResult {
     pub output: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub saved_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_cached: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_time: Option<String>,
 }
 
 // Abstract trait for network operations
@@ -198,8 +202,8 @@ pub async fn network_show(
 
     let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_show(&target_device, &command).await {
-        Ok(output) => Ok(CommandResult { success: true, output, saved_path: None }),
-        Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None }),
+        Ok(output) => Ok(CommandResult { success: true, output, saved_path: None, is_cached: None, cache_time: None }),
+        Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None, is_cached: None, cache_time: None }),
     }
 }
 
@@ -275,8 +279,8 @@ pub async fn network_config(
 
     let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_config(&target_device, commands).await {
-        Ok(output) => Ok(CommandResult { success: true, output, saved_path: None }),
-        Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None }),
+        Ok(output) => Ok(CommandResult { success: true, output, saved_path: None, is_cached: None, cache_time: None }),
+        Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None, is_cached: None, cache_time: None }),
     }
 }
 
@@ -373,6 +377,8 @@ mod tests {
             success: true,
             output: "show run output".to_string(),
             saved_path: None,
+            is_cached: None,
+            cache_time: None,
         };
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(serialized, r#"{"success":true,"output":"show run output"}"#);

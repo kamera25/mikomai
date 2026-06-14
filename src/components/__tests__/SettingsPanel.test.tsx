@@ -27,6 +27,8 @@ describe('SettingsPanel', () => {
     onModelPathChange: vi.fn(),
     mcpTimeout: 30,
     onMcpTimeoutChange: vi.fn(),
+    cacheExpiryMinutes: 10,
+    onCacheExpiryMinutesChange: vi.fn(),
     dbPath: '',
     onDbPathChange: vi.fn(),
     ipVersion: 'auto',
@@ -35,6 +37,14 @@ describe('SettingsPanel', () => {
     onConsolePortChange: vi.fn(),
     consoleBaudRate: 9600,
     onConsoleBaudRateChange: vi.fn(),
+    preloadInvestigate: true,
+    onPreloadInvestigateChange: vi.fn(),
+    preloadKnowledge: true,
+    onPreloadKnowledgeChange: vi.fn(),
+    preloadAnalysis: true,
+    onPreloadAnalysisChange: vi.fn(),
+    preloadRag: true,
+    onPreloadRagChange: vi.fn(),
   };
 
   beforeEach(() => {
@@ -84,6 +94,13 @@ describe('SettingsPanel', () => {
     const slider = screen.getAllByRole('slider')[3]; // MCP Timeout
     fireEvent.change(slider, { target: { value: '60' } });
     expect(defaultProps.onMcpTimeoutChange).toHaveBeenCalledWith(60);
+  });
+
+  it('handles cache expiry minutes change', () => {
+    render(<SettingsPanel {...defaultProps} />);
+    const slider = screen.getAllByRole('slider')[4]; // Cache Expiry Minutes
+    fireEvent.change(slider, { target: { value: '15' } });
+    expect(defaultProps.onCacheExpiryMinutesChange).toHaveBeenCalledWith(15);
   });
 
   it('handles ip version change', () => {

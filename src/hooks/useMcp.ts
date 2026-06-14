@@ -54,7 +54,7 @@ export function useMcp({
       await executeAndAnalyze(userMessage, "self_network_arp", "ARP Table", {});
     } else if (lowerInput.includes("route") && (lowerInput.includes("ローカル") || lowerInput.includes("自機") || lowerInput.includes("このpc") || lowerInput.includes("local") || lowerInput.includes("ルーティング"))) {
       await executeAndAnalyze(userMessage, "self_network_route", "Route Table", {});
-    } else if (lowerInput.includes("ip") || lowerInput.includes("ネットワーク情報") || lowerInput.includes("アドレス")) {
+    } else if (lowerInput.includes("ip") || lowerInput.includes("ネットワーク情報") ) {
       await executeAndAnalyze(userMessage, "network_get_ip_info", "IP Info", {});
     } else if (lowerInput.includes("console") || lowerInput.includes("コンソール") || lowerInput.includes("シリアル")) {
       if (lowerInput.includes("list") || lowerInput.includes("一覧") || lowerInput.includes("ポート") || lowerInput.includes("リスト")) {

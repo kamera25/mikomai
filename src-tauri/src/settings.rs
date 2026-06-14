@@ -11,6 +11,10 @@ fn default_false() -> bool {
     false
 }
 
+fn default_cache_expiry() -> Option<u64> {
+    Some(10)
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -36,6 +40,8 @@ pub struct AppSettings {
     pub preload_analysis: bool,
     #[serde(default = "default_false")]
     pub preload_rag: bool,
+    #[serde(default = "default_cache_expiry")]
+    pub cache_expiry_minutes: Option<u64>,
 }
 
 impl Default for AppSettings {
@@ -55,6 +61,7 @@ impl Default for AppSettings {
             preload_knowledge: true,
             preload_analysis: true,
             preload_rag: true,
+            cache_expiry_minutes: Some(10),
         }
     }
 }
@@ -114,6 +121,7 @@ mod tests {
         assert!(settings.preload_knowledge);
         assert!(settings.preload_analysis);
         assert!(settings.preload_rag);
+        assert_eq!(settings.cache_expiry_minutes, Some(10));
     }
 
     #[test]
@@ -133,6 +141,7 @@ mod tests {
             preload_knowledge: true,
             preload_analysis: false,
             preload_rag: true,
+            cache_expiry_minutes: Some(15),
         };
 
         let serialized = serde_json::to_string(&settings).unwrap();
@@ -147,5 +156,6 @@ mod tests {
         assert!(serialized.contains(r#""consolePort":"/dev/ttyUSB0""#));
         assert!(serialized.contains(r#""consoleBaudRate":115200"#));
         assert!(serialized.contains(r#""preloadInvestigate":false"#));
+        assert!(serialized.contains(r#""cacheExpiryMinutes":15"#));
     }
 }

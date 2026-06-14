@@ -120,7 +120,9 @@ export function useMcpExecutor({
           status: result.success ? "Success" : "Failed",
           summary_text: result.success ? `${toolLabel} 完了` : `${toolLabel} 失敗`,
           raw_data: result.output || "No output provided",
-          saved_path: result.saved_path
+          saved_path: result.saved_path,
+          is_cached: result.is_cached,
+          cache_time: result.cache_time
         } : msg
       ));
 

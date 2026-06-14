@@ -5,4 +5,6 @@ export const DEFAULT_MODEL_PATH = null;
 export const DEFAULT_MCP_TIMEOUT = 30;
 export const DEFAULT_DB_PATH = "";
 export const DEFAULT_IP_VERSION = "auto";
+export const DEFAULT_CACHE_EXPIRY_MINUTES = 10;
+
 

@@ -123,12 +123,52 @@ pub trait McpCommandFetcher {
                 } else {
                     None
                 };
-                Ok(CommandResult { success: true, output, saved_path })
+                Ok(CommandResult { success: true, output, saved_path, is_cached: None, cache_time: None })
             }
-            Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None }),
+            Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None, is_cached: None, cache_time: None }),
         }
     }
 }
+
+pub fn check_yaml_cache(
+    app: &tauri::AppHandle,
+    registered_name: &str,
+    suffix: &str,
+) -> Option<CommandResult> {
+    let settings = crate::settings::load_settings(app.clone()).ok()?;
+    let expiry_mins = settings.cache_expiry_minutes.unwrap_or(10);
+    if expiry_mins == 0 {
+        return None;
+    }
+
+    let manager = crate::snapshot::SnapshotManager::new().ok()?;
+    let yaml_path = manager.base_dir().join("current").join(format!("{}_{}.yaml", registered_name, suffix));
+    if !yaml_path.exists() {
+        return None;
+    }
+
+    let metadata = std::fs::metadata(&yaml_path).ok()?;
+    let modified = metadata.modified().ok()?;
+    let elapsed = modified.elapsed().ok()?;
+    if elapsed.as_secs() >= expiry_mins * 60 {
+        return None;
+    }
+
+    let yaml_content = std::fs::read_to_string(&yaml_path).ok()?;
+    log::info!("Returning cached {} YAML for {} (last updated {}s ago)", suffix, registered_name, elapsed.as_secs());
+
+    let datetime: chrono::DateTime<chrono::Local> = modified.into();
+    let cache_time_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+
+    Some(CommandResult {
+        success: true,
+        output: yaml_content,
+        saved_path: Some(yaml_path.to_string_lossy().to_string()),
+        is_cached: Some(true),
+        cache_time: Some(cache_time_str),
+    })
+}
+
 
 #[cfg(test)]
 mod tests {

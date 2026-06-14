@@ -48,6 +48,12 @@ pub async fn fetch_arp(
         }
     };
     
+    // Check if within cache expiry duration
+    if let Some(cached_res) = super::fetch_base::check_yaml_cache(&app, &registered_name, "arp") {
+        return Ok(cached_res);
+    }
+
+    
     // 1. Fetch raw ARP table output using the registered host name
     let command_res = ArpFetcher.fetch_device_info(&app, &registered_name).await?;
     
@@ -61,6 +67,9 @@ pub async fn fetch_arp(
     let raw_output_clone = command_res.output.clone();
     
     tauri::async_runtime::spawn(async move {
+        // Delay slightly to allow the subsequent agent (triggered by the frontend) to acquire the LLM inference lock first.
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
         // Resolve OS type for metadata
         let target_device = match crate::mcp::fetch::fetch_base::resolve_device_config(&app_clone, &name_clone).await {
             Ok(cfg) => cfg,
