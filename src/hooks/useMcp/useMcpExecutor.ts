@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { UseMcpProps } from "./types";
-import { getHistoryBlock, normalizeArgs, extractJsonBlocks } from "./helpers";
+import { getHistoryBlock, normalizeArgs, extractJsonBlocks, getToolLabel } from "./helpers";
 
 export function useMcpExecutor({
   setMessages,
@@ -68,19 +68,13 @@ export function useMcpExecutor({
     
     // Extract target host and update recent hosts
     if (updateRecentHosts && processedArgs) {
-      let host: string | null = null;
-      if (processedArgs.deviceName) {
-        host = processedArgs.deviceName;
-      } else if (processedArgs.host) {
-        host = processedArgs.host;
-      } else if (processedArgs.device) {
-        if (typeof processedArgs.device === 'string') {
-          host = processedArgs.device;
-        } else if (typeof processedArgs.device === 'object') {
-          host = processedArgs.device.host || processedArgs.device.hostname;
-        }
-      }
-      if (host && typeof host === 'string' && host.trim()) {
+      const device = processedArgs.device;
+      const host =
+        processedArgs.deviceName ||
+        processedArgs.host ||
+        (typeof device === 'string' ? device : device?.host || device?.hostname);
+
+      if (typeof host === 'string' && host.trim()) {
         updateRecentHosts([host.trim()]);
       }
     }
@@ -202,20 +196,7 @@ export function useMcpExecutor({
         summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
         for (const nextToolCall of nextToolCalls) {
           console.log("Extracted subsequent tool call:", nextToolCall);
-           const nextToolActionName = nextToolCall.tool === "self_network_ping" ? "Ping" : 
-                                      nextToolCall.tool === "self_network_traceroute" ? "Traceroute" : 
-                                      nextToolCall.tool === "network_get_hosts" ? "Host List" :
-                                      nextToolCall.tool === "network_query_nw_db" || nextToolCall.tool === "query_nw_db" ? "NWDB検索" :
-                                      nextToolCall.tool === "self_network_arp" ? "ARP Table" :
-                                      nextToolCall.tool === "self_network_route" ? "Route Table" :
-                                      nextToolCall.tool === "network_get_ip_info" ? "IP Info" :
-                                      nextToolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
-                                      nextToolCall.tool === "network_send_console_message" ? "Console Message" :
-                                      nextToolCall.tool === "network_show" ? "Show Command" :
-                                      nextToolCall.tool === "fetch_config" ? "Fetch Config" :
-                                      nextToolCall.tool === "fetch_routing" ? "Fetch Routing" :
-                                      nextToolCall.tool === "fetch_arp" ? "Fetch ARP" :
-                                      nextToolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : nextToolCall.tool;
+           const nextToolActionName = getToolLabel(nextToolCall.tool);
           
           setTimeout(async () => {
             await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);

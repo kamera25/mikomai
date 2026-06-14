@@ -8,6 +8,28 @@ export function getHistoryBlock(items: SummaryItem[], limit: number): string {
   return `\n\n<memory>\n${text}\n</memory>`;
 }
 
+const TOOL_LABEL_MAP: Record<string, string> = {
+  self_network_ping: "Ping",
+  self_network_traceroute: "Traceroute",
+  network_get_hosts: "Host List",
+  network_query_nw_db: "NWDB検索",
+  query_nw_db: "NWDB検索",
+  self_network_arp: "ARP Table",
+  self_network_route: "Route Table",
+  network_get_ip_info: "IP Info",
+  network_list_serial_ports: "Serial Ports",
+  network_send_console_message: "Console Message",
+  network_show: "Show Command",
+  fetch_config: "Fetch Config",
+  fetch_routing: "Fetch Routing",
+  fetch_arp: "Fetch ARP",
+  require_host_regsterd: "ホスト登録要求",
+};
+
+export function getToolLabel(toolName: string): string {
+  return TOOL_LABEL_MAP[toolName] || toolName;
+}
+
 export function extractJsonBlocks(text: string): string[] {
   const blocks: string[] = [];
   let depth = 0;

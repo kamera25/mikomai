@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { UseMcpProps } from "./useMcp/types";
 import { useMcpListeners } from "./useMcp/useMcpListeners";
 import { useMcpExecutor } from "./useMcp/useMcpExecutor";
-import { getHistoryBlock, extractJsonBlocks } from "./useMcp/helpers";
+import { getHistoryBlock, extractJsonBlocks, getToolLabel } from "./useMcp/helpers";
 import { parsePingCommand } from "../utils/commandParser";
 
 export function useMcp({ 
@@ -151,19 +151,7 @@ export function useMcp({
           ));
           for (const toolCall of toolCalls) {
             console.log("Extracted tool call:", toolCall);
-             const toolActionName = toolCall.tool === "self_network_ping" ? "Ping" : 
-                                    toolCall.tool === "self_network_traceroute" ? "Traceroute" : 
-                                    toolCall.tool === "network_get_hosts" ? "Host List" :
-                                    toolCall.tool === "network_query_nw_db" || toolCall.tool === "query_nw_db" ? "NWDB検索" :
-                                    toolCall.tool === "self_network_arp" ? "ARP Table" :
-                                    toolCall.tool === "network_get_ip_info" ? "IP Info" :
-                                    toolCall.tool === "network_list_serial_ports" ? "Serial Ports" :
-                                    toolCall.tool === "network_send_console_message" ? "Console Message" :
-                                    toolCall.tool === "network_show" ? "Show Command" :
-                                    toolCall.tool === "fetch_config" ? "Fetch Config" :
-                                    toolCall.tool === "fetch_routing" ? "Fetch Routing" :
-                                    toolCall.tool === "fetch_arp" ? "Fetch ARP" :
-                                    toolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : toolCall.tool;
+             const toolActionName = getToolLabel(toolCall.tool);
             
             // Execute in parallel (no await here, or wrap in Promise.all)
             executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
