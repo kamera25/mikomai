@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { UseMcpProps } from "./useMcp/types";
 import { useMcpListeners } from "./useMcp/useMcpListeners";
 import { useMcpExecutor } from "./useMcp/useMcpExecutor";
-import { getHistoryBlock } from "./useMcp/helpers";
+import { getHistoryBlock, extractJsonBlocks } from "./useMcp/helpers";
 import { parsePingCommand } from "../utils/commandParser";
 
 export function useMcp({ 
@@ -128,11 +128,17 @@ export function useMcp({
         console.log("LLM Response:", response);
         summarizeAndSave(`ユーザー入力: ${userMessage}\n回答: ${response}`, thinkingTaskId);
         
-        // Support multiple tool calls in parallel
-        const jsonBlocks = [...response.matchAll(/```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/g)];
-        const toolCalls = jsonBlocks.map(match => {
+        // Support multiple tool calls in parallel using robust brace counting
+        const jsonBlocks = extractJsonBlocks(response);
+        const toolCalls = jsonBlocks.map(block => {
           try {
-            return JSON.parse(match[1]);
+            const parsed = JSON.parse(block);
+            const tool = parsed.tool_name;
+            const args = parsed.params || {};
+            if (tool) {
+              return { tool, args };
+            }
+            return null;
           } catch (e) {
             return null;
           }
@@ -163,33 +169,10 @@ export function useMcp({
             executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
           }
         } else {
-          const fallbackMatch = response.match(/\{[\s\S]*?"tool"[\s\S]*\}/);
-          if (fallbackMatch) {
-            try {
-              const toolCall = JSON.parse(fallbackMatch[0]);
-              setMessages(prev => prev.map(msg => 
-                msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
-              ));
-               const toolActionName = toolCall.tool === "self_network_ping" ? "Ping" : 
-                                      toolCall.tool === "query_nw_db" || toolCall.tool === "network_query_nw_db" ? "NWDB検索" :
-                                      toolCall.tool === "self_network_route" ? "Route Table" :
-                                      toolCall.tool === "fetch_config" ? "Fetch Config" :
-                                      toolCall.tool === "fetch_routing" ? "Fetch Routing" :
-                                      toolCall.tool === "fetch_arp" ? "Fetch ARP" :
-                                      toolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : "Tool";
-              executeAndAnalyze(userMessage, toolCall.tool, toolActionName, toolCall.args);
-            } catch (e) {
-              // Final response: make it visible
-              setMessages(prev => prev.map(msg => 
-                msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答" } : msg
-              ));
-            }
-          } else {
-            // Final response: make it visible
-            setMessages(prev => prev.map(msg => 
-              msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答" } : msg
-            ));
-          }
+          // Final response: make it visible
+          setMessages(prev => prev.map(msg => 
+            msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答" } : msg
+          ));
         }
       } catch (e: any) {
         setMessages(prev => prev.map(msg => 

@@ -7,7 +7,7 @@ use crate::llm::llm::SYSTEM_PROMPT;
 const INVESTIGATE_WORKER_PROMPT: &str = include_str!("../prompts/investigate_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 256;
-const N_CTX: u32 = 2048;
+const N_CTX: u32 = 4096;
 
 pub struct InvestigateWorker {
     pub ctx: AgentContext<'static>,

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { UseMcpProps } from "./types";
-import { getHistoryBlock, normalizeArgs } from "./helpers";
+import { getHistoryBlock, normalizeArgs, extractJsonBlocks } from "./helpers";
 
 export function useMcpExecutor({
   setMessages,
@@ -177,11 +177,17 @@ export function useMcpExecutor({
         agentUnlisten();
       }
 
-      // Support multiple tool calls in parallel
-      const nextJsonBlocks = [...responseStr.matchAll(/```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/g)];
-      const nextToolCalls = nextJsonBlocks.map(match => {
+      // Support multiple tool calls in parallel using robust brace counting
+      const nextJsonBlocks = extractJsonBlocks(responseStr);
+      const nextToolCalls = nextJsonBlocks.map(block => {
         try {
-          return JSON.parse(match[1]);
+          const parsed = JSON.parse(block);
+          const tool = parsed.tool_name;
+          const args = parsed.params || {};
+          if (tool) {
+            return { tool, args };
+          }
+          return null;
         } catch (e) {
           return null;
         }
@@ -214,38 +220,11 @@ export function useMcpExecutor({
           }, 1000);
         }
       } else {
-        const nextFallbackMatch = responseStr.match(/\{[\s\S]*?"tool"[\s\S]*\}/);
-        if (nextFallbackMatch) {
-          try {
-            const nextToolCall = JSON.parse(nextFallbackMatch[0]);
-            setMessages(prev => prev.map(msg => 
-              msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
-            ));
-            summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
-             const nextToolActionName = nextToolCall.tool === "self_network_ping" ? "Ping" : 
-                                        nextToolCall.tool === "query_nw_db" || nextToolCall.tool === "network_query_nw_db" ? "NWDB検索" :
-                                        nextToolCall.tool === "self_network_route" ? "Route Table" :
-                                        nextToolCall.tool === "fetch_config" ? "Fetch Config" :
-                                        nextToolCall.tool === "fetch_routing" ? "Fetch Routing" :
-                                        nextToolCall.tool === "fetch_arp" ? "Fetch ARP" :
-                                        nextToolCall.tool === "require_host_regsterd" ? "ホスト登録要求" : "Tool";
-            setTimeout(async () => {
-              await executeAndAnalyze(userMessage, nextToolCall.tool, nextToolActionName, nextToolCall.args, depth + 1, executedTools);
-            }, 1000);
-          } catch (e) {
-            // Final response: make it visible
-            setMessages(prev => prev.map(msg => 
-              msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
-            ));
-            summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
-          }
-        } else {
-          // Final response: make it visible
-          setMessages(prev => prev.map(msg => 
-            msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
-          ));
-          summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
-        }
+        // Final response: make it visible
+        setMessages(prev => prev.map(msg => 
+          msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
+        ));
+        summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
       }
 
     } catch (e: any) {

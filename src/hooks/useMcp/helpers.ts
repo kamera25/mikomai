@@ -8,6 +8,30 @@ export function getHistoryBlock(items: SummaryItem[], limit: number): string {
   return `\n\n<memory>\n${text}\n</memory>`;
 }
 
+export function extractJsonBlocks(text: string): string[] {
+  const blocks: string[] = [];
+  let depth = 0;
+  let start = -1;
+  
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') {
+      if (depth === 0) {
+        start = i;
+      }
+      depth++;
+    } else if (text[i] === '}') {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          blocks.push(text.substring(start, i + 1));
+          start = -1;
+        }
+      }
+    }
+  }
+  return blocks;
+}
+
 export async function normalizeArgs(toolId: string, userMessage: string, args: any, recentIPs?: string[]): Promise<any> {
   const processedArgs: any = args && typeof args === "object" && !Array.isArray(args)
     ? Object.keys(args).reduce((acc, key) => {
