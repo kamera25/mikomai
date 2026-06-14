@@ -9,14 +9,6 @@ use llama_cpp_2::sampling::LlamaSampler;
 use llama_cpp_2::model::AddBos;
 use std::sync::Arc;
 use tauri::Emitter;
-
-pub const ROUTER_PROMPT: &str = include_str!("prompts/router.txt");
-
-pub const INVESTIGATE_WORKER_PROMPT: &str = include_str!("prompts/investigate_worker.txt");
-pub const KNOWLEDGE_WORKER_PROMPT: &str = include_str!("prompts/knowledge_worker.txt");
-pub const ANALYSIS_WORKER_PROMPT: &str = include_str!("prompts/analysis_worker.txt");
-pub const RAG_WORKER_PROMPT: &str = include_str!("prompts/rag_worker.txt");
-
 pub struct SharedModel {
     // Note: Due to lifetime transmutation to 'static, router and workers
     // contain contexts that borrow LlamaModel. Thus, we declare router and

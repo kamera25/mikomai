@@ -1,8 +1,10 @@
 use crate::llm::worker::{LlmWorker, build_common_worker_prompt};
-use crate::llm::llm_manager::{INVESTIGATE_WORKER_PROMPT, AgentContext};
+use crate::llm::llm_manager::AgentContext;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use crate::llm::llm::SYSTEM_PROMPT;
+
+const INVESTIGATE_WORKER_PROMPT: &str = include_str!("../prompts/investigate_worker.txt");
 
 pub struct InvestigateWorker {
     pub ctx: AgentContext<'static>,

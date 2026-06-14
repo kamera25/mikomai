@@ -1,7 +1,9 @@
-use crate::llm::llm_manager::{AgentContext, ROUTER_PROMPT};
+use crate::llm::llm_manager::AgentContext;
 use crate::llm::worker::Route;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
+
+const ROUTER_PROMPT: &str = include_str!("../prompts/router.txt");
 
 #[derive(Debug, Clone)]
 pub struct RouteResult {

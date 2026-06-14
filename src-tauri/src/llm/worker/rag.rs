@@ -1,8 +1,10 @@
 use crate::llm::worker::LlmWorker;
-use crate::llm::llm_manager::{RAG_WORKER_PROMPT, AgentContext};
+use crate::llm::llm_manager::AgentContext;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use crate::llm::llm::SYSTEM_PROMPT;
+
+const RAG_WORKER_PROMPT: &str = include_str!("../prompts/rag_worker.txt");
 
 pub struct RagWorker {
     pub ctx: AgentContext<'static>,
