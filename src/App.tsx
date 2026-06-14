@@ -202,9 +202,6 @@ function App() {
         if (settings && settings.consoleBaudRate !== undefined) {
           setConsoleBaudRate(settings.consoleBaudRate);
         }
-        if (settings && settings.preloadRouter !== undefined) {
-          setPreloadRouter(settings.preloadRouter);
-        }
         if (settings && settings.preloadInvestigate !== undefined) {
           setPreloadInvestigate(settings.preloadInvestigate);
         }
@@ -216,9 +213,6 @@ function App() {
         }
         if (settings && settings.preloadRag !== undefined) {
           setPreloadRag(settings.preloadRag);
-        }
-        if (settings && settings.preloadSummarization !== undefined) {
-          setPreloadSummarization(settings.preloadSummarization);
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
