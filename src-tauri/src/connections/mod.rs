@@ -159,14 +159,14 @@ pub fn get_mcp_hosts() -> Result<Vec<McpHost>, String> {
 pub fn resolve_host_with_mcp(app: &tauri::AppHandle, host: &str) -> String {
     // 1. Check local connections first
     if let Ok(connections) = load_connections(app.clone()) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase()) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(host)) {
             return conn.ip.to_string();
         }
     }
 
     // 2. Check MCP registry
     if let Ok(mcp_hosts) = get_mcp_hosts() {
-        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == host.to_lowercase()) {
+        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(host)) {
             return mcp.ip.to_string();
         }
     }
@@ -180,7 +180,7 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
     
     // 1. Check local connections
     if let Ok(connections) = load_connections(app.clone()) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == host.to_lowercase() || c.ip.as_str() == host) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(host) || c.ip.as_str() == host) {
             let mut dtype = if let Some(dt) = &conn.device_type {
                 dt.as_str().to_string()
             } else if let Some(vt) = &conn.vendor_type {
@@ -206,7 +206,7 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
 
     // 2. Check MCP registry
     if let Ok(mcp_hosts) = get_mcp_hosts() {
-        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == host.to_lowercase() || h.ip.as_str() == host) {
+        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(host) || h.ip.as_str() == host) {
             let mut dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios".to_string() }
                         else if mcp.device_type.contains("Juniper") { "juniper_junos".to_string() }
                         else if mcp.device_type.contains("Arista") { "arista_eos".to_string() }

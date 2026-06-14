@@ -19,7 +19,7 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
     let mut resolved_device = None;
     
     if let Ok(connections) = load_connections(app.clone()) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip.as_str() == resolved_name) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(resolved_name) || c.ip.as_str() == resolved_name) {
             let dtype = if let Some(dt) = &conn.device_type {
                 dt.to_string()
             } else if let Some(vt) = &conn.vendor_type {
@@ -41,7 +41,7 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
     
     if resolved_device.is_none() {
         if let Ok(mcp_hosts) = get_mcp_hosts() {
-            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip.as_str() == resolved_name) {
+            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(resolved_name) || h.ip.as_str() == resolved_name) {
                 let dtype = map_vendor_type(mcp.device_type.as_str());
 
                 resolved_device = Some(ResolvedDevice {

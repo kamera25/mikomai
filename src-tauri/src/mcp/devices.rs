@@ -15,7 +15,7 @@ pub fn get_registered_device_info_from_lists(
     let target = query.trim().to_lowercase();
     
     // Check local connections
-    if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == target || c.ip.as_str() == target) {
+    if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&target) || c.ip.as_str() == target) {
         let mut info = format!("登録済み機器 '{}' の接続情報:\n\n", conn.hostname);
         info.push_str(&format!("- ホスト名: {}\n", conn.hostname));
         info.push_str(&format!("- IPアドレス: {}\n", conn.ip));
@@ -38,7 +38,7 @@ pub fn get_registered_device_info_from_lists(
     }
 
     // Check MCP hosts
-    if let Some(host) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == target || h.ip.as_str() == target) {
+    if let Some(host) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(&target) || h.ip.as_str() == target) {
         let mut info = format!("登録済み機器 '{}' の接続情報 (MCPレジストリ):\n\n", host.hostname);
         info.push_str(&format!("- ホスト名: {}\n", host.hostname));
         info.push_str(&format!("- IPアドレス: {}\n", host.ip));

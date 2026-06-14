@@ -39,12 +39,12 @@ pub fn resolve_device_name_and_type(
 
 pub fn detect_connection_type(app: &tauri::AppHandle, resolved_name: &str) -> ConnectionType {
     if let Ok(connections) = load_connections(app.clone()) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip.as_str() == resolved_name) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(resolved_name) || c.ip.as_str() == resolved_name) {
             return conn.conn_type;
         }
     }
     if let Ok(mcp_hosts) = get_mcp_hosts() {
-        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == resolved_name.to_lowercase() || h.ip.as_str() == resolved_name) {
+        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(resolved_name) || h.ip.as_str() == resolved_name) {
             return ConnectionType::from_str(mcp.device_type.as_str()).unwrap_or(ConnectionType::SSH);
         }
     }

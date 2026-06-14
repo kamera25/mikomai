@@ -418,15 +418,11 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
           });
 
           if (newConnections.length > 0) {
-            const updatedConnections = [...connections];
+            const connectionMap = new Map(connections.map(c => [c.id, c]));
             for (const newConn of newConnections) {
-              const existingIdx = updatedConnections.findIndex(c => c.id === newConn.id);
-              if (existingIdx >= 0) {
-                updatedConnections[existingIdx] = newConn;
-              } else {
-                updatedConnections.push(newConn);
-              }
+              connectionMap.set(newConn.id, newConn);
             }
+            const updatedConnections = Array.from(connectionMap.values());
 
             setConnections(updatedConnections);
             try {

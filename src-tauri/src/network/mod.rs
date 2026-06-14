@@ -151,7 +151,7 @@ pub async fn network_show(
     let mut is_console = target_device.console_port.is_some();
     if !is_console {
         if let Ok(connections) = crate::connections::load_connections(app.clone()) {
-            if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == target_device.host.to_lowercase() || c.ip.as_str() == target_device.host) {
+            if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&target_device.host) || c.ip.as_str() == target_device.host) {
                 if conn.conn_type == crate::connections::ConnectionType::Console {
                     is_console = true;
                 }
@@ -160,7 +160,7 @@ pub async fn network_show(
     }
     if !is_console {
         if let Ok(mcp_hosts) = crate::connections::get_mcp_hosts() {
-            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == target_device.host.to_lowercase() || h.ip.as_str() == target_device.host) {
+            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(&target_device.host) || h.ip.as_str() == target_device.host) {
                 if mcp.device_type.contains("Console") || mcp.device_type.contains("Serial") {
                     is_console = true;
                 }
@@ -228,7 +228,7 @@ pub async fn network_config(
     let mut is_console = target_device.console_port.is_some();
     if !is_console {
         if let Ok(connections) = crate::connections::load_connections(app.clone()) {
-            if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == target_device.host.to_lowercase() || c.ip.as_str() == target_device.host) {
+            if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&target_device.host) || c.ip.as_str() == target_device.host) {
                 if conn.conn_type == crate::connections::ConnectionType::Console {
                     is_console = true;
                 }
@@ -237,7 +237,7 @@ pub async fn network_config(
     }
     if !is_console {
         if let Ok(mcp_hosts) = crate::connections::get_mcp_hosts() {
-            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.to_lowercase() == target_device.host.to_lowercase() || h.ip.as_str() == target_device.host) {
+            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(&target_device.host) || h.ip.as_str() == target_device.host) {
                 if mcp.device_type.contains("Console") || mcp.device_type.contains("Serial") {
                     is_console = true;
                 }

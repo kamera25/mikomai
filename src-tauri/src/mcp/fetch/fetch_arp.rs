@@ -38,7 +38,7 @@ pub async fn fetch_arp(
     // Resolve the registered host name from connections
     let registered_name = {
         if let Ok(connections) = crate::connections::load_connections(app.clone()) {
-            if let Some(conn) = connections.iter().find(|c| c.hostname.to_lowercase() == resolved_name.to_lowercase() || c.ip.as_str() == resolved_name) {
+            if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&resolved_name) || c.ip.as_str() == resolved_name) {
                 conn.hostname.as_str().to_string()
             } else {
                 resolved_name
