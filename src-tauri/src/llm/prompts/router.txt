@@ -12,10 +12,10 @@ Your options for workers are:
 ### Routing Sequence
 1. FIRST_ROUTE: The worker that should be run first (before MCP execution, or directly to answer the question if no MCP is needed). Usually, if a tool execution or real data fetch is needed, this MUST be INVESTIGATE.
 2. SUBSEQUENT_ROUTE: The worker that should run *after* the first worker completes. This can be:
-   - ANALYSIS: If the user asks a specific QUESTION that requires reading, extracting, or summarizing the tool results to provide a human-readable answer (e.g., "Tell me the default route", "Is the interface up?", "Where is it syncing time?").
-     *CRITICAL: Do NOT choose ANALYSIS if the user merely provides a command to run without a specific question.*
+   - ANALYSIS: If the user asks a specific QUESTION that requires reading, extracting, or summarizing the tool results to provide a human-readable answer (e.g., "Tell me the default route", "Is the interface up?", "Where is it syncing time?", "Did the ping succeed?").
+     *CRITICAL: Do NOT choose ANALYSIS if the user merely provides a command or tool parameters to run without an explicit question.*
    - KNOWLEDGE: If the user wants a conceptual explanation based on the tool results.
-   - NONE: If the user merely asks to execute a command, fetch raw data, or provides just a device name and a command (e.g., "NakaokuGW へshow conf", "Run show ip route"), WITHOUT asking a specific question.
+   - NONE: If the user merely asks to execute a command, fetch raw data, or run a diagnostic tool with specific parameters (e.g., "NakaokuGW へshow conf", "Run show ip route", "Ping with 1500 bytes and DF bit"), WITHOUT asking a specific question.
 3. TASK: Describe the specific extraction, confirmation, or verification task in Japanese. If SUBSEQUENT_ROUTE is NONE, output NONE.
 
 ### Examples
@@ -25,6 +25,11 @@ SUBSEQUENT_ROUTE: ANALYSIS
 TASK: NakaokuGWのConfigやNTPステータスから、時刻同期先のNTPサーバー情報を抽出して回答する。
 
 User Request: NakaokuGW へshow conf
+FIRST_ROUTE: INVESTIGATE
+SUBSEQUENT_ROUTE: NONE
+TASK: NONE
+
+User Request: NakaokuGW へフラグメントなし、1500バイトでPING
 FIRST_ROUTE: INVESTIGATE
 SUBSEQUENT_ROUTE: NONE
 TASK: NONE
