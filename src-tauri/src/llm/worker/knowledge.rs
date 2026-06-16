@@ -40,28 +40,17 @@ impl KnowledgeWorker {
         &mut self,
         model: &LlamaModel,
         backend: &LlamaBackend,
-        vendor: Option<String>,
+        _vendor: Option<String>,
     ) -> Result<(), String> {
-        let needs_init = match &self.ctx {
-            None => true,
-            Some(_) => self.active_vendor != vendor,
-        };
+        let needs_init = self.ctx.is_none();
 
         if needs_init {
             self.ctx = None;
 
-            let role_desc = if let Some(ref v) = vendor {
-                format!(
-                    "あなたは現在「Knowledge Expert (知識専門家)」として動作しています。メーカー名: {}\n以下の役割指示に特化してください:\n{}",
-                    v,
-                    KNOWLEDGE_WORKER_PROMPT
-                )
-            } else {
-                format!(
-                    "あなたは現在「Knowledge Expert (知識専門家)」として動作しています。以下の役割指示に特化してください:\n{}",
-                    KNOWLEDGE_WORKER_PROMPT
-                )
-            };
+            let role_desc = format!(
+                "あなたは現在「Knowledge Expert (知識専門家)」として動作しています。以下の役割指示に特化してください:\n{}",
+                KNOWLEDGE_WORKER_PROMPT
+            );
             log::debug!("=== role_desc ===\n{}", role_desc);
 
             let full_system_prompt = format!(
@@ -77,7 +66,7 @@ impl KnowledgeWorker {
                 std::mem::transmute::<AgentContext<'_>, AgentContext<'static>>(ctx)
             };
             self.ctx = Some(ctx_static);
-            self.active_vendor = vendor;
+            self.active_vendor = None;
         }
         Ok(())
     }
@@ -114,8 +103,8 @@ impl LlmWorker for KnowledgeWorker {
         temperature: f32,
         repetition_penalty: f32,
     ) -> Result<String, String> {
-        // Detect vendor from prompt or user_message
-        let mut vendor = None;
+        // Detect connection details from prompt or user_message
+        let mut matched_connection = None;
         if let Some(w) = window {
             let app = w.app_handle();
             let text_to_check = match (&prompt, &user_message) {
@@ -130,20 +119,15 @@ impl LlmWorker for KnowledgeWorker {
                         let hostname = conn.hostname.as_str().to_lowercase();
                         let ip = conn.ip.to_string();
                         if (!hostname.is_empty() && lower_text.contains(&hostname)) || lower_text.contains(&ip) {
-                            if let Some(vt) = conn.vendor_type {
-                                let vt_str = vt.as_str().trim();
-                                if !vt_str.is_empty() {
-                                    vendor = Some(vt_str.to_string());
-                                    break;
-                                }
-                            }
+                            matched_connection = Some(conn);
+                            break;
                         }
                     }
                 }
             }
         }
 
-        self.ensure_initialized_with_vendor(model, backend, vendor)?;
+        self.ensure_initialized_with_vendor(model, backend, None)?;
 
         let worker_prompt = self.build_prompt(
             prompt,
@@ -153,10 +137,35 @@ impl LlmWorker for KnowledgeWorker {
             history_block,
             subsequent_task,
         );
+
+        let (vendor_str, device_str, gateway_str) = if let Some(conn) = &matched_connection {
+            let v = conn.vendor_type.as_ref().map(|vt| vt.as_str()).unwrap_or("Unknown").to_string();
+            let d = conn.device_type.as_ref().map(|dt| dt.as_str()).unwrap_or("Unknown").to_string();
+            let g = format!("{} ({})", conn.hostname.as_str(), conn.ip.to_string());
+            (v, d, g)
+        } else {
+            ("Unknown".to_string(), "Unknown".to_string(), "Unknown".to_string())
+        };
+
+        let final_prompt = format!(
+            "### System Metadata\n\
+             ユーザーのクエリを処理するにあたり、以下の前提条件（対象環境）を考慮してください。\n\
+             - Vendor: {}\n\
+             - Device: {}\n\
+             - Gateway Name (IP): {}\n\n\
+             ### User Query\n\
+             User: {}\n\
+             MIKOMAI:",
+            vendor_str,
+            device_str,
+            gateway_str,
+            worker_prompt
+        );
+
         crate::llm::llm_manager::run_inference(
             self.context_mut(),
             model,
-            &worker_prompt,
+            &final_prompt,
             window,
             temperature,
             repetition_penalty,
