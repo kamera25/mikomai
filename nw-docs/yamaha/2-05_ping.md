@@ -13,7 +13,7 @@ target_model: RTX1210 RTX1300
 ### Description
 
 このコマンドを入力すると、ICMPエコー要求を送信して宛先との疎通確認ができます。
-このコマンドはYamahaでしか使えません。
+このコマンドはYamahaでのみ使えます。
 
 ### Usage
 

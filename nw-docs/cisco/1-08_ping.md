@@ -13,7 +13,7 @@ target_model: Catalyst 9300
 ### Description
 
 このコマンドを入力すると、ICMPエコー要求を送信して宛先との疎通確認ができます。
-このコマンドはCiscoでしか使えません。
+このコマンドはCiscoでのみ使えます。
 
 ### Usage
 

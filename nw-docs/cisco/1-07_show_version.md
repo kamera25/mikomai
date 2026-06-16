@@ -13,7 +13,7 @@ target_model: Catalyst 9300
 ### Description
 
 このコマンドを入力すると、IOSのバージョン情報や稼働時間、ハードウェアの情報などを表示できます。
-このコマンドはCiscoでしか使えません。
+このコマンドはCiscoでのみ使えます。
 
 ### Usage
 

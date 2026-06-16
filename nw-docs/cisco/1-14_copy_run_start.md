@@ -13,7 +13,7 @@ target_model: Catalyst 9300
 ### Description
 
 このコマンドを入力すると、現在稼働中の設定（running-config）をNVRAMに保存し、再起動後も設定を維持できます。
-このコマンドはCiscoでしか使えません。
+このコマンドはCiscoでのみ使えます。
 
 ### Usage
 

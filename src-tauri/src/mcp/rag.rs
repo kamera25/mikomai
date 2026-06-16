@@ -48,7 +48,7 @@ impl RagState {
         }
 
         let db_path = if let Ok(settings) = crate::settings::load_settings(app.clone()) {
-            settings.db_path.unwrap_or_else(|| {
+            settings.db_path.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| {
                 let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
                 app_data_dir.join("lancedb").to_string_lossy().to_string()
             })

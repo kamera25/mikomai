@@ -13,7 +13,7 @@ target_model: Catalyst 9300
 ### Description
 
 このコマンドを入力すると、現在稼働中の設定ファイル（running-config）を表示できます。
-このコマンドはCiscoでしか使えません。
+このコマンドはCiscoでのみ使えます。
 
 ### Usage
 

@@ -13,7 +13,7 @@ target_model: Catalyst 9300
 ### Description
 
 このコマンドを入力すると、CDP（Cisco Discovery Protocol）で検出された隣接機器の情報を表示できます。
-このコマンドはCiscoでしか使えません。
+このコマンドはCiscoでのみ使えます。
 
 ### Usage
 

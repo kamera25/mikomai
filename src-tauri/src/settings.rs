@@ -117,7 +117,8 @@ pub fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, SettingsError
         serde_json::from_str(&data)?
     };
 
-    if settings.db_path.is_none() {
+    let has_no_db_path = settings.db_path.as_ref().map_or(true, |s| s.trim().is_empty());
+    if has_no_db_path {
         let app_data_dir = app.path().app_data_dir().map_err(|_| SettingsError::TauriPath)?;
         settings.db_path = Some(app_data_dir.join("lancedb").to_string_lossy().to_string());
     }

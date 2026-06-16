@@ -13,7 +13,7 @@ target_model: RTX1210 RTX1300
 ### Description
 
 このコマンドを入力すると、現在稼働中の設定ファイルを表示できます。
-このコマンドはYamahaでしか使えません。
+このコマンドはYamahaでのみ使えます。
 
 ### Usage
 

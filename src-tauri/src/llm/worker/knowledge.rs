@@ -52,7 +52,7 @@ impl KnowledgeWorker {
 
             let role_desc = if let Some(ref v) = vendor {
                 format!(
-                    "あなたは現在「Knowledge Expert (知識専門家)」として動作しています。対象機種: {}\n以下の役割指示に特化してください:\n{}",
+                    "あなたは現在「Knowledge Expert (知識専門家)」として動作しています。メーカー名: {}\n以下の役割指示に特化してください:\n{}",
                     v,
                     KNOWLEDGE_WORKER_PROMPT
                 )
@@ -62,6 +62,7 @@ impl KnowledgeWorker {
                     KNOWLEDGE_WORKER_PROMPT
                 )
             };
+            log::debug!("=== role_desc ===\n{}", role_desc);
 
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\n{}",
