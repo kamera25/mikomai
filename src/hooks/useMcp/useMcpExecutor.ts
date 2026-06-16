@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { UseMcpProps } from "./types";
-import { getHistoryBlock, normalizeArgs } from "./helpers";
+import { getHistoryBlock, normalizeArgs, resolveDeviceNameStep, resolveHostStep, applyFallbackHostStep } from "./helpers";
 import { TauriCommandResult, Message, AnalyzePayload } from "../../types";
 import { getErrorMessage } from "../../utils/error";
 import i18n from "../../i18n";
@@ -53,21 +53,20 @@ export function useMcpExecutor({
 
     // Extract target host and update recent hosts
     if (updateRecentHosts && processedArgs) {
-      const argsObj = processedArgs as Record<string, unknown> & {
-        device?: string | { host?: string; hostname?: string };
-        deviceName?: string;
-        host?: string;
-      };
-      const device = argsObj.device;
-      const host =
-        argsObj.deviceName ||
-        argsObj.host ||
-        (typeof device === "string" ? device : device?.host || device?.hostname);
+      let host: string | undefined = undefined;
+      if (["fetch_config", "fetch_routing", "fetch_arp"].includes(toolId)) {
+        host = await resolveDeviceNameStep(processedArgs, userMessage);
+      } else if (["self_network_ping", "self_network_traceroute"].includes(toolId)) {
+        host = resolveHostStep(processedArgs);
+      }
+      
+      const finalHost = applyFallbackHostStep(host, recentIPs);
 
-      if (typeof host === "string" && host.trim()) {
-        updateRecentHosts([host.trim()]);
+      if (finalHost && finalHost.trim()) {
+        updateRecentHosts([finalHost.trim()]);
       }
     }
+
 
     // Add ToolExecution block
     setMessages((prev) => [

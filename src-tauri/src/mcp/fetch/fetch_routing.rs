@@ -29,11 +29,24 @@ pub async fn fetch_routing(
     _llama_state: tauri::State<'_, crate::llm::llm::LlamaState>,
     device_name: Option<String>,
     deviceName: Option<String>,
+    device: Option<String>,
+    host: Option<String>,
+    user_message: Option<String>,
+    userMessage: Option<String>,
 ) -> Result<CommandResult, String> {
-    let name = device_name.or(deviceName).unwrap_or_default();
+    let name = crate::mcp::args::normalize_device_args(
+        &app,
+        device_name,
+        deviceName,
+        device,
+        host,
+        user_message,
+        userMessage,
+    )?;
     
     // Resolve the device name using device_resolver
     let (resolved_name, _) = super::device_resolver::resolve_device_name_and_type(&app, &name)?;
+
     
     // Resolve the registered host name from connections
     let registered_name = {

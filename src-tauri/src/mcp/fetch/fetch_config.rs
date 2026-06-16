@@ -19,10 +19,23 @@ pub async fn fetch_config(
     app: tauri::AppHandle, 
     device_name: Option<String>,
     deviceName: Option<String>,
+    device: Option<String>,
+    host: Option<String>,
+    user_message: Option<String>,
+    userMessage: Option<String>,
 ) -> Result<CommandResult, String> {
-    let name = device_name.or(deviceName).unwrap_or_default();
-    ConfigFetcher.fetch_device_info(&app, &name).await
+    let resolved_name = crate::mcp::args::normalize_device_args(
+        &app,
+        device_name,
+        deviceName,
+        device,
+        host,
+        user_message,
+        userMessage,
+    )?;
+    ConfigFetcher.fetch_device_info(&app, &resolved_name).await
 }
+
 
 
 #[cfg(test)]

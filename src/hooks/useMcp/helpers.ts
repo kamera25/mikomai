@@ -60,7 +60,7 @@ export function extractJsonBlocks(text: string): string[] {
   return blocks;
 }
 
-function keysToCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
+export function keysToCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
   return Object.keys(obj).reduce(
     (acc, key) => {
       const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
@@ -69,6 +69,44 @@ function keysToCamelCase(obj: Record<string, unknown>): Record<string, unknown> 
     },
     {} as Record<string, unknown>
   );
+}
+
+export async function resolveDeviceNameStep(
+  processedArgs: Record<string, any>,
+  userMessage?: string
+): Promise<string | undefined> {
+  let deviceVal =
+    processedArgs.deviceName ||
+    processedArgs.device_name ||
+    processedArgs.device ||
+    processedArgs.host;
+  if (!deviceVal && userMessage) {
+    deviceVal = await resolveDeviceFromConnections(userMessage);
+  }
+  return deviceVal;
+}
+
+export function resolveHostStep(
+  processedArgs: Record<string, any>
+): string | undefined {
+  return (
+    processedArgs.host ||
+    processedArgs.device ||
+    processedArgs.deviceName ||
+    processedArgs.device_name ||
+    processedArgs.ip
+  );
+}
+
+export function applyFallbackHostStep(
+  val: string | undefined,
+  recentIPs?: string[]
+): string | undefined {
+  if (!val && recentIPs?.[0]) {
+    console.log("[useMcp] Omitted host, fallback to session's recent host:", recentIPs[0]);
+    return recentIPs[0];
+  }
+  return val;
 }
 
 let cachePromise: Promise<[Connection[], McpHost[]]> | null = null;
@@ -123,45 +161,10 @@ export async function normalizeArgs(
     return args;
   }
 
-  const processedArgs = keysToCamelCase(args) as Record<string, string | undefined>;
+  const processedArgs = keysToCamelCase(args) as Record<string, any>;
+  processedArgs.userMessage = userMessage;
+  processedArgs.user_message = userMessage;
 
-  if (["fetch_config", "fetch_routing", "fetch_arp"].includes(toolId)) {
-    let deviceVal =
-      processedArgs.deviceName ||
-      processedArgs.device_name ||
-      processedArgs.device ||
-      processedArgs.host;
-    if (!deviceVal) {
-      deviceVal = await resolveDeviceFromConnections(userMessage);
-    }
-
-    // Fallback to session recent host if not found in args or message
-    if (!deviceVal && recentIPs?.[0]) {
-      deviceVal = recentIPs[0];
-      console.log("[useMcp] Omitted device name, fallback to session's recent host:", deviceVal);
-    }
-
-    if (deviceVal) {
-      processedArgs.deviceName = deviceVal;
-    }
-  } else if (["self_network_ping", "self_network_traceroute"].includes(toolId)) {
-    let hostVal =
-      processedArgs.host ||
-      processedArgs.device ||
-      processedArgs.deviceName ||
-      processedArgs.device_name ||
-      processedArgs.ip;
-
-    // Fallback to session recent host if not found in args or message
-    if (!hostVal && recentIPs?.[0]) {
-      hostVal = recentIPs[0];
-      console.log("[useMcp] Omitted host, fallback to session's recent host:", hostVal);
-    }
-
-    if (hostVal) {
-      processedArgs.host = hostVal;
-    }
-  }
-
-  return processedArgs as unknown as Record<string, unknown>;
+  return processedArgs;
 }
+

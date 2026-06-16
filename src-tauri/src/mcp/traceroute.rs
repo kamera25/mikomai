@@ -16,28 +16,45 @@ fn resolve_host(host: &str) -> Result<IpAddr, String> {
 }
 
 #[tauri::command]
-pub async fn self_network_traceroute(app: tauri::AppHandle, host: String) -> Result<TracerouteResult, String> {
-    let resolved_host = resolve_host_with_mcp(&app, &host);
+#[allow(non_snake_case)]
+pub async fn self_network_traceroute(
+    app: tauri::AppHandle,
+    host: Option<String>,
+    device: Option<String>,
+    deviceName: Option<String>,
+    device_name: Option<String>,
+    ip: Option<String>,
+) -> Result<TracerouteResult, String> {
+    let target_host = crate::mcp::args::normalize_host_args(
+        &app,
+        host,
+        device,
+        deviceName,
+        device_name,
+        ip,
+    )?;
+    let resolved_host = resolve_host_with_mcp(&app, &target_host);
     let app_clone = app.clone();
     let resolved_host_clone = resolved_host.clone();
-    let ip = tokio::task::spawn_blocking(move || {
+    let ip_addr = tokio::task::spawn_blocking(move || {
         crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    let mut output = format!("Tracing route to {} over a maximum of 30 hops:\n\n", ip);
+
+    let mut output = format!("Tracing route to {} over a maximum of 30 hops:\n\n", ip_addr);
     let mut success = false;
     let payload = vec![0u8; 32];
 
     for ttl in 1..=30 {
-        let config = match ip {
+        let config = match ip_addr {
             IpAddr::V4(_) => Config::builder().kind(ICMP::V4).ttl(ttl).build(),
             IpAddr::V6(_) => Config::builder().kind(ICMP::V6).ttl(ttl).build(),
         };
 
         let client = Client::new(&config).map_err(|e| e.to_string())?;
-        let mut pinger = client.pinger(ip, PingIdentifier(ttl as u16)).await;
+        let mut pinger = client.pinger(ip_addr, PingIdentifier(ttl as u16)).await;
         pinger.timeout(Duration::from_secs(2));
 
         match pinger.ping(PingSequence(ttl as u16), &payload).await {
@@ -48,7 +65,7 @@ pub async fn self_network_traceroute(app: tauri::AppHandle, host: String) -> Res
                 };
                 output.push_str(&format!("{:2}  {:?}  {}\n", ttl, duration, hop_ip));
 
-                if hop_ip == ip {
+                if hop_ip == ip_addr {
                     output.push_str("\nTrace complete.\n");
                     success = true;
                     break;

@@ -77,24 +77,38 @@ pub async fn network_ping_core(
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
 pub async fn self_network_ping(
     app: tauri::AppHandle,
-    host: String,
+    host: Option<String>,
+    device: Option<String>,
+    deviceName: Option<String>,
+    device_name: Option<String>,
+    ip: Option<String>,
     size: Option<usize>,
     count: Option<u32>,
     df: Option<bool>,
 ) -> Result<PingResult, String> {
-    let resolved_host = resolve_host_with_mcp(&app, &host);
+    let target_host = crate::mcp::args::normalize_host_args(
+        &app,
+        host,
+        device,
+        deviceName,
+        device_name,
+        ip,
+    )?;
+    let resolved_host = resolve_host_with_mcp(&app, &target_host);
     let app_clone = app.clone();
     let resolved_host_clone = resolved_host.clone();
-    let ip = tokio::task::spawn_blocking(move || {
+    let ip_addr = tokio::task::spawn_blocking(move || {
         crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
     })
     .await
     .map_err(|e| e.to_string())??;
     
-    network_ping_core(ip.to_string(), size, count, df).await
+    network_ping_core(ip_addr.to_string(), size, count, df).await
 }
+
 
 async fn run_system_ping(host: &str, size: Option<usize>, count: Option<u32>, df: bool) -> Result<PingResult, String> {
     use std::process::Command;
