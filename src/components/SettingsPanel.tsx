@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import { useSettingsContext } from "../contexts/SettingsContext";
 import { getErrorMessage } from "../utils/error";
 
@@ -12,6 +13,7 @@ interface SettingsPanelProps {
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const {
     historyLimit,
     setHistoryLimit,
@@ -153,7 +155,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
   const handleDownloadAndLoad = async () => {
     try {
       setIsLoading(true);
-      setDownloadStatus("モデルのダウンロードを開始します（時間がかかる場合があります）");
+      setDownloadStatus(t("settings.status_start_download"));
 
       const downloadedPath = await invoke<string>("download_model", {
         repo: repoPath,
@@ -188,7 +190,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "データベースディレクトリを選択",
+        title: t("settings.title_select_db_dir"),
       });
       if (selected) {
         handleDbPathChange(selected as string);
@@ -206,10 +208,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
         <header className="settings-header">
           <div className="settings-header-content">
             <div>
-              <h2>設定</h2>
-              <p>ローカルLLM、ナレッジベースを設定します。</p>
+              <h2>{t("settings.header")}</h2>
+              <p>{t("settings.desc")}</p>
             </div>
-            <button className="close-button" onClick={onClose} title="設定を閉じる">
+            <button className="close-button" onClick={onClose} title={t("settings.close_title")}>
               &times;
             </button>
           </div>
@@ -217,9 +219,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
 
         <div className="settings-body">
           <section className="settings-group">
-            <h3>対話設定</h3>
+            <h3>{t("settings.sub_chat")}</h3>
             <div className="form-control">
-              <label>過去の履歴保持数 (要約)</label>
+              <label>{t("settings.label_history")}</label>
               <div className="form-range-container">
                 <input
                   type="range"
@@ -232,11 +234,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                 <span className="form-range-value">{historyLimit}</span>
               </div>
               <p className="help-text form-help-text">
-                AIが回答を生成する際に参照する過去の会話の要約数です。大きくすると文脈をより理解しますが、メモリ消費量が増える可能性があります。
+                {t("settings.desc_history")}
               </p>
             </div>
             <div className="form-control">
-              <label>Temperature (温度)</label>
+              <label>{t("settings.label_temp")}</label>
               <div className="form-range-container">
                 <input
                   type="range"
@@ -250,11 +252,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                 <span className="form-range-value">{temperature.toFixed(1)}</span>
               </div>
               <p className="help-text form-help-text">
-                回答のランダム性を制御します。0に設定すると最も決定的（同じ入力に対して同じ回答）になります。
+                {t("settings.desc_temp")}
               </p>
             </div>
             <div className="form-control">
-              <label>Repetition Penalty (繰り返し抑制)</label>
+              <label>{t("settings.label_rep_penalty")}</label>
               <div className="form-range-container">
                 <input
                   type="range"
@@ -268,11 +270,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                 <span className="form-range-value">{repetitionPenalty.toFixed(2)}</span>
               </div>
               <p className="help-text form-help-text">
-                同じ言葉の繰り返しを抑制します。1.0で無効、値を大きくするほど繰り返しが少なくなります。
+                {t("settings.desc_rep_penalty")}
               </p>
             </div>
             <div className="form-control">
-              <label>MCP 実行タイムアウト (秒)</label>
+              <label>{t("settings.label_mcp_timeout")}</label>
               <div className="form-range-container">
                 <input
                   type="range"
@@ -286,11 +288,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                 <span className="form-range-value">{mcpTimeout}</span>
               </div>
               <p className="help-text form-help-text">
-                ツール (MCP) 実行の最大待機時間です。時間を超えると処理を中断します。
+                {t("settings.desc_mcp_timeout")}
               </p>
             </div>
             <div className="form-control">
-              <label>キャッシュ有効時間 (分)</label>
+              <label>{t("settings.label_cache_expiry")}</label>
               <div className="form-range-container">
                 <input
                   type="range"
@@ -304,26 +306,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                 <span className="form-range-value">{cacheExpiryMinutes}</span>
               </div>
               <p className="help-text form-help-text">
-                前回データ取得からの経過時間（分）です。この時間内であれば、実機に接続せず保存済みのYAMLデータから応答します。0にするとキャッシュを使用しません。
+                {t("settings.desc_cache_expiry")}
               </p>
             </div>
             <div className="form-control">
-              <label htmlFor="ip-version-select">利用するインターネットプロトコルの指定</label>
+              <label htmlFor="ip-version-select">{t("settings.label_ip_version")}</label>
               <select
                 id="ip-version-select"
                 value={ipVersion}
                 onChange={(e) => handleIpVersionChange(e.target.value)}
               >
-                <option value="auto">自動</option>
-                <option value="ipv4">IPv4のみ</option>
-                <option value="ipv6">IPv6のみ</option>
+                <option value="auto">{t("settings.opt_auto")}</option>
+                <option value="ipv4">{t("settings.opt_ipv4")}</option>
+                <option value="ipv6">{t("settings.opt_ipv6")}</option>
               </select>
               <p className="help-text form-help-text">
-                ホスト名解決および接続時に使用するIPプロトコルの優先設定です。
+                {t("settings.desc_ip_version")}
               </p>
             </div>
             <div className="form-control">
-              <label htmlFor="console-port-select">コンソールポート (MCP用)</label>
+              <label htmlFor="console-port-select">{t("settings.label_console_port")}</label>
               <div className="download-actions">
                 <select
                   id="console-port-select"
@@ -346,13 +348,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                   }}
                   className="download-btn-stretch"
                 >
-                  <option value="">None (使用しない)</option>
+                  <option value="">{t("settings.opt_none")}</option>
                   {availablePorts.map((p) => (
                     <option key={p} value={p}>
                       {p}
                     </option>
                   ))}
-                  <option value="custom">手動入力...</option>
+                  <option value="custom">{t("settings.opt_custom")}</option>
                 </select>
                 {(!availablePorts.includes(consolePort || "") && consolePort) ||
                 consolePort === "custom" ? (
@@ -360,19 +362,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                     type="text"
                     value={consolePort === "custom" ? "" : consolePort || ""}
                     onChange={(e) => handleConsolePortChange(e.target.value)}
-                    placeholder="例: /dev/ttyUSB0, COM1"
+                    placeholder={t("settings.placeholder_console_port")}
                     className="custom-port-input"
                   />
                 ) : null}
               </div>
               <p className="help-text form-help-text">
-                指定されている場合、MCPの呼び出し(fetch_arp, config,
-                routing等)は内部でこのシリアルコンソール経由で実行されます。
+                {t("settings.desc_console_port")}
               </p>
             </div>
             {consolePort && consolePort !== "" && (
               <div className="form-control">
-                <label htmlFor="console-baudrate-select">コンソールボーレート</label>
+                <label htmlFor="console-baudrate-select">{t("settings.label_console_baudrate")}</label>
                 <select
                   id="console-baudrate-select"
                   value={consoleBaudRate}
@@ -389,9 +390,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
           </section>
 
           <section className="settings-group">
-            <h3>ローカルLLM (llama.cpp)</h3>
+            <h3>{t("settings.sub_llm")}</h3>
             <div className="form-control">
-              <label>HuggingFace リポジトリ</label>
+              <label>{t("settings.label_hf_repo")}</label>
               <input
                 type="text"
                 value={repoPath}
@@ -400,7 +401,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
               />
             </div>
             <div className="form-control">
-              <label>ファイル名 (GGUF)</label>
+              <label>{t("settings.label_gguf_file")}</label>
               <input
                 type="text"
                 value={modelFilename}
@@ -409,9 +410,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
               />
             </div>
             <div className="form-control">
-              <label>起動時・モデル読込時のKVキャッシュ プリロード設定</label>
+              <label>{t("settings.label_kv_preload")}</label>
               <p className="help-text form-help-text margin-bottom">
-                チェックを外したワーカーは、初回呼出時（遅延読込）にキャッシュを生成するため、起動時のメモリ消費量と起動時間を削減できます。
+                {t("settings.desc_kv_preload")}
               </p>
               <div className="preload-grid">
                 <label className="preload-label">
@@ -420,7 +421,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                     checked={preloadInvestigate}
                     onChange={(e) => handlePreloadInvestigateChange(e.target.checked)}
                   />
-                  Investigator (調査員)
+                  {t("settings.worker_investigator")}
                 </label>
                 <label className="preload-label">
                   <input
@@ -428,7 +429,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                     checked={preloadKnowledge}
                     onChange={(e) => handlePreloadKnowledgeChange(e.target.checked)}
                   />
-                  Knowledge (知識専門家)
+                  {t("settings.worker_knowledge")}
                 </label>
                 <label className="preload-label">
                   <input
@@ -436,7 +437,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                     checked={preloadAnalysis}
                     onChange={(e) => handlePreloadAnalysisChange(e.target.checked)}
                   />
-                  Analyst (分析官)
+                  {t("settings.worker_analyst")}
                 </label>
                 <label className="preload-label">
                   <input
@@ -444,7 +445,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                     checked={preloadRag}
                     onChange={(e) => handlePreloadRagChange(e.target.checked)}
                   />
-                  RAG Worker (RAG回答員)
+                  {t("settings.worker_rag")}
                 </label>
               </div>
             </div>
@@ -455,14 +456,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                   onClick={handleDownloadAndLoad}
                   disabled={isLoading}
                 >
-                  {isLoading ? "ダウンロード中..." : "モデルをダウンロードして読み込む"}
+                  {isLoading ? t("settings.btn_downloading") : t("settings.btn_download_load")}
                 </button>
                 <button
                   className="btn btn-secondary"
                   onClick={handleOpenModelDir}
-                  title="モデルが格納されているフォルダを開きます"
+                  title={t("settings.btn_open_folder_title")}
                 >
-                  フォルダを開く
+                  {t("settings.btn_open_folder")}
                 </button>
               </div>
               {downloadStatus && (
@@ -479,9 +480,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
           </section>
 
           <section className="settings-group">
-            <h3>ナレッジベース (LanceDB)</h3>
+            <h3>{t("settings.sub_kb")}</h3>
             <div className="form-control">
-              <label>データベースディレクトリ</label>
+              <label>{t("settings.label_db_dir")}</label>
               <div className="input-with-button">
                 <input
                   type="text"
@@ -491,14 +492,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                 />
 
                 <button className="btn btn-secondary" onClick={handleSelectDbDir}>
-                  参照
+                  {t("settings.btn_browse")}
                 </button>
               </div>
             </div>
             <div className="form-control">
-              <label>埋め込みモデル</label>
+              <label>{t("settings.label_embed_model")}</label>
               <select>
-                <option>MultilingualE5Large (ローカル)</option>
+                <option>{t("settings.opt_multilingual_e5")}</option>
               </select>
             </div>
           </section>
@@ -507,7 +508,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
         <footer className="settings-footer">
           <div className="settings-footer-content">
             <button className="btn btn-primary" onClick={onClose}>
-              保存して終了
+              {t("settings.btn_save_exit")}
             </button>
           </div>
         </footer>

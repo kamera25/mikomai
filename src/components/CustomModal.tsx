@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import "./CustomModal.css";
 
 interface CustomModalProps {
@@ -21,13 +22,17 @@ export const CustomModal: React.FC<CustomModalProps> = ({
   message,
   placeholder = "",
   initialValue = "",
-  confirmLabel = "確定",
-  cancelLabel = "キャンセル",
+  confirmLabel,
+  cancelLabel,
   onConfirm,
   onCancel,
 }) => {
+  const { t } = useTranslation();
   const [inputValue, setInputValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const displayConfirmLabel = confirmLabel || t("common.confirm");
+  const displayCancelLabel = cancelLabel || t("common.cancel");
 
   useEffect(() => {
     if (isOpen) {
@@ -73,14 +78,14 @@ export const CustomModal: React.FC<CustomModalProps> = ({
           </div>
           <div className="custom-modal-footer">
             <button type="button" className="custom-modal-btn cancel" onClick={onCancel}>
-              {cancelLabel}
+              {displayCancelLabel}
             </button>
             <button
               type="submit"
               className={`custom-modal-btn confirm ${type === "confirm" ? "danger" : "primary"}`}
               disabled={type === "prompt" && !inputValue.trim()}
             >
-              {confirmLabel}
+              {displayConfirmLabel}
             </button>
           </div>
         </form>

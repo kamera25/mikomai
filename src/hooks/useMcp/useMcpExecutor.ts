@@ -4,6 +4,7 @@ import { UseMcpProps } from "./types";
 import { getHistoryBlock, normalizeArgs } from "./helpers";
 import { TauriCommandResult, Message, AnalyzePayload } from "../../types";
 import { getErrorMessage } from "../../utils/error";
+import i18n from "../../i18n";
 
 export function useMcpExecutor({
   setMessages,
@@ -45,7 +46,7 @@ export function useMcpExecutor({
   ) => {
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const isRag = toolId === "query_nw_db" || toolId === "network_query_nw_db";
-    const statusMsg = isRag ? `NW-DBを検索中...` : `${toolLabel} を実行中...`;
+    const statusMsg = isRag ? i18n.t("chat.searching_nwdb") : i18n.t("chat.running_tool", { toolLabel });
 
     // Normalize arguments using helper function
     const processedArgs = await normalizeArgs(toolId, userMessage, args, recentIPs);
@@ -111,7 +112,7 @@ export function useMcpExecutor({
                 ...msg,
                 isToolLoading: false,
                 status: result.success ? "Success" : "Failed",
-                summary_text: result.success ? `${toolLabel} 完了` : `${toolLabel} 失敗`,
+                summary_text: result.success ? i18n.t("chat.tool_success", { toolLabel }) : i18n.t("chat.tool_failed", { toolLabel }),
                 raw_data: result.output || "No output provided",
                 saved_path: result.saved_path,
                 is_cached: result.is_cached,
@@ -129,7 +130,7 @@ export function useMcpExecutor({
         ...prev,
         {
           role: "ai",
-          content: "分析中...",
+          content: i18n.t("chat.analyzing"),
           timestamp: new Date().toISOString(),
           isToolLoading: true,
           isHidden: true, // Hide by default
@@ -162,7 +163,7 @@ export function useMcpExecutor({
           setMessages((prev) =>
             prev.map((msg) =>
               msg.task_id === analysisTaskId
-                ? ({ ...msg, summary_text: `${agentName} が分析中...`, isHidden: false } as Message)
+                ? ({ ...msg, summary_text: i18n.t("chat.agent_analyzing", { agentName }), isHidden: false } as Message)
                 : msg
             )
           );
@@ -199,7 +200,7 @@ export function useMcpExecutor({
       setMessages((prev) =>
         prev.map((msg) =>
           msg.task_id === analysisTaskId
-            ? ({ ...msg, isHidden: false, summary_text: "回答要約中..." } as Message)
+            ? ({ ...msg, isHidden: false, summary_text: i18n.t("chat.summarizing") } as Message)
             : msg
         )
       );
@@ -217,7 +218,7 @@ export function useMcpExecutor({
                 ...msg,
                 isToolLoading: false,
                 status: "Failed",
-                summary_text: `${toolLabel} エラー`,
+                summary_text: i18n.t("chat.tool_error", { toolLabel }),
                 raw_data: errorMsg,
               } as Message)
             : msg

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "katex/dist/katex.min.css";
+import { useTranslation } from "react-i18next";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
 import { ScheduledTasksPanel } from "./components/ScheduledTasksPanel";
@@ -21,6 +22,7 @@ import { CustomModal } from "./components/CustomModal";
 import { SidebarIcon, ServerIcon } from "./components/Icons";
 
 function App() {
+  const { t } = useTranslation();
   const {
     history,
     activeSessionId,
@@ -266,7 +268,7 @@ function App() {
                   <button
                     className="sidebar-toggle-button"
                     onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                    title={isSidebarOpen ? "サイドバーを閉じる" : "サイドバーを開く"}
+                    title={isSidebarOpen ? t("app.sidebar_close") : t("app.sidebar_open")}
                   >
                     <SidebarIcon size={20} />
                   </button>
@@ -304,7 +306,7 @@ function App() {
                     <h1
                       className="header-title clickable"
                       onDoubleClick={handleStartRenameHeader}
-                      title="ダブルクリックしてリネーム"
+                      title={t("app.double_click_rename")}
                     >
                       {activeSession?.title || "mikomai"}
                     </h1>

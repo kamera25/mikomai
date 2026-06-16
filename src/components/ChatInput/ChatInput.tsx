@@ -1,4 +1,5 @@
 import React, { forwardRef, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { SuggestionsList } from "./SuggestionsList";
 import { RefreshIcon, GearIcon, SendIcon } from "../Icons";
 import "./ChatInput.css";
@@ -46,6 +47,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
     },
     ref
   ) => {
+    const { t } = useTranslation();
     const isComposing = useRef(false);
     const suggestionListRef = useRef<HTMLDivElement>(null);
 
@@ -121,8 +123,8 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
           const seenIPs = new Set<string>();
 
           // localhost
-          if ("localhost".includes(queryLower) || "このコンピュータ".includes(query)) {
-            combined.push({ hostname: "localhost", ip: "このコンピュータ" });
+          if ("localhost".includes(queryLower) || t("chat_input.localhost").includes(query)) {
+            combined.push({ hostname: "localhost", ip: t("chat_input.localhost") });
             seenIPs.add("127.0.0.1");
             seenIPs.add("localhost");
           }
@@ -141,10 +143,10 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
           recentIPs.forEach((ip) => {
             if (
               ip.toLowerCase().includes(queryLower) ||
-              "過去に投入したIPアドレス".includes(query)
+              t("chat_input.past_ips").includes(query)
             ) {
               if (!seenIPs.has(ip)) {
-                combined.push({ hostname: ip, ip: "過去に投入したIPアドレス" });
+                combined.push({ hostname: ip, ip: t("chat_input.past_ips") });
                 seenIPs.add(ip);
               }
             }
@@ -168,22 +170,22 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
             {modelStatus === "Loading" && <div className="status-spinner"></div>}
             <span>
               {modelStatus === "NotLoaded" &&
-                "AIモデルが読み込まれていません。モデルを読み込んでください。"}
-              {modelStatus === "Loading" && "AIモデルを読み込み中です。しばらくお待ちください..."}
+                t("chat_input.error_no_model")}
+              {modelStatus === "Loading" && t("chat_input.status_loading_model")}
               {modelStatus === "Error" &&
-                "AIモデルの読み込みに失敗しました。設定を確認してください。"}
+                t("chat_input.status_failed_model")}
             </span>
             {(modelStatus === "NotLoaded" || modelStatus === "Error") && (
               <div className="banner-actions">
                 {modelPath && (
                   <button className="banner-button primary" onClick={handleLoadModel}>
                     <RefreshIcon size={14} style={{ marginRight: "6px" }} />
-                    モデルの読み込み
+                    {t("chat_input.btn_load_model")}
                   </button>
                 )}
                 <button className="banner-button" onClick={() => setIsSettingsOpen(true)}>
                   <GearIcon size={14} style={{ marginRight: "6px" }} />
-                  設定
+                  {t("chat_input.btn_settings")}
                 </button>
               </div>
             )}
@@ -202,7 +204,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
               ref={ref}
               className="chat-input"
               placeholder={
-                modelStatus === "Loaded" ? "mikomaiに質問する..." : "モデルの準備を待っています..."
+                modelStatus === "Loaded" ? t("chat_input.placeholder") : t("chat_input.waiting_model")
               }
               value={input}
               onChange={handleInputChange}

@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { HistoryItem, Message } from "../../types";
 import { UserIcon, BookIcon, TerminalIcon, MessageIcon, ChevronIcon, FolderIcon, MenuDotsIcon, PlusIcon } from "../Icons";
 import "./Sidebar.css";
@@ -30,6 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   renameSession,
   deleteSession,
 }) => {
+  const { t } = useTranslation();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState<string>("");
@@ -176,7 +178,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <button
                       className="session-action-trigger"
                       onClick={() => setOpenMenuId(isMenuOpen ? null : item.id)}
-                      title="メニュー"
+                      title={t("sidebar.menu_title")}
                     >
                       <MenuDotsIcon size={14} />
                     </button>
@@ -195,7 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               setOpenMenuId(null);
                             }}
                           >
-                            リネーム
+                            {t("common.rename")}
                           </button>
                           <button
                             className="session-menu-item delete"
@@ -204,7 +206,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               setOpenMenuId(null);
                             }}
                           >
-                            削除
+                            {t("common.delete")}
                           </button>
                         </div>
                       </>
@@ -223,9 +225,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className={`sidebar ${isSidebarOpen ? "" : "collapsed"}`}>
       <div className="sidebar-header">
-        <h2>履歴</h2>
+        <h2>{t("sidebar.history_title")}</h2>
         <div className="header-actions">
-          <button className="icon-button" title="新規チャット" onClick={createNewSession}>
+          <button className="icon-button" title={t("sidebar.btn_new_chat")} onClick={createNewSession}>
             <PlusIcon size={14} />
           </button>
         </div>

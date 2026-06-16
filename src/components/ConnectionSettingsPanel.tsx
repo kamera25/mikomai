@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { message } from "@tauri-apps/plugin-dialog";
 import Papa from "papaparse";
+import { useTranslation } from "react-i18next";
 import { ServerIcon, TrashIcon } from "./Icons";
 import "./ConnectionSettingsPanel.css";
 
@@ -287,6 +288,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   onClose,
   onConnectionsChanged,
 }) => {
+  const { t } = useTranslation();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -402,7 +404,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const validate = () => {
     const newErrors: { [key: string]: string } = {};
     if (formData.type !== "Console" && !formData.ip.trim()) {
-      newErrors.ip = "IPアドレスまたはホスト名を入力してください";
+      newErrors.ip = t("connection_panel.err_ip_required");
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -435,9 +437,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
         delete newErrors.ip;
         setErrors(newErrors);
       }
-      await message(`MCPから「${mcpMatch.hostname}」の情報を取得しました。`);
+      await message(t("connection_panel.msg_mcp_found", { hostname: mcpMatch.hostname }));
     } else {
-      await message(`MCPレジストリに「${formData.hostname}」は見つかりませんでした。`);
+      await message(t("connection_panel.msg_mcp_not_found", { hostname: formData.hostname }));
     }
   };
 
@@ -597,7 +599,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
             try {
               await invoke("save_connections", { connections: updatedConnections });
               onConnectionsChanged?.();
-              await message(`${newConnections.length}件 of hosts imported.`);
+              await message(t("connection_panel.msg_csv_imported", { count: newConnections.length }));
             } catch (error) {
               console.error("Failed to save imported connections:", error);
             }
@@ -704,28 +706,28 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     <div className="connection-form-modal-overlay">
       <div className="connection-form-card">
         <header className="form-card-header">
-          <h3>{editingId ? "接続の編集" : "新規ホスト追加"}</h3>
+          <h3>{editingId ? t("connection_panel.header_edit") : t("connection_panel.header_new")}</h3>
           <button className="close-card-btn" onClick={() => setIsEditing(false)}>
             &times;
           </button>
         </header>
         <div className="connection-form-content">
           <div className="form-section">
-            <h3>基本設定</h3>
+            <h3>{t("connection_panel.tab_basic")}</h3>
             <div className="form-grid">
               <div className="form-group">
-                <label>接続ホスト名 (表示用)</label>
+                <label>{t("connection_panel.hostname_label")}</label>
                 <input
                   type="text"
                   value={formData.hostname}
                   onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
-                  placeholder="例: Core-Switch-01"
+                  placeholder={t("connection_panel.hostname_placeholder")}
                 />
                 <button
                   className="btn-mcp-lookup"
                   onClick={handleMcpLookup}
                   disabled={!formData.hostname}
-                  title="MCPから情報を取得"
+                  title={t("connection_panel.mcp_fetch")}
                 >
                   <svg
                     width="14"
@@ -741,11 +743,11 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                     <line x1="12" y1="22.08" x2="12" y2="12"></line>
                   </svg>
-                  MCPから取得
+                  {t("connection_panel.mcp_fetch_btn")}
                 </button>
               </div>
               <div className="form-group">
-                <label>接続方式</label>
+                <label>{t("connection_panel.connection_type")}</label>
                 <select
                   value={formData.type}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value })}
@@ -757,16 +759,16 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               </div>
 
               <div className="form-group">
-                <label>ベンダー種別</label>
+                <label>{t("connection_panel.vendor_type")}</label>
                 <input
                   type="text"
                   value={formData.vendorType}
                   onChange={(e) => setFormData({ ...formData, vendorType: e.target.value })}
-                  placeholder="例: Cisco, Juniper, Yamaha"
+                  placeholder={t("connection_panel.vendor_placeholder")}
                 />
               </div>
               <div className="form-group">
-                <label>ホスト種別 (device_type)</label>
+                <label>{t("connection_panel.device_type")}</label>
                 <select
                   value={formData.deviceType}
                   onChange={(e) => setFormData({ ...formData, deviceType: e.target.value })}
@@ -783,7 +785,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 <>
                   <div className="form-group full-width">
                     <label>
-                      IPアドレス / ホスト名 <span style={{ color: "#ef4444" }}>*</span>
+                      {t("connection_panel.ip_label")} <span style={{ color: "#ef4444" }}>*</span>
                     </label>
                     <input
                       type="text"
@@ -795,7 +797,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     {errors.ip && <span className="error-message">{errors.ip}</span>}
                   </div>
                   <div className="form-group">
-                    <label>ポート番号</label>
+                    <label>{t("connection_panel.port_label")}</label>
                     <input
                       type="text"
                       value={formData.port}
@@ -808,7 +810,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     />
                   </div>
                   <div className="form-group">
-                    <label>ユーザ名</label>
+                    <label>{t("connection_panel.username_label")}</label>
                     <input
                       type="text"
                       value={formData.username}
@@ -816,7 +818,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     />
                   </div>
                   <div className="form-group">
-                    <label>パスワード</label>
+                    <label>{t("connection_panel.password_label")}</label>
                     <input
                       type="password"
                       value={formData.password}
@@ -824,7 +826,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     />
                   </div>
                   <div className="form-group">
-                    <label>特権パスワード(Enable)</label>
+                    <label>{t("connection_panel.enable_password_label")}</label>
                     <input
                       type="password"
                       value={formData.enablePassword}
@@ -835,7 +837,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               ) : (
                 <>
                   <div className="form-group">
-                    <label>シリアルポート</label>
+                    <label>{t("connection_panel.serial_port_label")}</label>
                     <input
                       type="text"
                       value={formData.consolePort}
@@ -844,7 +846,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     />
                   </div>
                   <div className="form-group">
-                    <label>ボーレート</label>
+                    <label>{t("connection_panel.baudrate_label")}</label>
                     <select
                       value={formData.baudRate}
                       onChange={(e) =>
@@ -865,10 +867,10 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
           {formData.type === "SSH" && (
             <div className="form-section">
-              <h3>SSH認証設定</h3>
+              <h3>{t("connection_panel.tab_ssh")}</h3>
               <div className="ssh-auth-grid">
                 <div className="form-group">
-                  <label>パスフレーズ</label>
+                  <label>{t("connection_panel.passphrase_label")}</label>
                   <input
                     type="password"
                     value={formData.passphrase}
@@ -885,7 +887,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                         setFormData({ ...formData, rememberPassword: e.target.checked })
                       }
                     />
-                    パスワードをメモリ上に記憶する
+                    {t("connection_panel.remember_password")}
                   </label>
                   <label className="checkbox-item">
                     <input
@@ -895,7 +897,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                         setFormData({ ...formData, agentForwarding: e.target.checked })
                       }
                     />
-                    エージェント転送する
+                    {t("connection_panel.agent_forwarding")}
                   </label>
                 </div>
 
@@ -908,7 +910,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                       onChange={() => setFormData({ ...formData, authMethod: "plain" })}
                     />
                     <div className="auth-method-content">
-                      <span className="auth-method-label">プレインパスワードを使う</span>
+                      <span className="auth-method-label">{t("connection_panel.auth_password")}</span>
                     </div>
                   </div>
 
@@ -920,13 +922,13 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                       onChange={() => setFormData({ ...formData, authMethod: "key" })}
                     />
                     <div className="auth-method-content">
-                      <span className="auth-method-label">RSA/DSA/ECDSA/ED25519鍵を使う</span>
+                      <span className="auth-method-label">{t("connection_panel.auth_key")}</span>
                       <div className="auth-method-details">
-                        <button className="btn-file-select">秘密鍵(K):</button>
+                        <button className="btn-file-select">{t("connection_panel.key_select_btn")}</button>
                         <input
                           type="text"
                           className="path-input"
-                          placeholder="鍵ファイルのパス"
+                          placeholder={t("connection_panel.key_placeholder")}
                           value={formData.privateKeyPath}
                           onChange={(e) =>
                             setFormData({ ...formData, privateKeyPath: e.target.value })
@@ -946,7 +948,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     />
                     <div className="auth-method-content">
                       <span className="auth-method-label">
-                        キーボードインタラクティブ認証を使う
+                        {t("connection_panel.auth_keyboard_interactive")}
                       </span>
                     </div>
                   </div>
@@ -959,7 +961,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                       onChange={() => setFormData({ ...formData, authMethod: "pageant" })}
                     />
                     <div className="auth-method-content">
-                      <span className="auth-method-label">Pageantを使う</span>
+                      <span className="auth-method-label">{t("connection_panel.auth_pageant")}</span>
                     </div>
                   </div>
                 </div>
@@ -979,14 +981,14 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               }}
               onClick={handleDeleteCurrent}
             >
-              削除
+              {t("common.delete")}
             </button>
           )}
           <button className="btn-cancel" onClick={() => setIsEditing(false)}>
-            キャンセル
+            {t("common.cancel")}
           </button>
           <button className="btn-save" onClick={handleSave}>
-            {editingId ? "変更を保存" : "ホストを登録"}
+            {editingId ? t("common.save") : t("connection_panel.btn_add_host")}
           </button>
         </footer>
       </div>
@@ -998,7 +1000,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       <div className="connection-settings-panel">
         <header className="connection-header-new">
           <div className="header-title-container">
-            <h2>接続設定</h2>
+            <h2>{t("connection_panel.header")}</h2>
           </div>
           <button className="panel-close-btn" onClick={onClose}>
             &times;
@@ -1009,7 +1011,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
           <div className="toolbar-left">
             <span className="results-count">
               <strong>{filteredConnections.length}</strong> / <strong>{connections.length}</strong>{" "}
-              ホストを表示
+              {t("connection_panel.show_hosts")}
             </span>
             <div className="search-box-container">
               <svg
@@ -1028,7 +1030,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               </svg>
               <input
                 type="text"
-                placeholder="ホストを検索…"
+                placeholder={t("connection_panel.search_placeholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -1048,7 +1050,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               >
                 <path d="M3 6h18M3 12h18M3 18h18"></path>
               </svg>
-              表示設定
+              {t("connection_panel.display_settings")}
               <svg
                 width="12"
                 height="12"
@@ -1085,7 +1087,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                   <polyline points="7 10 12 15 17 10"></polyline>
                   <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
-                CSVインポート
+                {t("connection_panel.csv_import")}
               </button>
               <button className="toolbar-btn csv-btn" onClick={handleExportCsv}>
                 <svg
@@ -1102,7 +1104,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                   <polyline points="17 8 12 3 7 8"></polyline>
                   <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
-                CSVエクスポート
+                {t("connection_panel.csv_export")}
               </button>
             </div>
           </div>
@@ -1123,26 +1125,26 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     onChange={toggleSelectAll}
                   />
                 </th>
-                <th className="col-hostname">接続ホスト名</th>
+                <th className="col-hostname">{t("connection_panel.th_hostname")}</th>
                 <th className="col-ip">IP</th>
-                <th className="col-vendor">ベンダー種別</th>
-                <th className="col-device-type">ホスト種別</th>
-                <th className="col-type">接続方式</th>
-                <th className="col-last">最後の接続時刻</th>
-                <th className="col-actions">操作</th>
+                <th className="col-vendor">{t("connection_panel.th_vendor")}</th>
+                <th className="col-device-type">{t("connection_panel.th_device_type")}</th>
+                <th className="col-type">{t("connection_panel.th_connection_type")}</th>
+                <th className="col-last">{t("connection_panel.th_last_connected")}</th>
+                <th className="col-actions">{t("connection_panel.th_actions")}</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
                   <td colSpan={8} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
-                    読み込み中...
+                    {t("connection_panel.loading_hosts")}
                   </td>
                 </tr>
               ) : filteredConnections.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
-                    {searchQuery ? "検索結果が見つかりませんでした。" : "接続が登録されていません。"}
+                    {searchQuery ? t("connection_panel.no_results_search") : t("connection_panel.no_hosts")}
                   </td>
                 </tr>
               ) : (
@@ -1165,7 +1167,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                           {conn.hostname}
                         </span>
                         {mcpHosts.some((mh) => mh.hostname === conn.hostname) && (
-                          <span className="mcp-badge" title="MCP同期済み">
+                          <span className="mcp-badge" title={t("connection_panel.badge_mcp")}>
                             MCP
                           </span>
                         )}
@@ -1187,7 +1189,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                       <button
                         className="row-delete-btn"
                         onClick={() => handleDeleteRow(conn.id)}
-                        title="ホストを削除"
+                        title={t("common.delete")}
                       >
                         <TrashIcon size={14} />
                       </button>
@@ -1201,7 +1203,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
         <footer className="connection-panel-footer">
           <button className="add-device-btn" onClick={handleAddHost}>
-            ホスト追加
+            {t("connection_panel.btn_add_host")}
           </button>
           <button
             className="delete-selected-btn"
@@ -1212,7 +1214,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               cursor: selectedIds.length === 0 ? "not-allowed" : "pointer",
             }}
           >
-            削除 {selectedIds.length > 0 && `(${selectedIds.length})`}
+            {t("connection_panel.btn_delete_selected")} {selectedIds.length > 0 && `(${selectedIds.length})`}
           </button>
         </footer>
 

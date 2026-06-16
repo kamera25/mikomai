@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import "./StatusBar.css";
 
 interface StatusBarProps {
@@ -6,11 +7,13 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ modelStatus, modelPath }: StatusBarProps) {
+  const { t } = useTranslation();
+
   const getModelDisplayName = () => {
-    if (!modelPath) return "Gemma 4-E4B-it (ローカル)";
+    if (!modelPath) return t("status_bar.local_gemma");
     const parts = modelPath.split(/[/\\]/);
     const filename = parts[parts.length - 1];
-    return filename || "Gemma 4-E4B-it (ローカル)";
+    return filename || t("status_bar.local_gemma");
   };
 
   return (

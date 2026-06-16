@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { MessageIcon, NetworkTopologyIcon, ClockIcon, GearIcon } from "../Icons";
 import "./ActivityBar.css";
 
@@ -19,11 +20,13 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
   setIsSettingsOpen,
   isSettingsOpen,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <nav className="activity-bar">
       <div
         className={`activity-item ${!isSettingsOpen && !isConnectionOpen && !isScheduledTasksOpen ? "active" : ""}`}
-        title="チャット"
+        title={t("activity_bar.chat")}
         onClick={() => {
           setIsSettingsOpen(false);
           setIsConnectionOpen(false);
@@ -34,7 +37,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       </div>
       <div
         className={`activity-item ${isConnectionOpen ? "active" : ""}`}
-        title="接続設定"
+        title={t("activity_bar.connection_settings")}
         onClick={() => {
           setIsSettingsOpen(false);
           setIsScheduledTasksOpen(false);
@@ -45,7 +48,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       </div>
       <div
         className={`activity-item ${isScheduledTasksOpen ? "active" : ""}`}
-        title="スケジュールタスク"
+        title={t("activity_bar.scheduled_tasks")}
         onClick={() => {
           setIsSettingsOpen(false);
           setIsConnectionOpen(false);
@@ -57,7 +60,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       <div className="spacer"></div>
       <div
         className={`activity-item bottom ${isSettingsOpen ? "active" : ""}`}
-        title="設定"
+        title={t("activity_bar.settings")}
         onClick={() => {
           setIsConnectionOpen(false);
           setIsScheduledTasksOpen(false);

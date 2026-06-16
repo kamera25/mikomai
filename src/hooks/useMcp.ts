@@ -6,6 +6,7 @@ import { useMcpExecutor } from "./useMcp/useMcpExecutor";
 import { getHistoryBlock, extractJsonBlocks, getToolLabel } from "./useMcp/helpers";
 import { Message, AskInitialPayload } from "../types";
 import { getErrorMessage } from "../utils/error";
+import i18n from "../i18n";
 
 export function useMcp({
   messages,
@@ -39,7 +40,7 @@ export function useMcp({
       ...prev,
       {
         role: "ai",
-        content: "考え中...",
+        content: i18n.t("chat.thinking"),
         timestamp: new Date().toISOString(),
         isToolLoading: true,
         isHidden: true,
@@ -71,7 +72,7 @@ export function useMcp({
           setMessages((prev) =>
             prev.map((msg) =>
               msg.task_id === thinkingTaskId
-                ? ({ ...msg, summary_text: `${agentName} が処理中...`, isHidden: false } as Message)
+                ? ({ ...msg, summary_text: i18n.t("chat.agent_processing", { agentName }), isHidden: false } as Message)
                 : msg
             )
           );
@@ -82,7 +83,7 @@ export function useMcp({
               msg.task_id === thinkingTaskId
                 ? ({
                     ...msg,
-                    summary_text: "ルーティングテーブルを更新しました",
+                    summary_text: i18n.t("chat.routing_table_updated"),
                     isHidden: false,
                   } as Message)
                 : msg
@@ -136,7 +137,7 @@ export function useMcp({
         setMessages((prev) =>
           prev.map((msg) =>
             msg.task_id === thinkingTaskId
-              ? ({ ...msg, isHidden: false, summary_text: "回答要約中..." } as Message)
+              ? ({ ...msg, isHidden: false, summary_text: i18n.t("chat.summarizing") } as Message)
               : msg
           )
         );
@@ -152,7 +153,7 @@ export function useMcp({
         setMessages((prev) =>
           prev.map((msg) =>
             msg.task_id === thinkingTaskId
-              ? ({ ...msg, isHidden: false, summary_text: "回答" } as Message)
+              ? ({ ...msg, isHidden: false, summary_text: i18n.t("chat.answer") } as Message)
               : msg
           )
         );

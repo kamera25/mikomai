@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Message } from "../../types";
 import { TimelineEvent } from "./TimelineEvent";
 import "./Chat.css";
@@ -10,6 +11,7 @@ interface ChatProps {
 
 export const Chat = forwardRef<HTMLDivElement, ChatProps>(
   ({ messages, formatMessageTime }, ref) => {
+    const { t } = useTranslation();
     const containerRef = useRef<HTMLDivElement>(null);
     const isUserScrollingUp = useRef(false);
 
@@ -36,10 +38,10 @@ export const Chat = forwardRef<HTMLDivElement, ChatProps>(
             </div>
             <h3>mikomai</h3>
             <p>
-              ネットワーク構築やトラブルシュートをサポートします。サポートして欲しいことを伝えてみてください。
+              {t("chat.welcome_message_1")}
             </p>
             <p>
-              例えば、マニュアルの取得、スイッチの状態確認、構成変更の提案などご支援いたします。
+              {t("chat.welcome_message_2")}
             </p>
           </div>
         ) : (

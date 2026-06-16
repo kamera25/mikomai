@@ -1,5 +1,51 @@
 import "@testing-library/jest-dom";
 import { vi } from "vitest";
+import jaTranslation from "./locales/ja/translation.json";
+
+// Mock i18next and react-i18next
+const translateMock = (key: string, options?: any) => {
+  const parts = key.split(".");
+  let current: any = jaTranslation;
+  for (const part of parts) {
+    if (current && current[part] !== undefined) {
+      current = current[part];
+    } else {
+      return key;
+    }
+  }
+  if (typeof current === "string") {
+    let result = current;
+    if (options) {
+      Object.keys(options).forEach((optKey) => {
+        result = result.replace(new RegExp(`{{${optKey}}}`, "g"), options[optKey]);
+      });
+    }
+    return result;
+  }
+  return key;
+};
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: translateMock,
+    i18n: {
+      changeLanguage: () => Promise.resolve(),
+    },
+  }),
+  initReactI18next: {
+    type: "3rdParty",
+    init: () => {},
+  },
+}));
+
+vi.mock("i18next", () => ({
+  default: {
+    t: translateMock,
+    use: () => ({
+      init: () => {},
+    }),
+  },
+}));
 
 // Mock Tauri API core and event
 vi.mock("@tauri-apps/api/core", () => {
@@ -42,3 +88,4 @@ vi.mock("@tauri-apps/api/event", () => {
     emit: vi.fn(async (_event, _payload) => {}),
   };
 });
+

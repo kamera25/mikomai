@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -13,6 +14,7 @@ interface TimelineEventProps {
 }
 
 export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) => {
+  const { t } = useTranslation();
   const isNwDb = msg.tool_id === "query_nw_db" || msg.tool_id === "network_query_nw_db";
   const defaultExpanded = msg.event_type === "ToolExecution" && !isNwDb;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -123,17 +125,17 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                       e.stopPropagation();
                       handleCopy(msg.raw_data || "");
                     }}
-                    title="クリップボードにコピー"
+                    title={t("common.copy")}
                   >
                     {copied ? (
                       <>
                         <CheckIcon size={12} strokeWidth={3} />
-                        <span>コピー済み</span>
+                        <span>{t("common.copied")}</span>
                       </>
                     ) : (
                       <>
                         <CopyIcon size={12} strokeWidth={2.5} />
-                        <span>コピー</span>
+                        <span>{t("common.copy")}</span>
                       </>
                     )}
                   </button>
@@ -151,8 +153,8 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                     <BoxIcon size={14} className="box-icon" />
                     <span>
                       {msg.is_cached
-                        ? `更新日時: ${msg.cache_time || ""} (キャッシュ)`
-                        : "ログを保存しました。"}
+                        ? t("common.updated_at_cached", { time: msg.cache_time || "" })
+                        : t("common.log_saved")}
                     </span>
                     <button
                       className={`copy-path-btn ${pathCopied ? "copied" : ""}`}
@@ -160,17 +162,17 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                         e.stopPropagation();
                         handleCopyPath(msg.saved_path || "");
                       }}
-                      title="パスをコピー"
+                      title={t("common.path_copied")}
                     >
                     {pathCopied ? (
                       <>
                         <CheckIcon size={12} strokeWidth={3} />
-                        <span>コピー済み</span>
+                        <span>{t("common.copied")}</span>
                       </>
                     ) : (
                       <>
                         <CopyIcon size={12} />
-                        <span>保存先パスをコピー</span>
+                        <span>{t("common.save_path_copied")}</span>
                       </>
                     )}
                     </button>
@@ -223,7 +225,7 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
             <div className="message-actions">
               <button
                 className="message-action-btn"
-                title="コピー"
+                title={t("common.copy")}
                 onClick={() => handleCopy(msg.content)}
               >
                 {copied ? (

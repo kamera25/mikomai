@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
 import "./ScheduledTasksPanel.css";
 
 interface ScheduledTasksPanelProps {
@@ -13,6 +14,7 @@ const ScheduleInput: React.FC<{ value: string; onChange: (val: string) => void }
   value,
   onChange,
 }) => {
+  const { t } = useTranslation();
   const [type, setType] = useState<ScheduleType>("custom");
   const [dayOfWeek, setDayOfWeek] = useState("月曜");
   const [time, setTime] = useState("00:00");
@@ -84,12 +86,12 @@ const ScheduleInput: React.FC<{ value: string; onChange: (val: string) => void }
         }
         className="schedule-type-select"
       >
-        <option value="weekly">週次</option>
-        <option value="daily">毎日</option>
-        <option value="hourly">毎時</option>
-        <option value="minutely">毎分</option>
-        <option value="secondly">毎秒</option>
-        <option value="custom">カスタム</option>
+        <option value="weekly">{t("scheduled_tasks.weekly")}</option>
+        <option value="daily">{t("scheduled_tasks.daily")}</option>
+        <option value="hourly">{t("scheduled_tasks.hourly")}</option>
+        <option value="minutely">{t("scheduled_tasks.minutely")}</option>
+        <option value="secondly">{t("scheduled_tasks.secondly")}</option>
+        <option value="custom">{t("scheduled_tasks.custom")}</option>
       </select>
 
       {type === "weekly" && (
@@ -99,13 +101,13 @@ const ScheduleInput: React.FC<{ value: string; onChange: (val: string) => void }
             onChange={(e) => handleChange(type, e.target.value, time, minute, second, customText)}
             className="schedule-day-select"
           >
-            <option value="月曜">月曜</option>
-            <option value="火曜">火曜</option>
-            <option value="水曜">水曜</option>
-            <option value="木曜">木曜</option>
-            <option value="金曜">金曜</option>
-            <option value="土曜">土曜</option>
-            <option value="日曜">日曜</option>
+            <option value="月曜">{t("scheduled_tasks.monday")}</option>
+            <option value="火曜">{t("scheduled_tasks.tuesday")}</option>
+            <option value="水曜">{t("scheduled_tasks.wednesday")}</option>
+            <option value="木曜">{t("scheduled_tasks.thursday")}</option>
+            <option value="金曜">{t("scheduled_tasks.friday")}</option>
+            <option value="土曜">{t("scheduled_tasks.saturday")}</option>
+            <option value="日曜">{t("scheduled_tasks.sunday")}</option>
           </select>
           <input
             type="time"
@@ -138,7 +140,7 @@ const ScheduleInput: React.FC<{ value: string; onChange: (val: string) => void }
               handleChange(type, dayOfWeek, time, e.target.value, second, customText)
             }
           />
-          <span>分</span>
+          <span>{t("scheduled_tasks.minute")}</span>
         </div>
       )}
 
@@ -153,7 +155,7 @@ const ScheduleInput: React.FC<{ value: string; onChange: (val: string) => void }
               handleChange(type, dayOfWeek, time, minute, e.target.value, customText)
             }
           />
-          <span>秒</span>
+          <span>{t("scheduled_tasks.second")}</span>
         </div>
       )}
 
@@ -162,7 +164,7 @@ const ScheduleInput: React.FC<{ value: string; onChange: (val: string) => void }
           type="text"
           value={customText}
           onChange={(e) => handleChange(type, dayOfWeek, time, minute, second, e.target.value)}
-          placeholder="例: 毎月1日 00:00"
+          placeholder={t("scheduled_tasks.cron_placeholder")}
         />
       )}
     </div>
@@ -179,6 +181,7 @@ interface ScheduledTask {
 }
 
 export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClose }) => {
+  const { t } = useTranslation();
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [editingTask, setEditingTask] = useState<ScheduledTask | null>(null);
@@ -259,11 +262,11 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
   const handleCreateNew = () => {
     setEditingTask({
       id: "",
-      name: "新規タスク",
+      name: t("scheduled_tasks.default_new_task_name"),
       status: "running",
       schedule: "* * * * * *",
       lastRun: "-",
-      prompt: "プロンプトを入力してください。",
+      prompt: t("scheduled_tasks.default_prompt"),
     });
     setIsCreating(true);
   };
@@ -280,11 +283,11 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
   const getStatusLabel = (status: string) => {
     switch (status) {
       case "running":
-        return "実行中";
+        return t("scheduled_tasks.state_running");
       case "stopped":
-        return "停止中";
+        return t("scheduled_tasks.state_stopped");
       case "disabled":
-        return "無効化";
+        return t("scheduled_tasks.state_disabled");
       default:
         return status;
     }
@@ -295,7 +298,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
       <div className="scheduled-tasks-panel">
         <header className="scheduled-header">
           <div className="header-title-container">
-            <h2>定期実行設定</h2>
+            <h2>{t("scheduled_tasks.header")}</h2>
           </div>
           <button className="panel-close-btn" onClick={onClose}>
             &times;
@@ -306,7 +309,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
           <div className="toolbar-left">
             <span className="results-count">
               <strong>{filteredTasks.length}</strong> / <strong>{tasks.length}</strong>{" "}
-              件のタスクを表示
+              {t("scheduled_tasks.show_tasks")}
             </span>
             <div className="search-box-container">
               <svg
@@ -325,7 +328,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
               </svg>
               <input
                 type="text"
-                placeholder="タスクを検索..."
+                placeholder={t("scheduled_tasks.search_placeholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -347,7 +350,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                 <polyline points="1 20 1 14 7 14"></polyline>
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
               </svg>
-              更新
+              {t("scheduled_tasks.btn_update")}
             </button>
           </div>
         </div>
@@ -357,11 +360,11 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
             <thead>
               <tr>
                 <th className="col-checkbox">-</th>
-                <th>タスク名称</th>
-                <th>状態</th>
-                <th>実行タイミング(Cron)</th>
-                <th>最終実行時刻</th>
-                <th>操作</th>
+                <th>{t("scheduled_tasks.th_name")}</th>
+                <th>{t("scheduled_tasks.th_state")}</th>
+                <th>{t("scheduled_tasks.th_cron")}</th>
+                <th>{t("scheduled_tasks.th_last_run")}</th>
+                <th>{t("scheduled_tasks.th_actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -415,7 +418,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                       onClick={() => handleExecuteNow(task.id)}
                       style={{ padding: "4px 8px", fontSize: "12px", cursor: "pointer" }}
                     >
-                      手動実行
+                      {t("scheduled_tasks.btn_manual_run")}
                     </button>
                   </td>
                 </tr>
@@ -428,14 +431,14 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
           <div className="task-settings-modal-overlay">
             <div className="task-settings-card">
               <header className="settings-card-header">
-                <h3>{isCreating ? "新規タスク作成" : "タスク詳細設定"}</h3>
+                <h3>{isCreating ? t("scheduled_tasks.dialog_create_title") : t("scheduled_tasks.dialog_edit_title")}</h3>
                 <button className="close-card-btn" onClick={() => setEditingTask(null)}>
                   &times;
                 </button>
               </header>
               <div className="settings-card-body">
                 <div className="settings-form-group">
-                  <label>タスク名称</label>
+                  <label>{t("scheduled_tasks.label_name")}</label>
                   <input
                     type="text"
                     value={editingTask.name}
@@ -443,14 +446,14 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                   />
                 </div>
                 <div className="settings-form-group">
-                  <label>実行タイミング</label>
+                  <label>{t("scheduled_tasks.label_cron")}</label>
                   <ScheduleInput
                     value={editingTask.schedule}
                     onChange={(val) => setEditingTask({ ...editingTask, schedule: val })}
                   />
                 </div>
                 <div className="settings-form-group">
-                  <label>状態</label>
+                  <label>{t("scheduled_tasks.label_state")}</label>
                   <select
                     value={editingTask.status}
                     onChange={(e) =>
@@ -458,13 +461,13 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                     }
                     className="task-status-select"
                   >
-                    <option value="running">実行中</option>
-                    <option value="stopped">停止中</option>
-                    <option value="disabled">無効化</option>
+                    <option value="running">{t("scheduled_tasks.state_running")}</option>
+                    <option value="stopped">{t("scheduled_tasks.state_stopped")}</option>
+                    <option value="disabled">{t("scheduled_tasks.state_disabled")}</option>
                   </select>
                 </div>
                 <div className="settings-form-group">
-                  <label>プロンプト {isCreating ? "" : "(表示専用)"}</label>
+                  <label>{t("scheduled_tasks.label_prompt")} {isCreating ? "" : "(表示専用)"}</label>
                   <textarea
                     value={editingTask.prompt}
                     readOnly={!isCreating}
@@ -473,17 +476,17 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                   />
                   {!isCreating && (
                     <p className="field-hint">
-                      ※ プロンプトの内容はシステムによって管理されており、変更できません。
+                      {t("scheduled_tasks.prompt_readonly_notice")}
                     </p>
                   )}
                 </div>
               </div>
               <footer className="settings-card-footer">
                 <button className="settings-cancel-btn" onClick={() => setEditingTask(null)}>
-                  キャンセル
+                  {t("scheduled_tasks.btn_cancel")}
                 </button>
                 <button className="settings-save-btn" onClick={handleSaveTask}>
-                  保存
+                  {t("scheduled_tasks.btn_save")}
                 </button>
               </footer>
             </div>
@@ -492,14 +495,14 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
 
         <footer className="scheduled-panel-footer">
           <button className="add-task-btn" onClick={handleCreateNew}>
-            新規タスク追加
+            {t("scheduled_tasks.btn_add")}
           </button>
           <button
             className={`delete-selected-btn ${selectedTasks.size > 0 ? "active" : "disabled"}`}
             onClick={handleDeleteSelected}
             disabled={selectedTasks.size === 0}
           >
-            削除
+            {t("scheduled_tasks.btn_delete")}
           </button>
         </footer>
       </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Message, ChatSession, HistoryItem } from "../types";
+import i18n from "../i18n";
 
 // Helper to find the first session in the history tree
 const findFirstSession = (items: HistoryItem[]): ChatSession | undefined => {
@@ -66,7 +67,7 @@ export function useHistory() {
             {
               id: defaultId,
               type: "session",
-              title: "新しいセッション",
+              title: i18n.t("history.new_session"),
               messages: [],
             },
           ];
@@ -143,11 +144,11 @@ export function useHistory() {
     setModalConfig({
       isOpen: true,
       type: "prompt",
-      title: "新規フォルダ",
-      message: "フォルダ名を入力してください",
-      placeholder: "フォルダ名",
+      title: i18n.t("history.new_folder"),
+      message: i18n.t("history.folder_name_prompt"),
+      placeholder: i18n.t("history.folder_name_placeholder"),
       initialValue: "",
-      confirmLabel: "作成",
+      confirmLabel: i18n.t("history.create_label"),
       onConfirm: (folderName) => {
         if (folderName && folderName.trim()) {
           setHistory((prev) => [
@@ -173,7 +174,7 @@ export function useHistory() {
       {
         id,
         type: "session",
-        title: "新しいセッション",
+        title: i18n.t("history.new_session"),
         messages: [],
       },
       ...prev,
@@ -230,9 +231,9 @@ export function useHistory() {
     setModalConfig({
       isOpen: true,
       type: "confirm",
-      title: "セッションの削除",
-      message: "このセッションを削除してもよろしいですか？",
-      confirmLabel: "削除",
+      title: i18n.t("history.delete_session_title"),
+      message: i18n.t("history.delete_session_msg"),
+      confirmLabel: i18n.t("common.delete"),
       onConfirm: () => {
         const removeSession = (items: HistoryItem[]): HistoryItem[] => {
           return items
@@ -253,7 +254,7 @@ export function useHistory() {
             {
               id: defaultId,
               type: "session",
-              title: "新しいセッション",
+              title: i18n.t("history.new_session"),
               messages: [],
             },
           ];
@@ -276,7 +277,7 @@ export function useHistory() {
               {
                 id: defaultId,
                 type: "session",
-                title: "新しいセッション",
+                title: i18n.t("history.new_session"),
                 messages: [],
               },
               ...prev,
