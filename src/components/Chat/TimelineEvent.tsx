@@ -60,6 +60,16 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               className="timeline-summary"
               onClick={() => msg.status !== "Running" && setIsExpanded(!isExpanded)}
               style={{ cursor: msg.status === "Running" ? "default" : "pointer" }}
+              role="button"
+              tabIndex={msg.status === "Running" ? -1 : 0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  if (msg.status !== "Running") {
+                    e.preventDefault();
+                    setIsExpanded(!isExpanded);
+                  }
+                }
+              }}
             >
               <div className="timeline-status-icon">
                 {msg.status === "Running" && <div className="status-spinner-small"></div>}

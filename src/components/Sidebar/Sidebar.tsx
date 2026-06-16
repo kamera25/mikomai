@@ -61,6 +61,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onTimelineItemClick(m.task_id);
                 }
               }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  if (m.task_id && onTimelineItemClick) {
+                    onTimelineItemClick(m.task_id);
+                  }
+                }
+              }}
             >
               <div className="sidebar-timeline-icon">
                 {m.role === "user" ? (
@@ -107,6 +117,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="folder-item"
               style={{ paddingLeft: `${level * 12 + 12}px` }}
               onClick={() => toggleFolder(item.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleFolder(item.id);
+                }
+              }}
             >
               <div className="folder-icon">
                 <ChevronIcon direction={item.isOpen ? "down" : "right"} size={12} strokeWidth={3} className={`chevron ${item.isOpen ? "open" : ""}`} />
@@ -136,6 +154,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 if (!isEditing) {
                   setEditingSessionId(item.id);
                   setEditingTitle(item.title);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  if (!isEditing) {
+                    switchSession(item.id);
+                  }
                 }
               }}
             >

@@ -24,12 +24,21 @@ export const SuggestionsList: React.FC<SuggestionsListProps> = ({
   if (!showSuggestions || filteredSuggestions.length === 0) return null;
 
   return (
-    <div ref={suggestionListRef} className="suggestion-list">
+    <div ref={suggestionListRef} className="suggestion-list" role="listbox">
       {filteredSuggestions.map((hostObj, idx) => (
         <div
           key={`${hostObj.hostname}-${hostObj.ip}`}
           className={`suggestion-item ${idx === suggestionIndex ? "selected" : ""}`}
           onClick={() => handleSelectSuggestion(hostObj)}
+          role="option"
+          aria-selected={idx === suggestionIndex}
+          tabIndex={-1}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleSelectSuggestion(hostObj);
+            }
+          }}
         >
           {hostObj.hostname === "localhost" ? (
             <svg

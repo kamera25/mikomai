@@ -401,6 +401,15 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                           setEditingTask({ ...task });
                           setIsCreating(false);
                         }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setEditingTask({ ...task });
+                            setIsCreating(false);
+                          }
+                        }}
                       >
                         {task.name}
                       </span>

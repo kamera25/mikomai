@@ -45,6 +45,16 @@ export const CustomModal: React.FC<CustomModalProps> = ({
     }
   }, [isOpen, initialValue]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onCancel]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -54,8 +64,22 @@ export const CustomModal: React.FC<CustomModalProps> = ({
   };
 
   return (
-    <div className="custom-modal-overlay" onClick={onCancel}>
-      <div className="custom-modal-content" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="custom-modal-overlay"
+      onClick={onCancel}
+      role="button"
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          onCancel();
+        }
+      }}
+    >
+      <div
+        className="custom-modal-content"
+        onClick={(e) => e.stopPropagation()}
+        role="presentation"
+      >
         <div className="custom-modal-header">
           <h3 className="custom-modal-title">{title}</h3>
           <button className="custom-modal-close" onClick={onCancel} aria-label="Close">

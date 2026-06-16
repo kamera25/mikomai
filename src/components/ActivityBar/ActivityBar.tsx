@@ -32,6 +32,16 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
           setIsConnectionOpen(false);
           setIsScheduledTasksOpen(false);
         }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsSettingsOpen(false);
+            setIsConnectionOpen(false);
+            setIsScheduledTasksOpen(false);
+          }
+        }}
       >
         <MessageIcon size={24} />
       </div>
@@ -42,6 +52,16 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
           setIsSettingsOpen(false);
           setIsScheduledTasksOpen(false);
           setIsConnectionOpen(true);
+        }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsSettingsOpen(false);
+            setIsScheduledTasksOpen(false);
+            setIsConnectionOpen(true);
+          }
         }}
       >
         <NetworkTopologyIcon size={24} />
@@ -54,6 +74,16 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
           setIsConnectionOpen(false);
           setIsScheduledTasksOpen(true);
         }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsSettingsOpen(false);
+            setIsConnectionOpen(false);
+            setIsScheduledTasksOpen(true);
+          }
+        }}
       >
         <ClockIcon size={24} />
       </div>
@@ -65,6 +95,16 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
           setIsConnectionOpen(false);
           setIsScheduledTasksOpen(false);
           setIsSettingsOpen(true);
+        }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsConnectionOpen(false);
+            setIsScheduledTasksOpen(false);
+            setIsSettingsOpen(true);
+          }
         }}
       >
         <GearIcon size={24} />

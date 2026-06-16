@@ -1163,7 +1163,18 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                         <div className="device-icon">
                           <ServerIcon size={14} />
                         </div>
-                        <span className="hostname-text" onClick={() => handleEdit(conn)}>
+                        <span
+                          className="hostname-text"
+                          onClick={() => handleEdit(conn)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleEdit(conn);
+                            }
+                          }}
+                        >
                           {conn.hostname}
                         </span>
                         {mcpHosts.some((mh) => mh.hostname === conn.hostname) && (
