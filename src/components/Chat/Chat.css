@@ -207,7 +207,6 @@
 }
 
 .timeline-block.failed {
-  border-left: 4px solid var(--danger);
 }
 
 .timeline-summary {

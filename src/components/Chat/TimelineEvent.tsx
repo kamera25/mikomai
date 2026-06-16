@@ -104,29 +104,6 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
 
             {isExpanded && msg.raw_data && (
               <div className="timeline-raw-data-wrapper">
-                <div className="raw-data-header">
-                  <span>RAW OUTPUT</span>
-                  <button
-                    className={`raw-data-copy-button ${copied ? "copied" : ""}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCopy(msg.raw_data || "");
-                    }}
-                    title={t("common.copy")}
-                  >
-                    {copied ? (
-                      <>
-                        <CheckIcon size={12} strokeWidth={3} />
-                        <span>{t("common.copied")}</span>
-                      </>
-                    ) : (
-                      <>
-                        <CopyIcon size={12} strokeWidth={2.5} />
-                        <span>{t("common.copy")}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
                 <div className="timeline-raw-data">
                   <Terminal content={msg.raw_data} />
                 </div>

@@ -124,3 +124,37 @@
 .terminal-content::-webkit-scrollbar-thumb:hover {
   background: #444;
 }
+
+/* Copy button for terminal */
+.terminal-copy-button {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #888;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.terminal-copy-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.terminal-copy-button.copied {
+  color: #27c93f;
+  background: rgba(39, 201, 63, 0.1);
+  border-color: rgba(39, 201, 63, 0.3);
+}
+
+.terminal-copy-button svg {
+  flex-shrink: 0;
+}

@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { CopyIcon, CheckIcon } from "./Icons";
 import "./Terminal.css";
 
 interface TerminalProps {
@@ -85,6 +87,20 @@ function parseAnsi(text: string): React.ReactNode[] {
 }
 
 export const Terminal: React.FC<TerminalProps> = ({ content }) => {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy: ", err);
+    }
+  };
+
   // Split content into lines, filter out empty trailing lines
   const rawLines = content.split("\n");
   const lines = rawLines.length > 1 && rawLines[rawLines.length - 1] === "" 
@@ -99,7 +115,24 @@ export const Terminal: React.FC<TerminalProps> = ({ content }) => {
           <span className="terminal-dot yellow"></span>
           <span className="terminal-dot green"></span>
         </div>
-        <span className="terminal-title">Terminal Output</span>
+        <span className="terminal-title">Raw Output</span>
+        <button
+          className={`terminal-copy-button ${copied ? "copied" : ""}`}
+          onClick={handleCopy}
+          title={t("common.copy")}
+        >
+          {copied ? (
+            <>
+              <CheckIcon size={12} strokeWidth={3} />
+              <span>{t("common.copied")}</span>
+            </>
+          ) : (
+            <>
+              <CopyIcon size={12} strokeWidth={2.5} />
+              <span>{t("common.copy")}</span>
+            </>
+          )}
+        </button>
       </div>
       <pre className="terminal-content">
         <code>
