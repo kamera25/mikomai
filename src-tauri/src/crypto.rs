@@ -6,6 +6,46 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 
 const KEY_STORE_FILE: &str = "key.bin";
 
+fn get_key_from_keyring() -> Result<Option<Key<Aes256Gcm>>, String> {
+    keyring::use_native_store(false).map_err(|e| format!("use_native_store failed: {}", e))?;
+    let entry = keyring_core::Entry::new("com.mikomai.agent", "crypto-key")
+        .map_err(|e| format!("Entry::new failed: {}", e))?;
+    match entry.get_password() {
+        Ok(password_str) => {
+            let key_bytes = STANDARD.decode(password_str)
+                .map_err(|e| format!("Base64 decode of key failed: {}", e))?;
+            if key_bytes.len() != 32 {
+                return Err("Invalid key length in keyring".to_string());
+            }
+            Ok(Some(*Key::<Aes256Gcm>::from_slice(&key_bytes)))
+        }
+        Err(keyring_core::Error::NoEntry) => Ok(None),
+        Err(e) => Err(format!("get_password failed: {}", e)),
+    }
+}
+
+fn save_key_to_keyring(key: &Key<Aes256Gcm>) -> Result<(), String> {
+    keyring::use_native_store(false).map_err(|e| format!("use_native_store failed: {}", e))?;
+    let entry = keyring_core::Entry::new("com.mikomai.agent", "crypto-key")
+        .map_err(|e| format!("Entry::new failed: {}", e))?;
+    let encoded = STANDARD.encode(key.as_slice());
+    entry.set_password(&encoded).map_err(|e| format!("set_password failed: {}", e))?;
+    Ok(())
+}
+
+fn save_key_to_file(key_path: &std::path::Path, key: &Key<Aes256Gcm>) -> Result<(), String> {
+    std::fs::write(key_path, key.as_slice()).map_err(|e| e.to_string())?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(key_path).map_err(|e| e.to_string())?.permissions();
+        perms.set_mode(0o400); // Read-only for user
+        std::fs::set_permissions(key_path, perms).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, String> {
     let path = tauri::Manager::path(app).app_data_dir().expect("Failed to get app data dir");
     if !path.exists() {
@@ -13,25 +53,50 @@ pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, Strin
     }
     let key_path = path.join(KEY_STORE_FILE);
 
-    if key_path.exists() {
-        let key_bytes = std::fs::read(&key_path).map_err(|e| e.to_string())?;
-        if key_bytes.len() != 32 {
-            return Err("Invalid key length".to_string());
+    // Try to get key from keyring first
+    match get_key_from_keyring() {
+        Ok(Some(key)) => Ok(key),
+        Ok(None) => {
+            // Key not in keyring. Check if we have a fallback file key.bin
+            if key_path.exists() {
+                if let Ok(key_bytes) = std::fs::read(&key_path) {
+                    if key_bytes.len() == 32 {
+                        let key = *Key::<Aes256Gcm>::from_slice(&key_bytes);
+                        // Try to migrate this key to the keyring so future calls use keyring
+                        if let Err(e) = save_key_to_keyring(&key) {
+                            log::warn!("Failed to migrate key to keyring: {}", e);
+                        }
+                        return Ok(key);
+                    }
+                }
+            }
+            // Neither exists. Generate a new key and try to store in keyring
+            let new_key = Aes256Gcm::generate_key(OsRng);
+            match save_key_to_keyring(&new_key) {
+                Ok(_) => Ok(new_key),
+                Err(e) => {
+                    log::warn!("Failed to save new key to keyring, falling back to file: {}", e);
+                    // Fallback to saving to file
+                    save_key_to_file(&key_path, &new_key)?;
+                    Ok(new_key)
+                }
+            }
         }
-        Ok(*Key::<Aes256Gcm>::from_slice(&key_bytes))
-    } else {
-        let key = Aes256Gcm::generate_key(OsRng);
-        std::fs::write(&key_path, key.as_slice()).map_err(|e| e.to_string())?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&key_path).map_err(|e| e.to_string())?.permissions();
-            perms.set_mode(0o400); // Read-only for user
-            std::fs::set_permissions(&key_path, perms).map_err(|e| e.to_string())?;
+        Err(e) => {
+            log::warn!("Keyring failed or not available, falling back to file: {}", e);
+            // Keyring failed (e.g. not supported, locked). Fallback to file-based storage.
+            if key_path.exists() {
+                let key_bytes = std::fs::read(&key_path).map_err(|err| err.to_string())?;
+                if key_bytes.len() != 32 {
+                    return Err("Invalid key length in fallback file".to_string());
+                }
+                Ok(*Key::<Aes256Gcm>::from_slice(&key_bytes))
+            } else {
+                let new_key = Aes256Gcm::generate_key(OsRng);
+                save_key_to_file(&key_path, &new_key)?;
+                Ok(new_key)
+            }
         }
-
-        Ok(key)
     }
 }
 

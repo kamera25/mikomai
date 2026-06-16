@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { message } from '@tauri-apps/plugin-dialog';
 import Papa from 'papaparse';
 import './ConnectionSettingsPanel.css';
 
@@ -262,7 +263,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleMcpLookup = () => {
+  const handleMcpLookup = async () => {
     const mcpMatch = mcpHosts.find(h => h.hostname.toLowerCase() === formData.hostname.toLowerCase());
     if (mcpMatch) {
       // Try to determine vendor from deviceType
@@ -287,9 +288,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
         delete newErrors.ip;
         setErrors(newErrors);
       }
-      alert(`MCPから「${mcpMatch.hostname}」の情報を取得しました。`);
+      await message(`MCPから「${mcpMatch.hostname}」の情報を取得しました。`);
     } else {
-      alert(`MCPレジストリに「${formData.hostname}」は見つかりませんでした。`);
+      await message(`MCPレジストリに「${formData.hostname}」は見つかりませんでした。`);
     }
   };
 
@@ -428,7 +429,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
             try {
               await invoke('save_connections', { connections: updatedConnections });
               onConnectionsChanged?.();
-              alert(`${newConnections.length}件 of hosts imported.`);
+              await message(`${newConnections.length}件 of hosts imported.`);
             } catch (error) {
               console.error("Failed to save imported connections:", error);
             }
@@ -455,7 +456,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       return str;
     };
 
-    const headers = ['id', 'status', 'hostname', 'ip', 'port', 'type', 'lastConnected', 'deviceType', 'vendorType', 'username', 'password', 'enablePassword'];
+    const headers = ['id', 'status', 'hostname', 'ip', 'port', 'type', 'lastConnected', 'deviceType', 'vendorType', 'username'];
     const csvRows = [];
 
     // Add header row
@@ -473,9 +474,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
         conn.lastConnected,
         conn.deviceType || '',
         conn.vendorType || '',
-        conn.username || '',
-        conn.password || '',
-        conn.enablePassword || ''
+        conn.username || ''
       ];
       csvRows.push(row.map(escapeCsv).join(','));
     }

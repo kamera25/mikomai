@@ -107,7 +107,6 @@ function App() {
     setFilteredSuggestions,
     suggestionIndex,
     setSuggestionIndex,
-    cursorPos,
     setCursorPos,
     fetchHosts,
     updateRecentHosts,
