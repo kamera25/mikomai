@@ -35,6 +35,7 @@ interface SummarySavedPayload {
   taskId: string;
   summaryText: string;
   summary: SummaryItem;
+  content: string;
 }
 
 export function useMcpListeners({
@@ -274,13 +275,15 @@ export function useMcpListeners({
         "mcp-summary-saved",
         (event) => {
           if (isCancelled) return;
-          const { taskId, summaryText, summary } = event.payload;
+          const { taskId, summaryText, summary, content } = event.payload;
           setMessagesRef.current((prev) =>
             prev.map((msg) =>
               msg.task_id === taskId
                 ? ({
                     ...msg,
+                    content,
                     isHidden: false,
+                    isToolLoading: false,
                     summary_text: summaryText,
                   } as Message)
                 : msg

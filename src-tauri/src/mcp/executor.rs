@@ -44,6 +44,7 @@ struct SummarySavedPayload {
     #[serde(rename = "summaryText")]
     summary_text: String,
     summary: crate::history::SummaryItem,
+    content: String,
 }
 
 fn get_str_arg(args: &Value, keys: &[&str]) -> Option<String> {
@@ -527,6 +528,7 @@ pub async fn execute_mcp_tool(
             task_id: analysis_task_id.clone(),
             summary_text,
             summary: new_summary,
+            content: response_str.clone(),
         };
         let _ = window.emit("mcp-summary-saved", summary_payload);
     }

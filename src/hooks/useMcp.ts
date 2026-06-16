@@ -120,8 +120,8 @@ export function useMcp({
         .map((block) => {
           try {
             const parsed = JSON.parse(block);
-            const tool = parsed.tool_name;
-            const args = parsed.params || {};
+            const tool = parsed.tool_name || parsed.tool;
+            const args = parsed.params || parsed.args || {};
             if (tool) {
               return { tool, args };
             }
