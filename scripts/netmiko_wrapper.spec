@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['src-tauri/python/netmiko_wrapper.py'],
+    ['../src-tauri/python/netmiko_wrapper.py'],
     pathex=[],
     binaries=[],
     datas=[],
