@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useRef } from 'react';
 import { Message } from '../../types';
 import { TimelineEvent } from './TimelineEvent';
+import './Chat.css';
 
 interface ChatProps {
   messages: Message[];

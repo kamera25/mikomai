@@ -148,6 +148,19 @@ pub async fn ask_llm(
         "".to_string()
     };
 
+    // Consolidate shortcut tool routing to the backend
+    if !is_rag_query {
+        if let Some((tool_name, params, message)) = crate::llm::shortcut::detect_shortcut_tool(&original_query) {
+            let tool_call = serde_json::json!({
+                "tool_name": tool_name,
+                "params": params
+            });
+            let response_str = format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap());
+            let _ = window.emit("llm-chunk", &response_str);
+            return Ok(response_str);
+        }
+    }
+
     log::info!("Received original query: '{}'", original_query);
 
     if !is_rag_query && crate::llm::greeting::is_greeting(&original_query) {

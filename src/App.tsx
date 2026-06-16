@@ -14,7 +14,7 @@ import { ActivityBar } from "./components/ActivityBar/ActivityBar";
 import { useMcp } from "./hooks/useMcp";
 import { useHistory } from "./hooks/useHistory";
 import { StatusBar } from "./components/StatusBar/StatusBar";
-import { useSettings } from "./hooks/useSettings";
+import { useSettingsContext } from "./contexts/SettingsContext";
 import { useModel } from "./hooks/useModel";
 import { useHostSuggestions } from "./hooks/useHostSuggestions";
 
@@ -55,37 +55,12 @@ function App() {
 
   const {
     historyLimit,
-    setHistoryLimit,
-    temperature,
-    setTemperature,
-    repetitionPenalty,
-    setRepetitionPenalty,
     modelPath,
-    setModelPath,
     mcpTimeout,
-    setMcpTimeout,
-    cacheExpiryMinutes,
-    setCacheExpiryMinutes,
-    dbPath,
-    setDbPath,
-    ipVersion,
-    setIpVersion,
-    consolePort,
-    setConsolePort,
-    consoleBaudRate,
-    setConsoleBaudRate,
-    preloadInvestigate,
-    setPreloadInvestigate,
-    preloadKnowledge,
-    setPreloadKnowledge,
-    preloadAnalysis,
-    setPreloadAnalysis,
-    preloadRag,
-    setPreloadRag,
     recentIPs,
     setRecentIPs,
     saveAllSettings,
-  } = useSettings();
+  } = useSettingsContext();
 
   const { modelStatus, handleLoadModel } = useModel(modelPath);
 
@@ -280,76 +255,6 @@ function App() {
           <SettingsPanel 
             isOpen={isSettingsOpen} 
             onClose={() => setIsSettingsOpen(false)} 
-            historyLimit={historyLimit}
-            onHistoryLimitChange={(newLimit) => {
-              setHistoryLimit(newLimit);
-              saveAllSettings({ historyLimit: newLimit });
-            }}
-            temperature={temperature}
-            onTemperatureChange={(newTemp) => {
-              setTemperature(newTemp);
-              saveAllSettings({ temperature: newTemp });
-            }}
-            repetitionPenalty={repetitionPenalty}
-            onRepetitionPenaltyChange={(newPenalty) => {
-              setRepetitionPenalty(newPenalty);
-              saveAllSettings({ repetitionPenalty: newPenalty });
-            }}
-            modelPath={modelPath}
-            onModelPathChange={(newPath) => {
-              setModelPath(newPath);
-              saveAllSettings({ modelPath: newPath });
-            }}
-            mcpTimeout={mcpTimeout}
-            onMcpTimeoutChange={(newTimeout: number) => {
-              setMcpTimeout(newTimeout);
-              saveAllSettings({ mcpTimeout: newTimeout });
-            }}
-            cacheExpiryMinutes={cacheExpiryMinutes}
-            onCacheExpiryMinutesChange={(newExpiry: number) => {
-              setCacheExpiryMinutes(newExpiry);
-              saveAllSettings({ cacheExpiryMinutes: newExpiry });
-            }}
-            dbPath={dbPath}
-            onDbPathChange={(newDbPath) => {
-              setDbPath(newDbPath);
-              saveAllSettings({ dbPath: newDbPath });
-            }}
-            ipVersion={ipVersion}
-            onIpVersionChange={(newIpVersion) => {
-              setIpVersion(newIpVersion);
-              saveAllSettings({ ipVersion: newIpVersion });
-            }}
-            consolePort={consolePort}
-            onConsolePortChange={(newPort) => {
-              setConsolePort(newPort);
-              saveAllSettings({ consolePort: newPort });
-            }}
-            consoleBaudRate={consoleBaudRate}
-            onConsoleBaudRateChange={(newRate) => {
-              setConsoleBaudRate(newRate);
-              saveAllSettings({ consoleBaudRate: newRate });
-            }}
-            preloadInvestigate={preloadInvestigate}
-            onPreloadInvestigateChange={(val) => {
-              setPreloadInvestigate(val);
-              saveAllSettings({ preloadInvestigate: val });
-            }}
-            preloadKnowledge={preloadKnowledge}
-            onPreloadKnowledgeChange={(val) => {
-              setPreloadKnowledge(val);
-              saveAllSettings({ preloadKnowledge: val });
-            }}
-            preloadAnalysis={preloadAnalysis}
-            onPreloadAnalysisChange={(val) => {
-              setPreloadAnalysis(val);
-              saveAllSettings({ preloadAnalysis: val });
-            }}
-            preloadRag={preloadRag}
-            onPreloadRagChange={(val) => {
-              setPreloadRag(val);
-              saveAllSettings({ preloadRag: val });
-            }}
           />
         ) : isConnectionOpen ? (
           <ConnectionSettingsPanel 
@@ -396,22 +301,11 @@ function App() {
                       }
                     }}
                     autoFocus
-                    style={{
-                      fontSize: '1.25rem',
-                      fontWeight: '600',
-                      background: 'transparent',
-                      border: '1px solid var(--border-color)',
-                      color: 'var(--text-color)',
-                      borderRadius: '4px',
-                      padding: '2px 8px',
-                      outline: 'none',
-                    }}
                   />
                 ) : (
                   <h1 
-                    className="header-title" 
+                    className="header-title clickable" 
                     onDoubleClick={handleStartRenameHeader}
-                    style={{ cursor: 'pointer' }}
                     title="ダブルクリックしてリネーム"
                   >
                     {activeSession?.title || "mikomai"}

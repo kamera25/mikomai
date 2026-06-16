@@ -1,5 +1,6 @@
 import React, { forwardRef, useRef } from 'react';
 import { SuggestionsList } from './SuggestionsList';
+import './ChatInput.css';
 
 interface ChatInputProps {
   modelStatus: string;

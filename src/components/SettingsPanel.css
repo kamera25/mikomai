@@ -212,6 +212,61 @@
   margin-top: 8px;
 }
 
+/* Form layout helper classes to replace inline styles */
+.form-range-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.form-range-input {
+  flex-grow: 1;
+}
+
+.form-range-value {
+  min-width: 32px;
+  font-weight: bold;
+  color: var(--accent-color);
+}
+
+.form-help-text {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.form-help-text.margin-bottom {
+  margin-bottom: 8px;
+}
+
+.preload-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.preload-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.download-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.download-btn-stretch {
+  flex-grow: 1;
+}
+
+.download-status-container {
+  margin-top: 12px;
+}
+
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }

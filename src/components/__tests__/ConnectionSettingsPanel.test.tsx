@@ -22,7 +22,7 @@ describe('ConnectionSettingsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Default mocks
-    vi.mocked(tauriApi.invoke).mockImplementation(async (cmd, args) => {
+    vi.mocked(tauriApi.invoke).mockImplementation(async (cmd, _args) => {
       if (cmd === 'get_mcp_hosts') {
         return [
           { hostname: 'Mcp-Host-01', ip: '192.168.10.10', deviceType: 'cisco_ios', username: 'admin' }

@@ -15,10 +15,28 @@
   --border-color: #e2e8f0;
   
   --font-family: "Hiragino Kaku Gothic", "meiryo", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   
   --danger: #ef4444;
   --success: #10b981;
   --warning: #f59e0b;
+
+  /* Additional color tokens derived from UI reviews to eliminate hardcoding */
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+
+  --dark-bg: #1e1e1e;
+  --dark-header-bg: #2d2d2d;
+  --dark-text-muted: #888888;
+  --dark-text-secondary: #999999;
 }
 
 * {

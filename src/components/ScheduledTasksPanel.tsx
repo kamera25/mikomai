@@ -360,7 +360,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                   <select
                     value={editingTask.status}
                     onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value as any })}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#1e1e1e', color: 'white' }}
+                    className="task-status-select"
                   >
                     <option value="running">実行中</option>
                     <option value="stopped">停止中</option>
@@ -373,8 +373,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                     value={editingTask.prompt} 
                     readOnly={!isCreating}
                     onChange={(e) => setEditingTask({ ...editingTask, prompt: e.target.value })}
-                    className={!isCreating ? "readonly-prompt-area" : ""}
-                    style={isCreating ? { width: '100%', minHeight: '80px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#1e1e1e', color: 'white' } : {}}
+                    className={!isCreating ? "readonly-prompt-area" : "task-prompt-textarea"}
                   />
                   {!isCreating && (
                     <p className="field-hint">※ プロンプトの内容はシステムによって管理されており、変更できません。</p>
@@ -392,18 +391,9 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
         <footer className="scheduled-panel-footer">
           <button className="add-task-btn" onClick={handleCreateNew}>新規タスク追加</button>
           <button
-            className="delete-selected-btn"
+            className={`delete-selected-btn ${selectedTasks.size > 0 ? 'active' : 'disabled'}`}
             onClick={handleDeleteSelected}
             disabled={selectedTasks.size === 0}
-            style={{
-              padding: '12px 32px',
-              backgroundColor: selectedTasks.size > 0 ? '#ef4444' : '#6b7280',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontWeight: 600,
-              cursor: selectedTasks.size > 0 ? 'pointer' : 'not-allowed'
-            }}
           >
             削除
           </button>

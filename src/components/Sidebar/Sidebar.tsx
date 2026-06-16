@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { HistoryItem, Message } from '../../types';
+import './Sidebar.css';
 
 interface SidebarProps {
   isSidebarOpen: boolean;

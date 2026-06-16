@@ -1,4 +1,5 @@
 import React from 'react';
+import './ActivityBar.css';
 
 interface ActivityBarProps {
   setIsConnectionOpen: React.Dispatch<React.SetStateAction<boolean>>;

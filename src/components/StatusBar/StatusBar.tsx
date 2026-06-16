@@ -1,4 +1,6 @@
 
+import './StatusBar.css';
+
 interface StatusBarProps {
   modelStatus: string;
   modelPath?: string | null;
@@ -26,7 +28,7 @@ export function StatusBar({ modelStatus, modelPath }: StatusBarProps) {
           <span>{getModelDisplayName()}</span>
         </div>
         <div className="status-item">
-          <div className={`status-dot ${modelStatus.toLowerCase()}`}></div>
+          <div className={`status-dot-bar ${modelStatus.toLowerCase()}`}></div>
           <span>{modelStatus === "Loaded" ? "Ready" : modelStatus}</span>
         </div>
       </div>

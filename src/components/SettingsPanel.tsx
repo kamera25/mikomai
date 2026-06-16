@@ -1,77 +1,126 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { useSettingsContext } from '../contexts/SettingsContext';
 
 import './SettingsPanel.css';
 
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  historyLimit: number;
-  onHistoryLimitChange: (limit: number) => void;
-  temperature: number;
-  onTemperatureChange: (temp: number) => void;
-  repetitionPenalty: number;
-  onRepetitionPenaltyChange: (penalty: number) => void;
-  modelPath: string | null;
-  onModelPathChange: (path: string) => void;
-  mcpTimeout: number;
-  onMcpTimeoutChange: (timeout: number) => void;
-  cacheExpiryMinutes: number;
-  onCacheExpiryMinutesChange: (expiry: number) => void;
-  dbPath: string;
-  onDbPathChange: (path: string) => void;
-  ipVersion: string;
-  onIpVersionChange: (version: string) => void;
-  consolePort: string | null;
-  onConsolePortChange: (port: string) => void;
-  consoleBaudRate: number;
-  onConsoleBaudRateChange: (rate: number) => void;
-  preloadInvestigate: boolean;
-  onPreloadInvestigateChange: (val: boolean) => void;
-  preloadKnowledge: boolean;
-  onPreloadKnowledgeChange: (val: boolean) => void;
-  preloadAnalysis: boolean;
-  onPreloadAnalysisChange: (val: boolean) => void;
-  preloadRag: boolean;
-  onPreloadRagChange: (val: boolean) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
   isOpen, 
-  onClose,
-  historyLimit,
-  onHistoryLimitChange,
-  temperature,
-  onTemperatureChange,
-  repetitionPenalty,
-  onRepetitionPenaltyChange,
-  modelPath: _savedModelPath,
-  onModelPathChange,
-  mcpTimeout,
-  onMcpTimeoutChange,
-  cacheExpiryMinutes,
-  onCacheExpiryMinutesChange,
-  dbPath,
-  onDbPathChange,
-  ipVersion,
-  onIpVersionChange,
-  consolePort,
-  onConsolePortChange,
-  consoleBaudRate,
-  onConsoleBaudRateChange,
-  preloadInvestigate,
-  onPreloadInvestigateChange,
-  preloadKnowledge,
-  onPreloadKnowledgeChange,
-  preloadAnalysis,
-  onPreloadAnalysisChange,
-  preloadRag,
-  onPreloadRagChange
+  onClose
 }) => {
+  const {
+    historyLimit,
+    setHistoryLimit,
+    temperature,
+    setTemperature,
+    repetitionPenalty,
+    setRepetitionPenalty,
+    modelPath: _savedModelPath,
+    setModelPath,
+    mcpTimeout,
+    setMcpTimeout,
+    cacheExpiryMinutes,
+    setCacheExpiryMinutes,
+    dbPath,
+    setDbPath,
+    ipVersion,
+    setIpVersion,
+    consolePort,
+    setConsolePort,
+    consoleBaudRate,
+    setConsoleBaudRate,
+    preloadInvestigate,
+    setPreloadInvestigate,
+    preloadKnowledge,
+    setPreloadKnowledge,
+    preloadAnalysis,
+    setPreloadAnalysis,
+    preloadRag,
+    setPreloadRag,
+    saveAllSettings,
+  } = useSettingsContext();
+
   const [repoPath, setRepoPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("google_gemma-4-E4B-it-Q4_K_M.gguf");
   const [availablePorts, setAvailablePorts] = useState<string[]>([]);
+
+  // Update handlers
+  const handleHistoryLimitChange = (val: number) => {
+    setHistoryLimit(val);
+    saveAllSettings({ historyLimit: val });
+  };
+
+  const handleTemperatureChange = (val: number) => {
+    setTemperature(val);
+    saveAllSettings({ temperature: val });
+  };
+
+  const handleRepetitionPenaltyChange = (val: number) => {
+    setRepetitionPenalty(val);
+    saveAllSettings({ repetitionPenalty: val });
+  };
+
+  const handleModelPathChange = (val: string) => {
+    setModelPath(val);
+    saveAllSettings({ modelPath: val });
+  };
+
+  const handleMcpTimeoutChange = (val: number) => {
+    setMcpTimeout(val);
+    saveAllSettings({ mcpTimeout: val });
+  };
+
+  const handleCacheExpiryMinutesChange = (val: number) => {
+    setCacheExpiryMinutes(val);
+    saveAllSettings({ cacheExpiryMinutes: val });
+  };
+
+  const handleDbPathChange = (val: string) => {
+    setDbPath(val);
+    saveAllSettings({ dbPath: val });
+  };
+
+  const handleIpVersionChange = (val: string) => {
+    setIpVersion(val);
+    saveAllSettings({ ipVersion: val });
+  };
+
+  const handleConsolePortChange = (val: string) => {
+    setConsolePort(val);
+    saveAllSettings({ consolePort: val });
+  };
+
+  const handleConsoleBaudRateChange = (val: number) => {
+    setConsoleBaudRate(val);
+    saveAllSettings({ consoleBaudRate: val });
+  };
+
+  const handlePreloadInvestigateChange = (val: boolean) => {
+    setPreloadInvestigate(val);
+    saveAllSettings({ preloadInvestigate: val });
+  };
+
+  const handlePreloadKnowledgeChange = (val: boolean) => {
+    setPreloadKnowledge(val);
+    saveAllSettings({ preloadKnowledge: val });
+  };
+
+  const handlePreloadAnalysisChange = (val: boolean) => {
+    setPreloadAnalysis(val);
+    saveAllSettings({ preloadAnalysis: val });
+  };
+
+  const handlePreloadRagChange = (val: boolean) => {
+    setPreloadRag(val);
+    saveAllSettings({ preloadRag: val });
+  };
+
 
   useEffect(() => {
     const fetchPorts = async () => {
@@ -110,7 +159,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         filename: modelFilename
       });
       
-      onModelPathChange(downloadedPath);
+      handleModelPathChange(downloadedPath);
       setDownloadStatus(`Model downloaded to: ${downloadedPath}. Loading into memory...`);
       
       const loadResult = await invoke<string>("load_model", {
@@ -141,7 +190,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         title: "データベースディレクトリを選択"
       });
       if (selected) {
-        onDbPathChange(selected as string);
+        handleDbPathChange(selected as string);
       }
     } catch (e) {
       console.error("Failed to select directory:", e);
@@ -168,90 +217,90 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <h3>対話設定</h3>
             <div className="form-control">
               <label>過去の履歴保持数 (要約)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="form-range-container">
                 <input 
                   type="range" 
                   min="0" 
                   max="20" 
                   value={historyLimit} 
-                  onChange={(e) => onHistoryLimitChange(parseInt(e.target.value))}
-                  style={{ flexGrow: 1 }}
+                  onChange={(e) => handleHistoryLimitChange(parseInt(e.target.value))}
+                  className="form-range-input"
                 />
-                <span style={{ minWidth: '32px', fontWeight: 'bold', color: 'var(--accent-color)' }}>{historyLimit}</span>
+                <span className="form-range-value">{historyLimit}</span>
               </div>
-              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+              <p className="help-text form-help-text">
                 AIが回答を生成する際に参照する過去の会話の要約数です。大きくすると文脈をより理解しますが、メモリ消費量が増える可能性があります。
               </p>
             </div>
             <div className="form-control">
               <label>Temperature (温度)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="form-range-container">
                 <input 
                   type="range" 
                   min="0" 
                   max="2.0" 
                   step="0.1"
                   value={temperature} 
-                  onChange={(e) => onTemperatureChange(parseFloat(e.target.value))}
-                  style={{ flexGrow: 1 }}
+                  onChange={(e) => handleTemperatureChange(parseFloat(e.target.value))}
+                  className="form-range-input"
                 />
-                <span style={{ minWidth: '32px', fontWeight: 'bold', color: 'var(--accent-color)' }}>{temperature.toFixed(1)}</span>
+                <span className="form-range-value">{temperature.toFixed(1)}</span>
               </div>
-              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+              <p className="help-text form-help-text">
                 回答のランダム性を制御します。0に設定すると最も決定的（同じ入力に対して同じ回答）になります。
               </p>
             </div>
             <div className="form-control">
               <label>Repetition Penalty (繰り返し抑制)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="form-range-container">
                 <input 
                   type="range" 
                   min="1.0" 
                   max="2.0" 
                   step="0.05"
                   value={repetitionPenalty} 
-                  onChange={(e) => onRepetitionPenaltyChange(parseFloat(e.target.value))}
-                  style={{ flexGrow: 1 }}
+                  onChange={(e) => handleRepetitionPenaltyChange(parseFloat(e.target.value))}
+                  className="form-range-input"
                 />
-                <span style={{ minWidth: '32px', fontWeight: 'bold', color: 'var(--accent-color)' }}>{repetitionPenalty.toFixed(2)}</span>
+                <span className="form-range-value">{repetitionPenalty.toFixed(2)}</span>
               </div>
-              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+              <p className="help-text form-help-text">
                 同じ言葉の繰り返しを抑制します。1.0で無効、値を大きくするほど繰り返しが少なくなります。
               </p>
             </div>
             <div className="form-control">
               <label>MCP 実行タイムアウト (秒)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="form-range-container">
                 <input
                   type="range"
                   min="5"
                   max="120"
                   step="5"
                   value={mcpTimeout}
-                  onChange={(e) => onMcpTimeoutChange(parseInt(e.target.value))}
-                  style={{ flexGrow: 1 }}
+                  onChange={(e) => handleMcpTimeoutChange(parseInt(e.target.value))}
+                  className="form-range-input"
                 />
-                <span style={{ minWidth: '32px', fontWeight: 'bold', color: 'var(--accent-color)' }}>{mcpTimeout}</span>
+                <span className="form-range-value">{mcpTimeout}</span>
               </div>
-              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+              <p className="help-text form-help-text">
                 ツール (MCP) 実行の最大待機時間です。時間を超えると処理を中断します。
               </p>
             </div>
             <div className="form-control">
               <label>キャッシュ有効時間 (分)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="form-range-container">
                 <input
                   type="range"
                   min="0"
                   max="60"
                   step="1"
                   value={cacheExpiryMinutes}
-                  onChange={(e) => onCacheExpiryMinutesChange(parseInt(e.target.value))}
-                  style={{ flexGrow: 1 }}
+                  onChange={(e) => handleCacheExpiryMinutesChange(parseInt(e.target.value))}
+                  className="form-range-input"
                 />
-                <span style={{ minWidth: '32px', fontWeight: 'bold', color: 'var(--accent-color)' }}>{cacheExpiryMinutes}</span>
+                <span className="form-range-value">{cacheExpiryMinutes}</span>
               </div>
-              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+              <p className="help-text form-help-text">
                 前回データ取得からの経過時間（分）です。この時間内であれば、実機に接続せず保存済みのYAMLデータから応答します。0にするとキャッシュを使用しません。
               </p>
             </div>
@@ -260,33 +309,33 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <select 
                 id="ip-version-select"
                 value={ipVersion} 
-                onChange={(e) => onIpVersionChange(e.target.value)}
+                onChange={(e) => handleIpVersionChange(e.target.value)}
               >
                 <option value="auto">自動</option>
                 <option value="ipv4">IPv4のみ</option>
                 <option value="ipv6">IPv6のみ</option>
               </select>
-              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+              <p className="help-text form-help-text">
                 ホスト名解決および接続時に使用するIPプロトコルの優先設定です。
               </p>
             </div>
             <div className="form-control">
               <label htmlFor="console-port-select">コンソールポート (MCP用)</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="download-actions">
                 <select
                   id="console-port-select"
                   value={availablePorts.includes(consolePort || '') ? (consolePort || '') : (consolePort ? 'custom' : '')}
                   onChange={(e) => {
                     const val = e.target.value;
                     if (val === 'custom') {
-                      onConsolePortChange('/dev/ttyUSB0');
+                      handleConsolePortChange('/dev/ttyUSB0');
                     } else if (val === '') {
-                      onConsolePortChange('');
+                      handleConsolePortChange('');
                     } else {
-                      onConsolePortChange(val);
+                      handleConsolePortChange(val);
                     }
                   }}
-                  style={{ flexGrow: 1 }}
+                  className="download-btn-stretch"
                 >
                   <option value="">None (使用しない)</option>
                   {availablePorts.map(p => (
@@ -298,13 +347,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <input
                     type="text"
                     value={consolePort === 'custom' ? '' : (consolePort || '')}
-                    onChange={(e) => onConsolePortChange(e.target.value)}
+                    onChange={(e) => handleConsolePortChange(e.target.value)}
                     placeholder="例: /dev/ttyUSB0, COM1"
-                    style={{ width: '200px' }}
+                    className="custom-port-input"
                   />
                 ) : null}
               </div>
-              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+              <p className="help-text form-help-text">
                 指定されている場合、MCPの呼び出し(fetch_arp, config, routing等)は内部でこのシリアルコンソール経由で実行されます。
               </p>
             </div>
@@ -314,7 +363,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <select
                   id="console-baudrate-select"
                   value={consoleBaudRate}
-                  onChange={(e) => onConsoleBaudRateChange(parseInt(e.target.value))}
+                  onChange={(e) => handleConsoleBaudRateChange(parseInt(e.target.value))}
                 >
                   <option value="9600">9600 bps</option>
                   <option value="19200">19200 bps</option>
@@ -338,35 +387,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
             <div className="form-control">
               <label>起動時・モデル読込時のKVキャッシュ プリロード設定</label>
-              <p className="help-text" style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '8px' }}>
+              <p className="help-text form-help-text margin-bottom">
                 チェックを外したワーカーは、初回呼出時（遅延読込）にキャッシュを生成するため、起動時のメモリ消費量と起動時間を削減できます。
               </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                  <input type="checkbox" checked={preloadInvestigate} onChange={(e) => onPreloadInvestigateChange(e.target.checked)} />
+              <div className="preload-grid">
+                <label className="preload-label">
+                  <input type="checkbox" checked={preloadInvestigate} onChange={(e) => handlePreloadInvestigateChange(e.target.checked)} />
                   Investigator (調査員)
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                  <input type="checkbox" checked={preloadKnowledge} onChange={(e) => onPreloadKnowledgeChange(e.target.checked)} />
+                <label className="preload-label">
+                  <input type="checkbox" checked={preloadKnowledge} onChange={(e) => handlePreloadKnowledgeChange(e.target.checked)} />
                   Knowledge (知識専門家)
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                  <input type="checkbox" checked={preloadAnalysis} onChange={(e) => onPreloadAnalysisChange(e.target.checked)} />
+                <label className="preload-label">
+                  <input type="checkbox" checked={preloadAnalysis} onChange={(e) => handlePreloadAnalysisChange(e.target.checked)} />
                   Analyst (分析官)
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                  <input type="checkbox" checked={preloadRag} onChange={(e) => onPreloadRagChange(e.target.checked)} />
+                <label className="preload-label">
+                  <input type="checkbox" checked={preloadRag} onChange={(e) => handlePreloadRagChange(e.target.checked)} />
                   RAG Worker (RAG回答員)
                 </label>
               </div>
             </div>
             <div className="form-control">
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="download-actions">
                 <button 
-                  className="btn btn-secondary" 
+                  className="btn btn-secondary download-btn-stretch" 
                   onClick={handleDownloadAndLoad}
                   disabled={isLoading}
-                  style={{ flexGrow: 1 }}
                 >
                   {isLoading ? "ダウンロード中..." : "モデルをダウンロードして読み込む"}
                 </button>
@@ -378,7 +426,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   フォルダを開く
                 </button>
               </div>
-              {downloadStatus && <div className="status-text" style={{ marginTop: '12px', color: downloadStatus.startsWith('Error') ? 'var(--danger)' : 'var(--success)' }}>{downloadStatus}</div>}
+              {downloadStatus && <div className="status-text download-status-container" style={{ color: downloadStatus.startsWith('Error') ? 'var(--danger)' : 'var(--success)' }}>{downloadStatus}</div>}
             </div>
           </section>
 
@@ -391,7 +439,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   type="text" 
                   placeholder="/path/to/lancedb" 
                   value={dbPath} 
-                  onChange={e => onDbPathChange(e.target.value)} 
+                  onChange={e => handleDbPathChange(e.target.value)} 
                 />
 
                 <button 
