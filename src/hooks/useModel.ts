@@ -9,11 +9,11 @@ export function useModel(modelPath: string | null) {
     const checkStatus = async () => {
       try {
         const status = await invoke<ModelState>("get_model_status");
-        if (typeof status === 'string') {
+        if (typeof status === "string") {
           setModelStatus(status);
-        } else if (typeof status === 'object' && status !== null) {
-          if ('Error' in status) {
-            setModelStatus('Error');
+        } else if (typeof status === "object" && status !== null) {
+          if ("Error" in status) {
+            setModelStatus("Error");
           }
         }
       } catch (e) {

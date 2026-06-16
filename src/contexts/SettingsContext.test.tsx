@@ -35,7 +35,7 @@ describe("SettingsContext", () => {
     // Wait for the settings to load (useEffect runs on mount)
     const historyLimitEl = await screen.findByTestId("historyLimit");
     expect(historyLimitEl.textContent).toBe("5");
-    
+
     const temperatureEl = await screen.findByTestId("temperature");
     expect(temperatureEl.textContent).toBe("0.7");
   });

@@ -41,10 +41,7 @@
         "properties": {
           "ip_address": {
             "type": "string",
-            "anyOf": [
-              { "format": "ipv4" },
-              { "format": "ipv6" }
-            ],
+            "anyOf": [{ "format": "ipv4" }, { "format": "ipv6" }],
             "description": "The IP address of the ARP entry"
           },
           "mac_address": {

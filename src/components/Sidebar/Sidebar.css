@@ -6,7 +6,9 @@
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width 0.3s ease, opacity 0.3s ease;
+  transition:
+    width 0.3s ease,
+    opacity 0.3s ease;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -59,7 +61,8 @@
   flex-direction: column;
 }
 
-.folder-item, .session-item {
+.folder-item,
+.session-item {
   padding: 8px 12px;
   border-radius: 6px;
   cursor: pointer;
@@ -74,7 +77,8 @@
 }
 
 /* Replaced hardcoded #f3f4f6 color with var(--gray-100) */
-.folder-item:hover, .session-item:hover {
+.folder-item:hover,
+.session-item:hover {
   background-color: var(--gray-100);
   color: var(--text-primary);
 }
@@ -86,7 +90,8 @@
   box-shadow: inset 4px 0 0 var(--accent-color);
 }
 
-.folder-icon, .session-icon {
+.folder-icon,
+.session-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -105,7 +110,8 @@
   transform: rotate(90deg);
 }
 
-.folder-name, .session-title {
+.folder-name,
+.session-title {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -167,7 +173,7 @@
 }
 
 .timeline-items::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 54px;
   top: 0;

@@ -25,7 +25,9 @@ export function useHostSuggestions({
 }: UseHostSuggestionsProps) {
   const [availableHosts, setAvailableHosts] = useState<{ hostname: string; ip: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [filteredSuggestions, setFilteredSuggestions] = useState<{ hostname: string; ip: string }[]>([]);
+  const [filteredSuggestions, setFilteredSuggestions] = useState<
+    { hostname: string; ip: string }[]
+  >([]);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
   const [cursorPos, setCursorPos] = useState(0);
 
@@ -86,26 +88,29 @@ export function useHostSuggestions({
     }
   }, [recentIPs[0], fetchHosts]);
 
-  const updateRecentHosts = useCallback((hosts: string[]) => {
-    if (hosts.length === 0) return;
+  const updateRecentHosts = useCallback(
+    (hosts: string[]) => {
+      if (hosts.length === 0) return;
 
-    const newRecent = [
-      ...new Set([...hosts, ...recentIPs]),
-    ].slice(0, 10);
+      const newRecent = [...new Set([...hosts, ...recentIPs])].slice(0, 10);
 
-    const isChanged = newRecent.length !== recentIPs.length || newRecent.some((val, idx) => val !== recentIPs[idx]);
-    if (!isChanged) return;
+      const isChanged =
+        newRecent.length !== recentIPs.length ||
+        newRecent.some((val, idx) => val !== recentIPs[idx]);
+      if (!isChanged) return;
 
-    setRecentIPs(newRecent);
+      setRecentIPs(newRecent);
 
-    if (activeSessionId) {
-      updateSessionRecentIps(activeSessionId, newRecent);
-    }
+      if (activeSessionId) {
+        updateSessionRecentIps(activeSessionId, newRecent);
+      }
 
-    saveAllSettings({ recentIps: newRecent }).catch((e) => {
-      console.error("Failed to save recent hosts to settings:", e);
-    });
-  }, [recentIPs, activeSessionId, updateSessionRecentIps, saveAllSettings, setRecentIPs]);
+      saveAllSettings({ recentIps: newRecent }).catch((e) => {
+        console.error("Failed to save recent hosts to settings:", e);
+      });
+    },
+    [recentIPs, activeSessionId, updateSessionRecentIps, saveAllSettings, setRecentIPs]
+  );
 
   const handleSelectSuggestion = (hostObj: { hostname: string; ip: string }) => {
     const host = hostObj.hostname;

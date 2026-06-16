@@ -6,7 +6,7 @@ import { ConnectionSettingsPanel } from "./components/ConnectionSettingsPanel";
 import { ScheduledTasksPanel } from "./components/ScheduledTasksPanel";
 import "./App.css";
 
-import { SummaryItem } from './types';
+import { SummaryItem } from "./types";
 import { Chat } from "./components/Chat/Chat";
 import { ChatInput } from "./components/ChatInput/ChatInput";
 import { Sidebar } from "./components/Sidebar/Sidebar";
@@ -53,14 +53,8 @@ function App() {
     setIsEditingHeader(false);
   };
 
-  const {
-    historyLimit,
-    modelPath,
-    mcpTimeout,
-    recentIPs,
-    setRecentIPs,
-    saveAllSettings,
-  } = useSettingsContext();
+  const { historyLimit, modelPath, mcpTimeout, recentIPs, setRecentIPs, saveAllSettings } =
+    useSettingsContext();
 
   const { modelStatus, handleLoadModel } = useModel(modelPath);
 
@@ -100,7 +94,9 @@ function App() {
   // Sync recentIPs with the active session's cached recent IPs when session changes
   useEffect(() => {
     const sessionIps = activeSession?.recentIps || [];
-    const isDifferent = sessionIps.length !== recentIPs.length || sessionIps.some((val, idx) => val !== recentIPs[idx]);
+    const isDifferent =
+      sessionIps.length !== recentIPs.length ||
+      sessionIps.some((val, idx) => val !== recentIPs[idx]);
     if (isDifferent) {
       setRecentIPs(sessionIps);
     }
@@ -114,7 +110,7 @@ function App() {
     historyLimit,
     mcpTimeout,
     updateRecentHosts,
-    recentIPs
+    recentIPs,
   });
 
   const scrollToBottom = () => {
@@ -158,48 +154,54 @@ function App() {
     if (!isoString) return "";
     const date = new Date(isoString);
     const now = new Date();
-    
-    const isToday = date.getFullYear() === now.getFullYear() &&
-                    date.getMonth() === now.getMonth() &&
-                    date.getDate() === now.getDate();
-    
-    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
+
+    const isToday =
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate();
+
+    const timeStr = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
     if (isToday) {
       return timeStr;
     } else {
-      const dateStr = date.toLocaleDateString([], { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/');
+      const dateStr = date
+        .toLocaleDateString([], { year: "numeric", month: "2-digit", day: "2-digit" })
+        .replace(/\//g, "/");
       return `${dateStr} ${timeStr}`;
     }
   };
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    
+
     const userMessage = input.trim();
     const timestamp = new Date().toISOString();
-    
+
     // Extract IP addresses and @hostnames to remember
     const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
     const mentionRegex = /@([a-zA-Z0-9.-]+)/g;
-    
+
     const foundIPs = userMessage.match(ipRegex) || [];
-    const foundMentions = Array.from(userMessage.matchAll(mentionRegex)).map(m => m[1]);
-    
+    const foundMentions = Array.from(userMessage.matchAll(mentionRegex)).map((m) => m[1]);
+
     const allFound = [...new Set([...foundMentions, ...foundIPs])];
-    
+
     if (allFound.length > 0) {
       updateRecentHosts(allFound);
     }
 
     setInput("");
-    setMessages(prev => [...prev, {
-      role: "user",
-      content: userMessage,
-      timestamp,
-      event_type: "UserInput",
-      task_id: `task_user_${Date.now()}`
-    }]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: userMessage,
+        timestamp,
+        event_type: "UserInput",
+        task_id: `task_user_${Date.now()}`,
+      },
+    ]);
 
     // Force scroll to bottom on new user input
     setTimeout(() => {
@@ -219,9 +221,7 @@ function App() {
     }
   };
 
-
-
-    return (
+  return (
     <div className="app-container">
       <div className="main-layout">
         {/* Activity Bar (LM Studio style thin left bar) */}
@@ -234,135 +234,166 @@ function App() {
           setIsSettingsOpen={setIsSettingsOpen}
         />
 
-      {/* Sidebar (History) */}
-      <Sidebar
-        isSidebarOpen={isSidebarOpen}
-        history={history}
-        activeSessionId={activeSessionId}
-        messages={messages}
-        createNewFolder={createNewFolder}
-        createNewSession={createNewSession}
-        toggleFolder={toggleFolder}
-        onTimelineItemClick={scrollToMessage}
-        switchSession={switchSession}
-        renameSession={renameSession}
-        deleteSession={deleteSession}
-      />
+        {/* Sidebar (History) */}
+        <Sidebar
+          isSidebarOpen={isSidebarOpen}
+          history={history}
+          activeSessionId={activeSessionId}
+          messages={messages}
+          createNewFolder={createNewFolder}
+          createNewSession={createNewSession}
+          toggleFolder={toggleFolder}
+          onTimelineItemClick={scrollToMessage}
+          switchSession={switchSession}
+          renameSession={renameSession}
+          deleteSession={deleteSession}
+        />
 
-      {/* Main Viewport (Grouping Chat and Settings) */}
-      <div className="main-viewport">
-        {isSettingsOpen ? (
-          <SettingsPanel 
-            isOpen={isSettingsOpen} 
-            onClose={() => setIsSettingsOpen(false)} 
-          />
-        ) : isConnectionOpen ? (
-          <ConnectionSettingsPanel 
-            onClose={() => setIsConnectionOpen(false)} 
-            onConnectionsChanged={fetchHosts}
-          />
-        ) : isScheduledTasksOpen ? (
-          <ScheduledTasksPanel 
-            onClose={() => setIsScheduledTasksOpen(false)} 
-          />
-        ) : (
-          <main className="main-chat">
-            {/* Top Header */}
-            <header className="chat-header">
-              <div className="header-left">
-                <button 
-                  className="sidebar-toggle-button" 
-                  onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                  title={isSidebarOpen ? "サイドバーを閉じる" : "サイドバーを開く"}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                     <line x1="9" y1="3" x2="9" y2="21"></line>
-                  </svg>
-                </button>
-                {isEditingHeader ? (
-                  <input
-                    className="header-title-input"
-                    value={headerTitle}
-                    onChange={(e) => setHeaderTitle(e.target.value)}
-                    onBlur={handleSaveRenameHeader}
-                    onCompositionStart={() => { isComposingHeader.current = true; }}
-                    onCompositionEnd={() => {
-                      setTimeout(() => { isComposingHeader.current = false; }, 150);
-                    }}
-                    onKeyDown={(e) => {
-                      const isComp = isComposingHeader.current || e.nativeEvent.isComposing || e.keyCode === 229;
-                      if (isComp) {
-                        return;
-                      }
-                      if (e.key === 'Enter') {
-                        handleSaveRenameHeader();
-                      } else if (e.key === 'Escape') {
-                        setIsEditingHeader(false);
-                      }
-                    }}
-                    autoFocus
-                  />
-                ) : (
-                  <h1 
-                    className="header-title clickable" 
-                    onDoubleClick={handleStartRenameHeader}
-                    title="ダブルクリックしてリネーム"
-                  >
-                    {activeSession?.title || "mikomai"}
-                  </h1>
-                )}
-                {recentIPs.length > 0 && (
-                  <div>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-                    <span className="header-hostname">
-                      {(() => {
-                        const current = recentIPs[0];
-                        const host = availableHosts.find(h => h.ip === current || h.hostname === current);
-                        if (host && host.hostname && host.ip && host.hostname !== host.ip) {
-                          return `${host.hostname} (${host.ip})`;
-                        }
-                        return current;
-                      })()}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </header>
-    
-            {/* Chat History */}
-            <Chat ref={messagesEndRef} messages={messages} formatMessageTime={formatMessageTime} />
-  
-          {/* Input Area */}
-          <div className="input-area-wrapper">
-            {messages.some(m => m.status === 'Running') && (
-              <div className="global-loading-indicator"></div>
-            )}
-            <ChatInput
-              ref={textareaRef}
-              modelStatus={modelStatus}
-              modelPath={modelPath}
-              input={input}
-              setInput={setInput}
-              showSuggestions={showSuggestions}
-              setShowSuggestions={setShowSuggestions}
-              filteredSuggestions={filteredSuggestions}
-              suggestionIndex={suggestionIndex}
-              setSuggestionIndex={setSuggestionIndex}
-              handleSelectSuggestion={handleSelectSuggestion}
-              handleSend={handleSend}
-              handleLoadModel={handleLoadModel}
-              setIsSettingsOpen={setIsSettingsOpen}
-              setCursorPos={setCursorPos}
-              availableHosts={availableHosts}
-              recentIPs={recentIPs}
-              setFilteredSuggestions={setFilteredSuggestions}
+        {/* Main Viewport (Grouping Chat and Settings) */}
+        <div className="main-viewport">
+          {isSettingsOpen ? (
+            <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+          ) : isConnectionOpen ? (
+            <ConnectionSettingsPanel
+              onClose={() => setIsConnectionOpen(false)}
+              onConnectionsChanged={fetchHosts}
             />
-          </div>
-        </main>
-      )}
-    </div>
-  </div>
+          ) : isScheduledTasksOpen ? (
+            <ScheduledTasksPanel onClose={() => setIsScheduledTasksOpen(false)} />
+          ) : (
+            <main className="main-chat">
+              {/* Top Header */}
+              <header className="chat-header">
+                <div className="header-left">
+                  <button
+                    className="sidebar-toggle-button"
+                    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                    title={isSidebarOpen ? "サイドバーを閉じる" : "サイドバーを開く"}
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="9" y1="3" x2="9" y2="21"></line>
+                    </svg>
+                  </button>
+                  {isEditingHeader ? (
+                    <input
+                      className="header-title-input"
+                      value={headerTitle}
+                      onChange={(e) => setHeaderTitle(e.target.value)}
+                      onBlur={handleSaveRenameHeader}
+                      onCompositionStart={() => {
+                        isComposingHeader.current = true;
+                      }}
+                      onCompositionEnd={() => {
+                        setTimeout(() => {
+                          isComposingHeader.current = false;
+                        }, 150);
+                      }}
+                      onKeyDown={(e) => {
+                        const isComp =
+                          isComposingHeader.current ||
+                          e.nativeEvent.isComposing ||
+                          e.keyCode === 229;
+                        if (isComp) {
+                          return;
+                        }
+                        if (e.key === "Enter") {
+                          handleSaveRenameHeader();
+                        } else if (e.key === "Escape") {
+                          setIsEditingHeader(false);
+                        }
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <h1
+                      className="header-title clickable"
+                      onDoubleClick={handleStartRenameHeader}
+                      title="ダブルクリックしてリネーム"
+                    >
+                      {activeSession?.title || "mikomai"}
+                    </h1>
+                  )}
+                  {recentIPs.length > 0 && (
+                    <div>
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                        <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                        <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                        <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                      </svg>
+                      <span className="header-hostname">
+                        {(() => {
+                          const current = recentIPs[0];
+                          const host = availableHosts.find(
+                            (h) => h.ip === current || h.hostname === current
+                          );
+                          if (host && host.hostname && host.ip && host.hostname !== host.ip) {
+                            return `${host.hostname} (${host.ip})`;
+                          }
+                          return current;
+                        })()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </header>
+
+              {/* Chat History */}
+              <Chat
+                ref={messagesEndRef}
+                messages={messages}
+                formatMessageTime={formatMessageTime}
+              />
+
+              {/* Input Area */}
+              <div className="input-area-wrapper">
+                {messages.some((m) => m.status === "Running") && (
+                  <div className="global-loading-indicator"></div>
+                )}
+                <ChatInput
+                  ref={textareaRef}
+                  modelStatus={modelStatus}
+                  modelPath={modelPath}
+                  input={input}
+                  setInput={setInput}
+                  showSuggestions={showSuggestions}
+                  setShowSuggestions={setShowSuggestions}
+                  filteredSuggestions={filteredSuggestions}
+                  suggestionIndex={suggestionIndex}
+                  setSuggestionIndex={setSuggestionIndex}
+                  handleSelectSuggestion={handleSelectSuggestion}
+                  handleSend={handleSend}
+                  handleLoadModel={handleLoadModel}
+                  setIsSettingsOpen={setIsSettingsOpen}
+                  setCursorPos={setCursorPos}
+                  availableHosts={availableHosts}
+                  recentIPs={recentIPs}
+                  setFilteredSuggestions={setFilteredSuggestions}
+                />
+              </div>
+            </main>
+          )}
+        </div>
+      </div>
       {/* Status Bar */}
       <StatusBar modelStatus={modelStatus} modelPath={modelPath} />
     </div>

@@ -7,7 +7,9 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   border: 1px solid #333;
   position: relative;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .terminal-container:hover {
@@ -18,7 +20,7 @@
   margin: 0;
   padding: 16px;
   color: #4af626; /* Classic terminal green */
-  font-family: var(--font-mono, 'Courier New', Courier, monospace);
+  font-family: var(--font-mono, "Courier New", Courier, monospace);
   font-size: 0.85rem;
   overflow-x: auto;
   line-height: 0.97;

@@ -1,20 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
-import { useSettingsContext } from '../contexts/SettingsContext';
-import { getErrorMessage } from '../utils/error';
+import React, { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import { useSettingsContext } from "../contexts/SettingsContext";
+import { getErrorMessage } from "../utils/error";
 
-import './SettingsPanel.css';
+import "./SettingsPanel.css";
 
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
-  isOpen, 
-  onClose
-}) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
   const {
     historyLimit,
     setHistoryLimit,
@@ -122,7 +119,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     saveAllSettings({ preloadRag: val });
   };
 
-
   useEffect(() => {
     const fetchPorts = async () => {
       try {
@@ -154,24 +150,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [downloadStatus, setDownloadStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-
   const handleDownloadAndLoad = async () => {
     try {
       setIsLoading(true);
       setDownloadStatus("モデルのダウンロードを開始します（時間がかかる場合があります）");
-      
+
       const downloadedPath = await invoke<string>("download_model", {
         repo: repoPath,
-        filename: modelFilename
+        filename: modelFilename,
       });
-      
+
       handleModelPathChange(downloadedPath);
       setDownloadStatus(`Model downloaded to: ${downloadedPath}. Loading into memory...`);
-      
+
       const loadResult = await invoke<string>("load_model", {
-        path: downloadedPath
+        path: downloadedPath,
       });
-      
+
       setDownloadStatus(`Success: ${loadResult}`);
     } catch (e: unknown) {
       setDownloadStatus(`Error: ${getErrorMessage(e)}`);
@@ -193,7 +188,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "データベースディレクトリを選択"
+        title: "データベースディレクトリを選択",
       });
       if (selected) {
         handleDbPathChange(selected as string);
@@ -214,7 +209,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <h2>設定</h2>
               <p>ローカルLLM、ナレッジベースを設定します。</p>
             </div>
-            <button className="close-button" onClick={onClose} title="設定を閉じる">&times;</button>
+            <button className="close-button" onClick={onClose} title="設定を閉じる">
+              &times;
+            </button>
           </div>
         </header>
 
@@ -224,11 +221,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="form-control">
               <label>過去の履歴保持数 (要約)</label>
               <div className="form-range-container">
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="20" 
-                  value={historyLimit} 
+                <input
+                  type="range"
+                  min="0"
+                  max="20"
+                  value={historyLimit}
                   onChange={(e) => handleHistoryLimitChange(parseInt(e.target.value))}
                   className="form-range-input"
                 />
@@ -241,12 +238,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="form-control">
               <label>Temperature (温度)</label>
               <div className="form-range-container">
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="2.0" 
+                <input
+                  type="range"
+                  min="0"
+                  max="2.0"
                   step="0.1"
-                  value={temperature} 
+                  value={temperature}
                   onChange={(e) => handleTemperatureChange(parseFloat(e.target.value))}
                   className="form-range-input"
                 />
@@ -259,12 +256,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="form-control">
               <label>Repetition Penalty (繰り返し抑制)</label>
               <div className="form-range-container">
-                <input 
-                  type="range" 
-                  min="1.0" 
-                  max="2.0" 
+                <input
+                  type="range"
+                  min="1.0"
+                  max="2.0"
                   step="0.05"
-                  value={repetitionPenalty} 
+                  value={repetitionPenalty}
                   onChange={(e) => handleRepetitionPenaltyChange(parseFloat(e.target.value))}
                   className="form-range-input"
                 />
@@ -312,9 +309,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
             <div className="form-control">
               <label htmlFor="ip-version-select">利用するインターネットプロトコルの指定</label>
-              <select 
+              <select
                 id="ip-version-select"
-                value={ipVersion} 
+                value={ipVersion}
                 onChange={(e) => handleIpVersionChange(e.target.value)}
               >
                 <option value="auto">自動</option>
@@ -330,13 +327,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <div className="download-actions">
                 <select
                   id="console-port-select"
-                  value={availablePorts.includes(consolePort || '') ? (consolePort || '') : (consolePort ? 'custom' : '')}
+                  value={
+                    availablePorts.includes(consolePort || "")
+                      ? consolePort || ""
+                      : consolePort
+                        ? "custom"
+                        : ""
+                  }
                   onChange={(e) => {
                     const val = e.target.value;
-                    if (val === 'custom') {
-                      handleConsolePortChange('/dev/ttyUSB0');
-                    } else if (val === '') {
-                      handleConsolePortChange('');
+                    if (val === "custom") {
+                      handleConsolePortChange("/dev/ttyUSB0");
+                    } else if (val === "") {
+                      handleConsolePortChange("");
                     } else {
                       handleConsolePortChange(val);
                     }
@@ -344,15 +347,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   className="download-btn-stretch"
                 >
                   <option value="">None (使用しない)</option>
-                  {availablePorts.map(p => (
-                    <option key={p} value={p}>{p}</option>
+                  {availablePorts.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
                   ))}
                   <option value="custom">手動入力...</option>
                 </select>
-                {(!availablePorts.includes(consolePort || '') && consolePort) || consolePort === 'custom' ? (
+                {(!availablePorts.includes(consolePort || "") && consolePort) ||
+                consolePort === "custom" ? (
                   <input
                     type="text"
-                    value={consolePort === 'custom' ? '' : (consolePort || '')}
+                    value={consolePort === "custom" ? "" : consolePort || ""}
                     onChange={(e) => handleConsolePortChange(e.target.value)}
                     placeholder="例: /dev/ttyUSB0, COM1"
                     className="custom-port-input"
@@ -360,10 +366,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 ) : null}
               </div>
               <p className="help-text form-help-text">
-                指定されている場合、MCPの呼び出し(fetch_arp, config, routing等)は内部でこのシリアルコンソール経由で実行されます。
+                指定されている場合、MCPの呼び出し(fetch_arp, config,
+                routing等)は内部でこのシリアルコンソール経由で実行されます。
               </p>
             </div>
-            {(consolePort && consolePort !== '') && (
+            {consolePort && consolePort !== "" && (
               <div className="form-control">
                 <label htmlFor="console-baudrate-select">コンソールボーレート</label>
                 <select
@@ -385,11 +392,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <h3>ローカルLLM (llama.cpp)</h3>
             <div className="form-control">
               <label>HuggingFace リポジトリ</label>
-              <input type="text" value={repoPath} onChange={e => setRepoPath(e.target.value)} placeholder="bartowski/google_gemma-4-E2B-it-GGUF" />
+              <input
+                type="text"
+                value={repoPath}
+                onChange={(e) => setRepoPath(e.target.value)}
+                placeholder="bartowski/google_gemma-4-E2B-it-GGUF"
+              />
             </div>
             <div className="form-control">
               <label>ファイル名 (GGUF)</label>
-              <input type="text" value={modelFilename} onChange={e => setModelFilename(e.target.value)} placeholder="google_gemma-4-E2B-it-Q4_K_M.gguf" />
+              <input
+                type="text"
+                value={modelFilename}
+                onChange={(e) => setModelFilename(e.target.value)}
+                placeholder="google_gemma-4-E2B-it-Q4_K_M.gguf"
+              />
             </div>
             <div className="form-control">
               <label>起動時・モデル読込時のKVキャッシュ プリロード設定</label>
@@ -398,41 +415,66 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </p>
               <div className="preload-grid">
                 <label className="preload-label">
-                  <input type="checkbox" checked={preloadInvestigate} onChange={(e) => handlePreloadInvestigateChange(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={preloadInvestigate}
+                    onChange={(e) => handlePreloadInvestigateChange(e.target.checked)}
+                  />
                   Investigator (調査員)
                 </label>
                 <label className="preload-label">
-                  <input type="checkbox" checked={preloadKnowledge} onChange={(e) => handlePreloadKnowledgeChange(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={preloadKnowledge}
+                    onChange={(e) => handlePreloadKnowledgeChange(e.target.checked)}
+                  />
                   Knowledge (知識専門家)
                 </label>
                 <label className="preload-label">
-                  <input type="checkbox" checked={preloadAnalysis} onChange={(e) => handlePreloadAnalysisChange(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={preloadAnalysis}
+                    onChange={(e) => handlePreloadAnalysisChange(e.target.checked)}
+                  />
                   Analyst (分析官)
                 </label>
                 <label className="preload-label">
-                  <input type="checkbox" checked={preloadRag} onChange={(e) => handlePreloadRagChange(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={preloadRag}
+                    onChange={(e) => handlePreloadRagChange(e.target.checked)}
+                  />
                   RAG Worker (RAG回答員)
                 </label>
               </div>
             </div>
             <div className="form-control">
               <div className="download-actions">
-                <button 
-                  className="btn btn-secondary download-btn-stretch" 
+                <button
+                  className="btn btn-secondary download-btn-stretch"
                   onClick={handleDownloadAndLoad}
                   disabled={isLoading}
                 >
                   {isLoading ? "ダウンロード中..." : "モデルをダウンロードして読み込む"}
                 </button>
-                <button 
-                  className="btn btn-secondary" 
+                <button
+                  className="btn btn-secondary"
                   onClick={handleOpenModelDir}
                   title="モデルが格納されているフォルダを開きます"
                 >
                   フォルダを開く
                 </button>
               </div>
-              {downloadStatus && <div className="status-text download-status-container" style={{ color: downloadStatus.startsWith('Error') ? 'var(--danger)' : 'var(--success)' }}>{downloadStatus}</div>}
+              {downloadStatus && (
+                <div
+                  className="status-text download-status-container"
+                  style={{
+                    color: downloadStatus.startsWith("Error") ? "var(--danger)" : "var(--success)",
+                  }}
+                >
+                  {downloadStatus}
+                </div>
+              )}
             </div>
           </section>
 
@@ -441,17 +483,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="form-control">
               <label>データベースディレクトリ</label>
               <div className="input-with-button">
-                <input 
-                  type="text" 
-                  placeholder="/path/to/lancedb" 
-                  value={dbPath} 
-                  onChange={e => handleDbPathChange(e.target.value)} 
+                <input
+                  type="text"
+                  placeholder="/path/to/lancedb"
+                  value={dbPath}
+                  onChange={(e) => handleDbPathChange(e.target.value)}
                 />
 
-                <button 
-                  className="btn btn-secondary" 
-                  onClick={handleSelectDbDir}
-                >
+                <button className="btn btn-secondary" onClick={handleSelectDbDir}>
                   参照
                 </button>
               </div>
@@ -463,12 +502,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </select>
             </div>
           </section>
-
         </div>
 
         <footer className="settings-footer">
           <div className="settings-footer-content">
-            <button className="btn btn-primary" onClick={onClose}>保存して終了</button>
+            <button className="btn btn-primary" onClick={onClose}>
+              保存して終了
+            </button>
           </div>
         </footer>
       </div>

@@ -5,13 +5,15 @@ category: switching
 command_type: show
 target_model: Catalyst 9300
 ---
+
 [Context: {brand} {target_model}, {category} {command_type} command reference]
 
 ## Command: `show mac address-table`
 
 ### Description
- このコマンドを入力すると、スイッチが学習したMACアドレステーブルを表示できます。
- このコマンドはCiscoでしか使えません。
+
+このコマンドを入力すると、スイッチが学習したMACアドレステーブルを表示できます。
+このコマンドはCiscoでしか使えません。
 
 ### Usage
 

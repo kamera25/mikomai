@@ -1,5 +1,5 @@
-import React from 'react';
-import './Terminal.css';
+import React from "react";
+import "./Terminal.css";
 
 interface TerminalProps {
   content: string;

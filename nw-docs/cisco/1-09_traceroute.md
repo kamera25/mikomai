@@ -5,13 +5,15 @@ category: network
 command_type: traceroute
 target_model: Catalyst 9300
 ---
+
 [Context: {brand} {target_model}, {category} {command_type} command reference]
 
 ## Command: `traceroute`
 
 ### Description
- このコマンドを入力すると、宛先までの通信経路（経由するルータ）を確認できます。
- このコマンドはCiscoでしか使えません。
+
+このコマンドを入力すると、宛先までの通信経路（経由するルータ）を確認できます。
+このコマンドはCiscoでしか使えません。
 
 ### Usage
 

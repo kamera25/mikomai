@@ -33,16 +33,13 @@
 
 /* Vertical Timeline Line */
 .chat-history::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 44px; /* Centered in the 80px padding */
   bottom: 0;
   width: 2px;
-  background: linear-gradient(to bottom, 
-    var(--border-color) 0%, 
-    var(--border-color) 100%
-  );
+  background: linear-gradient(to bottom, var(--border-color) 0%, var(--border-color) 100%);
   z-index: 1;
 }
 
@@ -118,7 +115,7 @@
   color: var(--text-primary);
   font-weight: 400;
   font-size: 0.95rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .message {
@@ -195,7 +192,7 @@
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   width: 100%;
   max-width: 900px;
@@ -317,8 +314,14 @@
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .raw-data-header {

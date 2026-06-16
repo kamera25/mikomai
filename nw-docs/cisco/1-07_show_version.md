@@ -5,13 +5,15 @@ category: system
 command_type: show
 target_model: Catalyst 9300
 ---
+
 [Context: {brand} {target_model}, {category} {command_type} command reference]
 
 ## Command: `show version`
 
 ### Description
- このコマンドを入力すると、IOSのバージョン情報や稼働時間、ハードウェアの情報などを表示できます。
- このコマンドはCiscoでしか使えません。
+
+このコマンドを入力すると、IOSのバージョン情報や稼働時間、ハードウェアの情報などを表示できます。
+このコマンドはCiscoでしか使えません。
 
 ### Usage
 

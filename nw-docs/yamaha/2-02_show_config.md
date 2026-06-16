@@ -5,13 +5,15 @@ category: configuration
 command_type: show
 target_model: RTX1210 RTX1300
 ---
+
 [Context: {brand} {target_model}, {category} {command_type} command reference]
 
 ## Command: `show config`
 
 ### Description
- このコマンドを入力すると、現在稼働中の設定ファイルを表示できます。
- このコマンドはYamahaでしか使えません。
+
+このコマンドを入力すると、現在稼働中の設定ファイルを表示できます。
+このコマンドはYamahaでしか使えません。
 
 ### Usage
 

@@ -76,7 +76,12 @@ export interface LegacyMessage extends BaseMessage {
   cache_time?: string;
 }
 
-export type Message = UserMessage | ToolExecutionMessage | AgentResponseMessage | SystemMessage | LegacyMessage;
+export type Message =
+  | UserMessage
+  | ToolExecutionMessage
+  | AgentResponseMessage
+  | SystemMessage
+  | LegacyMessage;
 
 export type ModelState = "NotLoaded" | "Loading" | "Loaded" | { Error: string };
 
@@ -96,7 +101,7 @@ export interface SummaryItem {
 
 export interface Connection {
   id: string;
-  status: 'online' | 'offline';
+  status: "online" | "offline";
   hostname: string;
   ip: string;
   port?: number;
@@ -128,7 +133,7 @@ export interface AskPayload {
 
 export interface ChatSession {
   id: string;
-  type: 'session';
+  type: "session";
   title: string;
   messages: Message[];
   recentIps?: string[];
@@ -136,7 +141,7 @@ export interface ChatSession {
 
 export interface Folder {
   id: string;
-  type: 'folder';
+  type: "folder";
   name: string;
   items: HistoryItem[];
   isOpen: boolean;
@@ -161,4 +166,3 @@ export interface SystemSettings {
   preloadAnalysis?: boolean;
   preloadRag?: boolean;
 }
-

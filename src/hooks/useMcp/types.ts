@@ -10,4 +10,3 @@ export interface UseMcpProps {
   updateRecentHosts?: (hosts: string[]) => void;
   recentIPs?: string[];
 }
-

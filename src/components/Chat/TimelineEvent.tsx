@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import { Terminal } from '../Terminal';
-import { Message } from '../../types';
+import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import { Terminal } from "../Terminal";
+import { Message } from "../../types";
 
 interface TimelineEventProps {
   msg: Message;
@@ -12,7 +12,7 @@ interface TimelineEventProps {
 }
 
 export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) => {
-  const isNwDb = msg.tool_id === 'query_nw_db' || msg.tool_id === 'network_query_nw_db';
+  const isNwDb = msg.tool_id === "query_nw_db" || msg.tool_id === "network_query_nw_db";
   const defaultExpanded = msg.event_type === "ToolExecution" && !isNwDb;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
@@ -24,7 +24,7 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy: ', err);
+      console.error("Failed to copy: ", err);
     }
   };
 
@@ -34,7 +34,7 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
       setPathCopied(true);
       setTimeout(() => setPathCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy: ', err);
+      console.error("Failed to copy: ", err);
     }
   };
 
@@ -60,19 +60,70 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
             >
               <div className="timeline-status-icon">
                 {msg.status === "Running" && <div className="status-spinner-small"></div>}
-                {msg.status === "Success" && <span className="icon-success">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                </span>}
-                {msg.status === "Failed" && <span className="icon-failed">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </span>}
+                {msg.status === "Success" && (
+                  <span className="icon-success">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </span>
+                )}
+                {msg.status === "Failed" && (
+                  <span className="icon-failed">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </span>
+                )}
               </div>
               <div className="timeline-summary-text">
                 <div className="timeline-type-icon">
-                  {msg.tool_id === 'query_nw_db' || msg.tool_id === 'network_query_nw_db' ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path><path d="M8 2v20"></path></svg>
+                  {msg.tool_id === "query_nw_db" || msg.tool_id === "network_query_nw_db" ? (
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
+                      <path d="M8 2v20"></path>
+                    </svg>
                   ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="16 18 22 12 16 6"></polyline>
+                      <polyline points="8 6 2 12 8 18"></polyline>
+                    </svg>
                   )}
                 </div>
                 <span className="action-label">{msg.action_name}</span>
@@ -80,7 +131,18 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               </div>
               {msg.status !== "Running" && (
                 <div className={`timeline-chevron ${isExpanded ? "open" : ""}`}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
                 </div>
               )}
             </div>
@@ -89,24 +151,42 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               <div className="timeline-raw-data-wrapper">
                 <div className="raw-data-header">
                   <span>RAW OUTPUT</span>
-                  <button 
-                    className={`raw-data-copy-button ${copied ? 'copied' : ''}`}
+                  <button
+                    className={`raw-data-copy-button ${copied ? "copied" : ""}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleCopy(msg.raw_data || '');
+                      handleCopy(msg.raw_data || "");
                     }}
                     title="クリップボードにコピー"
                   >
                     {copied ? (
                       <>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
                           <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
                         <span>コピー済み</span>
                       </>
                     ) : (
                       <>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
                           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                         </svg>
@@ -125,30 +205,62 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               <div className="timeline-saved-path-wrapper">
                 <div className="timeline-saved-path-inner">
                   <div className="timeline-saved-path-header">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="box-icon">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="box-icon"
+                    >
                       <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                       <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                       <line x1="12" y1="22.08" x2="12" y2="12"></line>
                     </svg>
-                    <span>{msg.is_cached ? `更新日時: ${msg.cache_time || ''} (キャッシュ)` : 'ログを保存しました。'}</span>
-                    <button 
-                      className={`copy-path-btn ${pathCopied ? 'copied' : ''}`}
+                    <span>
+                      {msg.is_cached
+                        ? `更新日時: ${msg.cache_time || ""} (キャッシュ)`
+                        : "ログを保存しました。"}
+                    </span>
+                    <button
+                      className={`copy-path-btn ${pathCopied ? "copied" : ""}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleCopyPath(msg.saved_path || '');
+                        handleCopyPath(msg.saved_path || "");
                       }}
                       title="パスをコピー"
                     >
                       {pathCopied ? (
                         <>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <polyline points="20 6 9 17 4 12"></polyline>
                           </svg>
                           <span>コピー済み</span>
                         </>
                       ) : (
                         <>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                           </svg>
@@ -174,7 +286,15 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
         <span className="message-time">{formatMessageTime(msg.timestamp)}</span>
       </div>
       <div className={`message ${msg.role}`}>
-        <div className="message-content-wrapper" style={{ display: 'flex', flexDirection: 'column', width: '100%', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+        <div
+          className="message-content-wrapper"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            width: "100%",
+            alignItems: msg.role === "user" ? "flex-end" : "flex-start",
+          }}
+        >
           <div className="message-bubble markdown-body">
             {msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
               if (part.startsWith("```")) {
@@ -192,15 +312,38 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               );
             })}
           </div>
-          {msg.role === 'ai' && (
+          {msg.role === "ai" && (
             <div className="message-actions">
-              <button className="message-action-btn" title="コピー" onClick={() => handleCopy(msg.content)}>
+              <button
+                className="message-action-btn"
+                title="コピー"
+                onClick={() => handleCopy(msg.content)}
+              >
                 {copied ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--success)' }}>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ color: "var(--success)" }}
+                  >
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
                 ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                   </svg>

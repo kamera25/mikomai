@@ -5,13 +5,15 @@ category: arp
 command_type: show
 target_model: RTX1210 RTX1300
 ---
+
 [Context: {brand} {target_model}, {category} {command_type} command reference]
 
 ## Command: `show arp`
 
 ### Description
- このコマンドを入力すると、ARPテーブルを表示できます。
- このコマンドはYamahaでしか使えません。
+
+このコマンドを入力すると、ARPテーブルを表示できます。
+このコマンドはYamahaでしか使えません。
 
 ### Usage
 

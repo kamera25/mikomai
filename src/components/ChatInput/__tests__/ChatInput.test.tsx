@@ -1,12 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { ChatInput } from '../ChatInput';
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { ChatInput } from "../ChatInput";
 
-describe('ChatInput Component', () => {
+describe("ChatInput Component", () => {
   const defaultProps = {
-    modelStatus: 'Loaded',
-    modelPath: '/path/to/model.gguf',
-    input: '',
+    modelStatus: "Loaded",
+    modelPath: "/path/to/model.gguf",
+    input: "",
     setInput: vi.fn(),
     showSuggestions: false,
     setShowSuggestions: vi.fn(),
@@ -23,20 +23,22 @@ describe('ChatInput Component', () => {
     setFilteredSuggestions: vi.fn(),
   };
 
-  it('renders input field when model is loaded', () => {
+  it("renders input field when model is loaded", () => {
     render(<ChatInput {...defaultProps} />);
-    expect(screen.getByPlaceholderText('mikomaiに質問する...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("mikomaiに質問する...")).toBeInTheDocument();
   });
 
-  it('renders banner when model is not loaded', () => {
+  it("renders banner when model is not loaded", () => {
     render(<ChatInput {...defaultProps} modelStatus="NotLoaded" />);
-    expect(screen.getByText('AIモデルが読み込まれていません。モデルを読み込んでください。')).toBeInTheDocument();
+    expect(
+      screen.getByText("AIモデルが読み込まれていません。モデルを読み込んでください。")
+    ).toBeInTheDocument();
   });
 
-  it('calls handleSend when send button is clicked', () => {
+  it("calls handleSend when send button is clicked", () => {
     const handleSend = vi.fn();
     render(<ChatInput {...defaultProps} input="hello" handleSend={handleSend} />);
-    const button = screen.getByRole('button');
+    const button = screen.getByRole("button");
     fireEvent.click(button);
     expect(handleSend).toHaveBeenCalled();
   });

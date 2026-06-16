@@ -5,13 +5,15 @@ category: cdp
 command_type: show
 target_model: Catalyst 9300
 ---
+
 [Context: {brand} {target_model}, {category} {command_type} command reference]
 
 ## Command: `show cdp neighbors`
 
 ### Description
- このコマンドを入力すると、CDP（Cisco Discovery Protocol）で検出された隣接機器の情報を表示できます。
- このコマンドはCiscoでしか使えません。
+
+このコマンドを入力すると、CDP（Cisco Discovery Protocol）で検出された隣接機器の情報を表示できます。
+このコマンドはCiscoでしか使えません。
 
 ### Usage
 

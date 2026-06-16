@@ -5,8 +5,8 @@ import { Message, ChatSession, HistoryItem } from "../types";
 // Helper to find the first session in the history tree
 const findFirstSession = (items: HistoryItem[]): ChatSession | undefined => {
   for (const item of items) {
-    if (item.type === 'session') return item;
-    if (item.type === 'folder') {
+    if (item.type === "session") return item;
+    if (item.type === "folder") {
       const found = findFirstSession(item.items);
       if (found) return found;
     }
@@ -17,8 +17,8 @@ const findFirstSession = (items: HistoryItem[]): ChatSession | undefined => {
 // Helper to find a specific session in the history tree by ID
 const findSession = (items: HistoryItem[], id: string): ChatSession | undefined => {
   for (const item of items) {
-    if (item.type === 'session' && item.id === id) return item;
-    if (item.type === 'folder') {
+    if (item.type === "session" && item.id === id) return item;
+    if (item.type === "folder") {
       const found = findSession(item.items, id);
       if (found) return found;
     }
@@ -47,12 +47,14 @@ export function useHistory() {
         } else {
           // Initialize with default session if empty
           const defaultId = "session-1";
-          const defaultHistory: HistoryItem[] = [{
-            id: defaultId,
-            type: 'session',
-            title: "新しいセッション",
-            messages: []
-          }];
+          const defaultHistory: HistoryItem[] = [
+            {
+              id: defaultId,
+              type: "session",
+              title: "新しいセッション",
+              messages: [],
+            },
+          ];
           setHistory(defaultHistory);
           setActiveSessionId(defaultId);
         }
@@ -89,13 +91,13 @@ export function useHistory() {
   // Update history when messages change
   useEffect(() => {
     if (messages.length === 0) return;
-    setHistory(prev => {
+    setHistory((prev) => {
       const updateSessionMessages = (items: HistoryItem[]): HistoryItem[] => {
-        return items.map(item => {
-          if (item.id === activeSessionId && item.type === 'session') {
+        return items.map((item) => {
+          if (item.id === activeSessionId && item.type === "session") {
             return { ...item, messages };
           }
-          if (item.type === 'folder') {
+          if (item.type === "folder") {
             return { ...item, items: updateSessionMessages(item.items) };
           }
           return item;
@@ -109,33 +111,39 @@ export function useHistory() {
   const createNewFolder = () => {
     const folderName = prompt("フォルダ名を入力してください");
     if (folderName) {
-      setHistory(prev => [{
-        id: `folder-${Date.now()}`,
-        type: 'folder',
-        name: folderName,
-        isOpen: true,
-        items: []
-      }, ...prev]);
+      setHistory((prev) => [
+        {
+          id: `folder-${Date.now()}`,
+          type: "folder",
+          name: folderName,
+          isOpen: true,
+          items: [],
+        },
+        ...prev,
+      ]);
     }
   };
 
   const createNewSession = () => {
     const id = `session-${Date.now()}`;
-    setHistory(prev => [{
-      id,
-      type: 'session',
-      title: "新しいセッション",
-      messages: []
-    }, ...prev]);
+    setHistory((prev) => [
+      {
+        id,
+        type: "session",
+        title: "新しいセッション",
+        messages: [],
+      },
+      ...prev,
+    ]);
     setActiveSessionId(id);
     setMessages([]);
   };
 
   const toggleFolder = (folderId: string) => {
-    setHistory(prev => {
+    setHistory((prev) => {
       const toggleNode = (items: HistoryItem[]): HistoryItem[] => {
-        return items.map(item => {
-          if (item.type === 'folder') {
+        return items.map((item) => {
+          if (item.type === "folder") {
             if (item.id === folderId) {
               return { ...item, isOpen: !item.isOpen };
             }
@@ -158,13 +166,13 @@ export function useHistory() {
 
   const renameSession = (sessionId: string, newTitle: string) => {
     if (newTitle && newTitle.trim()) {
-      setHistory(prev => {
+      setHistory((prev) => {
         const updateSessionTitle = (items: HistoryItem[]): HistoryItem[] => {
-          return items.map(item => {
-            if (item.id === sessionId && item.type === 'session') {
+          return items.map((item) => {
+            if (item.id === sessionId && item.type === "session") {
               return { ...item, title: newTitle.trim() };
             }
-            if (item.type === 'folder') {
+            if (item.type === "folder") {
               return { ...item, items: updateSessionTitle(item.items) };
             }
             return item;
@@ -179,25 +187,27 @@ export function useHistory() {
     if (confirm("このセッションを削除してもよろしいですか？")) {
       const removeSession = (items: HistoryItem[]): HistoryItem[] => {
         return items
-          .filter(item => item.id !== sessionId)
-          .map(item => {
-            if (item.type === 'folder') {
+          .filter((item) => item.id !== sessionId)
+          .map((item) => {
+            if (item.type === "folder") {
               return { ...item, items: removeSession(item.items) };
             }
             return item;
           });
       };
-      
+
       let updated = removeSession(history);
-      
+
       if (updated.length === 0) {
         const defaultId = `session-${Date.now()}`;
-        updated = [{
-          id: defaultId,
-          type: 'session',
-          title: "新しいセッション",
-          messages: []
-        }];
+        updated = [
+          {
+            id: defaultId,
+            type: "session",
+            title: "新しいセッション",
+            messages: [],
+          },
+        ];
         setHistory(updated);
         setActiveSessionId(defaultId);
         setMessages([]);
@@ -212,12 +222,15 @@ export function useHistory() {
           setActiveSessionId(firstSession.id);
         } else {
           const defaultId = `session-${Date.now()}`;
-          setHistory(prev => [{
-            id: defaultId,
-            type: 'session',
-            title: "新しいセッション",
-            messages: []
-          }, ...prev]);
+          setHistory((prev) => [
+            {
+              id: defaultId,
+              type: "session",
+              title: "新しいセッション",
+              messages: [],
+            },
+            ...prev,
+          ]);
           setActiveSessionId(defaultId);
           setMessages([]);
         }
@@ -226,13 +239,13 @@ export function useHistory() {
   };
 
   const updateSessionRecentIps = (sessionId: string, ips: string[]) => {
-    setHistory(prev => {
+    setHistory((prev) => {
       const updateIps = (items: HistoryItem[]): HistoryItem[] => {
-        return items.map(item => {
-          if (item.id === sessionId && item.type === 'session') {
+        return items.map((item) => {
+          if (item.id === sessionId && item.type === "session") {
             return { ...item, recentIps: ips };
           }
-          if (item.type === 'folder') {
+          if (item.type === "folder") {
             return { ...item, items: updateIps(item.items) };
           }
           return item;
@@ -259,7 +272,6 @@ export function useHistory() {
     renameSession,
     deleteSession,
     updateSessionRecentIps,
-    isLoaded
+    isLoaded,
   };
 }
-

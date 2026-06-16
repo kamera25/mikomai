@@ -34,14 +34,14 @@ export function extractJsonBlocks(text: string): string[] {
   const blocks: string[] = [];
   let depth = 0;
   let start = -1;
-  
+
   for (let i = 0; i < text.length; i++) {
-    if (text[i] === '{') {
+    if (text[i] === "{") {
       if (depth === 0) {
         start = i;
       }
       depth++;
-    } else if (text[i] === '}') {
+    } else if (text[i] === "}") {
       if (depth > 0) {
         depth--;
         if (depth === 0 && start !== -1) {
@@ -55,11 +55,14 @@ export function extractJsonBlocks(text: string): string[] {
 }
 
 function keysToCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
-  return Object.keys(obj).reduce((acc, key) => {
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-    acc[camelKey] = obj[key];
-    return acc;
-  }, {} as Record<string, unknown>);
+  return Object.keys(obj).reduce(
+    (acc, key) => {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      acc[camelKey] = obj[key];
+      return acc;
+    },
+    {} as Record<string, unknown>
+  );
 }
 
 let cachePromise: Promise<[Connection[], McpHost[]]> | null = null;
@@ -75,7 +78,7 @@ async function fetchConnectionsAndHosts(): Promise<[Connection[], McpHost[]]> {
   cacheTime = now;
   cachePromise = Promise.all([
     invoke<Connection[]>("load_connections"),
-    invoke<McpHost[]>("get_mcp_hosts").catch(() => [] as McpHost[])
+    invoke<McpHost[]>("get_mcp_hosts").catch(() => [] as McpHost[]),
   ]).catch((err) => {
     cachePromise = null;
     cacheTime = 0;
@@ -104,7 +107,6 @@ async function resolveDeviceFromConnections(userMessage: string): Promise<string
   return undefined;
 }
 
-
 export async function normalizeArgs(
   toolId: string,
   userMessage: string,
@@ -118,11 +120,15 @@ export async function normalizeArgs(
   const processedArgs = keysToCamelCase(args) as Record<string, string | undefined>;
 
   if (["fetch_config", "fetch_routing", "fetch_arp"].includes(toolId)) {
-    let deviceVal = processedArgs.deviceName || processedArgs.device_name || processedArgs.device || processedArgs.host;
+    let deviceVal =
+      processedArgs.deviceName ||
+      processedArgs.device_name ||
+      processedArgs.device ||
+      processedArgs.host;
     if (!deviceVal) {
       deviceVal = await resolveDeviceFromConnections(userMessage);
     }
-    
+
     // Fallback to session recent host if not found in args or message
     if (!deviceVal && recentIPs?.[0]) {
       deviceVal = recentIPs[0];
@@ -133,8 +139,13 @@ export async function normalizeArgs(
       processedArgs.deviceName = deviceVal;
     }
   } else if (["self_network_ping", "self_network_traceroute"].includes(toolId)) {
-    let hostVal = processedArgs.host || processedArgs.device || processedArgs.deviceName || processedArgs.device_name || processedArgs.ip;
-    
+    let hostVal =
+      processedArgs.host ||
+      processedArgs.device ||
+      processedArgs.deviceName ||
+      processedArgs.device_name ||
+      processedArgs.ip;
+
     // Fallback to session recent host if not found in args or message
     if (!hostVal && recentIPs?.[0]) {
       hostVal = recentIPs[0];

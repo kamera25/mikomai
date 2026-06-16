@@ -18,7 +18,9 @@ export function useSettings() {
   const [repetitionPenalty, setRepetitionPenalty] = useState<number>(DEFAULT_REPETITION_PENALTY);
   const [modelPath, setModelPath] = useState<string | null>(DEFAULT_MODEL_PATH);
   const [mcpTimeout, setMcpTimeout] = useState<number>(DEFAULT_MCP_TIMEOUT);
-  const [cacheExpiryMinutes, setCacheExpiryMinutes] = useState<number>(DEFAULT_CACHE_EXPIRY_MINUTES);
+  const [cacheExpiryMinutes, setCacheExpiryMinutes] = useState<number>(
+    DEFAULT_CACHE_EXPIRY_MINUTES
+  );
   const [dbPath, setDbPath] = useState<string>(DEFAULT_DB_PATH);
   const [ipVersion, setIpVersion] = useState<string>(DEFAULT_IP_VERSION);
   const [consolePort, setConsolePort] = useState<string | null>(null);
@@ -37,17 +39,21 @@ export function useSettings() {
         if (settings) {
           if (settings.historyLimit !== undefined) setHistoryLimit(settings.historyLimit);
           if (settings.temperature !== undefined) setTemperature(settings.temperature);
-          if (settings.repetitionPenalty !== undefined) setRepetitionPenalty(settings.repetitionPenalty);
+          if (settings.repetitionPenalty !== undefined)
+            setRepetitionPenalty(settings.repetitionPenalty);
           if (settings.modelPath !== undefined) setModelPath(settings.modelPath);
           if (settings.recentIps !== undefined) setRecentIPs(settings.recentIps);
           if (settings.mcpTimeout !== undefined) setMcpTimeout(settings.mcpTimeout);
-          if (settings.cacheExpiryMinutes !== undefined) setCacheExpiryMinutes(settings.cacheExpiryMinutes);
+          if (settings.cacheExpiryMinutes !== undefined)
+            setCacheExpiryMinutes(settings.cacheExpiryMinutes);
           if (settings.dbPath !== undefined) setDbPath(settings.dbPath);
           if (settings.ipVersion !== undefined) setIpVersion(settings.ipVersion);
           if (settings.consolePort !== undefined) setConsolePort(settings.consolePort);
           if (settings.consoleBaudRate !== undefined) setConsoleBaudRate(settings.consoleBaudRate);
-          if (settings.preloadInvestigate !== undefined) setPreloadInvestigate(settings.preloadInvestigate);
-          if (settings.preloadKnowledge !== undefined) setPreloadKnowledge(settings.preloadKnowledge);
+          if (settings.preloadInvestigate !== undefined)
+            setPreloadInvestigate(settings.preloadInvestigate);
+          if (settings.preloadKnowledge !== undefined)
+            setPreloadKnowledge(settings.preloadKnowledge);
           if (settings.preloadAnalysis !== undefined) setPreloadAnalysis(settings.preloadAnalysis);
           if (settings.preloadRag !== undefined) setPreloadRag(settings.preloadRag);
         }
@@ -62,18 +68,28 @@ export function useSettings() {
     const payload = {
       historyLimit: overrides.historyLimit !== undefined ? overrides.historyLimit : historyLimit,
       temperature: overrides.temperature !== undefined ? overrides.temperature : temperature,
-      repetitionPenalty: overrides.repetitionPenalty !== undefined ? overrides.repetitionPenalty : repetitionPenalty,
+      repetitionPenalty:
+        overrides.repetitionPenalty !== undefined ? overrides.repetitionPenalty : repetitionPenalty,
       modelPath: overrides.modelPath !== undefined ? overrides.modelPath : modelPath,
       recentIps: overrides.recentIps !== undefined ? overrides.recentIps : recentIPs,
       mcpTimeout: overrides.mcpTimeout !== undefined ? overrides.mcpTimeout : mcpTimeout,
-      cacheExpiryMinutes: overrides.cacheExpiryMinutes !== undefined ? overrides.cacheExpiryMinutes : cacheExpiryMinutes,
+      cacheExpiryMinutes:
+        overrides.cacheExpiryMinutes !== undefined
+          ? overrides.cacheExpiryMinutes
+          : cacheExpiryMinutes,
       dbPath: overrides.dbPath !== undefined ? overrides.dbPath : dbPath,
       ipVersion: overrides.ipVersion !== undefined ? overrides.ipVersion : ipVersion,
       consolePort: overrides.consolePort !== undefined ? overrides.consolePort : consolePort,
-      consoleBaudRate: overrides.consoleBaudRate !== undefined ? overrides.consoleBaudRate : consoleBaudRate,
-      preloadInvestigate: overrides.preloadInvestigate !== undefined ? overrides.preloadInvestigate : preloadInvestigate,
-      preloadKnowledge: overrides.preloadKnowledge !== undefined ? overrides.preloadKnowledge : preloadKnowledge,
-      preloadAnalysis: overrides.preloadAnalysis !== undefined ? overrides.preloadAnalysis : preloadAnalysis,
+      consoleBaudRate:
+        overrides.consoleBaudRate !== undefined ? overrides.consoleBaudRate : consoleBaudRate,
+      preloadInvestigate:
+        overrides.preloadInvestigate !== undefined
+          ? overrides.preloadInvestigate
+          : preloadInvestigate,
+      preloadKnowledge:
+        overrides.preloadKnowledge !== undefined ? overrides.preloadKnowledge : preloadKnowledge,
+      preloadAnalysis:
+        overrides.preloadAnalysis !== undefined ? overrides.preloadAnalysis : preloadAnalysis,
       preloadRag: overrides.preloadRag !== undefined ? overrides.preloadRag : preloadRag,
     };
     try {

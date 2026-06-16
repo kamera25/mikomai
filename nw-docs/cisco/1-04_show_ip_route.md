@@ -5,13 +5,15 @@ category: routing
 command_type: show
 target_model: Catalyst 9300
 ---
+
 [Context: {brand} {target_model}, {category} {command_type} command reference]
 
 ## Command: `show ip route`
 
 ### Description
- このコマンドを入力すると、ルーティングテーブルを表示できます。
- このコマンドはCiscoでしか使えません。
+
+このコマンドを入力すると、ルーティングテーブルを表示できます。
+このコマンドはCiscoでしか使えません。
 
 ### Usage
 

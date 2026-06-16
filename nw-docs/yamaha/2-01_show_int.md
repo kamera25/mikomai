@@ -5,13 +5,15 @@ category: interface
 command_type: show
 target_model: RTX1210 RTX1300
 ---
+
 [Context: {brand} {target_model}, {category} {command_type} command reference]
 
 ## Command: `show status lan1`
 
 ### Description
- このコマンドを入力すると、LAN1インターフェースのステータスを表示できます。
- このコマンドはYamahaでしか使えません。
+
+このコマンドを入力すると、LAN1インターフェースのステータスを表示できます。
+このコマンドはYamahaでしか使えません。
 
 ### Usage
 
