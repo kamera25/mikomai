@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Terminal } from "../Terminal";
-import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon } from "../Icons";
+import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon } from "../Icons";
 import { Message } from "../../types";
 
 interface TimelineEventProps {
@@ -75,35 +75,12 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                 {msg.status === "Running" && <div className="status-spinner-small"></div>}
                 {msg.status === "Success" && (
                   <span className="icon-success">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
+                    <CheckIcon size={14} strokeWidth={3} />
                   </span>
                 )}
                 {msg.status === "Failed" && (
                   <span className="icon-failed">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
+                    <CrossIcon size={14} strokeWidth={3} />
                   </span>
                 )}
               </div>

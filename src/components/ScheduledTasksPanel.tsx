@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import "./ScheduledTasksPanel.css";
+import { ClockIcon, SearchIcon, UpdateIcon } from "./Icons";
 
 interface ScheduledTasksPanelProps {
   onClose: () => void;
@@ -312,20 +313,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
               {t("scheduled_tasks.show_tasks")}
             </span>
             <div className="search-box-container">
-              <svg
-                className="search-icon"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
+              <SearchIcon className="search-icon" size={16} />
               <input
                 type="text"
                 placeholder={t("scheduled_tasks.search_placeholder")}
@@ -336,20 +324,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
           </div>
           <div className="toolbar-right">
             <button className="toolbar-btn" onClick={loadTasks}>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <polyline points="1 20 1 14 7 14"></polyline>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-              </svg>
+              <UpdateIcon size={14} />
               {t("scheduled_tasks.btn_update")}
             </button>
           </div>
@@ -381,19 +356,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
                   <td>
                     <div className="task-name-cell">
                       <div className="task-icon">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <polyline points="12 6 12 12 16 14"></polyline>
-                        </svg>
+                        <ClockIcon size={14} />
                       </div>
                       <span
                         className="task-name-text"
