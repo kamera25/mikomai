@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useSettingsContext } from '../contexts/SettingsContext';
+import { getErrorMessage } from '../utils/error';
 
 import './SettingsPanel.css';
 
@@ -125,7 +126,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   useEffect(() => {
     const fetchPorts = async () => {
       try {
-        const result: any = await invoke("network_list_serial_ports");
+        interface SerialPortsResponse {
+          success: boolean;
+          output?: string;
+          error?: string;
+        }
+        const result = await invoke<SerialPortsResponse>("network_list_serial_ports");
         if (result && result.success && result.output) {
           const ports: string[] = [];
           const lines = result.output.split("\n");
@@ -168,7 +174,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       
       setDownloadStatus(`Success: ${loadResult}`);
     } catch (e: unknown) {
-      setDownloadStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      setDownloadStatus(`Error: ${getErrorMessage(e)}`);
     } finally {
       setIsLoading(false);
     }
@@ -178,7 +184,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     try {
       await invoke("open_model_dir", { modelPath: _savedModelPath });
     } catch (e: unknown) {
-      setDownloadStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      setDownloadStatus(`Error: ${getErrorMessage(e)}`);
     }
   };
 

@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { TimelineEvent } from '../TimelineEvent';
 import { Message } from '../../../types';
 
 describe('TimelineEvent Component', () => {
-  const formatMessageTime = (isoString?: string) => '12:00';
+  const formatMessageTime = (_isoString?: string) => '12:00';
 
   it('renders standard user message', () => {
     const msg: Message = {

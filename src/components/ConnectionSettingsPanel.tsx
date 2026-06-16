@@ -396,9 +396,23 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
         header: true,
         skipEmptyLines: true,
         complete: async (results) => {
+          interface CsvRow {
+            id?: string;
+            status?: string;
+            hostname?: string;
+            ip?: string;
+            port?: string;
+            type?: string;
+            lastConnected?: string;
+            username?: string;
+            password?: string;
+            enablePassword?: string;
+            deviceType?: string;
+            vendorType?: string;
+          }
           const newConnections: Connection[] = [];
 
-          results.data.forEach((row: any, i) => {
+          (results.data as CsvRow[]).forEach((row, i) => {
             if (row.hostname && row.ip) {
               const newConn: Connection = {
                 id: row.id || Date.now().toString() + i,

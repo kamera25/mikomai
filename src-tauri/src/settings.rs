@@ -66,6 +66,25 @@ impl Default for AppSettings {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum SettingsError {
+    #[error("File I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Serialization/Deserialization error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("Tauri path resolution failed")]
+    TauriPath,
+}
+
+impl serde::Serialize for SettingsError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
     let path = app.path().app_data_dir().expect("Failed to get app data dir");
     if !path.exists() {
@@ -75,17 +94,17 @@ fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
 }
 
 #[tauri::command]
-pub fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
+pub fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, SettingsError> {
     let path = get_settings_path(&app);
     let mut settings = if !path.exists() {
         AppSettings::default()
     } else {
-        let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&data).map_err(|e| e.to_string())?
+        let data = fs::read_to_string(path)?;
+        serde_json::from_str(&data)?
     };
 
     if settings.db_path.is_none() {
-        let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        let app_data_dir = app.path().app_data_dir().map_err(|_| SettingsError::TauriPath)?;
         settings.db_path = Some(app_data_dir.join("lancedb").to_string_lossy().to_string());
     }
 
@@ -93,10 +112,10 @@ pub fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
 }
 
 #[tauri::command]
-pub fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
+pub fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(), SettingsError> {
     let path = get_settings_path(&app);
-    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    fs::write(path, data).map_err(|e| e.to_string())?;
+    let data = serde_json::to_string_pretty(&settings)?;
+    fs::write(path, data)?;
     Ok(())
 }
 

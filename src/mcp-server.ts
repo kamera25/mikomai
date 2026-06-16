@@ -6,6 +6,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import * as fs from "fs";
 import * as path from "path";
+import { getErrorMessage } from "./utils/error.js";
 
 // Create the MCP server
 const server = new Server(
@@ -79,7 +80,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         ],
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       return {
         content: [
           {

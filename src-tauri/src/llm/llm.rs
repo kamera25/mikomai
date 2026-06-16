@@ -21,6 +21,37 @@ pub enum ModelState {
     Error(String),
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum LlmError {
+    #[error("Mutex lock poisoned")]
+    PoisonedLock,
+    #[error("Llama backend initialization failed")]
+    BackendInit,
+    #[error("Model not loaded. Please configure and load a model first.")]
+    ModelNotLoaded,
+    #[error("Tokenization error: {0}")]
+    Tokenization(String),
+    #[error("Failed to create context: {0}")]
+    ContextCreation(String),
+    #[error("Failed to add token to batch: {0}")]
+    BatchAdd(String),
+    #[error("Decode error: {0}")]
+    Decode(String),
+    #[error("Routing failed: {0}")]
+    Routing(String),
+    #[error("Background worker failed: {0}")]
+    Worker(String),
+}
+
+impl serde::Serialize for LlmError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 pub struct LlamaState {
     pub shared: Mutex<Option<SharedModel>>,
     pub status: Mutex<ModelState>,
@@ -29,8 +60,8 @@ pub struct LlamaState {
 }
 
 impl LlamaState {
-    pub fn new() -> Result<Self, String> {
-        let backend = LlamaBackend::init().map_err(|e| e.to_string())?;
+    pub fn new() -> Result<Self, LlmError> {
+        let backend = LlamaBackend::init().map_err(|_| LlmError::BackendInit)?;
         Ok(Self {
             shared: Mutex::new(None),
             status: Mutex::new(ModelState::NotLoaded),
@@ -63,8 +94,8 @@ fn prepare_prompt_tokens_with_limit(
     prompt: &str,
     n_ctx: usize,
     max_gen: usize,
-) -> Result<Vec<llama_cpp_2::token::LlamaToken>, String> {
-    let mut tokens = model.str_to_token(prompt, AddBos::Always).map_err(|e| format!("Tokenization error: {:?}", e))?;
+) -> Result<Vec<llama_cpp_2::token::LlamaToken>, LlmError> {
+    let mut tokens = model.str_to_token(prompt, AddBos::Always).map_err(|e| LlmError::Tokenization(format!("{:?}", e)))?;
 
     let max_tokens = n_ctx.saturating_sub(max_gen);
     if tokens.len() > max_tokens {
@@ -84,9 +115,10 @@ fn prepare_prompt_tokens_with_limit(
 fn prepare_prompt_tokens(
     model: &LlamaModel,
     prompt: &str,
-) -> Result<Vec<llama_cpp_2::token::LlamaToken>, String> {
+) -> Result<Vec<llama_cpp_2::token::LlamaToken>, LlmError> {
     prepare_prompt_tokens_with_limit(model, prompt, 2048, 512)
 }
+
 
 fn process_token_bytes(
     bytes_accumulator: &mut Vec<u8>,
@@ -127,7 +159,7 @@ pub async fn ask_llm(
     is_rag: Option<bool>,
     history_block: Option<String>,
     llama_state: tauri::State<'_, LlamaState>,
-) -> Result<String, String> {
+) -> Result<String, LlmError> {
     // 1. Extract the original query for routing (if not RAG)
     let is_rag_query = is_rag.unwrap_or(false) || prompt.as_ref().map(|p| p.starts_with("ユーザーの質問: \"")).unwrap_or(false);
 
@@ -169,12 +201,12 @@ pub async fn ask_llm(
 
     // Wrap the synchronous, non-Send inference logic in a separate scope
     let inference_result = {
-        let run = || -> Result<String, String> {
-            let _inference_guard = llama_state.inference_lock.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-            let mut shared_lock = llama_state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+        let run = || -> Result<String, LlmError> {
+            let _inference_guard = llama_state.inference_lock.lock().map_err(|_| LlmError::PoisonedLock)?;
+            let mut shared_lock = llama_state.shared.lock().map_err(|_| LlmError::PoisonedLock)?;
             let shared = match &mut *shared_lock {
                 Some(s) => s,
-                None => return Err("Model not loaded. Please configure and load a model first.".to_string()),
+                None => return Err(LlmError::ModelNotLoaded),
             };
 
             let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
@@ -196,7 +228,7 @@ pub async fn ask_llm(
                     Some(&window),
                     settings.temperature,
                     settings.repetition_penalty,
-                )
+                ).map_err(LlmError::Worker)
             } else {
                 // Route classification
                 log::info!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", original_query);
@@ -204,7 +236,7 @@ pub async fn ask_llm(
                     &shared.model,
                     &original_query,
                     settings.repetition_penalty,
-                ).map_err(|e| format!("Routing failed: {:?}", e))?;
+                ).map_err(|e| LlmError::Routing(format!("{:?}", e)))?;
                 log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
 
                 // Select which route is active depending on whether this is the first call or the second call
@@ -241,7 +273,7 @@ pub async fn ask_llm(
                     Some(&window),
                     settings.temperature,
                     settings.repetition_penalty,
-                )
+                ).map_err(LlmError::Worker)
             }
         };
         run()
@@ -264,12 +296,12 @@ pub async fn ask_llm_internal(
     system_prompt: &str,
     app: &tauri::AppHandle,
     state: &LlamaState,
-) -> Result<String, String> {
-    let _inference_guard = state.inference_lock.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-    let shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+) -> Result<String, LlmError> {
+    let _inference_guard = state.inference_lock.lock().map_err(|_| LlmError::PoisonedLock)?;
+    let shared_lock = state.shared.lock().map_err(|_| LlmError::PoisonedLock)?;
     let shared = match &*shared_lock {
         Some(s) => s,
-        None => return Err("Model not loaded.".to_string()),
+        None => return Err(LlmError::ModelNotLoaded),
     };
 
     let formatted_prompt = format!(
@@ -287,7 +319,7 @@ pub async fn ask_llm_internal(
     ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(n_ctx as u32));
     ctx_params = ctx_params.with_n_batch(n_ctx as u32);
 
-    let mut ctx = shared.model.new_context(&state.backend, ctx_params).map_err(|e| format!("Failed to create context: {:?}", e))?;
+    let mut ctx = shared.model.new_context(&state.backend, ctx_params).map_err(|e| LlmError::ContextCreation(format!("{:?}", e)))?;
 
     let tokens = prepare_prompt_tokens_with_limit(&shared.model, &formatted_prompt, n_ctx, max_gen)?;
 
@@ -295,10 +327,10 @@ pub async fn ask_llm_internal(
     let last_index = tokens.len() - 1;
     for (i, token) in tokens.into_iter().enumerate() {
         let is_last = i == last_index;
-        batch.add(token, i as i32, &[0], is_last).map_err(|e| format!("Failed to add to batch: {:?}", e))?;
+        batch.add(token, i as i32, &[0], is_last).map_err(|e| LlmError::BatchAdd(format!("{:?}", e)))?;
     }
 
-    ctx.decode(&mut batch).map_err(|e| format!("Decode error: {:?}", e))?;
+    ctx.decode(&mut batch).map_err(|e| LlmError::Decode(format!("{:?}", e)))?;
 
     let mut result_string = String::new();
     let mut n_cur = batch.n_tokens();
@@ -328,10 +360,10 @@ pub async fn ask_llm_internal(
         process_token_bytes(&mut bytes_accumulator, &mut result_string, None);
 
         batch.clear();
-        batch.add(new_token_id, n_cur, &[0], true).map_err(|e| format!("Failed to add: {:?}", e))?;
+        batch.add(new_token_id, n_cur, &[0], true).map_err(|e| LlmError::BatchAdd(format!("{:?}", e)))?;
         n_cur += 1;
 
-        ctx.decode(&mut batch).map_err(|e| format!("Decode error: {:?}", e))?;
+        ctx.decode(&mut batch).map_err(|e| LlmError::Decode(format!("{:?}", e)))?;
     }
 
     if !bytes_accumulator.is_empty() {
@@ -347,13 +379,13 @@ pub async fn ask_llm_background(
     prompt: String, 
     app: tauri::AppHandle,
     state: tauri::State<'_, LlamaState>
-) -> Result<String, String> {
-    let run = || -> Result<String, String> {
-        let _inference_guard = state.inference_lock.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-        let mut shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+) -> Result<String, LlmError> {
+    let run = || -> Result<String, LlmError> {
+        let _inference_guard = state.inference_lock.lock().map_err(|_| LlmError::PoisonedLock)?;
+        let mut shared_lock = state.shared.lock().map_err(|_| LlmError::PoisonedLock)?;
         let shared = match &mut *shared_lock {
             Some(s) => s,
-            None => return Err("Model not loaded. Please configure and load a model first.".to_string()),
+            None => return Err(LlmError::ModelNotLoaded),
         };
 
         let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
@@ -372,7 +404,7 @@ pub async fn ask_llm_background(
             None,
             settings.temperature,
             settings.repetition_penalty,
-        );
+        ).map_err(LlmError::Worker);
         match &res {
             Ok(out) => log::info!("LLM Background Response: {}", out),
             Err(e) => log::error!("LLM Background Error: {}", e),
@@ -381,3 +413,4 @@ pub async fn ask_llm_background(
     };
     run()
 }
+

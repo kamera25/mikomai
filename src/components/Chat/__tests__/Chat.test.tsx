@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { Chat } from '../Chat';
 import { Message } from '../../../types';
 
 describe('Chat Component', () => {
-  const formatMessageTime = (isoString?: string) => '12:00';
+  const formatMessageTime = (_isoString?: string) => '12:00';
 
   it('renders empty state when there are no messages', () => {
     render(<Chat messages={[]} formatMessageTime={formatMessageTime} />);

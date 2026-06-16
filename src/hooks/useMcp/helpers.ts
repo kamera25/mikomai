@@ -1,4 +1,4 @@
-import { SummaryItem } from "../../types";
+import { SummaryItem, Connection, McpHost } from "../../types";
 import { invoke } from "@tauri-apps/api/core";
 
 export function getHistoryBlock(items: SummaryItem[], limit: number): string {
@@ -54,19 +54,19 @@ export function extractJsonBlocks(text: string): string[] {
   return blocks;
 }
 
-function keysToCamelCase(obj: Record<string, any>): Record<string, any> {
+function keysToCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
   return Object.keys(obj).reduce((acc, key) => {
     const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
     acc[camelKey] = obj[key];
     return acc;
-  }, {} as Record<string, any>);
+  }, {} as Record<string, unknown>);
 }
 
-let cachePromise: Promise<[any[], any[]]> | null = null;
+let cachePromise: Promise<[Connection[], McpHost[]]> | null = null;
 let cacheTime = 0;
 const CACHE_DURATION = 30000; // 30 seconds
 
-async function fetchConnectionsAndHosts(): Promise<[any[], any[]]> {
+async function fetchConnectionsAndHosts(): Promise<[Connection[], McpHost[]]> {
   const now = Date.now();
   if (cachePromise && now - cacheTime < CACHE_DURATION) {
     return cachePromise;
@@ -74,8 +74,8 @@ async function fetchConnectionsAndHosts(): Promise<[any[], any[]]> {
 
   cacheTime = now;
   cachePromise = Promise.all([
-    invoke<any[]>("load_connections"),
-    invoke<any[]>("get_mcp_hosts").catch(() => [])
+    invoke<Connection[]>("load_connections"),
+    invoke<McpHost[]>("get_mcp_hosts").catch(() => [] as McpHost[])
   ]).catch((err) => {
     cachePromise = null;
     cacheTime = 0;
@@ -89,7 +89,7 @@ async function resolveDeviceFromConnections(userMessage: string): Promise<string
   try {
     const [connections, mcpHosts] = await fetchConnectionsAndHosts();
     const lowerMessage = userMessage.toLowerCase();
-    const matchCondition = (c: any) =>
+    const matchCondition = (c: Connection | McpHost) =>
       (c.hostname && lowerMessage.includes(c.hostname.toLowerCase())) ||
       (c.ip && lowerMessage.includes(c.ip));
 
@@ -105,12 +105,17 @@ async function resolveDeviceFromConnections(userMessage: string): Promise<string
 }
 
 
-export async function normalizeArgs(toolId: string, userMessage: string, args: any, recentIPs?: string[]): Promise<any> {
+export async function normalizeArgs(
+  toolId: string,
+  userMessage: string,
+  args: Record<string, unknown> | null | undefined,
+  recentIPs?: string[]
+): Promise<Record<string, unknown> | null | undefined> {
   if (!args || typeof args !== "object" || Array.isArray(args)) {
     return args;
   }
 
-  const processedArgs = keysToCamelCase(args);
+  const processedArgs = keysToCamelCase(args) as Record<string, string | undefined>;
 
   if (["fetch_config", "fetch_routing", "fetch_arp"].includes(toolId)) {
     let deviceVal = processedArgs.deviceName || processedArgs.device_name || processedArgs.device || processedArgs.host;
@@ -141,5 +146,5 @@ export async function normalizeArgs(toolId: string, userMessage: string, args: a
     }
   }
 
-  return processedArgs;
+  return processedArgs as unknown as Record<string, unknown>;
 }

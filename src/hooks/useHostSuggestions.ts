@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Connection, McpHost } from "../types";
+import { Connection, McpHost, SystemSettings } from "../types";
 
 interface UseHostSuggestionsProps {
   recentIPs: string[];
   setRecentIPs: (ips: string[]) => void;
   activeSessionId: string;
   updateSessionRecentIps: (sessionId: string, ips: string[]) => void;
-  saveAllSettings: (overrides: Partial<any>) => Promise<void>;
+  saveAllSettings: (overrides: Partial<SystemSettings>) => Promise<void>;
   input: string;
   setInput: (value: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;

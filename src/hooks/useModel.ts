@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { ModelState } from "../types";
 
 export function useModel(modelPath: string | null) {
   const [modelStatus, setModelStatus] = useState<string>("NotLoaded");
@@ -7,7 +8,7 @@ export function useModel(modelPath: string | null) {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const status = await invoke<any>("get_model_status");
+        const status = await invoke<ModelState>("get_model_status");
         if (typeof status === 'string') {
           setModelStatus(status);
         } else if (typeof status === 'object' && status !== null) {

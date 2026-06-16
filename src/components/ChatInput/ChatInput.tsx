@@ -46,7 +46,8 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(({
   const suggestionListRef = useRef<HTMLDivElement>(null);
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (isComposing.current || (e.nativeEvent as any).isComposing || e.keyCode === 229) {
+    const isComp = isComposing.current || e.nativeEvent.isComposing || e.keyCode === 229;
+    if (isComp) {
       return;
     }
 
@@ -90,7 +91,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(({
     }
 
     if (e.key === 'Enter') {
-      if (isComposing.current || (e.nativeEvent as any).isComposing || e.keyCode === 229) {
+      if (isComp) {
         return;
       }
       if (!e.shiftKey && modelStatus === "Loaded") {

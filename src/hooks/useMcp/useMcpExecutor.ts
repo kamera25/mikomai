@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { UseMcpProps } from "./types";
 import { getHistoryBlock, normalizeArgs } from "./helpers";
+import { TauriCommandResult, Message } from "../../types";
+import { getErrorMessage } from "../../utils/error";
 
 export function useMcpExecutor({
   setMessages,
@@ -26,7 +28,7 @@ export function useMcpExecutor({
 
       if (taskId) {
         setMessages(prev => prev.map(msg => 
-          msg.task_id === taskId ? { ...msg, summary_text: summaryText } : msg
+          msg.task_id === taskId ? { ...msg, summary_text: summaryText } as Message : msg
         ));
       }
     } catch (e) {
@@ -49,10 +51,15 @@ export function useMcpExecutor({
     
     // Extract target host and update recent hosts
     if (updateRecentHosts && processedArgs) {
-      const device = processedArgs.device;
+      const argsObj = processedArgs as Record<string, unknown> & {
+        device?: string | { host?: string; hostname?: string };
+        deviceName?: string;
+        host?: string;
+      };
+      const device = argsObj.device;
       const host =
-        processedArgs.deviceName ||
-        processedArgs.host ||
+        argsObj.deviceName ||
+        argsObj.host ||
         (typeof device === 'string' ? device : device?.host || device?.hostname);
 
       if (typeof host === 'string' && host.trim()) {
@@ -77,13 +84,13 @@ export function useMcpExecutor({
     }]);
 
     try {
-      const timeoutPromise = new Promise((_, reject) =>
+      const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("MCP execution timed out")), mcpTimeout * 1000)
       );
 
       console.log("[useMcp] invoking Tauri command:", toolId, "with args:", JSON.stringify(processedArgs));
-      const result: any = await Promise.race([
-        invoke(toolId, processedArgs),
+      const result = await Promise.race([
+        invoke<TauriCommandResult>(toolId, processedArgs || {}),
         timeoutPromise
       ]);
 
@@ -98,7 +105,7 @@ export function useMcpExecutor({
           saved_path: result.saved_path,
           is_cached: result.is_cached,
           cache_time: result.cache_time
-        } : msg
+        } as Message : msg
       ));
 
       const historyBlock = getHistoryBlock(summaries, historyLimit);
@@ -119,7 +126,7 @@ export function useMcpExecutor({
       const analysisUnlisten = await listen<string>("llm-chunk", (event) => {
         analysisContent += event.payload;
         setMessages(prev => prev.map(msg =>
-          msg.task_id === analysisTaskId ? { ...msg, content: analysisContent, isToolLoading: false, isHidden: false } : msg
+          msg.task_id === analysisTaskId ? { ...msg, content: analysisContent, isToolLoading: false, isHidden: false } as Message : msg
         ));
       });
 
@@ -128,7 +135,7 @@ export function useMcpExecutor({
         agentUnlisten = await listen<string>("agent-selected", (event) => {
           const agentName = event.payload;
           setMessages(prev => prev.map(msg =>
-            msg.task_id === analysisTaskId ? { ...msg, summary_text: `${agentName} が分析中...`, isHidden: false } : msg
+            msg.task_id === analysisTaskId ? { ...msg, summary_text: `${agentName} が分析中...`, isHidden: false } as Message : msg
           ));
         });
       } catch (err) {
@@ -145,7 +152,7 @@ export function useMcpExecutor({
           historyBlock
         });
         setMessages(prev => prev.map(msg =>
-          msg.task_id === analysisTaskId ? { ...msg, content: responseStr, isToolLoading: false, isHidden: false } : msg
+          msg.task_id === analysisTaskId ? { ...msg, content: responseStr, isToolLoading: false, isHidden: false } as Message : msg
         ));
       } catch (analysisError: any) {
         console.error("Failed to get analysis", analysisError);
@@ -156,12 +163,12 @@ export function useMcpExecutor({
 
       // Final response: make it visible
       setMessages(prev => prev.map(msg => 
-        msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
+        msg.task_id === analysisTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } as Message : msg
       ));
       summarizeAndSave(`ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`, analysisTaskId);
 
     } catch (e: unknown) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
+      const errorMsg = getErrorMessage(e);
 
       setMessages(prev => prev.map(msg =>
         msg.task_id === taskId ? {
@@ -170,7 +177,7 @@ export function useMcpExecutor({
           status: "Failed",
           summary_text: `${toolLabel} エラー`,
           raw_data: errorMsg
-        } : msg
+        } as Message : msg
       ));
     }
   };

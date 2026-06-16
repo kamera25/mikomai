@@ -145,7 +145,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setTimeout(() => { isComposingSidebar.current = false; }, 150);
                   }}
                   onKeyDown={(e) => {
-                    if (isComposingSidebar.current || e.nativeEvent.isComposing || e.keyCode === 229) {
+                    const isComp = isComposingSidebar.current || e.nativeEvent.isComposing || e.keyCode === 229;
+                    if (isComp) {
                       return;
                     }
                     if (e.key === 'Enter') {

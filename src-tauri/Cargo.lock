@@ -5825,6 +5825,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "tauri-plugin-shell",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-cron-scheduler",
  "uuid",

@@ -291,7 +291,8 @@ function App() {
                       setTimeout(() => { isComposingHeader.current = false; }, 150);
                     }}
                     onKeyDown={(e) => {
-                      if (isComposingHeader.current || e.nativeEvent.isComposing || e.keyCode === 229) {
+                      const isComp = isComposingHeader.current || e.nativeEvent.isComposing || e.keyCode === 229;
+                      if (isComp) {
                         return;
                       }
                       if (e.key === 'Enter') {

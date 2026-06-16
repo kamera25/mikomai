@@ -6,47 +6,74 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 
 const KEY_STORE_FILE: &str = "key.bin";
 
-fn get_key_from_keyring() -> Result<Option<Key<Aes256Gcm>>, String> {
-    keyring::use_native_store(false).map_err(|e| format!("use_native_store failed: {}", e))?;
+#[derive(Debug, thiserror::Error)]
+pub enum CryptoError {
+    #[error("Keyring use_native_store failed: {0}")]
+    KeyringStoreInit(String),
+    #[error("Keyring entry creation failed: {0}")]
+    KeyringEntry(String),
+    #[error("Keyring get_password failed: {0}")]
+    KeyringGet(String),
+    #[error("Keyring set_password failed: {0}")]
+    KeyringSet(String),
+    #[error("Base64 decode failed: {0}")]
+    Base64(#[from] base64::DecodeError),
+    #[error("Invalid key length in keyring")]
+    InvalidKeyringLength,
+    #[error("Invalid key length in fallback file")]
+    InvalidFileLength,
+    #[error("File I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Encryption failed: {0}")]
+    Encryption(String),
+    #[error("Decryption failed: {0}")]
+    Decryption(String),
+    #[error("Encrypted data is too short")]
+    TooShort,
+    #[error("Invalid UTF-8 data: {0}")]
+    Utf8(#[from] std::string::FromUtf8Error),
+}
+
+fn get_key_from_keyring() -> Result<Option<Key<Aes256Gcm>>, CryptoError> {
+    keyring::use_native_store(false).map_err(|e| CryptoError::KeyringStoreInit(e.to_string()))?;
     let entry = keyring_core::Entry::new("com.mikomai.agent", "crypto-key")
-        .map_err(|e| format!("Entry::new failed: {}", e))?;
+        .map_err(|e| CryptoError::KeyringEntry(e.to_string()))?;
     match entry.get_password() {
         Ok(password_str) => {
-            let key_bytes = STANDARD.decode(password_str)
-                .map_err(|e| format!("Base64 decode of key failed: {}", e))?;
+            let key_bytes = STANDARD.decode(password_str)?;
             if key_bytes.len() != 32 {
-                return Err("Invalid key length in keyring".to_string());
+                return Err(CryptoError::InvalidKeyringLength);
             }
             Ok(Some(*Key::<Aes256Gcm>::from_slice(&key_bytes)))
         }
         Err(keyring_core::Error::NoEntry) => Ok(None),
-        Err(e) => Err(format!("get_password failed: {}", e)),
+        Err(e) => Err(CryptoError::KeyringGet(e.to_string())),
     }
 }
 
-fn save_key_to_keyring(key: &Key<Aes256Gcm>) -> Result<(), String> {
-    keyring::use_native_store(false).map_err(|e| format!("use_native_store failed: {}", e))?;
+fn save_key_to_keyring(key: &Key<Aes256Gcm>) -> Result<(), CryptoError> {
+    keyring::use_native_store(false).map_err(|e| CryptoError::KeyringStoreInit(e.to_string()))?;
     let entry = keyring_core::Entry::new("com.mikomai.agent", "crypto-key")
-        .map_err(|e| format!("Entry::new failed: {}", e))?;
+        .map_err(|e| CryptoError::KeyringEntry(e.to_string()))?;
     let encoded = STANDARD.encode(key.as_slice());
-    entry.set_password(&encoded).map_err(|e| format!("set_password failed: {}", e))?;
+    entry.set_password(&encoded).map_err(|e| CryptoError::KeyringSet(e.to_string()))?;
     Ok(())
 }
 
-fn save_key_to_file(key_path: &std::path::Path, key: &Key<Aes256Gcm>) -> Result<(), String> {
-    std::fs::write(key_path, key.as_slice()).map_err(|e| e.to_string())?;
+fn save_key_to_file(key_path: &std::path::Path, key: &Key<Aes256Gcm>) -> Result<(), CryptoError> {
+    std::fs::write(key_path, key.as_slice())?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(key_path).map_err(|e| e.to_string())?.permissions();
+        let mut perms = std::fs::metadata(key_path)?.permissions();
         perms.set_mode(0o400); // Read-only for user
-        std::fs::set_permissions(key_path, perms).map_err(|e| e.to_string())?;
+        std::fs::set_permissions(key_path, perms)?;
     }
     Ok(())
 }
 
-pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, String> {
+pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, CryptoError> {
     let path = tauri::Manager::path(app).app_data_dir().expect("Failed to get app data dir");
     if !path.exists() {
         let _ = std::fs::create_dir_all(&path);
@@ -86,9 +113,9 @@ pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, Strin
             log::warn!("Keyring failed or not available, falling back to file: {}", e);
             // Keyring failed (e.g. not supported, locked). Fallback to file-based storage.
             if key_path.exists() {
-                let key_bytes = std::fs::read(&key_path).map_err(|err| err.to_string())?;
+                let key_bytes = std::fs::read(&key_path)?;
                 if key_bytes.len() != 32 {
-                    return Err("Invalid key length in fallback file".to_string());
+                    return Err(CryptoError::InvalidFileLength);
                 }
                 Ok(*Key::<Aes256Gcm>::from_slice(&key_bytes))
             } else {
@@ -100,7 +127,7 @@ pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, Strin
     }
 }
 
-pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, String> {
+pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, CryptoError> {
     if data.is_empty() {
         return Ok("".to_string());
     }
@@ -109,37 +136,36 @@ pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, Stri
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
 
     let ciphertext = cipher.encrypt(&nonce, data.as_bytes())
-        .map_err(|e| format!("Encryption failed: {:?}", e))?;
+        .map_err(|e| CryptoError::Encryption(format!("{:?}", e)))?;
 
     let mut result = nonce.to_vec();
     result.extend_from_slice(&ciphertext);
     Ok(STANDARD.encode(result))
 }
 
-pub fn decrypt_with_key(key: &Key<Aes256Gcm>, encrypted_data: &str) -> Result<String, String> {
+pub fn decrypt_with_key(key: &Key<Aes256Gcm>, encrypted_data: &str) -> Result<String, CryptoError> {
     if encrypted_data.is_empty() {
         return Ok("".to_string());
     }
 
     let cipher = Aes256Gcm::new(key);
 
-    let decoded = STANDARD.decode(encrypted_data)
-        .map_err(|e| format!("Base64 decoding failed: {:?}", e))?;
+    let decoded = STANDARD.decode(encrypted_data)?;
 
     if decoded.len() < 12 {
-        return Err("Encrypted data is too short".to_string());
+        return Err(CryptoError::TooShort);
     }
 
     let (nonce_bytes, ciphertext) = decoded.split_at(12);
     let nonce = Nonce::from_slice(nonce_bytes);
 
     let plaintext = cipher.decrypt(nonce, ciphertext)
-        .map_err(|e| format!("Decryption failed: {:?}", e))?;
+        .map_err(|e| CryptoError::Decryption(format!("{:?}", e)))?;
 
-    String::from_utf8(plaintext).map_err(|e| format!("Invalid UTF-8: {:?}", e))
+    Ok(String::from_utf8(plaintext)?)
 }
 
-pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, String> {
+pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, CryptoError> {
     if data.is_empty() {
         return Ok("".to_string());
     }
@@ -148,7 +174,7 @@ pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, String> {
     encrypt_with_key(&key, data)
 }
 
-pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, String> {
+pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, CryptoError> {
     if encrypted_data.is_empty() {
         return Ok("".to_string());
     }
@@ -182,7 +208,7 @@ mod tests {
     fn test_decrypt_empty_string() {
         let key = get_test_key();
         let result = decrypt_with_key(&key, "");
-        assert_eq!(result, Ok("".to_string()));
+        assert_eq!(result.unwrap(), "".to_string());
     }
 
     #[test]
@@ -190,7 +216,7 @@ mod tests {
         let key = get_test_key();
         let result = decrypt_with_key(&key, "invalid_base64!!!");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Base64 decoding failed"));
+        assert!(matches!(result.unwrap_err(), CryptoError::Base64(_)));
     }
 
     #[test]
@@ -200,7 +226,7 @@ mod tests {
         let short_data = base64::engine::general_purpose::STANDARD.encode(b"short");
         let result = decrypt_with_key(&key, &short_data);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Encrypted data is too short");
+        assert!(matches!(result.unwrap_err(), CryptoError::TooShort));
     }
 
     #[test]
@@ -213,6 +239,6 @@ mod tests {
 
         let result = decrypt_with_key(&key, &encoded);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Decryption failed"));
+        assert!(matches!(result.unwrap_err(), CryptoError::Decryption(_)));
     }
 }

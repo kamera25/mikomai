@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 // Mock Tauri API core and event
 vi.mock('@tauri-apps/api/core', () => {
   return {
-    invoke: vi.fn(async (cmd, args) => {
+    invoke: vi.fn(async (cmd, _args) => {
       if (cmd === 'load_settings') {
         return {
           repoPath: '',
@@ -36,9 +36,9 @@ vi.mock('@tauri-apps/api/core', () => {
 
 vi.mock('@tauri-apps/api/event', () => {
   return {
-    listen: vi.fn(async (event, callback) => {
+    listen: vi.fn(async (_event, _callback) => {
       return () => {}; // return unlisten fn
     }),
-    emit: vi.fn(async (event, payload) => {}),
+    emit: vi.fn(async (_event, _payload) => {}),
   };
 });

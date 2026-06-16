@@ -1,11 +1,70 @@
-export interface Message {
+export interface BaseMessage {
   role: "user" | "ai";
   content: string;
   timestamp?: string; // ISO string
   isToolLoading?: boolean;
   isHidden?: boolean;
   task_id?: string;
-  event_type?: "UserInput" | "ToolExecution" | "AgentResponse" | "SystemMessage";
+}
+
+export interface UserMessage extends BaseMessage {
+  role: "user";
+  event_type: "UserInput";
+  status?: undefined;
+  action_name?: undefined;
+  tool_id?: undefined;
+  summary_text?: undefined;
+  raw_data?: undefined;
+  args?: undefined;
+  saved_path?: undefined;
+  is_cached?: undefined;
+  cache_time?: undefined;
+}
+
+export interface ToolExecutionMessage extends BaseMessage {
+  role: "ai";
+  event_type: "ToolExecution";
+  status: "Running" | "Success" | "Failed";
+  action_name: string;
+  tool_id: string;
+  summary_text: string;
+  raw_data: string | null;
+  args?: Record<string, unknown> | null;
+  saved_path?: string;
+  is_cached?: boolean;
+  cache_time?: string;
+}
+
+export interface AgentResponseMessage extends BaseMessage {
+  role: "ai";
+  event_type: "AgentResponse";
+  status?: undefined;
+  action_name?: undefined;
+  tool_id?: undefined;
+  summary_text?: undefined;
+  raw_data?: undefined;
+  args?: undefined;
+  saved_path?: undefined;
+  is_cached?: undefined;
+  cache_time?: undefined;
+}
+
+export interface SystemMessage extends BaseMessage {
+  role: "ai";
+  event_type: "SystemMessage";
+  status?: undefined;
+  action_name?: undefined;
+  tool_id?: undefined;
+  summary_text?: undefined;
+  raw_data?: undefined;
+  args?: undefined;
+  saved_path?: undefined;
+  is_cached?: undefined;
+  cache_time?: undefined;
+}
+
+export interface LegacyMessage extends BaseMessage {
+  event_type?: undefined;
   status?: "Running" | "Success" | "Failed";
   action_name?: string;
   tool_id?: string;
@@ -15,6 +74,19 @@ export interface Message {
   saved_path?: string;
   is_cached?: boolean;
   cache_time?: string;
+}
+
+export type Message = UserMessage | ToolExecutionMessage | AgentResponseMessage | SystemMessage | LegacyMessage;
+
+export type ModelState = "NotLoaded" | "Loading" | "Loaded" | { Error: string };
+
+export interface TauriCommandResult {
+  success: boolean;
+  output?: string;
+  saved_path?: string;
+  is_cached?: boolean;
+  cache_time?: string;
+  error?: string;
 }
 
 export interface SummaryItem {

@@ -58,6 +58,7 @@ serde_yaml = "0.9"
 log = "0.4.22"
 keyring = "4.0.1"
 keyring-core = "1.0.0"
+thiserror = "1.0"
 
 
 

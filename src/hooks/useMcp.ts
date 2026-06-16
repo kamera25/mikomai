@@ -4,6 +4,8 @@ import { UseMcpProps } from "./useMcp/types";
 import { useMcpListeners } from "./useMcp/useMcpListeners";
 import { useMcpExecutor } from "./useMcp/useMcpExecutor";
 import { getHistoryBlock, extractJsonBlocks, getToolLabel } from "./useMcp/helpers";
+import { Message } from "../types";
+import { getErrorMessage } from "../utils/error";
 
 
 export function useMcp({ 
@@ -54,7 +56,7 @@ export function useMcp({
       unlisten = await listen<string>("llm-chunk", (event) => {
         fullContent += event.payload;
         setMessages(prev => prev.map(msg => 
-          msg.task_id === thinkingTaskId ? { ...msg, content: fullContent, isToolLoading: false, isHidden: false } : msg
+          msg.task_id === thinkingTaskId ? { ...msg, content: fullContent, isToolLoading: false, isHidden: false } as Message : msg
         ));
       });
 
@@ -62,12 +64,12 @@ export function useMcp({
         agentUnlisten = await listen<string>("agent-selected", (event) => {
           const agentName = event.payload;
           setMessages(prev => prev.map(msg =>
-            msg.task_id === thinkingTaskId ? { ...msg, summary_text: `${agentName} が処理中...`, isHidden: false } : msg
+            msg.task_id === thinkingTaskId ? { ...msg, summary_text: `${agentName} が処理中...`, isHidden: false } as Message : msg
           ));
         });
         routeUnlisten = await listen<string>("route-yaml-saved", () => {
           setMessages(prev => prev.map(msg =>
-            msg.task_id === thinkingTaskId ? { ...msg, summary_text: "ルーティングテーブルを更新しました", isHidden: false } : msg
+            msg.task_id === thinkingTaskId ? { ...msg, summary_text: "ルーティングテーブルを更新しました", isHidden: false } as Message : msg
           ));
         });
       } catch (err) {
@@ -83,7 +85,7 @@ export function useMcp({
       routeUnlisten();
       
       setMessages(prev => prev.map(msg => 
-        msg.task_id === thinkingTaskId ? { ...msg, content: response, isToolLoading: false, isHidden: false } : msg
+        msg.task_id === thinkingTaskId ? { ...msg, content: response, isToolLoading: false, isHidden: false } as Message : msg
       ));
       
       console.log("LLM Response:", response);
@@ -108,7 +110,7 @@ export function useMcp({
       if (toolCalls.length > 0) {
         // Keep the trigger message visible
         setMessages(prev => prev.map(msg => 
-          msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } : msg
+          msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答要約中..." } as Message : msg
         ));
         for (const toolCall of toolCalls) {
           console.log("Extracted tool call:", toolCall);
@@ -120,18 +122,18 @@ export function useMcp({
       } else {
         // Final response: make it visible
         setMessages(prev => prev.map(msg => 
-          msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答" } : msg
+          msg.task_id === thinkingTaskId ? { ...msg, isHidden: false, summary_text: "回答" } as Message : msg
         ));
       }
     } catch (e: unknown) {
       setMessages(prev => prev.map(msg => 
         msg.task_id === thinkingTaskId ? { 
           ...msg, 
-          content: `Error: ${e instanceof Error ? e.message : String(e)}`, 
+          content: `Error: ${getErrorMessage(e)}`, 
           isHidden: false, 
           isToolLoading: false,
           status: "Failed"
-        } : msg
+        } as Message : msg
       ));
     } finally {
       unlisten();
