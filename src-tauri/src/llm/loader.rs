@@ -6,6 +6,7 @@ use crate::llm::llm::{LlamaState, ModelState};
 use crate::llm::worker::{
     Router, InvestigateWorker, KnowledgeWorker, AnalysisWorker, RagWorker, SummarizationWorker
 };
+use tauri::Emitter;
 
 #[tauri::command]
 pub async fn load_model(
@@ -16,6 +17,7 @@ pub async fn load_model(
     {
         let mut status_lock = state.status.lock().await;
         *status_lock = ModelState::Loading;
+        let _ = app.emit("model-status-changed", &*status_lock);
     }
 
     let backend = state.backend.clone();
@@ -32,6 +34,7 @@ pub async fn load_model(
             let err_msg = format!("Failed to load model: {}", e);
             if let Ok(mut status_lock) = state.status.try_lock() {
                 *status_lock = ModelState::Error(err_msg.clone());
+                let _ = app.emit("model-status-changed", &*status_lock);
             }
             return Err(err_msg);
         }
@@ -39,7 +42,7 @@ pub async fn load_model(
     
     let model_arc = Arc::new(model);
     
-    let settings = crate::settings::load_settings(app).unwrap_or_default();
+    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
 
     let model_clone = model_arc.clone();
     let backend_clone = state.backend.clone();
@@ -70,6 +73,7 @@ pub async fn load_model(
     {
         let mut status_lock = state.status.lock().await;
         *status_lock = ModelState::Loaded;
+        let _ = app.emit("model-status-changed", &*status_lock);
     }
     
     Ok("Model loaded successfully".to_string())
