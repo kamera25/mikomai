@@ -109,7 +109,7 @@ pub trait McpCommandFetcher {
         match wrapper.execute_show(&target_device, &command).await {
             Ok(output) => {
                 let saved_path: Option<String> = if !output.trim().is_empty() {
-                    if let Ok(mut manager) = crate::snapshot::SnapshotManager::new() {
+                    if let Ok(mut manager) = crate::snapshot::SnapshotManager::new(app) {
                         let data_type = self.get_log_prefix().to_lowercase();
                         if let Ok(path) = manager.save_artifact(device_name, &data_type, &output) {
                             let _ = manager.update_current_link(path.parent().unwrap());
@@ -141,7 +141,7 @@ pub fn check_yaml_cache(
         return None;
     }
 
-    let manager = crate::snapshot::SnapshotManager::new().ok()?;
+    let manager = crate::snapshot::SnapshotManager::new(app).ok()?;
     let yaml_path = manager.base_dir().join("current").join(format!("{}_{}.yaml", registered_name, suffix));
     if !yaml_path.exists() {
         return None;

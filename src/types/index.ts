@@ -122,12 +122,15 @@ export interface McpHost {
   username: string;
 }
 
-export interface AskPayload {
-  prompt?: string | null;
-  userMessage?: string | null;
-  toolLabel?: string | null;
-  output?: string | null;
-  isRag?: boolean | null;
+export interface AskInitialPayload {
+  prompt: string;
+}
+
+export interface AnalyzePayload {
+  userMessage: string;
+  toolLabel: string;
+  output: string;
+  isRag: boolean;
   historyBlock?: string | null;
 }
 

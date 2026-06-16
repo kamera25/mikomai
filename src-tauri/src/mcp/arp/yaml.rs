@@ -30,9 +30,9 @@ pub fn quote_yaml_strings(yaml: &str) -> String {
     result
 }
 
-pub fn save_validated_yaml(device_name: &str, yaml_content: &str) -> Result<String, String> {
+pub fn save_validated_yaml(app: &tauri::AppHandle, device_name: &str, yaml_content: &str) -> Result<String, String> {
     let quoted_yaml = quote_yaml_strings(yaml_content);
-    let mut manager = SnapshotManager::new().map_err(|e| format!("Failed to create SnapshotManager: {}", e))?;
+    let mut manager = SnapshotManager::new(app).map_err(|e| format!("Failed to create SnapshotManager: {}", e))?;
     match manager.save_artifact(device_name, "arp.yaml", &quoted_yaml) {
         Ok(path) => {
             let _ = manager.update_current_link(path.parent().unwrap());

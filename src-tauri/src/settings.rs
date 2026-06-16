@@ -15,6 +15,14 @@ fn default_cache_expiry() -> Option<u64> {
     Some(10)
 }
 
+fn default_n_ctx() -> usize {
+    4096
+}
+
+fn default_max_gen() -> usize {
+    2048
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -34,14 +42,18 @@ pub struct AppSettings {
     pub console_baud_rate: Option<u32>,
     #[serde(default = "default_true")]
     pub preload_investigate: bool,
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub preload_knowledge: bool,
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub preload_analysis: bool,
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub preload_rag: bool,
     #[serde(default = "default_cache_expiry")]
     pub cache_expiry_minutes: Option<u64>,
+    #[serde(default = "default_n_ctx")]
+    pub n_ctx: usize,
+    #[serde(default = "default_max_gen")]
+    pub max_gen: usize,
 }
 
 impl Default for AppSettings {
@@ -62,6 +74,8 @@ impl Default for AppSettings {
             preload_analysis: true,
             preload_rag: true,
             cache_expiry_minutes: Some(10),
+            n_ctx: 4096,
+            max_gen: 2048,
         }
     }
 }
@@ -161,6 +175,8 @@ mod tests {
             preload_analysis: false,
             preload_rag: true,
             cache_expiry_minutes: Some(15),
+            n_ctx: 4096,
+            max_gen: 2048,
         };
 
         let serialized = serde_json::to_string(&settings).unwrap();

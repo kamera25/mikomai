@@ -16,7 +16,7 @@ pub struct ArpResult {
 }
 
 #[tauri::command]
-pub async fn self_network_arp() -> Result<ArpResult, String> {
+pub async fn self_network_arp(app: tauri::AppHandle) -> Result<ArpResult, String> {
     // On macOS and Linux, 'arp -an' is a standard way to get the ARP table
     // On Windows, 'arp -a' is used.
     
@@ -52,7 +52,7 @@ pub async fn self_network_arp() -> Result<ArpResult, String> {
 
         if let Some(ref table) = parsed_table {
             if let Ok(yaml_content) = serde_yaml::to_string(table) {
-                match yaml::save_validated_yaml("localhost", &yaml_content) {
+                match yaml::save_validated_yaml(&app, "localhost", &yaml_content) {
                     Ok(path) => {
                         saved_path = Some(path);
                     }

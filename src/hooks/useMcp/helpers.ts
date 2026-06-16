@@ -23,7 +23,7 @@ const TOOL_LABEL_MAP: Record<string, string> = {
   fetch_config: "Fetch Config",
   fetch_routing: "Fetch Routing",
   fetch_arp: "Fetch ARP",
-  require_host_regsterd: "ホスト登録要求",
+  require_host_registered: "ホスト登録要求",
 };
 
 export function getToolLabel(toolName: string): string {

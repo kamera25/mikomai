@@ -8,26 +8,29 @@ use crate::llm::worker::{
 };
 
 #[tauri::command]
-pub fn load_model(
+pub async fn load_model(
     app: tauri::AppHandle,
     path: String,
     state: tauri::State<'_, LlamaState>,
 ) -> Result<String, String> {
     {
-        let mut status_lock = state.status.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+        let mut status_lock = state.status.lock().await;
         *status_lock = ModelState::Loading;
     }
 
-    let mut model_params = std::pin::pin!(LlamaModelParams::default());
+    let backend = state.backend.clone();
+    let path_clone = path.clone();
+    let model_res = tokio::task::spawn_blocking(move || {
+        let mut model_params = std::pin::pin!(LlamaModelParams::default());
+        model_params.as_mut().add_cpu_buft_override(c".*vision.*");
+        LlamaModel::load_from_file(&*backend, &path_clone, &model_params)
+    }).await.map_err(|e| format!("Spawn blocking failed: {}", e))?;
 
-    // Add overrides to move Vision tensors to CPU (null backend to skip loading to VRAM/saving memory)
-    model_params.as_mut().add_cpu_buft_override(c".*vision.*");
-
-    let model = match LlamaModel::load_from_file(&*state.backend, &path, &model_params) {
+    let model = match model_res {
         Ok(m) => m,
         Err(e) => {
             let err_msg = format!("Failed to load model: {}", e);
-            if let Ok(mut status_lock) = state.status.lock() {
+            if let Ok(mut status_lock) = state.status.try_lock() {
                 *status_lock = ModelState::Error(err_msg.clone());
             }
             return Err(err_msg);
@@ -38,15 +41,21 @@ pub fn load_model(
     
     let settings = crate::settings::load_settings(app).unwrap_or_default();
 
-    // Instantiate router and all worker contexts at model load time
-    let router = Router::new(&model_arc, &state.backend)?;
-    let investigate = InvestigateWorker::new(&model_arc, &state.backend, settings.preload_investigate)?;
-    let knowledge = KnowledgeWorker::new(&model_arc, &state.backend, settings.preload_knowledge)?;
-    let analysis = AnalysisWorker::new(&model_arc, &state.backend, settings.preload_analysis)?;
-    let rag = RagWorker::new(&model_arc, &state.backend, settings.preload_rag)?;
-    let summarization = SummarizationWorker::new(&model_arc, &state.backend)?;
+    let model_clone = model_arc.clone();
+    let backend_clone = state.backend.clone();
+    let workers_res = tokio::task::spawn_blocking(move || -> Result<_, String> {
+        let router = Router::new(&model_clone, &backend_clone)?;
+        let investigate = InvestigateWorker::new(&model_clone, &backend_clone, settings.preload_investigate)?;
+        let knowledge = KnowledgeWorker::new(&model_clone, &backend_clone, settings.preload_knowledge)?;
+        let analysis = AnalysisWorker::new(&model_clone, &backend_clone, settings.preload_analysis)?;
+        let rag = RagWorker::new(&model_clone, &backend_clone, settings.preload_rag)?;
+        let summarization = SummarizationWorker::new(&model_clone, &backend_clone)?;
+        Ok((router, investigate, knowledge, analysis, rag, summarization))
+    }).await.map_err(|e| format!("Spawn blocking failed: {}", e))??;
+
+    let (router, investigate, knowledge, analysis, rag, summarization) = workers_res;
     
-    let mut shared_lock = state.shared.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    let mut shared_lock = state.shared.lock().await;
     *shared_lock = Some(SharedModel {
         router,
         investigate,
@@ -59,7 +68,7 @@ pub fn load_model(
     });
     
     {
-        let mut status_lock = state.status.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+        let mut status_lock = state.status.lock().await;
         *status_lock = ModelState::Loaded;
     }
     

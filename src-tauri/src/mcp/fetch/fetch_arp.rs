@@ -92,7 +92,7 @@ pub async fn fetch_arp(
         };
         
         // Save YAML log
-        match crate::mcp::arp::yaml::save_validated_yaml(&name_clone, &validated_yaml) {
+        match crate::mcp::arp::yaml::save_validated_yaml(&app_clone, &name_clone, &validated_yaml) {
             Ok(saved_path) => {
                 log::info!("Background YAML normalization succeeded, saved to: {}", saved_path);
                 let payload = ArpYamlSavedPayload {

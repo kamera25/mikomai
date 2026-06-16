@@ -12,11 +12,6 @@ mod logger;
 
 use tauri::Manager;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -41,11 +36,11 @@ pub fn run() {
         .manage(llama_state)
         .manage(rag_state)
         .invoke_handler(tauri::generate_handler![
-            greet,
             llm::download_model,
             llm::open_model_dir,
             llm::load_model,
-            llm::ask_llm,
+            llm::ask_llm_initial,
+            llm::analyze_tool_output,
             llm::ask_llm_background,
             llm::get_model_status,
             mcp::rag::connect_db,
@@ -56,7 +51,7 @@ pub fn run() {
             mcp::ping::self_network_ping,
             mcp::traceroute::self_network_traceroute,
             mcp::hosts::network_get_hosts,
-            mcp::hosts::require_host_regsterd,
+            mcp::hosts::require_host_registered,
             mcp::ip_info::network_get_ip_info,
             mcp::console::network_list_serial_ports,
             mcp::console::network_send_console_message,
@@ -87,7 +82,7 @@ pub fn run() {
         .run(|app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
                 let state = app_handle.state::<llm::LlamaState>();
-                let mut shared = state.shared.lock().unwrap();
+                let mut shared = state.shared.blocking_lock();
                 *shared = None;
                 log::info!("Llama model cleared on exit.");
             }

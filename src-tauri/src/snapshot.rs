@@ -9,21 +9,11 @@ pub struct SnapshotManager {
 }
 
 impl SnapshotManager {
-    /// Creates a new `SnapshotManager` targeting the standard AppData location.
-    ///
-    /// The default base directory is:
-    /// - **macOS**: `~/Library/Application Support/com.mikomai.agent/storage/`
-    /// - **Windows**: `%APPDATA%\mikomai\storage\`
-    /// - **Linux**: `~/.local/share/mikomai/storage/`
-    pub fn new() -> anyhow::Result<Self> {
-        let mut base_dir = dirs::data_dir()
-            .ok_or_else(|| anyhow::anyhow!("Failed to retrieve local data directory"))?;
+    pub fn new(app: &tauri::AppHandle) -> anyhow::Result<Self> {
+        use tauri::Manager;
+        let mut base_dir = app.path().app_data_dir()
+            .map_err(|e| anyhow::anyhow!("Failed to retrieve app data directory: {}", e))?;
         
-        #[cfg(target_os = "macos")]
-        base_dir.push("com.mikomai.agent");
-        #[cfg(not(target_os = "macos"))]
-        base_dir.push("mikomai");
-
         base_dir.push("storage");
 
         // Ensure base directory exists

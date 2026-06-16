@@ -16,7 +16,7 @@ pub struct RouteResult {
 }
 
 #[tauri::command]
-pub async fn self_network_route() -> Result<RouteResult, String> {
+pub async fn self_network_route(app: tauri::AppHandle) -> Result<RouteResult, String> {
     let is_windows = cfg!(target_os = "windows");
     let output = if is_windows {
         Command::new("route")
@@ -49,7 +49,7 @@ pub async fn self_network_route() -> Result<RouteResult, String> {
 
         if let Some(ref table) = parsed_table {
             if let Ok(yaml_content) = serde_yaml::to_string(table) {
-                match yaml::save_validated_yaml("localhost", &yaml_content) {
+                match yaml::save_validated_yaml(&app, "localhost", &yaml_content) {
                     Ok(path) => {
                         saved_path = Some(path);
                     }
