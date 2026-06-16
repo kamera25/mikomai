@@ -1,6 +1,7 @@
-use crate::connections::{load_connections, get_mcp_hosts};
+use crate::connections::{load_connections_raw, get_mcp_hosts};
 use crate::network::{NetmikoDeviceConfig, CommandResult};
 use crate::mcp::fetch::netmiko::connection_wraper::NetmikoConnectionWrapper;
+use crate::crypto::decrypt;
 use super::ConnectionType;
 
 pub use super::command_template::{CommandTemplate, CommandTemplates, load_templates, get_default_templates, get_templates_path, get_template_for_dtype, map_vendor_type};
@@ -18,7 +19,7 @@ pub struct ResolvedDevice {
 pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<ResolvedDevice, String> {
     let mut resolved_device = None;
     
-    if let Ok(connections) = load_connections(app.clone()) {
+    if let Ok(connections) = load_connections_raw(app) {
         if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(resolved_name) || c.ip.as_str() == resolved_name) {
             let dtype = if let Some(dt) = &conn.device_type {
                 dt.to_string()
@@ -29,11 +30,41 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
             };
 
             let user = conn.username.as_ref().map(|u| u.to_string()).unwrap_or_else(|| "admin".to_string());
+            
+            // Decrypt password on-demand for connection
+            let decrypted_password = conn.password.as_ref().and_then(|p| {
+                if p.is_empty() {
+                    None
+                } else {
+                    match decrypt(app, p.as_str()) {
+                        Ok(decrypted) => Some(decrypted),
+                        Err(e) => {
+                            log::error!("Failed to decrypt password for connection {} in find_device: {}", conn.id, e);
+                            None
+                        }
+                    }
+                }
+            });
+
+            let decrypted_enable_password = conn.enable_password.as_ref().and_then(|ep| {
+                if ep.is_empty() {
+                    None
+                } else {
+                    match decrypt(app, ep.as_str()) {
+                        Ok(decrypted) => Some(decrypted),
+                        Err(e) => {
+                            log::error!("Failed to decrypt enable password for connection {} in find_device: {}", conn.id, e);
+                            None
+                        }
+                    }
+                }
+            });
+
             resolved_device = Some(ResolvedDevice {
                 ip: conn.ip.to_string(),
                 username: user,
-                password: conn.password.as_ref().map(|p| p.to_string()),
-                enable_password: conn.enable_password.as_ref().map(|ep| ep.to_string()),
+                password: decrypted_password,
+                enable_password: decrypted_enable_password,
                 device_type: dtype,
             });
         }

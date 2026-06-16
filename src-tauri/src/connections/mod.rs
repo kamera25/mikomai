@@ -69,41 +69,30 @@ fn get_connections_path(app: &tauri::AppHandle) -> PathBuf {
     path.join("connections.json")
 }
 
-#[tauri::command]
-pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, String> {
-    let path = get_connections_path(&app);
+pub(crate) fn load_connections_raw(app: &tauri::AppHandle) -> Result<Vec<Connection>, String> {
+    let path = get_connections_path(app);
     if !path.exists() {
         return Ok(vec![]);
     }
     let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let mut connections: Vec<Connection> = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    let connections: Vec<Connection> = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    Ok(connections)
+}
 
-    // Decrypt passwords when loading
+#[tauri::command]
+pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, String> {
+    let mut connections = load_connections_raw(&app)?;
+
+    // Mask passwords for frontend so keychain is not accessed on startup/load.
     for conn in &mut connections {
-        if let Some(encrypted_password) = &conn.password {
-            if !encrypted_password.is_empty() {
-                match decrypt(&app, encrypted_password.as_str()) {
-                    Ok(decrypted) => {
-                        match Password::try_from(decrypted) {
-                            Ok(p) => conn.password = Some(p),
-                            Err(e) => log::error!("Failed to validate decrypted password for connection {}: {}", conn.id, e),
-                        }
-                    }
-                    Err(e) => log::error!("Failed to decrypt password for connection {}: {}", conn.id, e),
-                }
+        if let Some(ref p) = conn.password {
+            if !p.is_empty() {
+                conn.password = Some(Password::try_from("__SAVED_PASSWORD__").unwrap());
             }
         }
-        if let Some(encrypted_enable_password) = &conn.enable_password {
-            if !encrypted_enable_password.is_empty() {
-                match decrypt(&app, encrypted_enable_password.as_str()) {
-                    Ok(decrypted) => {
-                        match EnablePassword::try_from(decrypted) {
-                            Ok(ep) => conn.enable_password = Some(ep),
-                            Err(e) => log::error!("Failed to validate decrypted enable password for connection {}: {}", conn.id, e),
-                        }
-                    }
-                    Err(e) => log::error!("Failed to decrypt enable password for connection {}: {}", conn.id, e),
-                }
+        if let Some(ref ep) = conn.enable_password {
+            if !ep.is_empty() {
+                conn.enable_password = Some(EnablePassword::try_from("__SAVED_PASSWORD__").unwrap());
             }
         }
     }
@@ -113,33 +102,52 @@ pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, String
 
 #[tauri::command]
 pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>) -> Result<(), String> {
+    let old_connections = load_connections_raw(&app).unwrap_or_default();
     let path = get_connections_path(&app);
 
-    // Encrypt passwords before saving
+    // Encrypt passwords before saving if they have changed from the __SAVED_PASSWORD__ placeholder
     for conn in &mut connections {
+        let old_conn = old_connections.iter().find(|oc| oc.id == conn.id);
+
         if let Some(plain_password) = &conn.password {
             if !plain_password.is_empty() {
-                match encrypt(&app, plain_password.as_str()) {
-                    Ok(encrypted) => {
-                        match Password::try_from(encrypted) {
-                            Ok(p) => conn.password = Some(p),
-                            Err(e) => return Err(format!("Failed to validate encrypted password for connection {}: {}", conn.id, e)),
-                        }
+                if plain_password.as_str() == "__SAVED_PASSWORD__" {
+                    if let Some(oc) = old_conn {
+                        conn.password = oc.password.clone();
+                    } else {
+                        return Err(format!("Old connection not found for ID {}", conn.id));
                     }
-                    Err(e) => return Err(format!("Failed to encrypt password for connection {}: {}", conn.id, e)),
+                } else {
+                    match encrypt(&app, plain_password.as_str()) {
+                        Ok(encrypted) => {
+                            match Password::try_from(encrypted) {
+                                Ok(p) => conn.password = Some(p),
+                                Err(e) => return Err(format!("Failed to validate encrypted password for connection {}: {}", conn.id, e)),
+                            }
+                        }
+                        Err(e) => return Err(format!("Failed to encrypt password for connection {}: {}", conn.id, e)),
+                    }
                 }
             }
         }
         if let Some(plain_enable_password) = &conn.enable_password {
             if !plain_enable_password.is_empty() {
-                match encrypt(&app, plain_enable_password.as_str()) {
-                    Ok(encrypted) => {
-                        match EnablePassword::try_from(encrypted) {
-                            Ok(ep) => conn.enable_password = Some(ep),
-                            Err(e) => return Err(format!("Failed to validate encrypted enable password for connection {}: {}", conn.id, e)),
-                        }
+                if plain_enable_password.as_str() == "__SAVED_PASSWORD__" {
+                    if let Some(oc) = old_conn {
+                        conn.enable_password = oc.enable_password.clone();
+                    } else {
+                        return Err(format!("Old connection not found for ID {}", conn.id));
                     }
-                    Err(e) => return Err(format!("Failed to encrypt enable password for connection {}: {}", conn.id, e)),
+                } else {
+                    match encrypt(&app, plain_enable_password.as_str()) {
+                        Ok(encrypted) => {
+                            match EnablePassword::try_from(encrypted) {
+                                Ok(ep) => conn.enable_password = Some(ep),
+                                Err(e) => return Err(format!("Failed to validate encrypted enable password for connection {}: {}", conn.id, e)),
+                            }
+                        }
+                        Err(e) => return Err(format!("Failed to encrypt enable password for connection {}: {}", conn.id, e)),
+                    }
                 }
             }
         }
@@ -158,7 +166,7 @@ pub fn get_mcp_hosts() -> Result<Vec<McpHost>, String> {
 
 pub fn resolve_host_with_mcp(app: &tauri::AppHandle, host: &str) -> String {
     // 1. Check local connections first
-    if let Ok(connections) = load_connections(app.clone()) {
+    if let Ok(connections) = load_connections_raw(app) {
         if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(host)) {
             return conn.ip.to_string();
         }
@@ -179,7 +187,7 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
     // Returns (IP, Username, Password, EnablePassword, DeviceType)
     
     // 1. Check local connections
-    if let Ok(connections) = load_connections(app.clone()) {
+    if let Ok(connections) = load_connections_raw(app) {
         if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(host) || c.ip.as_str() == host) {
             let mut dtype = if let Some(dt) = &conn.device_type {
                 dt.as_str().to_string()
@@ -200,7 +208,37 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
             }
 
             let user = conn.username.as_ref().map(|u| u.as_str().to_string()).unwrap_or_else(|| "admin".to_string());
-            return Some((conn.ip.to_string(), user, conn.password.as_ref().map(|p| p.to_string()), conn.enable_password.as_ref().map(|ep| ep.to_string()), dtype));
+            
+            // Decrypt password on-demand when accessing the device
+            let decrypted_password = conn.password.as_ref().and_then(|p| {
+                if p.is_empty() {
+                    None
+                } else {
+                    match decrypt(app, p.as_str()) {
+                        Ok(decrypted) => Some(decrypted),
+                        Err(e) => {
+                            log::error!("Failed to decrypt password for connection {}: {}", conn.id, e);
+                            None
+                        }
+                    }
+                }
+            });
+
+            let decrypted_enable_password = conn.enable_password.as_ref().and_then(|ep| {
+                if ep.is_empty() {
+                    None
+                } else {
+                    match decrypt(app, ep.as_str()) {
+                        Ok(decrypted) => Some(decrypted),
+                        Err(e) => {
+                            log::error!("Failed to decrypt enable password for connection {}: {}", conn.id, e);
+                            None
+                        }
+                    }
+                }
+            });
+
+            return Some((conn.ip.to_string(), user, decrypted_password, decrypted_enable_password, dtype));
         }
     }
 
