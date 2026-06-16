@@ -149,17 +149,31 @@ fn process_token_bytes(
     }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskPayload {
+    pub prompt: Option<String>,
+    pub user_message: Option<String>,
+    pub tool_label: Option<String>,
+    pub output: Option<String>,
+    pub is_rag: Option<bool>,
+    pub history_block: Option<String>,
+}
+
 #[tauri::command]
 pub async fn ask_llm(
     window: tauri::Window,
-    prompt: Option<String>,
-    user_message: Option<String>,
-    tool_label: Option<String>,
-    output: Option<String>,
-    is_rag: Option<bool>,
-    history_block: Option<String>,
+    payload: AskPayload,
     llama_state: tauri::State<'_, LlamaState>,
 ) -> Result<String, LlmError> {
+    let AskPayload {
+        prompt,
+        user_message,
+        tool_label,
+        output,
+        is_rag,
+        history_block,
+    } = payload;
     // 1. Extract the original query for routing (if not RAG)
     let is_rag_query = is_rag.unwrap_or(false) || prompt.as_ref().map(|p| p.starts_with("ユーザーの質問: \"")).unwrap_or(false);
 

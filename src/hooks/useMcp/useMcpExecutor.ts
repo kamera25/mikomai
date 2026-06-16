@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { UseMcpProps } from "./types";
 import { getHistoryBlock, normalizeArgs } from "./helpers";
-import { TauriCommandResult, Message } from "../../types";
+import { TauriCommandResult, Message, AskPayload } from "../../types";
 import { getErrorMessage } from "../../utils/error";
 
 export function useMcpExecutor({
@@ -144,13 +144,14 @@ export function useMcpExecutor({
 
       let responseStr = "";
       try {
-        responseStr = await invoke("ask_llm", {
+        const payload: AskPayload = {
           userMessage,
           toolLabel,
           output: result.output,
           isRag,
           historyBlock
-        });
+        };
+        responseStr = await invoke("ask_llm", { payload });
         setMessages(prev => prev.map(msg =>
           msg.task_id === analysisTaskId ? { ...msg, content: responseStr, isToolLoading: false, isHidden: false } as Message : msg
         ));

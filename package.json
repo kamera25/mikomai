@@ -10,7 +10,6 @@
     "check": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
-    "mcp": "tsx src/mcp-server.ts",
     "test": "vitest run"
   },
   "dependencies": {

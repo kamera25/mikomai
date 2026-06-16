@@ -4,7 +4,7 @@ import { UseMcpProps } from "./useMcp/types";
 import { useMcpListeners } from "./useMcp/useMcpListeners";
 import { useMcpExecutor } from "./useMcp/useMcpExecutor";
 import { getHistoryBlock, extractJsonBlocks, getToolLabel } from "./useMcp/helpers";
-import { Message } from "../types";
+import { Message, AskPayload } from "../types";
 import { getErrorMessage } from "../utils/error";
 
 
@@ -79,7 +79,8 @@ export function useMcp({
       const historyBlock = getHistoryBlock(summaries, historyLimit);
       const promptWithContext = `【ユーザー入力】\n${userMessage}${historyBlock}`;
 
-      const response: string = await invoke("ask_llm", { prompt: promptWithContext });
+      const payload: AskPayload = { prompt: promptWithContext };
+      const response: string = await invoke("ask_llm", { payload });
       unlisten(); 
       agentUnlisten();
       routeUnlisten();

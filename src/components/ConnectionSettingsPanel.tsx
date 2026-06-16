@@ -9,28 +9,7 @@ interface ConnectionSettingsPanelProps {
   onConnectionsChanged?: () => void;
 }
 
-export interface Connection {
-  id: string;
-  status: 'online' | 'offline';
-  hostname: string;
-  ip: string;
-  port?: number;
-  type: string;
-  lastConnected: string;
-  username?: string;
-  password?: string;
-  enablePassword?: string;
-  deviceType?: string;
-  vendorType?: string;
-}
-
-interface McpHost {
-  hostname: string;
-  ip: string;
-  port?: number;
-  deviceType: string;
-  username: string;
-}
+import { Connection, McpHost } from '../types';
 
 export const DEVICE_TYPES = [
   "a10", "accedian", "adtran_os", "adva_fsp150f2", "adva_fsp150f3", "alaxala_ax36s", "alaxala_ax26s",

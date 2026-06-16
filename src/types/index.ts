@@ -104,14 +104,26 @@ export interface Connection {
   lastConnected: string;
   username?: string;
   password?: string;
+  enablePassword?: string;
   deviceType?: string;
+  vendorType?: string;
 }
 
 export interface McpHost {
   hostname: string;
   ip: string;
+  port?: number;
   deviceType: string;
   username: string;
+}
+
+export interface AskPayload {
+  prompt?: string | null;
+  userMessage?: string | null;
+  toolLabel?: string | null;
+  output?: string | null;
+  isRag?: boolean | null;
+  historyBlock?: string | null;
 }
 
 export interface ChatSession {
