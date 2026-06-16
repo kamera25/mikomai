@@ -32,24 +32,30 @@ export function getToolLabel(toolName: string): string {
 
 export function extractJsonBlocks(text: string): string[] {
   const blocks: string[] = [];
-  let depth = 0;
-  let start = -1;
-
-  for (let i = 0; i < text.length; i++) {
+  let i = 0;
+  while (i < text.length) {
     if (text[i] === "{") {
-      if (depth === 0) {
-        start = i;
-      }
-      depth++;
-    } else if (text[i] === "}") {
-      if (depth > 0) {
-        depth--;
-        if (depth === 0 && start !== -1) {
-          blocks.push(text.substring(start, i + 1));
-          start = -1;
+      let success = false;
+      for (let j = text.length - 1; j > i; j--) {
+        if (text[j] === "}") {
+          const candidate = text.substring(i, j + 1);
+          try {
+            JSON.parse(candidate);
+            blocks.push(candidate);
+            i = j;
+            success = true;
+            break;
+          } catch (e) {
+            // Not a valid JSON block, continue searching
+          }
         }
       }
+      if (success) {
+        i++;
+        continue;
+      }
     }
+    i++;
   }
   return blocks;
 }
