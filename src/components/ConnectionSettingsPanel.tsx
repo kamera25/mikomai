@@ -5,6 +5,7 @@ import Papa from "papaparse";
 import { useTranslation } from "react-i18next";
 import { ServerIcon, TrashIcon } from "./Icons";
 import "./ConnectionSettingsPanel.css";
+import Select from "react-select";
 
 interface ConnectionSettingsPanelProps {
   onClose: () => void;
@@ -12,6 +13,72 @@ interface ConnectionSettingsPanelProps {
 }
 
 import { Connection, McpHost } from "../types";
+
+const customSelectStyles = {
+  control: (provided: any, state: any) => ({
+    ...provided,
+    backgroundColor: "var(--bg-secondary, white)",
+    color: "var(--text-primary, #1e293b)",
+    borderColor: state.isFocused ? "var(--accent-color, #3b82f6)" : "var(--border-color, #e2e8f0)",
+    borderRadius: "6px",
+    minHeight: "40px",
+    fontSize: "0.95rem",
+    boxShadow: state.isFocused ? "0 0 0 3px rgba(59, 130, 246, 0.1)" : "none",
+    "&:hover": {
+      borderColor: "var(--accent-color, #3b82f6)",
+    },
+  }),
+  menu: (provided: any) => ({
+    ...provided,
+    backgroundColor: "var(--bg-secondary, white)",
+    border: "1px solid var(--border-color, #e2e8f0)",
+    borderRadius: "6px",
+    zIndex: 9999,
+  }),
+  option: (provided: any, state: any) => ({
+    ...provided,
+    backgroundColor: state.isSelected
+      ? "var(--accent-color, #3b82f6)"
+      : state.isFocused
+        ? "var(--bg-tertiary, #f1f5f9)"
+        : "transparent",
+    color: state.isSelected
+      ? "white"
+      : "var(--text-primary, #1e293b)",
+    cursor: "pointer",
+    fontSize: "0.95rem",
+    "&:active": {
+      backgroundColor: "var(--accent-hover, #2563eb)",
+    },
+  }),
+  singleValue: (provided: any) => ({
+    ...provided,
+    color: "var(--text-primary, #1e293b)",
+  }),
+  input: (provided: any) => ({
+    ...provided,
+    color: "var(--text-primary, #1e293b)",
+  }),
+  placeholder: (provided: any) => ({
+    ...provided,
+    color: "var(--text-muted, #94a3b8)",
+  }),
+  dropdownIndicator: (provided: any) => ({
+    ...provided,
+    color: "var(--text-muted, #94a3b8)",
+    "&:hover": {
+      color: "var(--text-secondary, #475569)",
+    },
+  }),
+  clearIndicator: (provided: any) => ({
+    ...provided,
+    color: "var(--text-muted, #94a3b8)",
+  }),
+  indicatorSeparator: (provided: any) => ({
+    ...provided,
+    backgroundColor: "var(--border-color, #e2e8f0)",
+  }),
+};
 
 export const DEVICE_TYPES = [
   "a10",
@@ -283,6 +350,11 @@ export const getDeviceTypeAlias = (deviceType: string): string => {
     })
     .join(" ");
 };
+
+const deviceTypeOptions = DEVICE_TYPES.map((dt) => ({
+  value: dt,
+  label: `${getDeviceTypeAlias(dt)} (${dt})`,
+}));
 
 export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = ({
   onClose,
@@ -769,16 +841,15 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               </div>
               <div className="form-group">
                 <label>{t("connection_panel.device_type")}</label>
-                <select
-                  value={formData.deviceType}
-                  onChange={(e) => setFormData({ ...formData, deviceType: e.target.value })}
-                >
-                  {DEVICE_TYPES.map((dt) => (
-                    <option key={dt} value={dt}>
-                      {getDeviceTypeAlias(dt)} ({dt})
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  options={deviceTypeOptions}
+                  value={deviceTypeOptions.find((opt) => opt.value === formData.deviceType)}
+                  onChange={(selectedOption) =>
+                    setFormData({ ...formData, deviceType: selectedOption ? selectedOption.value : "" })
+                  }
+                  styles={customSelectStyles}
+                  placeholder="Select device type..."
+                />
               </div>
 
               {formData.type !== "Console" ? (
