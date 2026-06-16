@@ -1,10 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { UseMcpProps } from "./types";
-import { getHistoryBlock, normalizeArgs, resolveDeviceNameStep, resolveHostStep, applyFallbackHostStep } from "./helpers";
-import { TauriCommandResult, Message, AnalyzePayload } from "../../types";
-import { getErrorMessage } from "../../utils/error";
-import i18n from "../../i18n";
+import { Message } from "../../types";
 
 export function useMcpExecutor({
   setMessages,
@@ -12,7 +8,6 @@ export function useMcpExecutor({
   setSummaries,
   historyLimit,
   mcpTimeout = 30,
-  updateRecentHosts,
   recentIPs,
 }: UseMcpProps) {
   const summarizeAndSave = async (content: string, taskId?: string) => {
@@ -45,184 +40,28 @@ export function useMcpExecutor({
     args: any
   ) => {
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const isRag = toolId === "query_nw_db" || toolId === "network_query_nw_db";
-    const statusMsg = isRag ? i18n.t("chat.searching_nwdb") : i18n.t("chat.running_tool", { toolLabel });
-
-    // Normalize arguments using helper function
-    const processedArgs = await normalizeArgs(toolId, userMessage, args, recentIPs);
-
-    // Extract target host and update recent hosts
-    if (updateRecentHosts && processedArgs) {
-      let host: string | undefined = undefined;
-      if (["fetch_config", "fetch_routing", "fetch_arp"].includes(toolId)) {
-        host = await resolveDeviceNameStep(processedArgs, userMessage);
-      } else if (["self_network_ping", "self_network_traceroute"].includes(toolId)) {
-        host = resolveHostStep(processedArgs);
-      }
-      
-      const finalHost = applyFallbackHostStep(host, recentIPs);
-
-      if (finalHost && finalHost.trim()) {
-        updateRecentHosts([finalHost.trim()]);
-      }
-    }
-
-
-    // Add ToolExecution block
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "ai",
-        content: "",
-        timestamp: new Date().toISOString(),
-        isToolLoading: true,
-        task_id: taskId,
-        event_type: "ToolExecution",
-        status: "Running",
-        action_name: toolLabel,
-        tool_id: toolId,
-        summary_text: statusMsg,
-        raw_data: null,
-        args: processedArgs,
-      },
-    ]);
 
     try {
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("MCP execution timed out")), mcpTimeout * 1000)
-      );
-
       console.log(
-        "[useMcp] invoking Tauri command:",
+        "[useMcp] invoking backend executor:",
         toolId,
         "with args:",
-        JSON.stringify(processedArgs)
-      );
-      const result = await Promise.race([
-        invoke<TauriCommandResult>(toolId, processedArgs || {}),
-        timeoutPromise,
-      ]);
-
-      // Update ToolExecution block
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.task_id === taskId
-            ? ({
-                ...msg,
-                isToolLoading: false,
-                status: result.success ? "Success" : "Failed",
-                summary_text: result.success ? i18n.t("chat.tool_success", { toolLabel }) : i18n.t("chat.tool_failed", { toolLabel }),
-                raw_data: result.output || "No output provided",
-                saved_path: result.saved_path,
-                is_cached: result.is_cached,
-                cache_time: result.cache_time,
-              } as Message)
-            : msg
-        )
+        JSON.stringify(args)
       );
 
-      const historyBlock = getHistoryBlock(summaries, historyLimit);
-      const analysisTaskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-      // Hide the intermediate "Analyzing..." or thinking process
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          content: i18n.t("chat.analyzing"),
-          timestamp: new Date().toISOString(),
-          isToolLoading: true,
-          isHidden: true, // Hide by default
-          task_id: analysisTaskId,
-          event_type: "AgentResponse",
-        },
-      ]);
-
-      let analysisContent = "";
-      const analysisUnlisten = await listen<string>("llm-chunk", (event) => {
-        analysisContent += event.payload;
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.task_id === analysisTaskId
-              ? ({
-                  ...msg,
-                  content: analysisContent,
-                  isToolLoading: false,
-                  isHidden: false,
-                } as Message)
-              : msg
-          )
-        );
+      await invoke("execute_mcp_tool", {
+        taskId,
+        toolId,
+        toolLabel,
+        userMessage,
+        args: args || {},
+        summaries,
+        recentIps: recentIPs || [],
+        historyLimit,
+        mcpTimeout,
       });
-
-      let agentUnlisten = () => {};
-      try {
-        agentUnlisten = await listen<string>("agent-selected", (event) => {
-          const agentName = event.payload;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.task_id === analysisTaskId
-                ? ({ ...msg, summary_text: i18n.t("chat.agent_analyzing", { agentName }), isHidden: false } as Message)
-                : msg
-            )
-          );
-        });
-      } catch (err) {
-        console.error("Failed to listen to agent-selected:", err);
-      }
-
-      let responseStr = "";
-      try {
-        const payload: AnalyzePayload = {
-          userMessage,
-          toolLabel,
-          output: result.output || "",
-          isRag,
-          historyBlock,
-        };
-        responseStr = await invoke("analyze_tool_output", { payload });
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.task_id === analysisTaskId
-              ? ({ ...msg, content: responseStr, isToolLoading: false, isHidden: false } as Message)
-              : msg
-          )
-        );
-      } catch (analysisError: any) {
-        console.error("Failed to get analysis", analysisError);
-      } finally {
-        analysisUnlisten();
-        agentUnlisten();
-      }
-
-      // Final response: make it visible
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.task_id === analysisTaskId
-            ? ({ ...msg, isHidden: false, summary_text: i18n.t("chat.summarizing") } as Message)
-            : msg
-        )
-      );
-      summarizeAndSave(
-        `ユーザー入力: ${userMessage}\n実行ツール: ${toolLabel}\n分析結果: ${responseStr}`,
-        analysisTaskId
-      );
-    } catch (e: unknown) {
-      const errorMsg = getErrorMessage(e);
-
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.task_id === taskId
-            ? ({
-                ...msg,
-                isToolLoading: false,
-                status: "Failed",
-                summary_text: i18n.t("chat.tool_error", { toolLabel }),
-                raw_data: errorMsg,
-              } as Message)
-            : msg
-        )
-      );
+    } catch (e) {
+      console.error("Failed to execute MCP tool on backend:", e);
     }
   };
 

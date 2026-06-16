@@ -19,7 +19,7 @@ export function useMcp({
   recentIPs,
 }: UseMcpProps) {
   // Setup Tauri event listeners using sub-hook
-  useMcpListeners({ setMessages });
+  useMcpListeners({ setMessages, setSummaries, updateRecentHosts });
 
   // Setup execution and analysis functions using sub-hook
   const { executeAndAnalyze, summarizeAndSave } = useMcpExecutor({

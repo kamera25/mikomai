@@ -152,10 +152,10 @@ async function resolveDeviceFromConnections(userMessage: string): Promise<string
 }
 
 export async function normalizeArgs(
-  toolId: string,
+  _toolId: string,
   userMessage: string,
   args: Record<string, unknown> | null | undefined,
-  recentIPs?: string[]
+  _recentIPs?: string[]
 ): Promise<Record<string, unknown> | null | undefined> {
   if (!args || typeof args !== "object" || Array.isArray(args)) {
     return args;
