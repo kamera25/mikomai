@@ -26,11 +26,25 @@ const findSession = (items: HistoryItem[], id: string): ChatSession | undefined 
   return undefined;
 };
 
+export interface ModalConfig {
+  isOpen: boolean;
+  type: "confirm" | "prompt";
+  title: string;
+  message: string;
+  placeholder?: string;
+  initialValue?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm: (val?: string) => void;
+  onCancel: () => void;
+}
+
 export function useHistory() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>("");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessagesState] = useState<Message[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
 
   // Load history from backend on mount
   useEffect(() => {
@@ -43,6 +57,7 @@ export function useHistory() {
           const firstSession = findFirstSession(savedHistory);
           if (firstSession) {
             setActiveSessionId(firstSession.id);
+            setMessagesState(firstSession.messages);
           }
         } else {
           // Initialize with default session if empty
@@ -57,6 +72,7 @@ export function useHistory() {
           ];
           setHistory(defaultHistory);
           setActiveSessionId(defaultId);
+          setMessagesState([]);
         }
       } catch (e) {
         console.error("Failed to load history:", e);
@@ -80,48 +96,75 @@ export function useHistory() {
     save();
   }, [history, isLoaded]);
 
-  // Sync messages when active session changes
+  // Sync messages when active session or history changes (e.g. loaded from backend)
   useEffect(() => {
     const session = findSession(history, activeSessionId);
     if (session) {
-      setMessages(session.messages);
+      setMessagesState((prev) => {
+        // Simple optimization: only update if stringified value changed
+        if (JSON.stringify(prev) === JSON.stringify(session.messages)) {
+          return prev;
+        }
+        return session.messages;
+      });
+    } else {
+      setMessagesState((prev) => (prev.length === 0 ? prev : []));
     }
-  }, [activeSessionId]);
+  }, [activeSessionId, history]);
 
-  // Update history when messages change
-  useEffect(() => {
-    if (messages.length === 0) return;
-    setHistory((prev) => {
-      const updateSessionMessages = (items: HistoryItem[]): HistoryItem[] => {
-        return items.map((item) => {
-          if (item.id === activeSessionId && item.type === "session") {
-            return { ...item, messages };
-          }
-          if (item.type === "folder") {
-            return { ...item, items: updateSessionMessages(item.items) };
-          }
-          return item;
-        });
-      };
-      return updateSessionMessages(prev);
+  // Custom wrapped setMessages that updates messages AND history immediately to prevent loop
+  const setMessages = (
+    update: Message[] | ((prev: Message[]) => Message[])
+  ) => {
+    setMessagesState((prevMessages) => {
+      const nextMessages = typeof update === "function" ? update(prevMessages) : update;
+
+      setHistory((prevHistory) => {
+        const updateSessionMessages = (items: HistoryItem[]): HistoryItem[] => {
+          return items.map((item) => {
+            if (item.id === activeSessionId && item.type === "session") {
+              return { ...item, messages: nextMessages };
+            }
+            if (item.type === "folder") {
+              return { ...item, items: updateSessionMessages(item.items) };
+            }
+            return item;
+          });
+        };
+        return updateSessionMessages(prevHistory);
+      });
+
+      return nextMessages;
     });
-  }, [messages, activeSessionId]);
+  };
 
-  // Handlers for UI components
+  // Handlers for UI components using custom modal trigger instead of native prompt/confirm
   const createNewFolder = () => {
-    const folderName = prompt("フォルダ名を入力してください");
-    if (folderName) {
-      setHistory((prev) => [
-        {
-          id: `folder-${Date.now()}`,
-          type: "folder",
-          name: folderName,
-          isOpen: true,
-          items: [],
-        },
-        ...prev,
-      ]);
-    }
+    setModalConfig({
+      isOpen: true,
+      type: "prompt",
+      title: "新規フォルダ",
+      message: "フォルダ名を入力してください",
+      placeholder: "フォルダ名",
+      initialValue: "",
+      confirmLabel: "作成",
+      onConfirm: (folderName) => {
+        if (folderName && folderName.trim()) {
+          setHistory((prev) => [
+            {
+              id: `folder-${Date.now()}`,
+              type: "folder",
+              name: folderName.trim(),
+              isOpen: true,
+              items: [],
+            },
+            ...prev,
+          ]);
+        }
+        setModalConfig(null);
+      },
+      onCancel: () => setModalConfig(null),
+    });
   };
 
   const createNewSession = () => {
@@ -136,7 +179,7 @@ export function useHistory() {
       ...prev,
     ]);
     setActiveSessionId(id);
-    setMessages([]);
+    setMessagesState([]);
   };
 
   const toggleFolder = (folderId: string) => {
@@ -160,7 +203,7 @@ export function useHistory() {
     setActiveSessionId(sessionId);
     const session = findSession(history, sessionId);
     if (session) {
-      setMessages(session.messages);
+      setMessagesState(session.messages);
     }
   };
 
@@ -184,58 +227,68 @@ export function useHistory() {
   };
 
   const deleteSession = (sessionId: string) => {
-    if (confirm("このセッションを削除してもよろしいですか？")) {
-      const removeSession = (items: HistoryItem[]): HistoryItem[] => {
-        return items
-          .filter((item) => item.id !== sessionId)
-          .map((item) => {
-            if (item.type === "folder") {
-              return { ...item, items: removeSession(item.items) };
-            }
-            return item;
-          });
-      };
+    setModalConfig({
+      isOpen: true,
+      type: "confirm",
+      title: "セッションの削除",
+      message: "このセッションを削除してもよろしいですか？",
+      confirmLabel: "削除",
+      onConfirm: () => {
+        const removeSession = (items: HistoryItem[]): HistoryItem[] => {
+          return items
+            .filter((item) => item.id !== sessionId)
+            .map((item) => {
+              if (item.type === "folder") {
+                return { ...item, items: removeSession(item.items) };
+              }
+              return item;
+            });
+        };
 
-      let updated = removeSession(history);
+        let updated = removeSession(history);
 
-      if (updated.length === 0) {
-        const defaultId = `session-${Date.now()}`;
-        updated = [
-          {
-            id: defaultId,
-            type: "session",
-            title: "新しいセッション",
-            messages: [],
-          },
-        ];
-        setHistory(updated);
-        setActiveSessionId(defaultId);
-        setMessages([]);
-        return;
-      }
-
-      setHistory(updated);
-
-      if (activeSessionId === sessionId) {
-        const firstSession = findFirstSession(updated);
-        if (firstSession) {
-          setActiveSessionId(firstSession.id);
-        } else {
+        if (updated.length === 0) {
           const defaultId = `session-${Date.now()}`;
-          setHistory((prev) => [
+          updated = [
             {
               id: defaultId,
               type: "session",
               title: "新しいセッション",
               messages: [],
             },
-            ...prev,
-          ]);
+          ];
+          setHistory(updated);
           setActiveSessionId(defaultId);
-          setMessages([]);
+          setMessagesState([]);
+          setModalConfig(null);
+          return;
         }
-      }
-    }
+
+        setHistory(updated);
+
+        if (activeSessionId === sessionId) {
+          const firstSession = findFirstSession(updated);
+          if (firstSession) {
+            setActiveSessionId(firstSession.id);
+          } else {
+            const defaultId = `session-${Date.now()}`;
+            setHistory((prev) => [
+              {
+                id: defaultId,
+                type: "session",
+                title: "新しいセッション",
+                messages: [],
+              },
+              ...prev,
+            ]);
+            setActiveSessionId(defaultId);
+            setMessagesState([]);
+          }
+        }
+        setModalConfig(null);
+      },
+      onCancel: () => setModalConfig(null),
+    });
   };
 
   const updateSessionRecentIps = (sessionId: string, ips: string[]) => {
@@ -273,5 +326,6 @@ export function useHistory() {
     deleteSession,
     updateSessionRecentIps,
     isLoaded,
+    modalConfig,
   };
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { message } from "@tauri-apps/plugin-dialog";
 import Papa from "papaparse";
+import { ServerIcon, TrashIcon } from "./Icons";
 import "./ConnectionSettingsPanel.css";
 
 interface ConnectionSettingsPanelProps {
@@ -282,74 +283,12 @@ export const getDeviceTypeAlias = (deviceType: string): string => {
     .join(" ");
 };
 
-const mockConnections: Connection[] = [
-  {
-    id: "1",
-    status: "online",
-    hostname: "Core-Switch-01",
-    ip: "192.168.1.1",
-    type: "SSH (Cisco IOS)",
-    lastConnected: "2024-05-02 14:20",
-    deviceType: "cisco_ios",
-    vendorType: "Cisco",
-  },
-  {
-    id: "2",
-    status: "offline",
-    hostname: "Edge-Router-02",
-    ip: "192.168.2.1",
-    type: "SSH (Juniper JunOS)",
-    lastConnected: "2024-04-30 09:15",
-    deviceType: "juniper_junos",
-    vendorType: "Juniper",
-  },
-  {
-    id: "3",
-    status: "online",
-    hostname: "Dist-Switch-03",
-    ip: "192.168.1.10",
-    type: "Telnet (Arista)",
-    lastConnected: "2024-05-02 17:45",
-    deviceType: "arista_eos",
-    vendorType: "Arista",
-  },
-  {
-    id: "4",
-    status: "online",
-    hostname: "Server-Farm-01",
-    ip: "10.0.5.50",
-    type: "SSH (Ubuntu)",
-    lastConnected: "2024-05-01 22:10",
-    deviceType: "linux",
-    vendorType: "Linux",
-  },
-  {
-    id: "5",
-    status: "offline",
-    hostname: "Backup-Router",
-    ip: "172.16.0.1",
-    type: "SSH (Cisco XE)",
-    lastConnected: "Never",
-    deviceType: "cisco_xe",
-    vendorType: "Cisco",
-  },
-  {
-    id: "6",
-    status: "online",
-    hostname: "Access-Point-04",
-    ip: "192.168.5.25",
-    type: "SSH (Aruba)",
-    lastConnected: "2024-05-02 10:30",
-    deviceType: "aruba_os",
-    vendorType: "Aruba",
-  },
-];
-
 export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = ({
   onClose,
   onConnectionsChanged,
 }) => {
-  const [connections, setConnections] = useState<Connection[]>(mockConnections);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -374,11 +313,11 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     const initConnections = async () => {
       try {
         const savedConnections: Connection[] = await invoke("load_connections");
-        if (savedConnections && savedConnections.length > 0) {
-          setConnections(savedConnections);
-        }
+        setConnections(savedConnections || []);
       } catch (e) {
         console.error("Failed to load connections:", e);
+      } finally {
+        setIsLoading(false);
       }
     };
     initConnections();
@@ -1194,82 +1133,68 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               </tr>
             </thead>
             <tbody>
-              {filteredConnections.map((conn) => (
-                <tr key={conn.id} className={selectedIds.includes(conn.id) ? "selected" : ""}>
-                  <td className="col-status">
-                    <input
-                      type="checkbox"
-                      className="access-checkbox"
-                      checked={selectedIds.includes(conn.id)}
-                      onChange={() => toggleSelect(conn.id)}
-                    />
-                  </td>
-                  <td className="col-hostname">
-                    <div className="hostname-cell">
-                      <div className="device-icon">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-                          <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-                          <line x1="6" y1="6" x2="6.01" y2="6"></line>
-                          <line x1="6" y1="18" x2="6.01" y2="18"></line>
-                        </svg>
-                      </div>
-                      <span className="hostname-text" onClick={() => handleEdit(conn)}>
-                        {conn.hostname}
-                      </span>
-                      {mcpHosts.some((mh) => mh.hostname === conn.hostname) && (
-                        <span className="mcp-badge" title="MCP同期済み">
-                          MCP
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="col-ip">{conn.ip}</td>
-                  <td className="col-vendor">{conn.vendorType || "-"}</td>
-                  <td className="col-device-type">
-                    {conn.deviceType ? getDeviceTypeAlias(conn.deviceType) : "-"}
-                  </td>
-                  <td className="col-type">
-                    <div className="type-badge">{conn.type.split(" ")[0]}</div>
-                    <span className="type-detail">
-                      {conn.type.split(" ").slice(1).join(" ") || ""}
-                    </span>
-                  </td>
-                  <td className="col-last">{conn.lastConnected}</td>
-                  <td className="col-actions">
-                    <button
-                      className="row-delete-btn"
-                      onClick={() => handleDeleteRow(conn.id)}
-                      title="ホストを削除"
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        <line x1="10" y1="11" x2="10" y2="17"></line>
-                        <line x1="14" y1="11" x2="14" y2="17"></line>
-                      </svg>
-                    </button>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                    読み込み中...
                   </td>
                 </tr>
-              ))}
+              ) : filteredConnections.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                    {searchQuery ? "検索結果が見つかりませんでした。" : "接続が登録されていません。"}
+                  </td>
+                </tr>
+              ) : (
+                filteredConnections.map((conn) => (
+                  <tr key={conn.id} className={selectedIds.includes(conn.id) ? "selected" : ""}>
+                    <td className="col-status">
+                      <input
+                        type="checkbox"
+                        className="access-checkbox"
+                        checked={selectedIds.includes(conn.id)}
+                        onChange={() => toggleSelect(conn.id)}
+                      />
+                    </td>
+                    <td className="col-hostname">
+                      <div className="hostname-cell">
+                        <div className="device-icon">
+                          <ServerIcon size={14} />
+                        </div>
+                        <span className="hostname-text" onClick={() => handleEdit(conn)}>
+                          {conn.hostname}
+                        </span>
+                        {mcpHosts.some((mh) => mh.hostname === conn.hostname) && (
+                          <span className="mcp-badge" title="MCP同期済み">
+                            MCP
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="col-ip">{conn.ip}</td>
+                    <td className="col-vendor">{conn.vendorType || "-"}</td>
+                    <td className="col-device-type">
+                      {conn.deviceType ? getDeviceTypeAlias(conn.deviceType) : "-"}
+                    </td>
+                    <td className="col-type">
+                      <div className="type-badge">{conn.type.split(" ")[0]}</div>
+                      <span className="type-detail">
+                        {conn.type.split(" ").slice(1).join(" ") || ""}
+                      </span>
+                    </td>
+                    <td className="col-last">{conn.lastConnected}</td>
+                    <td className="col-actions">
+                      <button
+                        className="row-delete-btn"
+                        onClick={() => handleDeleteRow(conn.id)}
+                        title="ホストを削除"
+                      >
+                        <TrashIcon size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

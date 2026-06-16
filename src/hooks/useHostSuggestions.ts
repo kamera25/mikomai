@@ -86,7 +86,7 @@ export function useHostSuggestions({
     if (recentIPs.length > 0) {
       fetchHosts(recentIPs[0]);
     }
-  }, [recentIPs[0], fetchHosts]);
+  }, [recentIPs, fetchHosts]);
 
   const updateRecentHosts = useCallback(
     (hosts: string[]) => {

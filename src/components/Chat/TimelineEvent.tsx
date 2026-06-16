@@ -1,9 +1,10 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Terminal } from "../Terminal";
+import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon } from "../Icons";
 import { Message } from "../../types";
 
 interface TimelineEventProps {
@@ -96,53 +97,18 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               </div>
               <div className="timeline-summary-text">
                 <div className="timeline-type-icon">
-                  {msg.tool_id === "query_nw_db" || msg.tool_id === "network_query_nw_db" ? (
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
-                      <path d="M8 2v20"></path>
-                    </svg>
+                  {isNwDb ? (
+                    <BookIcon size={14} />
                   ) : (
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="16 18 22 12 16 6"></polyline>
-                      <polyline points="8 6 2 12 8 18"></polyline>
-                    </svg>
+                    <TerminalIcon size={14} />
                   )}
                 </div>
                 <span className="action-label">{msg.action_name}</span>
                 <span className="summary-content">{msg.summary_text}</span>
               </div>
               {msg.status !== "Running" && (
-                <div className={`timeline-chevron ${isExpanded ? "open" : ""}`}>
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
+                <div className="timeline-expand-icon">
+                  <ChevronIcon direction={isExpanded ? "up" : "down"} size={16} />
                 </div>
               )}
             </div>
@@ -161,35 +127,12 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                   >
                     {copied ? (
                       <>
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
+                        <CheckIcon size={12} strokeWidth={3} />
                         <span>コピー済み</span>
                       </>
                     ) : (
                       <>
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                        </svg>
+                        <CopyIcon size={12} strokeWidth={2.5} />
                         <span>コピー</span>
                       </>
                     )}
@@ -205,21 +148,7 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               <div className="timeline-saved-path-wrapper">
                 <div className="timeline-saved-path-inner">
                   <div className="timeline-saved-path-header">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="box-icon"
-                    >
-                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                      <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                      <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                    </svg>
+                    <BoxIcon size={14} className="box-icon" />
                     <span>
                       {msg.is_cached
                         ? `更新日時: ${msg.cache_time || ""} (キャッシュ)`
@@ -233,40 +162,17 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                       }}
                       title="パスをコピー"
                     >
-                      {pathCopied ? (
-                        <>
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                          </svg>
-                          <span>コピー済み</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                          </svg>
-                          <span>保存先パスをコピー</span>
-                        </>
-                      )}
+                    {pathCopied ? (
+                      <>
+                        <CheckIcon size={12} strokeWidth={3} />
+                        <span>コピー済み</span>
+                      </>
+                    ) : (
+                      <>
+                        <CopyIcon size={12} />
+                        <span>保存先パスをコピー</span>
+                      </>
+                    )}
                     </button>
                   </div>
                 </div>
@@ -296,21 +202,22 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
           }}
         >
           <div className="message-bubble markdown-body">
-            {msg.content.split(/(```[\s\S]*?```)/).map((part, i) => {
-              if (part.startsWith("```")) {
-                const content = part.replace(/```(\w+)?\n?/, "").replace(/```$/, "");
-                return <Terminal key={i} content={content} />;
-              }
-              return (
-                <ReactMarkdown
-                  key={i}
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                >
-                  {part}
-                </ReactMarkdown>
-              );
-            })}
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={{
+                pre({ children }) {
+                  const codeElement = React.Children.toArray(children)[0];
+                  if (React.isValidElement(codeElement) && codeElement.props) {
+                    const codeText = String((codeElement.props as any).children || "").replace(/\n$/, "");
+                    return <Terminal content={codeText} />;
+                  }
+                  return <pre>{children}</pre>;
+                }
+              }}
+            >
+              {msg.content}
+            </ReactMarkdown>
           </div>
           {msg.role === "ai" && (
             <div className="message-actions">
@@ -320,33 +227,9 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                 onClick={() => handleCopy(msg.content)}
               >
                 {copied ? (
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ color: "var(--success)" }}
-                  >
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
+                  <CheckIcon size={16} style={{ color: "var(--success)" }} />
                 ) : (
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
+                  <CopyIcon size={16} />
                 )}
               </button>
             </div>
