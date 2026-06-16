@@ -71,6 +71,12 @@ describe('SettingsPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(tauriApi.invoke).mockImplementation((cmd) => {
+      if (cmd === 'network_list_serial_ports') {
+        return Promise.resolve(['COM1', 'COM2']);
+      }
+      return Promise.reject(new Error('Unknown command'));
+    });
   });
 
   it('renders correctly when isOpen is true', () => {
@@ -146,6 +152,9 @@ describe('SettingsPanel', () => {
       if (cmd === 'load_model') {
         return Promise.resolve('Model loaded successfully');
       }
+      if (cmd === 'network_list_serial_ports') {
+        return Promise.resolve(['COM1', 'COM2']);
+      }
       return Promise.reject(new Error('Unknown command'));
     });
 
@@ -175,6 +184,9 @@ describe('SettingsPanel', () => {
     vi.mocked(tauriApi.invoke).mockImplementation((cmd, _args) => {
       if (cmd === 'download_model') {
         return Promise.reject(new Error('Network error'));
+      }
+      if (cmd === 'network_list_serial_ports') {
+        return Promise.resolve(['COM1', 'COM2']);
       }
       return Promise.reject(new Error('Unknown command'));
     });

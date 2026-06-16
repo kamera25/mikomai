@@ -7,6 +7,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/setupTests.ts'],
     globals: true,
-    include: ['src/**/*.test.tsx'] // only match tsx for vitest to avoid clashing with node:test in ts files
+    include: ['src/**/*.test.{ts,tsx}'] // match both ts and tsx for vitest
   },
 })
