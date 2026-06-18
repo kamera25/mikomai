@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 use tokio_cron_scheduler::{Job, JobScheduler};
 use uuid::Uuid;
 use chrono::Local;
+use tracing::Instrument;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -58,21 +59,27 @@ pub async fn init_scheduler(app: &AppHandle) -> SchedulerState {
                 let task_id = task_id.clone();
                 let app_handle = app_handle.clone();
                 Box::pin(async move {
-                    println!("Executing scheduled task: {}", task_id);
+                    let task_id_clone = task_id.clone();
+                    let app_handle_clone = app_handle.clone();
+                    async move {
+                        tracing::info!("Executing scheduled task");
 
-                    // Actually execute logic here (mocked for now, or just emit event and update last run)
-                    let _ = app_handle.emit("task-executed", task_id.clone());
+                        // Actually execute logic here (mocked for now, or just emit event and update last run)
+                        let _ = app_handle_clone.emit("task-executed", task_id_clone.clone());
 
-                    let state: State<SchedulerState> = app_handle.state();
-                    let mut tasks = state.tasks.lock().await;
-                    if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                        t.last_run = Local::now().format("%Y-%m-%d %H:%M").to_string();
+                        let state: State<SchedulerState> = app_handle_clone.state();
+                        let mut tasks = state.tasks.lock().await;
+                        if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id_clone) {
+                            t.last_run = Local::now().format("%Y-%m-%d %H:%M").to_string();
+                        }
+
+                        let path = get_tasks_path(&app_handle_clone);
+                        if let Ok(data) = serde_json::to_string_pretty(&*tasks) {
+                            let _ = fs::write(path, data);
+                        }
                     }
-
-                    let path = get_tasks_path(&app_handle);
-                    if let Ok(data) = serde_json::to_string_pretty(&*tasks) {
-                        let _ = fs::write(path, data);
-                    }
+                    .instrument(tracing::info_span!("execute_scheduled_task", task_id = %task_id))
+                    .await;
                 })
             });
 
@@ -106,26 +113,32 @@ pub async fn restart_scheduler(app: &AppHandle, sched_state: &SchedulerState) {
                 let task_id = task_id.clone();
                 let app_handle = app_handle.clone();
                 Box::pin(async move {
-                    println!("Executing scheduled task: {}", task_id);
-                    let _ = app_handle.emit("task-executed", task_id.clone());
+                    let task_id_clone = task_id.clone();
+                    let app_handle_clone = app_handle.clone();
+                    async move {
+                        tracing::info!("Executing scheduled task");
+                        let _ = app_handle_clone.emit("task-executed", task_id_clone.clone());
 
-                    let state: State<SchedulerState> = app_handle.state();
-                    let mut tasks = state.tasks.lock().await;
-                    if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                        t.last_run = Local::now().format("%Y-%m-%d %H:%M").to_string();
-                    }
+                        let state: State<SchedulerState> = app_handle_clone.state();
+                        let mut tasks = state.tasks.lock().await;
+                        if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id_clone) {
+                            t.last_run = Local::now().format("%Y-%m-%d %H:%M").to_string();
+                        }
 
-                    let path = get_tasks_path(&app_handle);
-                    if let Ok(data) = serde_json::to_string_pretty(&*tasks) {
-                        let _ = fs::write(path, data);
+                        let path = get_tasks_path(&app_handle_clone);
+                        if let Ok(data) = serde_json::to_string_pretty(&*tasks) {
+                            let _ = fs::write(path, data);
+                        }
                     }
+                    .instrument(tracing::info_span!("execute_scheduled_task", task_id = %task_id))
+                    .await;
                 })
             });
 
             if let Ok(j) = job {
                 let _ = new_sched.add(j).await;
             } else {
-                println!("Failed to parse cron expression: {}", cron_expr);
+                tracing::error!(cron_expr = %cron_expr, "Failed to parse cron expression");
             }
         }
     }
@@ -235,18 +248,23 @@ pub async fn execute_task(
     id: String,
     state: tauri::State<'_, SchedulerState>
 ) -> Result<(), String> {
-    println!("Manually executing task {}", id);
-    let mut tasks = state.tasks.lock().await;
-    if let Some(t) = tasks.iter_mut().find(|task| task.id == id) {
-        t.last_run = Local::now().format("%Y-%m-%d %H:%M").to_string();
+    let span = tracing::info_span!("execute_task", task_id = %id);
+    async move {
+        tracing::info!("Manually executing task");
+        let mut tasks = state.tasks.lock().await;
+        if let Some(t) = tasks.iter_mut().find(|task| task.id == id) {
+            t.last_run = Local::now().format("%Y-%m-%d %H:%M").to_string();
 
-        let path = get_tasks_path(&app);
-        if let Ok(data) = serde_json::to_string_pretty(&*tasks) {
-            let _ = fs::write(path, data);
+            let path = get_tasks_path(&app);
+            if let Ok(data) = serde_json::to_string_pretty(&*tasks) {
+                let _ = fs::write(path, data);
+            }
         }
+        // Logic to actually execute would go here
+        Ok(())
     }
-    // Logic to actually execute would go here
-    Ok(())
+    .instrument(span)
+    .await
 }
 
 #[cfg(test)]

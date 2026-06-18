@@ -1,80 +1,78 @@
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs::{self, OpenOptions, File};
+use std::io::{self, Write};
 use std::path::PathBuf;
-use std::sync::OnceLock;
-use log::{Record, Level, Metadata, SetLoggerError, LevelFilter};
-use chrono::Local;
+use std::sync::{Arc, Mutex, MutexGuard};
+use tracing_subscriber::fmt::writer::MakeWriter;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{fmt, EnvFilter};
+use tracing_log::LogTracer;
 
-struct SimpleLogger {
-    log_file_path: OnceLock<Option<PathBuf>>,
+struct SharedFileWriter {
+    file: Arc<Mutex<File>>,
 }
 
-impl log::Log for SimpleLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Debug
+impl<'a> MakeWriter<'a> for SharedFileWriter {
+    type Writer = SharedFileWriterLock<'a>;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        SharedFileWriterLock(self.file.lock().unwrap())
     }
-
-    fn log(&self, record: &Record) {
-        if self.enabled(record.metadata()) {
-            let level_color = match record.level() {
-                Level::Error => "\x1b[31m", // Red
-                Level::Warn => "\x1b[33m",  // Yellow
-                Level::Info => "\x1b[32m",  // Green
-                Level::Debug => "\x1b[36m", // Cyan
-                Level::Trace => "\x1b[35m", // Magenta
-            };
-            let reset_color = "\x1b[0m";
-
-            let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-            let file = record.file().unwrap_or("<unknown>");
-            let line = record.line().unwrap_or(0);
-            
-            // Console output
-            println!(
-                "{} {}{:<5}{} [{}:{}] {}",
-                timestamp,
-                level_color,
-                record.level(),
-                reset_color,
-                file,
-                line,
-                record.args()
-            );
-
-            // File output
-            if let Some(Some(ref path)) = self.log_file_path.get() {
-                let log_line = format!(
-                    "{} {:<5} [{}:{}] {}\n",
-                    timestamp,
-                    record.level(),
-                    file,
-                    line,
-                    record.args()
-                );
-                if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
-                    let _ = f.write_all(log_line.as_bytes());
-                }
-            }
-        }
-    }
-
-    fn flush(&self) {}
 }
 
-static LOGGER: SimpleLogger = SimpleLogger {
-    log_file_path: OnceLock::new(),
-};
+struct SharedFileWriterLock<'a>(MutexGuard<'a, File>);
 
-pub fn init() -> Result<(), SetLoggerError> {
-    let log_file_path = get_app_data_dir().map(|dir| {
+impl<'a> Write for SharedFileWriterLock<'a> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Redirect standard log crate events to tracing, ignoring error if already set
+    let _ = LogTracer::init();
+
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("debug"));
+
+    let console_layer = fmt::layer()
+        .with_writer(std::io::stdout)
+        .with_ansi(true)
+        .with_target(false)
+        .with_file(true)
+        .with_line_number(true);
+
+    let file_layer = if let Some(dir) = get_app_data_dir() {
         let _ = fs::create_dir_all(&dir);
-        dir.join("app.log")
-    });
+        let path = dir.join("app.log");
+        if let Ok(file) = OpenOptions::new().create(true).append(true).open(path) {
+            let file_writer = SharedFileWriter {
+                file: Arc::new(Mutex::new(file)),
+            };
+            Some(fmt::layer()
+                .with_writer(file_writer)
+                .with_ansi(false)
+                .with_target(false)
+                .with_file(true)
+                .with_line_number(true))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
-    let _ = LOGGER.log_file_path.set(log_file_path);
+    // Use try_init to avoid panicking if a global subscriber has already been set
+    let _ = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(console_layer)
+        .with(file_layer)
+        .try_init();
 
-    log::set_logger(&LOGGER)
-        .map(|()| log::set_max_level(LevelFilter::Debug))
+    Ok(())
 }
 
 fn get_app_data_dir() -> Option<PathBuf> {

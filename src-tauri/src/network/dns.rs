@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 #[tauri::command]
 pub async fn resolve_ip(ip: String) -> Result<String, String> {
-    println!("Resolving IP (using dns-lookup): {}", ip);
+    tracing::info!("Resolving IP (using dns-lookup): {}", ip);
     
     // Parse the IP address
     let ip_addr = IpAddr::from_str(&ip)
