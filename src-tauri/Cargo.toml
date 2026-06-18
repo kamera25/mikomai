@@ -30,7 +30,7 @@ fastembed = "4"
 arrow = "57"
 arrow-array = "57"
 arrow-json = "57"
-hf-hub = "0.5.0"
+reqwest = { version = "0.12.12", features = ["stream"] }
 tokio = { version = "1.52.1", features = ["full"] }
 futures = "0.3.32"
 tauri-plugin-shell = "2.3.5"
