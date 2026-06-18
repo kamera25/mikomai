@@ -163,8 +163,8 @@ describe("SettingsPanel", () => {
     fireEvent.click(button);
 
     expect(tauriApi.invoke).toHaveBeenCalledWith("download_model", {
-      repo: "bartowski/google_gemma-4-E4B-it-GGUF",
-      filename: "google_gemma-4-E4B-it-Q4_K_M.gguf",
+      repo: "unsloth/gemma-4-E4B-it-GGUF",
+      filename: "gemma-4-E4B-it-UD-Q4_K_XL.gguf",
     });
 
     await waitFor(() => {
@@ -222,12 +222,12 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel {...defaultProps} />);
 
     // repoPath input
-    const repoInput = screen.getByDisplayValue("bartowski/google_gemma-4-E4B-it-GGUF");
+    const repoInput = screen.getByDisplayValue("unsloth/gemma-4-E4B-it-GGUF");
     fireEvent.change(repoInput, { target: { value: "new/repo" } });
     expect(repoInput).toHaveValue("new/repo");
 
     // modelFilename input
-    const filenameInput = screen.getByDisplayValue("google_gemma-4-E4B-it-Q4_K_M.gguf");
+    const filenameInput = screen.getByDisplayValue("gemma-4-E4B-it-UD-Q4_K_XL.gguf");
     fireEvent.change(filenameInput, { target: { value: "new_model.gguf" } });
     expect(filenameInput).toHaveValue("new_model.gguf");
 

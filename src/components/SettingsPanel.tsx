@@ -46,8 +46,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
     saveAllSettings,
   } = useSettingsContext();
 
-  const [repoPath, setRepoPath] = useState("bartowski/google_gemma-4-E4B-it-GGUF");
-  const [modelFilename, setModelFilename] = useState("google_gemma-4-E4B-it-Q4_K_M.gguf");
+  const [repoPath, setRepoPath] = useState("unsloth/gemma-4-E4B-it-GGUF");
+  const [modelFilename, setModelFilename] = useState("gemma-4-E4B-it-UD-Q4_K_XL.gguf");
   const [availablePorts, setAvailablePorts] = useState<string[]>([]);
 
   // Update handlers
