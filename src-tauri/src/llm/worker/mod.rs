@@ -37,10 +37,10 @@ impl Route {
 
 pub trait LlmWorker {
     fn agent_name(&self) -> &'static str;
-    fn context_mut(&mut self) -> &mut crate::llm::llm_manager::AgentContext<'static>;
+    fn context_mut(&mut self) -> &mut crate::llm::llm_manager::AgentContext;
     fn ensure_initialized(
         &mut self,
-        model: &llama_cpp_2::model::LlamaModel,
+        model: &std::sync::Arc<llama_cpp_2::model::LlamaModel>,
         backend: &llama_cpp_2::llama_backend::LlamaBackend,
     ) -> Result<(), String>;
     fn build_prompt(
@@ -59,7 +59,7 @@ pub trait LlmWorker {
 
     fn ask(
         &mut self,
-        model: &llama_cpp_2::model::LlamaModel,
+        model: &std::sync::Arc<llama_cpp_2::model::LlamaModel>,
         backend: &llama_cpp_2::llama_backend::LlamaBackend,
         prompt: Option<String>,
         user_message: Option<String>,
@@ -82,7 +82,6 @@ pub trait LlmWorker {
         );
         crate::llm::llm_manager::run_inference(
             self.context_mut(),
-            model,
             &worker_prompt,
             window,
             temperature,

@@ -60,12 +60,14 @@ pub async fn load_model(
     
     let mut shared_lock = state.shared.lock().await;
     *shared_lock = Some(SharedModel {
-        router,
-        investigate,
-        knowledge,
-        analysis,
-        rag,
-        summarization,
+        workers: Some(crate::llm::llm_manager::SharedWorkers {
+            router,
+            investigate,
+            knowledge,
+            analysis,
+            rag,
+            summarization,
+        }),
         model: model_arc,
         backend: state.backend.clone(),
     });

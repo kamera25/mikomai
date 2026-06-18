@@ -10,25 +10,21 @@ const MAX_NEW_TOKENS: u32 = 256;
 const N_CTX: u32 = 8740;
 
 pub struct AnalysisWorker {
-    pub ctx: Option<AgentContext<'static>>,
+    pub ctx: Option<AgentContext>,
 }
 
 impl AnalysisWorker {
-    pub fn new(model: &LlamaModel, backend: &LlamaBackend, preload: bool) -> Result<Self, String> {
+    pub fn new(model: &std::sync::Arc<LlamaModel>, backend: &LlamaBackend, preload: bool) -> Result<Self, String> {
         if preload {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Analyst (分析官)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
                 ANALYSIS_WORKER_PROMPT
             );
-            let ctx = AgentContext::new(model, backend, &full_system_prompt, 3, MAX_NEW_TOKENS, N_CTX)
+            let ctx = AgentContext::new(model.clone(), backend, &full_system_prompt, 3, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Analysis context: {:?}", e))?;
             
-            let ctx_static = unsafe {
-                std::mem::transmute::<AgentContext<'_>, AgentContext<'static>>(ctx)
-            };
-            
-            Ok(Self { ctx: Some(ctx_static) })
+            Ok(Self { ctx: Some(ctx) })
         } else {
             Ok(Self { ctx: None })
         }
@@ -40,13 +36,13 @@ impl LlmWorker for AnalysisWorker {
         "Analyst (分析官)"
     }
 
-    fn context_mut(&mut self) -> &mut AgentContext<'static> {
+    fn context_mut(&mut self) -> &mut AgentContext {
         self.ctx.as_mut().expect("Analysis context not initialized")
     }
 
     fn ensure_initialized(
         &mut self,
-        model: &LlamaModel,
+        model: &std::sync::Arc<LlamaModel>,
         backend: &LlamaBackend,
     ) -> Result<(), String> {
         if self.ctx.is_none() {
@@ -55,13 +51,10 @@ impl LlmWorker for AnalysisWorker {
                 SYSTEM_PROMPT,
                 ANALYSIS_WORKER_PROMPT
             );
-            let ctx = AgentContext::new(model, backend, &full_system_prompt, 3, MAX_NEW_TOKENS, N_CTX)
+            let ctx = AgentContext::new(model.clone(), backend, &full_system_prompt, 3, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Analysis context: {:?}", e))?;
             
-            let ctx_static = unsafe {
-                std::mem::transmute::<AgentContext<'_>, AgentContext<'static>>(ctx)
-            };
-            self.ctx = Some(ctx_static);
+            self.ctx = Some(ctx);
         }
         Ok(())
     }

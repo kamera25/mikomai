@@ -9,19 +9,15 @@ const MAX_NEW_TOKENS: u32 = 256;
 const N_CTX: u32 = 4096;
 
 pub struct SummarizationWorker {
-    pub ctx: AgentContext<'static>,
+    pub ctx: AgentContext,
 }
 
 impl SummarizationWorker {
-    pub fn new(model: &LlamaModel, backend: &LlamaBackend) -> Result<Self, String> {
-        let ctx = AgentContext::new(model, backend, SUMMARIZATION_PROMPT, 5, MAX_NEW_TOKENS, N_CTX)
+    pub fn new(model: &std::sync::Arc<LlamaModel>, backend: &LlamaBackend) -> Result<Self, String> {
+        let ctx = AgentContext::new(model.clone(), backend, SUMMARIZATION_PROMPT, 5, MAX_NEW_TOKENS, N_CTX)
             .map_err(|e| format!("Failed to create Summarization context: {:?}", e))?;
         
-        let ctx_static = unsafe {
-            std::mem::transmute::<AgentContext<'_>, AgentContext<'static>>(ctx)
-        };
-        
-        Ok(Self { ctx: ctx_static })
+        Ok(Self { ctx })
     }
 }
 
@@ -30,13 +26,13 @@ impl LlmWorker for SummarizationWorker {
         "Summarization Unit (要約ユニット)"
     }
 
-    fn context_mut(&mut self) -> &mut AgentContext<'static> {
+    fn context_mut(&mut self) -> &mut AgentContext {
         &mut self.ctx
     }
 
     fn ensure_initialized(
         &mut self,
-        _model: &LlamaModel,
+        _model: &std::sync::Arc<LlamaModel>,
         _backend: &LlamaBackend,
     ) -> Result<(), String> {
         Ok(())

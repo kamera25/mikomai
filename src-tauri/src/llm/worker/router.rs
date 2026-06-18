@@ -2,6 +2,8 @@ use crate::llm::llm_manager::AgentContext;
 use crate::llm::worker::Route;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
+use llama_cpp_2::sampling::LlamaSampler;
+use serde::Deserialize;
 
 const ROUTER_PROMPT: &str = include_str!("../prompts/router.txt");
 
@@ -15,37 +17,46 @@ pub struct RouteResult {
 }
 
 pub struct Router {
-    pub ctx: AgentContext<'static>,
+    pub ctx: AgentContext,
 }
 
 impl Router {
-    pub fn new(model: &LlamaModel, backend: &LlamaBackend) -> Result<Self, String> {
-        let ctx = AgentContext::new(model, backend, ROUTER_PROMPT, 0, MAX_NEW_TOKENS, N_CTX)
+    pub fn new(model: &std::sync::Arc<LlamaModel>, backend: &LlamaBackend) -> Result<Self, String> {
+        let ctx = AgentContext::new(model.clone(), backend, ROUTER_PROMPT, 0, MAX_NEW_TOKENS, N_CTX)
             .map_err(|e| format!("Failed to create router context: {:?}", e))?;
         
-        // Safety: We transmute LlamaContext to 'static lifetime.
-        // This is safe because Router is owned by SharedModel, which also owns the LlamaModel.
-        // The LlamaModel outlives the Router and LlamaContext.
-        let ctx_static = unsafe {
-            std::mem::transmute::<AgentContext<'_>, AgentContext<'static>>(ctx)
-        };
-        
-        Ok(Self { ctx: ctx_static })
+        Ok(Self { ctx })
     }
 
     pub fn route(
         &mut self,
-        model: &LlamaModel,
+        _model: &std::sync::Arc<LlamaModel>,
         query: &str,
         repetition_penalty: f32,
     ) -> Result<RouteResult, String> {
-        let route_output = crate::llm::llm_manager::run_inference(
+        let schema = r#"{
+            "type": "object",
+            "properties": {
+                "first_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS"] },
+                "subsequent_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "NONE"] },
+                "subsequent_task": { "type": "string" }
+            },
+            "required": ["first_route", "subsequent_route", "subsequent_task"]
+        }"#;
+
+        let grammar_str = llama_cpp_2::json_schema_to_grammar(schema)
+            .map_err(|e| format!("Failed to convert schema to grammar: {:?}", e))?;
+
+        let grammar_sampler = LlamaSampler::grammar(&self.ctx.model, &grammar_str, "root")
+            .map_err(|e| format!("Failed to create grammar sampler: {:?}", e))?;
+
+        let route_output = crate::llm::llm_manager::run_inference_with_grammar(
             &mut self.ctx,
-            model,
             query,
             None,
             0.0,
             repetition_penalty,
+            Some(grammar_sampler),
         ).map_err(|e| format!("Routing inference failed: {:?}", e))?;
 
         Ok(parse_route_output(&route_output))
@@ -53,6 +64,49 @@ impl Router {
 }
 
 pub fn parse_route_output(output: &str) -> RouteResult {
+    #[derive(Deserialize, Debug)]
+    struct RouterJsonResponse {
+        first_route: String,
+        subsequent_route: String,
+        subsequent_task: String,
+    }
+
+    let trimmed = output.trim();
+    let clean_json = if trimmed.starts_with("```json") && trimmed.ends_with("```") {
+        trimmed["```json".len()..trimmed.len() - 3].trim()
+    } else if trimmed.starts_with("```") && trimmed.ends_with("```") {
+        trimmed[3..trimmed.len() - 3].trim()
+    } else {
+        trimmed
+    };
+
+    if let Ok(parsed) = serde_json::from_str::<RouterJsonResponse>(clean_json) {
+        let first = Route::from_str(&parsed.first_route);
+        let subsequent = Route::from_str(&parsed.subsequent_route);
+        let subsequent_task = {
+            let task_val = parsed.subsequent_task.trim();
+            if task_val.is_empty() || task_val.to_uppercase() == "NONE" {
+                None
+            } else {
+                Some(task_val.to_string())
+            }
+        };
+
+        let mut routes = vec![first];
+        if subsequent != Route::None {
+            routes.push(subsequent);
+        }
+
+        RouteResult {
+            routes,
+            subsequent_task,
+        }
+    } else {
+        fallback_parse_route_output(output)
+    }
+}
+
+fn fallback_parse_route_output(output: &str) -> RouteResult {
     let mut first_route = Route::Investigate;
     let mut subsequent_route = Route::None;
     let mut subsequent_task = None;

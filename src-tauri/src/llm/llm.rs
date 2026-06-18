@@ -205,9 +205,12 @@ pub async fn ask_llm_initial(
 
         let settings = crate::settings::load_settings(window_clone.app_handle().clone()).unwrap_or_default();
 
+        let model = shared.model.clone();
+        let backend = shared.backend.clone();
+
         log::info!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", original_query_clone);
         let route_result = shared.router.route(
-            &shared.model,
+            &model,
             &original_query_clone,
             settings.repetition_penalty,
         ).map_err(|e| LlmError::Routing(format!("{:?}", e)))?;
@@ -226,8 +229,8 @@ pub async fn ask_llm_initial(
         let _ = window_clone.emit("agent-selected", agent_name);
 
         worker.ask(
-            &shared.model,
-            &shared.backend,
+            &model,
+            &backend,
             Some(prompt_clone),
             None,
             None,
@@ -276,14 +279,17 @@ pub async fn analyze_tool_output(
 
         let settings = crate::settings::load_settings(window_clone.app_handle().clone()).unwrap_or_default();
 
+        let model = shared.model.clone();
+        let backend = shared.backend.clone();
+
         if is_rag {
             let worker = &mut shared.rag;
             let agent_name = worker.agent_name();
             let _ = window_clone.emit("agent-selected", agent_name);
 
             worker.ask(
-                &shared.model,
-                &shared.backend,
+                &model,
+                &backend,
                 None,
                 Some(user_message_clone),
                 Some(tool_label_clone),
@@ -297,7 +303,7 @@ pub async fn analyze_tool_output(
         } else {
             log::info!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", user_message_clone);
             let route_result = shared.router.route(
-                &shared.model,
+                &model,
                 &user_message_clone,
                 settings.repetition_penalty,
             ).map_err(|e| LlmError::Routing(format!("{:?}", e)))?;
@@ -320,8 +326,8 @@ pub async fn analyze_tool_output(
             let _ = window_clone.emit("agent-selected", agent_name);
 
             worker.ask(
-                &shared.model,
-                &shared.backend,
+                &model,
+                &backend,
                 None,
                 Some(user_message_clone),
                 Some(tool_label_clone),
@@ -451,12 +457,14 @@ pub async fn ask_llm_background(
         };
 
         let settings = crate::settings::load_settings(app_clone.clone()).unwrap_or_default();
+        let model = shared.model.clone();
+        let backend = shared.backend.clone();
         let worker = &mut shared.summarization;
 
         log::info!("LLM Background Prompt: {}", prompt_clone);
         let res = worker.ask(
-            &shared.model,
-            &shared.backend,
+            &model,
+            &backend,
             Some(prompt_clone),
             None,
             None,

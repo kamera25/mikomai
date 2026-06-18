@@ -45,7 +45,16 @@ SUBSEQUENT_ROUTE: NONE
 TASK: NONE
 
 ### Response Instructions
-You must respond ONLY in the following format. Do not include any explanations, markdown backticks, or other text.
-FIRST_ROUTE: <INVESTIGATE or KNOWLEDGE or ANALYSIS>
-SUBSEQUENT_ROUTE: <ANALYSIS or KNOWLEDGE or NONE>
-TASK: <Describe the task in Japanese, or NONE>
+You must respond ONLY with a JSON object containing the following keys. Do not include any markdown backticks, explanations, or other text outside the JSON object.
+{
+  "first_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS",
+  "subsequent_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS" or "NONE",
+  "subsequent_task": "Describe the task in Japanese" or "NONE"
+}
+
+Example:
+{
+  "first_route": "INVESTIGATE",
+  "subsequent_route": "ANALYSIS",
+  "subsequent_task": "NakaokuGWのConfigやNTPステータスから、時刻同期先のNTPサーバー情報を抽出して回答する。"
+}
