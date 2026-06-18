@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use crate::mcp::safe_cmd::resolve_safe_command_path;
 
 pub mod llm;
 pub mod yaml;
@@ -19,12 +20,14 @@ pub struct RouteResult {
 pub async fn self_network_route(app: tauri::AppHandle) -> Result<RouteResult, String> {
     let is_windows = cfg!(target_os = "windows");
     let output = if is_windows {
-        Command::new("route")
+        let route_path = resolve_safe_command_path("route")?;
+        Command::new(&route_path)
             .arg("print")
             .output()
     } else {
         // macOS and Linux
-        Command::new("netstat")
+        let netstat_path = resolve_safe_command_path("netstat")?;
+        Command::new(&netstat_path)
             .arg("-rn")
             .output()
     }.map_err(|e| format!("Failed to execute route/netstat command: {}", e))?;

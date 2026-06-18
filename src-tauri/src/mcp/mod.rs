@@ -11,5 +11,4 @@ pub mod devices;
 pub mod route;
 pub mod args;
 pub mod executor;
-
-
+pub mod safe_cmd;

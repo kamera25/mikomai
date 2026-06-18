@@ -112,11 +112,13 @@ pub async fn self_network_ping(
 
 async fn run_system_ping(host: &str, size: Option<usize>, count: Option<u32>, df: bool) -> Result<PingResult, String> {
     use std::process::Command;
+    use crate::mcp::safe_cmd::resolve_safe_command_path;
     
     let is_ipv6 = host.parse::<std::net::Ipv6Addr>().is_ok();
     let ping_cmd = if is_ipv6 { "ping6" } else { "ping" };
+    let ping_path = resolve_safe_command_path(ping_cmd)?;
 
-    let mut cmd = Command::new(ping_cmd);
+    let mut cmd = Command::new(&ping_path);
     
     // Mac and Linux differ slightly in arguments
     // On Mac: -s size -c count -D (for DF)

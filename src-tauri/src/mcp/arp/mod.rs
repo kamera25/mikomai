@@ -4,6 +4,7 @@ pub mod macos;
 pub mod windows;
 
 use serde::{Deserialize, Serialize};
+use crate::mcp::safe_cmd::resolve_safe_command_path;
 use std::process::Command;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -20,14 +21,15 @@ pub async fn self_network_arp(app: tauri::AppHandle) -> Result<ArpResult, String
     // On macOS and Linux, 'arp -an' is a standard way to get the ARP table
     // On Windows, 'arp -a' is used.
     
+    let arp_path = resolve_safe_command_path("arp")?;
     let is_windows = cfg!(target_os = "windows");
     let output = if is_windows {
-        Command::new("arp")
+        Command::new(&arp_path)
             .arg("-a")
             .output()
     } else {
         // macOS and Linux
-        Command::new("arp")
+        Command::new(&arp_path)
             .arg("-an")
             .output()
     }.map_err(|e| format!("Failed to execute arp command: {}", e))?;
