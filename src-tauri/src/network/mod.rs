@@ -162,15 +162,7 @@ pub async fn network_show(
             }
         }
     }
-    if !is_console {
-        if let Ok(mcp_hosts) = crate::connections::get_mcp_hosts() {
-            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(&target_device.host) || h.ip.as_str() == target_device.host) {
-                if mcp.device_type.contains("Console") || mcp.device_type.contains("Serial") {
-                    is_console = true;
-                }
-            }
-        }
-    }
+
 
     if is_console {
         let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
@@ -239,15 +231,7 @@ pub async fn network_config(
             }
         }
     }
-    if !is_console {
-        if let Ok(mcp_hosts) = crate::connections::get_mcp_hosts() {
-            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(&target_device.host) || h.ip.as_str() == target_device.host) {
-                if mcp.device_type.contains("Console") || mcp.device_type.contains("Serial") {
-                    is_console = true;
-                }
-            }
-        }
-    }
+
 
     if is_console {
         let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();

@@ -158,11 +158,6 @@ pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>)
     Ok(())
 }
 
-#[tauri::command]
-pub fn get_mcp_hosts() -> Result<Vec<McpHost>, String> {
-    // Return empty list as mock is no longer needed
-    Ok(vec![])
-}
 
 pub fn resolve_host_with_mcp(app: &tauri::AppHandle, host: &str) -> String {
     // 1. Check local connections first
@@ -172,14 +167,7 @@ pub fn resolve_host_with_mcp(app: &tauri::AppHandle, host: &str) -> String {
         }
     }
 
-    // 2. Check MCP registry
-    if let Ok(mcp_hosts) = get_mcp_hosts() {
-        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(host)) {
-            return mcp.ip.to_string();
-        }
-    }
-
-    // 3. Fallback to original host (let DNS handle it)
+    // 2. Fallback to original host (let DNS handle it)
     host.to_string()
 }
 
@@ -239,22 +227,6 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
             });
 
             return Some((conn.ip.to_string(), user, decrypted_password, decrypted_enable_password, dtype));
-        }
-    }
-
-    // 2. Check MCP registry
-    if let Ok(mcp_hosts) = get_mcp_hosts() {
-        if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(host) || h.ip.as_str() == host) {
-            let mut dtype = if mcp.device_type.contains("Cisco IOS") { "cisco_ios".to_string() }
-                        else if mcp.device_type.contains("Juniper") { "juniper_junos".to_string() }
-                        else if mcp.device_type.contains("Arista") { "arista_eos".to_string() }
-                        else { "cisco_ios".to_string() };
-
-            if mcp.device_type.contains("Telnet") && !dtype.ends_with("_telnet") {
-                dtype = format!("{}_telnet", dtype);
-            }
-
-            return Some((mcp.ip.to_string(), mcp.username.to_string(), None, None, dtype));
         }
     }
 
@@ -341,9 +313,4 @@ mod tests {
         assert!(serialized.contains(r#""deviceType":"Telnet""#));
     }
 
-    #[test]
-    fn test_get_mcp_hosts_returns_empty_list() {
-        let hosts = get_mcp_hosts().unwrap();
-        assert!(hosts.is_empty());
-    }
 }

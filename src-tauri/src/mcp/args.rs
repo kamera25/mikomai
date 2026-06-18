@@ -81,14 +81,5 @@ fn resolve_device_from_connections(app: &AppHandle, user_message: &str) -> Optio
             }
         }
     }
-    if let Ok(mcp_hosts) = crate::connections::get_mcp_hosts() {
-        for host in mcp_hosts {
-            if (!host.hostname.as_str().is_empty() && lower_msg.contains(&host.hostname.to_lowercase()))
-                || (!host.ip.as_str().is_empty() && lower_msg.contains(host.ip.as_str()))
-            {
-                return Some(host.hostname.to_string());
-            }
-        }
-    }
     None
 }

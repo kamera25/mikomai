@@ -1,4 +1,4 @@
-use crate::connections::{load_connections_raw, get_mcp_hosts};
+use crate::connections::load_connections_raw;
 use crate::network::{NetmikoDeviceConfig, CommandResult};
 use crate::mcp::fetch::netmiko::connection_wraper::NetmikoConnectionWrapper;
 use crate::crypto::decrypt;
@@ -70,21 +70,6 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
         }
     }
     
-    if resolved_device.is_none() {
-        if let Ok(mcp_hosts) = get_mcp_hosts() {
-            if let Some(mcp) = mcp_hosts.iter().find(|h| h.hostname.eq_ignore_ascii_case(resolved_name) || h.ip.as_str() == resolved_name) {
-                let dtype = map_vendor_type(mcp.device_type.as_str());
-
-                resolved_device = Some(ResolvedDevice {
-                    ip: mcp.ip.to_string(),
-                    username: mcp.username.to_string(),
-                    password: None,
-                    enable_password: None,
-                    device_type: dtype,
-                });
-            }
-        }
-    }
 
     match resolved_device {
         Some(d) => Ok(d),

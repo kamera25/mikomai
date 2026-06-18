@@ -8,7 +8,7 @@ pub struct HostListResult {
 
 #[tauri::command]
 pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, String> {
-    use crate::connections::{load_connections, get_mcp_hosts};
+    use crate::connections::load_connections;
 
     let var_name = "登録されている接続可能なホスト一覧:\n\n".to_string();
     let mut output = var_name;
@@ -21,14 +21,6 @@ pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, 
     if let Ok(connections) = load_connections(app.clone()) {
         for conn in connections {
             output.push_str(&format!("| {} | {} | {} | ローカル設定 |\n", conn.hostname, conn.ip, conn.conn_type));
-            count += 1;
-        }
-    }
-
-    // Load MCP hosts
-    if let Ok(mcp_hosts) = get_mcp_hosts() {
-        for host in mcp_hosts {
-            output.push_str(&format!("| {} | {} | {} | MCPレジストリ |\n", host.hostname, host.ip, host.device_type));
             count += 1;
         }
     }
