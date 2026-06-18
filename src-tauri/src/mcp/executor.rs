@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, State, Window};
+use tauri::{AppHandle, Emitter, State, Window, Manager};
 use serde_json::Value;
 use std::time::Duration;
 
@@ -535,3 +535,213 @@ pub async fn execute_mcp_tool(
 
     Ok(response_str)
 }
+
+fn extract_json_blocks(text: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+    while i < len {
+        if chars[i] == '{' {
+            let mut success = false;
+            for j in (i + 1..len).rev() {
+                if chars[j] == '}' {
+                    let candidate: String = chars[i..=j].iter().collect();
+                    if serde_json::from_str::<Value>(&candidate).is_ok() {
+                        blocks.push(candidate);
+                        i = j;
+                        success = true;
+                        break;
+                    }
+                }
+            }
+            if success {
+                i += 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    blocks
+}
+
+fn get_tool_label(tool_name: &str) -> String {
+    match tool_name {
+        "self_network_ping" => "Ping".to_string(),
+        "self_network_traceroute" => "Traceroute".to_string(),
+        "network_get_hosts" => "Host List".to_string(),
+        "network_query_nw_db" | "query_nw_db" => "NWDB検索".to_string(),
+        "self_network_arp" => "ARP Table".to_string(),
+        "self_network_route" => "Route Table".to_string(),
+        "network_get_ip_info" => "IP Info".to_string(),
+        "network_list_serial_ports" => "Serial Ports".to_string(),
+        "network_send_console_message" => "Console Message".to_string(),
+        "network_show" => "Show Command".to_string(),
+        "fetch_config" => "Fetch Config".to_string(),
+        "fetch_routing" => "Fetch Routing".to_string(),
+        "fetch_arp" => "Fetch ARP".to_string(),
+        "require_host_registered" => "ホスト登録要求".to_string(),
+        _ => tool_name.to_string(),
+    }
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn handle_mcp_message(
+    app: AppHandle,
+    window: Window,
+    llama_state: State<'_, crate::llm::llm::LlamaState>,
+    rag_state: State<'_, crate::mcp::rag::RagState>,
+    userMessage: String,
+    summaries: Vec<crate::history::SummaryItem>,
+    recentIps: Vec<String>,
+    historyLimit: usize,
+    mcpTimeout: u64,
+) -> Result<(), String> {
+    // 1. Generate thinkingTaskId and emit mcp-initial-started
+    let thinking_task_id = format!("task_think_{}", chrono::Utc::now().timestamp_millis());
+    
+    #[derive(serde::Serialize, Clone)]
+    struct InitialStartedPayload {
+        #[serde(rename = "taskId")]
+        task_id: String,
+    }
+    
+    let _ = window.emit("mcp-initial-started", InitialStartedPayload {
+        task_id: thinking_task_id.clone(),
+    });
+
+    // 2. Build history block and prompt
+    let history_block = get_history_block_rust(&summaries, historyLimit);
+    let prompt_with_context = format!("【ユーザー入力】\n{}{}", userMessage, history_block);
+
+    // 3. Call ask_llm_initial
+    let payload = crate::llm::llm::AskInitialPayload {
+        prompt: prompt_with_context,
+    };
+    
+    let response = match crate::llm::llm::ask_llm_initial(window.clone(), payload, llama_state.clone()).await {
+        Ok(res) => res,
+        Err(e) => {
+            return Err(e.to_string());
+        }
+    };
+
+    // Emit initial finished event
+    #[derive(serde::Serialize, Clone)]
+    struct InitialFinishedPayload {
+        #[serde(rename = "taskId")]
+        task_id: String,
+        content: String,
+    }
+
+    let _ = window.emit("mcp-initial-finished", InitialFinishedPayload {
+        task_id: thinking_task_id.clone(),
+        content: response.clone(),
+    });
+
+    // 4. Extract and parse tool calls
+    let json_blocks = extract_json_blocks(&response);
+    
+    struct ToolCall {
+        tool: String,
+        args: Value,
+    }
+    
+    let mut tool_calls = Vec::new();
+    for block in json_blocks {
+        if let Ok(parsed) = serde_json::from_str::<Value>(&block) {
+            let tool = parsed.get("tool_name")
+                .or_else(|| parsed.get("tool"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let args = parsed.get("params")
+                .or_else(|| parsed.get("args"))
+                .cloned()
+                .unwrap_or(Value::Object(serde_json::Map::new()));
+            if let Some(t) = tool {
+                tool_calls.push(ToolCall { tool: t, args });
+            }
+        }
+    }
+
+    if !tool_calls.is_empty() {
+        let mut futures = Vec::new();
+        for tool_call in tool_calls {
+            let app_c = app.clone();
+            let window_c = window.clone();
+            let llama_state_c = llama_state.clone();
+            let rag_state_c = rag_state.clone();
+            
+            let task_id = format!(
+                "task_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>()
+            );
+            
+            let tool_id = tool_call.tool;
+            let tool_label = get_tool_label(&tool_id);
+            let user_message_c = userMessage.clone();
+            let args_c = tool_call.args;
+            let summaries_c = summaries.clone();
+            let recent_ips_c = recentIps.clone();
+            let history_limit_c = historyLimit;
+            let mcp_timeout_c = mcpTimeout;
+
+            futures.push(async move {
+                let _ = execute_mcp_tool(
+                    app_c,
+                    window_c,
+                    llama_state_c,
+                    rag_state_c,
+                    task_id,
+                    tool_id,
+                    tool_label,
+                    user_message_c,
+                    args_c,
+                    summaries_c,
+                    recent_ips_c,
+                    history_limit_c,
+                    mcp_timeout_c,
+                ).await;
+            });
+        }
+        futures::future::join_all(futures).await;
+    } else {
+        // No tools called: perform summarizeAndSave for the initial response.
+        let app_c = app.clone();
+        let window_c = window.clone();
+        let llama_state_c = llama_state.clone();
+        let thinking_task_id_c = thinking_task_id.clone();
+        let user_message_c = userMessage.clone();
+        let response_c = response.clone();
+
+        tokio::spawn(async move {
+            let llama_state_bg = app_c.state::<crate::llm::llm::LlamaState>();
+            let content_to_summarize = format!("ユーザー入力: {}\n回答: {}", user_message_c, response_c);
+            let summary_prompt = format!("以下の内容を要約してください。\n\n{}", content_to_summarize);
+            if let Ok(summary_text) = crate::llm::llm::ask_llm_background(
+                summary_prompt,
+                app_c.clone(),
+                llama_state_bg,
+            ).await {
+                let new_summary = crate::history::SummaryItem {
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    content: summary_text.clone(),
+                };
+                let _ = crate::history::save_summary(app_c.clone(), new_summary.clone());
+
+                let summary_payload = SummarySavedPayload {
+                    task_id: thinking_task_id_c,
+                    summary_text,
+                    summary: new_summary,
+                    content: response_c,
+                };
+                let _ = window_c.emit("mcp-summary-saved", summary_payload);
+            }
+        });
+    }
+
+    Ok(())
+}
+

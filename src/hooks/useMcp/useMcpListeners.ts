@@ -38,6 +38,15 @@ interface SummarySavedPayload {
   content: string;
 }
 
+interface InitialStartedPayload {
+  taskId: string;
+}
+
+interface InitialFinishedPayload {
+  taskId: string;
+  content: string;
+}
+
 export function useMcpListeners({
   setMessages,
   setSummaries,
@@ -45,6 +54,8 @@ export function useMcpListeners({
 }: UseMcpListenersProps) {
   const activeAnalysisTaskIdRef = useRef<string | null>(null);
   const activeAnalysisContentRef = useRef<string>("");
+  const activeInitialTaskIdRef = useRef<string | null>(null);
+  const activeInitialContentRef = useRef<string>("");
 
   // Use refs to avoid recreating Tauri listeners when handlers/state dependencies change
   const setMessagesRef = useRef(setMessages);
@@ -97,8 +108,8 @@ export function useMcpListeners({
         (event) => {
           if (isCancelled) return;
           const { deviceName, savedPath } = event.payload;
-          setMessagesRef.current((prev) =>
-            prev.map((msg) => {
+          setMessagesRef.current((prev) => {
+            const next = prev.map((msg) => {
               const msgDevice = msg.args?.deviceName || msg.args?.device_name;
               if (
                 msg.event_type === "ToolExecution" &&
@@ -109,8 +120,22 @@ export function useMcpListeners({
                 return { ...msg, saved_path: savedPath };
               }
               return msg;
-            })
-          );
+            });
+
+            const targetTaskId = activeAnalysisTaskIdRef.current || activeInitialTaskIdRef.current;
+            if (targetTaskId) {
+              return next.map((msg) =>
+                msg.task_id === targetTaskId
+                  ? ({
+                      ...msg,
+                      summary_text: i18n.t("chat.routing_table_updated"),
+                      isHidden: false,
+                    } as Message)
+                  : msg
+              );
+            }
+            return next;
+          });
         }
       );
       if (isCancelled) {
@@ -224,7 +249,21 @@ export function useMcpListeners({
       const uLlmChunk = await listen<string>("llm-chunk", (event) => {
         if (isCancelled) return;
         const chunk = event.payload;
-        if (activeAnalysisTaskIdRef.current) {
+        if (activeInitialTaskIdRef.current) {
+          activeInitialContentRef.current += chunk;
+          setMessagesRef.current((prev) =>
+            prev.map((msg) =>
+              msg.task_id === activeInitialTaskIdRef.current
+                ? {
+                    ...msg,
+                    content: activeInitialContentRef.current,
+                    isToolLoading: false,
+                    isHidden: false,
+                  }
+                : msg
+            )
+          );
+        } else if (activeAnalysisTaskIdRef.current) {
           activeAnalysisContentRef.current += chunk;
           setMessagesRef.current((prev) =>
             prev.map((msg) =>
@@ -250,13 +289,17 @@ export function useMcpListeners({
       const uAgentSelected = await listen<string>("agent-selected", (event) => {
         if (isCancelled) return;
         const agentName = event.payload;
-        if (activeAnalysisTaskIdRef.current) {
+        const targetTaskId = activeAnalysisTaskIdRef.current || activeInitialTaskIdRef.current;
+        if (targetTaskId) {
+          const isAnalysis = activeAnalysisTaskIdRef.current === targetTaskId;
           setMessagesRef.current((prev) =>
             prev.map((msg) =>
-              msg.task_id === activeAnalysisTaskIdRef.current
+              msg.task_id === targetTaskId
                 ? ({
                     ...msg,
-                    summary_text: i18n.t("chat.agent_analyzing", { agentName }),
+                    summary_text: isAnalysis
+                      ? i18n.t("chat.agent_analyzing", { agentName })
+                      : i18n.t("chat.agent_processing", { agentName }),
                     isHidden: false,
                   } as Message)
                 : msg
@@ -268,6 +311,66 @@ export function useMcpListeners({
         uAgentSelected();
       } else {
         unlistenFns.push(uAgentSelected);
+      }
+
+      // 7.1. MCP Initial Started
+      const uInitialStarted = await listen<InitialStartedPayload>(
+        "mcp-initial-started",
+        (event) => {
+          if (isCancelled) return;
+          const { taskId } = event.payload;
+          activeInitialTaskIdRef.current = taskId;
+          activeInitialContentRef.current = "";
+
+          setMessagesRef.current((prev) => [
+            ...prev,
+            {
+              role: "ai",
+              content: i18n.t("chat.thinking"),
+              timestamp: new Date().toISOString(),
+              isToolLoading: true,
+              isHidden: true,
+              task_id: taskId,
+              event_type: "AgentResponse",
+            },
+          ]);
+        }
+      );
+      if (isCancelled) {
+        uInitialStarted();
+      } else {
+        unlistenFns.push(uInitialStarted);
+      }
+
+      // 7.2. MCP Initial Finished
+      const uInitialFinished = await listen<InitialFinishedPayload>(
+        "mcp-initial-finished",
+        (event) => {
+          if (isCancelled) return;
+          const { taskId, content } = event.payload;
+          setMessagesRef.current((prev) =>
+            prev.map((msg) =>
+              msg.task_id === taskId
+                ? ({
+                    ...msg,
+                    content,
+                    isHidden: false,
+                    isToolLoading: false,
+                  } as Message)
+                : msg
+            )
+          );
+
+          if (activeInitialTaskIdRef.current === taskId) {
+            activeInitialTaskIdRef.current = null;
+            activeInitialContentRef.current = "";
+          }
+        }
+      );
+      if (isCancelled) {
+        uInitialFinished();
+      } else {
+        unlistenFns.push(uInitialFinished);
       }
 
       // 8. MCP Summary Saved

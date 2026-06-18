@@ -41,7 +41,7 @@ describe("useMcp", () => {
       await result.current.handleMcpResponse("ping 8.8.8.8");
     });
 
-    // It should invoke the ask_llm_initial backend command, instead of directly executing self_network_ping on the frontend
-    expect(mockInvoke).toHaveBeenCalledWith("ask_llm_initial", expect.any(Object));
+    // It should invoke the handle_mcp_message backend command
+    expect(mockInvoke).toHaveBeenCalledWith("handle_mcp_message", expect.any(Object));
   });
 });
