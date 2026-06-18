@@ -374,6 +374,7 @@ pub async fn ask_llm_internal(
         let mut ctx_params = LlamaContextParams::default();
         ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(n_ctx as u32));
         ctx_params = ctx_params.with_n_batch(n_ctx as u32);
+        ctx_params = ctx_params.with_flash_attention_policy(1);
 
         let mut ctx = shared.model.new_context(&state.backend, ctx_params).map_err(|e| LlmError::ContextCreation(format!("{:?}", e)))?;
 
