@@ -2,50 +2,11 @@ use tauri::{AppHandle, Emitter, State, Window, Manager};
 use serde_json::Value;
 use std::time::Duration;
 
-#[derive(serde::Serialize, Clone)]
-struct ToolStartedPayload {
-    #[serde(rename = "taskId")]
-    task_id: String,
-    #[serde(rename = "toolId")]
-    tool_id: String,
-    #[serde(rename = "toolLabel")]
-    tool_label: String,
-    args: Value,
-    #[serde(rename = "resolvedHost")]
-    resolved_host: Option<String>,
-}
-
-#[derive(serde::Serialize, Clone)]
-struct ToolFinishedPayload {
-    #[serde(rename = "taskId")]
-    task_id: String,
-    success: bool,
-    output: String,
-    #[serde(rename = "savedPath")]
-    saved_path: Option<String>,
-    #[serde(rename = "isCached")]
-    is_cached: Option<bool>,
-    #[serde(rename = "cacheTime")]
-    cache_time: Option<String>,
-}
-
-#[derive(serde::Serialize, Clone)]
-struct AnalysisStartedPayload {
-    #[serde(rename = "taskId")]
-    task_id: String,
-    #[serde(rename = "analysisTaskId")]
-    analysis_task_id: String,
-}
-
-#[derive(serde::Serialize, Clone)]
-struct SummarySavedPayload {
-    #[serde(rename = "taskId")]
-    task_id: String,
-    #[serde(rename = "summaryText")]
-    summary_text: String,
-    summary: crate::history::SummaryItem,
-    content: String,
-}
+use crate::mcp::protocol::{
+    ChatEvent, ChatRequest, ToolStartedPayload, ToolFinishedPayload,
+    AnalysisStartedPayload, SummarySavedPayload, InitialStartedPayload,
+    InitialFinishedPayload,
+};
 
 fn get_str_arg(args: &Value, keys: &[&str]) -> Option<String> {
     for &key in keys {
@@ -209,7 +170,7 @@ pub async fn execute_mcp_tool(
         args: processed_args.clone(),
         resolved_host: resolved_host.clone(),
     };
-    let _ = window.emit("mcp-tool-started", start_payload);
+    let _ = window.emit("chat-event", ChatEvent::McpToolStarted(start_payload));
 
     // 3. Match and execute the appropriate command in a future
     let execution_future = async {
@@ -385,7 +346,7 @@ pub async fn execute_mcp_tool(
         is_cached: result.is_cached,
         cache_time: result.cache_time.clone(),
     };
-    let _ = window.emit("mcp-tool-finished", finished_payload);
+    let _ = window.emit("chat-event", ChatEvent::McpToolFinished(finished_payload));
 
     // 4. Analysis phase
     let history_block = get_history_block_rust(&summaries, historyLimit);
@@ -400,7 +361,7 @@ pub async fn execute_mcp_tool(
         task_id: taskId.clone(),
         analysis_task_id: analysis_task_id.clone(),
     };
-    let _ = window.emit("mcp-analysis-started", analysis_started_payload);
+    let _ = window.emit("chat-event", ChatEvent::McpAnalysisStarted(analysis_started_payload));
 
     let is_rag = toolId == "query_nw_db" || toolId == "network_query_nw_db";
     let analyze_payload = crate::llm::llm::AnalyzePayload {
@@ -440,7 +401,7 @@ pub async fn execute_mcp_tool(
             summary: new_summary,
             content: response_str.clone(),
         };
-        let _ = window.emit("mcp-summary-saved", summary_payload);
+        let _ = window.emit("chat-event", ChatEvent::McpSummarySaved(summary_payload));
     }
 
     Ok(response_str)
@@ -496,59 +457,48 @@ fn get_tool_label(tool_name: &str) -> String {
 }
 
 #[tauri::command]
-#[allow(non_snake_case)]
 pub async fn handle_mcp_message(
     app: AppHandle,
     window: Window,
     llama_state: State<'_, crate::llm::llm::LlamaState>,
     rag_state: State<'_, crate::mcp::rag::RagState>,
-    userMessage: String,
-    summaries: Vec<crate::history::SummaryItem>,
-    recentIps: Vec<String>,
-    historyLimit: usize,
-    mcpTimeout: u64,
+    payload: ChatRequest,
 ) -> Result<(), String> {
+    let ChatRequest {
+        user_message: userMessage,
+        summaries,
+        recent_ips: recentIps,
+        history_limit: historyLimit,
+        mcp_timeout: mcpTimeout,
+    } = payload;
+
     // 1. Generate thinkingTaskId and emit mcp-initial-started
     let thinking_task_id = format!("task_think_{}", chrono::Utc::now().timestamp_millis());
     
-    #[derive(serde::Serialize, Clone)]
-    struct InitialStartedPayload {
-        #[serde(rename = "taskId")]
-        task_id: String,
-    }
-    
-    let _ = window.emit("mcp-initial-started", InitialStartedPayload {
+    let _ = window.emit("chat-event", ChatEvent::McpInitialStarted(InitialStartedPayload {
         task_id: thinking_task_id.clone(),
-    });
+    }));
 
     // 2. Build history block and prompt
     let history_block = get_history_block_rust(&summaries, historyLimit);
     let prompt_with_context = format!("【ユーザー入力】\n{}{}", userMessage, history_block);
 
     // 3. Call ask_llm_initial
-    let payload = crate::llm::llm::AskInitialPayload {
+    let payload_initial = crate::llm::llm::AskInitialPayload {
         prompt: prompt_with_context,
     };
     
-    let response = match crate::llm::llm::ask_llm_initial(window.clone(), payload, llama_state.clone()).await {
+    let response = match crate::llm::llm::ask_llm_initial(window.clone(), payload_initial, llama_state.clone()).await {
         Ok(res) => res,
         Err(e) => {
             return Err(e.to_string());
         }
     };
 
-    // Emit initial finished event
-    #[derive(serde::Serialize, Clone)]
-    struct InitialFinishedPayload {
-        #[serde(rename = "taskId")]
-        task_id: String,
-        content: String,
-    }
-
-    let _ = window.emit("mcp-initial-finished", InitialFinishedPayload {
+    let _ = window.emit("chat-event", ChatEvent::McpInitialFinished(InitialFinishedPayload {
         task_id: thinking_task_id.clone(),
         content: response.clone(),
-    });
+    }));
 
     // 4. Extract and parse tool calls
     let json_blocks = extract_json_blocks(&response);
@@ -647,7 +597,7 @@ pub async fn handle_mcp_message(
                     summary: new_summary,
                     content: response_c,
                 };
-                let _ = window_c.emit("mcp-summary-saved", summary_payload);
+                let _ = window_c.emit("chat-event", ChatEvent::McpSummarySaved(summary_payload));
             }
         });
     }

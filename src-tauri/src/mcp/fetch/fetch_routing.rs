@@ -108,11 +108,13 @@ pub async fn fetch_routing(
         match crate::mcp::route::yaml::save_validated_yaml(&app_clone, &name_clone, &validated_yaml) {
             Ok(saved_path) => {
                 log::info!("Background YAML normalization succeeded, saved to: {}", saved_path);
-                let payload = RouteYamlSavedPayload {
-                    device_name: name_clone,
-                    saved_path,
-                };
-                if let Err(e) = app_clone.emit("route-yaml-saved", payload) {
+                if let Err(e) = app_clone.emit(
+                    "chat-event",
+                    crate::mcp::protocol::ChatEvent::RouteYamlSaved {
+                        device_name: name_clone,
+                        saved_path,
+                    },
+                ) {
                     log::error!("Error emitting route-yaml-saved event: {}", e);
                 }
             }

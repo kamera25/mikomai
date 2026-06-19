@@ -1,50 +1,12 @@
 import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Message, SummaryItem } from "../../types";
+import { Message, SummaryItem, ChatEvent } from "../../types";
 import i18n from "../../i18n";
 
 interface UseMcpListenersProps {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   setSummaries: React.Dispatch<React.SetStateAction<SummaryItem[]>>;
   updateRecentHosts?: (hosts: string[]) => void;
-}
-
-interface ToolStartedPayload {
-  taskId: string;
-  toolId: string;
-  toolLabel: string;
-  args: any;
-  resolvedHost?: string;
-}
-
-interface ToolFinishedPayload {
-  taskId: string;
-  success: boolean;
-  output: string;
-  savedPath?: string;
-  isCached?: boolean;
-  cacheTime?: string;
-}
-
-interface AnalysisStartedPayload {
-  taskId: string;
-  analysisTaskId: string;
-}
-
-interface SummarySavedPayload {
-  taskId: string;
-  summaryText: string;
-  summary: SummaryItem;
-  content: string;
-}
-
-interface InitialStartedPayload {
-  taskId: string;
-}
-
-interface InitialFinishedPayload {
-  taskId: string;
-  content: string;
 }
 
 export function useMcpListeners({
@@ -71,344 +33,276 @@ export function useMcpListeners({
 
   useEffect(() => {
     let isCancelled = false;
-    const unlistenFns: (() => void)[] = [];
+    let unlistenFn: (() => void) | null = null;
 
     const setupListeners = async () => {
-      // 1. ARP yaml saved (from background)
-      const uArp = await listen<{ deviceName: string; savedPath: string }>(
-        "arp-yaml-saved",
+      const unlisten = await listen<ChatEvent>(
+        "chat-event",
         (event) => {
           if (isCancelled) return;
-          const { deviceName, savedPath } = event.payload;
-          setMessagesRef.current((prev) =>
-            prev.map((msg) => {
-              const msgDevice = msg.args?.deviceName || msg.args?.device_name;
-              if (
-                msg.event_type === "ToolExecution" &&
-                msg.tool_id === "fetch_arp" &&
-                msgDevice === deviceName &&
-                !msg.saved_path
-              ) {
-                return { ...msg, saved_path: savedPath };
-              }
-              return msg;
-            })
-          );
-        }
-      );
-      if (isCancelled) {
-        uArp();
-      } else {
-        unlistenFns.push(uArp);
-      }
+          const chatEvent = event.payload;
 
-      // 2. Route yaml saved (from background)
-      const uRoute = await listen<{ deviceName: string; savedPath: string }>(
-        "route-yaml-saved",
-        (event) => {
-          if (isCancelled) return;
-          const { deviceName, savedPath } = event.payload;
-          setMessagesRef.current((prev) => {
-            const next = prev.map((msg) => {
-              const msgDevice = msg.args?.deviceName || msg.args?.device_name;
-              if (
-                msg.event_type === "ToolExecution" &&
-                msg.tool_id === "fetch_routing" &&
-                msgDevice === deviceName &&
-                !msg.saved_path
-              ) {
-                return { ...msg, saved_path: savedPath };
-              }
-              return msg;
-            });
-
-            const targetTaskId = activeAnalysisTaskIdRef.current || activeInitialTaskIdRef.current;
-            if (targetTaskId) {
-              return next.map((msg) =>
-                msg.task_id === targetTaskId
-                  ? ({
-                      ...msg,
-                      summary_text: i18n.t("chat.routing_table_updated"),
-                      isHidden: false,
-                    } as Message)
-                  : msg
+          switch (chatEvent.type) {
+            case "arpYamlSaved": {
+              const { deviceName, savedPath } = chatEvent.payload;
+              setMessagesRef.current((prev) =>
+                prev.map((msg) => {
+                  const msgDevice = msg.args?.deviceName || msg.args?.device_name;
+                  if (
+                    msg.event_type === "ToolExecution" &&
+                    msg.tool_id === "fetch_arp" &&
+                    msgDevice === deviceName &&
+                    !msg.saved_path
+                  ) {
+                    return { ...msg, saved_path: savedPath };
+                  }
+                  return msg;
+                })
               );
+              break;
             }
-            return next;
-          });
-        }
-      );
-      if (isCancelled) {
-        uRoute();
-      } else {
-        unlistenFns.push(uRoute);
-      }
 
-      // 3. MCP Tool Started
-      const uToolStarted = await listen<ToolStartedPayload>(
-        "mcp-tool-started",
-        (event) => {
-          if (isCancelled) return;
-          const { taskId, toolId, toolLabel, args, resolvedHost } = event.payload;
-          const isRag = toolId === "query_nw_db" || toolId === "network_query_nw_db";
-          const statusMsg = isRag
-            ? i18n.t("chat.searching_nwdb")
-            : i18n.t("chat.running_tool", { toolLabel });
-
-          setMessagesRef.current((prev) => [
-            ...prev,
-            {
-              role: "ai",
-              content: "",
-              timestamp: new Date().toISOString(),
-              isToolLoading: true,
-              task_id: taskId,
-              event_type: "ToolExecution",
-              status: "Running",
-              action_name: toolLabel,
-              tool_id: toolId,
-              summary_text: statusMsg,
-              raw_data: null,
-              args,
-            },
-          ]);
-
-          if (resolvedHost && resolvedHost.trim()) {
-            updateRecentHostsRef.current?.([resolvedHost.trim()]);
-          }
-        }
-      );
-      if (isCancelled) {
-        uToolStarted();
-      } else {
-        unlistenFns.push(uToolStarted);
-      }
-
-      // 4. MCP Tool Finished
-      const uToolFinished = await listen<ToolFinishedPayload>(
-        "mcp-tool-finished",
-        (event) => {
-          if (isCancelled) return;
-          const { taskId, success, output, savedPath, isCached, cacheTime } = event.payload;
-          setMessagesRef.current((prev) =>
-            prev.map((msg) =>
-              msg.task_id === taskId
-                ? ({
-                    ...msg,
-                    isToolLoading: false,
-                    status: success ? "Success" : "Failed",
-                    summary_text: success
-                      ? i18n.t("chat.tool_success", { toolLabel: msg.action_name })
-                      : i18n.t("chat.tool_failed", { toolLabel: msg.action_name }),
-                    raw_data: output || "No output provided",
-                    saved_path: savedPath,
-                    is_cached: isCached,
-                    cache_time: cacheTime,
-                  } as Message)
-                : msg
-            )
-          );
-        }
-      );
-      if (isCancelled) {
-        uToolFinished();
-      } else {
-        unlistenFns.push(uToolFinished);
-      }
-
-      // 5. MCP Analysis Started
-      const uAnalysisStarted = await listen<AnalysisStartedPayload>(
-        "mcp-analysis-started",
-        (event) => {
-          if (isCancelled) return;
-          const { analysisTaskId } = event.payload;
-          activeAnalysisTaskIdRef.current = analysisTaskId;
-          activeAnalysisContentRef.current = "";
-
-          setMessagesRef.current((prev) => [
-            ...prev,
-            {
-              role: "ai",
-              content: i18n.t("chat.analyzing"),
-              timestamp: new Date().toISOString(),
-              isToolLoading: true,
-              isHidden: true, // Hide by default
-              task_id: analysisTaskId,
-              event_type: "AgentResponse",
-            },
-          ]);
-        }
-      );
-      if (isCancelled) {
-        uAnalysisStarted();
-      } else {
-        unlistenFns.push(uAnalysisStarted);
-      }
-
-      // 6. LLM Chunk (streamed from analyze_tool_output or ask_llm_initial)
-      const uLlmChunk = await listen<string>("llm-chunk", (event) => {
-        if (isCancelled) return;
-        const chunk = event.payload;
-        if (activeInitialTaskIdRef.current) {
-          activeInitialContentRef.current += chunk;
-          setMessagesRef.current((prev) =>
-            prev.map((msg) =>
-              msg.task_id === activeInitialTaskIdRef.current
-                ? {
-                    ...msg,
-                    content: activeInitialContentRef.current,
-                    isToolLoading: false,
-                    isHidden: false,
+            case "routeYamlSaved": {
+              const { deviceName, savedPath } = chatEvent.payload;
+              setMessagesRef.current((prev) => {
+                const next = prev.map((msg) => {
+                  const msgDevice = msg.args?.deviceName || msg.args?.device_name;
+                  if (
+                    msg.event_type === "ToolExecution" &&
+                    msg.tool_id === "fetch_routing" &&
+                    msgDevice === deviceName &&
+                    !msg.saved_path
+                  ) {
+                    return { ...msg, saved_path: savedPath };
                   }
-                : msg
-            )
-          );
-        } else if (activeAnalysisTaskIdRef.current) {
-          activeAnalysisContentRef.current += chunk;
-          setMessagesRef.current((prev) =>
-            prev.map((msg) =>
-              msg.task_id === activeAnalysisTaskIdRef.current
-                ? {
-                    ...msg,
-                    content: activeAnalysisContentRef.current,
-                    isToolLoading: false,
-                    isHidden: false,
-                  }
-                : msg
-            )
-          );
-        }
-      });
-      if (isCancelled) {
-        uLlmChunk();
-      } else {
-        unlistenFns.push(uLlmChunk);
-      }
+                  return msg;
+                });
 
-      // 7. Agent Selected
-      const uAgentSelected = await listen<string>("agent-selected", (event) => {
-        if (isCancelled) return;
-        const agentName = event.payload;
-        const targetTaskId = activeAnalysisTaskIdRef.current || activeInitialTaskIdRef.current;
-        if (targetTaskId) {
-          const isAnalysis = activeAnalysisTaskIdRef.current === targetTaskId;
-          setMessagesRef.current((prev) =>
-            prev.map((msg) =>
-              msg.task_id === targetTaskId
-                ? ({
-                    ...msg,
-                    summary_text: isAnalysis
-                      ? i18n.t("chat.agent_analyzing", { agentName })
-                      : i18n.t("chat.agent_processing", { agentName }),
-                    isHidden: false,
-                  } as Message)
-                : msg
-            )
-          );
-        }
-      });
-      if (isCancelled) {
-        uAgentSelected();
-      } else {
-        unlistenFns.push(uAgentSelected);
-      }
+                const targetTaskId = activeAnalysisTaskIdRef.current || activeInitialTaskIdRef.current;
+                if (targetTaskId) {
+                  return next.map((msg) =>
+                    msg.task_id === targetTaskId
+                      ? ({
+                          ...msg,
+                          summary_text: i18n.t("chat.routing_table_updated"),
+                          isHidden: false,
+                        } as Message)
+                      : msg
+                  );
+                }
+                return next;
+              });
+              break;
+            }
 
-      // 7.1. MCP Initial Started
-      const uInitialStarted = await listen<InitialStartedPayload>(
-        "mcp-initial-started",
-        (event) => {
-          if (isCancelled) return;
-          const { taskId } = event.payload;
-          activeInitialTaskIdRef.current = taskId;
-          activeInitialContentRef.current = "";
+            case "mcpToolStarted": {
+              const { taskId, toolId, toolLabel, args, resolvedHost } = chatEvent.payload;
+              const isRag = toolId === "query_nw_db" || toolId === "network_query_nw_db";
+              const statusMsg = isRag
+                ? i18n.t("chat.searching_nwdb")
+                : i18n.t("chat.running_tool", { toolLabel });
 
-          setMessagesRef.current((prev) => [
-            ...prev,
-            {
-              role: "ai",
-              content: i18n.t("chat.thinking"),
-              timestamp: new Date().toISOString(),
-              isToolLoading: true,
-              isHidden: true,
-              task_id: taskId,
-              event_type: "AgentResponse",
-            },
-          ]);
-        }
-      );
-      if (isCancelled) {
-        uInitialStarted();
-      } else {
-        unlistenFns.push(uInitialStarted);
-      }
+              setMessagesRef.current((prev) => [
+                ...prev,
+                {
+                  role: "ai",
+                  content: "",
+                  timestamp: new Date().toISOString(),
+                  isToolLoading: true,
+                  task_id: taskId,
+                  event_type: "ToolExecution",
+                  status: "Running",
+                  action_name: toolLabel,
+                  tool_id: toolId,
+                  summary_text: statusMsg,
+                  raw_data: null,
+                  args,
+                },
+              ]);
 
-      // 7.2. MCP Initial Finished
-      const uInitialFinished = await listen<InitialFinishedPayload>(
-        "mcp-initial-finished",
-        (event) => {
-          if (isCancelled) return;
-          const { taskId, content } = event.payload;
-          setMessagesRef.current((prev) =>
-            prev.map((msg) =>
-              msg.task_id === taskId
-                ? ({
-                    ...msg,
-                    content,
-                    isHidden: false,
-                    isToolLoading: false,
-                  } as Message)
-                : msg
-            )
-          );
+              if (resolvedHost && resolvedHost.trim()) {
+                updateRecentHostsRef.current?.([resolvedHost.trim()]);
+              }
+              break;
+            }
 
-          if (activeInitialTaskIdRef.current === taskId) {
-            activeInitialTaskIdRef.current = null;
-            activeInitialContentRef.current = "";
+            case "mcpToolFinished": {
+              const { taskId, success, output, savedPath, isCached, cacheTime } = chatEvent.payload;
+              setMessagesRef.current((prev) =>
+                prev.map((msg) =>
+                  msg.task_id === taskId
+                    ? ({
+                        ...msg,
+                        isToolLoading: false,
+                        status: success ? "Success" : "Failed",
+                        summary_text: success
+                          ? i18n.t("chat.tool_success", { toolLabel: msg.action_name })
+                          : i18n.t("chat.tool_failed", { toolLabel: msg.action_name }),
+                        raw_data: output || "No output provided",
+                        saved_path: savedPath,
+                        is_cached: isCached,
+                        cache_time: cacheTime,
+                      } as Message)
+                    : msg
+                )
+              );
+              break;
+            }
+
+            case "mcpAnalysisStarted": {
+              const { analysisTaskId } = chatEvent.payload;
+              activeAnalysisTaskIdRef.current = analysisTaskId;
+              activeAnalysisContentRef.current = "";
+
+              setMessagesRef.current((prev) => [
+                ...prev,
+                {
+                  role: "ai",
+                  content: i18n.t("chat.analyzing"),
+                  timestamp: new Date().toISOString(),
+                  isToolLoading: true,
+                  isHidden: true, // Hide by default
+                  task_id: analysisTaskId,
+                  event_type: "AgentResponse",
+                },
+              ]);
+              break;
+            }
+
+            case "llmChunk": {
+              const chunk = chatEvent.payload;
+              if (activeInitialTaskIdRef.current) {
+                activeInitialContentRef.current += chunk;
+                setMessagesRef.current((prev) =>
+                  prev.map((msg) =>
+                    msg.task_id === activeInitialTaskIdRef.current
+                      ? {
+                          ...msg,
+                          content: activeInitialContentRef.current,
+                          isToolLoading: false,
+                          isHidden: false,
+                        }
+                      : msg
+                  )
+                );
+              } else if (activeAnalysisTaskIdRef.current) {
+                activeAnalysisContentRef.current += chunk;
+                setMessagesRef.current((prev) =>
+                  prev.map((msg) =>
+                    msg.task_id === activeAnalysisTaskIdRef.current
+                      ? {
+                          ...msg,
+                          content: activeAnalysisContentRef.current,
+                          isToolLoading: false,
+                          isHidden: false,
+                        }
+                      : msg
+                  )
+                );
+              }
+              break;
+            }
+
+            case "agentSelected": {
+              const agentName = chatEvent.payload;
+              const targetTaskId = activeAnalysisTaskIdRef.current || activeInitialTaskIdRef.current;
+              if (targetTaskId) {
+                const isAnalysis = activeAnalysisTaskIdRef.current === targetTaskId;
+                setMessagesRef.current((prev) =>
+                  prev.map((msg) =>
+                    msg.task_id === targetTaskId
+                      ? ({
+                          ...msg,
+                          summary_text: isAnalysis
+                            ? i18n.t("chat.agent_analyzing", { agentName })
+                            : i18n.t("chat.agent_processing", { agentName }),
+                          isHidden: false,
+                        } as Message)
+                      : msg
+                  )
+                );
+              }
+              break;
+            }
+
+            case "mcpInitialStarted": {
+              const { taskId } = chatEvent.payload;
+              activeInitialTaskIdRef.current = taskId;
+              activeInitialContentRef.current = "";
+
+              setMessagesRef.current((prev) => [
+                ...prev,
+                {
+                  role: "ai",
+                  content: i18n.t("chat.thinking"),
+                  timestamp: new Date().toISOString(),
+                  isToolLoading: true,
+                  isHidden: true,
+                  task_id: taskId,
+                  event_type: "AgentResponse",
+                },
+              ]);
+              break;
+            }
+
+            case "mcpInitialFinished": {
+              const { taskId, content } = chatEvent.payload;
+              setMessagesRef.current((prev) =>
+                prev.map((msg) =>
+                  msg.task_id === taskId
+                    ? ({
+                        ...msg,
+                        content,
+                        isHidden: false,
+                        isToolLoading: false,
+                      } as Message)
+                    : msg
+                )
+              );
+
+              if (activeInitialTaskIdRef.current === taskId) {
+                activeInitialTaskIdRef.current = null;
+                activeInitialContentRef.current = "";
+              }
+              break;
+            }
+
+            case "mcpSummarySaved": {
+              const { taskId, summaryText, summary, content } = chatEvent.payload;
+              setMessagesRef.current((prev) =>
+                prev.map((msg) =>
+                  msg.task_id === taskId
+                    ? ({
+                        ...msg,
+                        content,
+                        isHidden: false,
+                        isToolLoading: false,
+                        summary_text: summaryText,
+                      } as Message)
+                    : msg
+                )
+              );
+
+              setSummariesRef.current((prev) => {
+                const next = [...prev, summary];
+                return next.length > 20 ? next.slice(next.length - 20) : next;
+              });
+
+              // Reset active analysis state
+              if (activeAnalysisTaskIdRef.current === taskId) {
+                activeAnalysisTaskIdRef.current = null;
+                activeAnalysisContentRef.current = "";
+              }
+              break;
+            }
           }
         }
       );
+
       if (isCancelled) {
-        uInitialFinished();
+        unlisten();
       } else {
-        unlistenFns.push(uInitialFinished);
-      }
-
-      // 8. MCP Summary Saved
-      const uSummarySaved = await listen<SummarySavedPayload>(
-        "mcp-summary-saved",
-        (event) => {
-          if (isCancelled) return;
-          const { taskId, summaryText, summary, content } = event.payload;
-          setMessagesRef.current((prev) =>
-            prev.map((msg) =>
-              msg.task_id === taskId
-                ? ({
-                    ...msg,
-                    content,
-                    isHidden: false,
-                    isToolLoading: false,
-                    summary_text: summaryText,
-                  } as Message)
-                : msg
-            )
-          );
-
-          setSummariesRef.current((prev) => {
-            const next = [...prev, summary];
-            return next.length > 20 ? next.slice(next.length - 20) : next;
-          });
-
-          // Reset active analysis state
-          if (activeAnalysisTaskIdRef.current === taskId) {
-            activeAnalysisTaskIdRef.current = null;
-            activeAnalysisContentRef.current = "";
-          }
-        }
-      );
-      if (isCancelled) {
-        uSummarySaved();
-      } else {
-        unlistenFns.push(uSummarySaved);
+        unlistenFn = unlisten;
       }
     };
 
@@ -416,7 +310,9 @@ export function useMcpListeners({
 
     return () => {
       isCancelled = true;
-      unlistenFns.forEach((unlisten) => unlisten());
+      if (unlistenFn) {
+        unlistenFn();
+      }
     };
   }, []); // Only register once on mount!
 }

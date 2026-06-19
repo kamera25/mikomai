@@ -108,11 +108,13 @@ pub async fn fetch_arp(
         match crate::mcp::arp::yaml::save_validated_yaml(&app_clone, &name_clone, &validated_yaml) {
             Ok(saved_path) => {
                 log::info!("Background YAML normalization succeeded, saved to: {}", saved_path);
-                let payload = ArpYamlSavedPayload {
-                    device_name: name_clone,
-                    saved_path,
-                };
-                if let Err(e) = app_clone.emit("arp-yaml-saved", payload) {
+                if let Err(e) = app_clone.emit(
+                    "chat-event",
+                    crate::mcp::protocol::ChatEvent::ArpYamlSaved {
+                        device_name: name_clone,
+                        saved_path,
+                    },
+                ) {
                     log::error!("Error emitting arp-yaml-saved event: {}", e);
                 }
             }

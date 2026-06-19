@@ -114,7 +114,7 @@ fn process_token_bytes(
     match std::str::from_utf8(bytes_accumulator) {
         Ok(s) => {
             if let Some(w) = window {
-                let _ = w.emit("llm-chunk", s);
+                let _ = w.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(s.to_string()));
             }
             result_string.push_str(s);
             bytes_accumulator.clear();
@@ -123,12 +123,16 @@ fn process_token_bytes(
             let utf8_error_index = e.valid_up_to();
             let valid_str = String::from_utf8_lossy(&bytes_accumulator[..utf8_error_index]).to_string();
             if let Some(w) = window {
-                let _ = w.emit("llm-chunk", &valid_str);
+                let _ = w.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(valid_str.clone()));
             }
             result_string.push_str(&valid_str);
             bytes_accumulator.drain(..utf8_error_index);
             if bytes_accumulator.len() > 8 {
-                 result_string.push_str(&String::from_utf8_lossy(bytes_accumulator));
+                 let s = String::from_utf8_lossy(bytes_accumulator);
+                 if let Some(w) = window {
+                     let _ = w.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(s.to_string()));
+                 }
+                 result_string.push_str(&s);
                  bytes_accumulator.clear();
             }
         }

@@ -68,13 +68,13 @@ pub async fn stream_self_introduction(window: &tauri::Window) -> String {
                  - **ログの分析とトラブルシューティング**\n\n\
                  何かお手伝いできることはありますか？お気軽に話しかけてください！";
 
-    let _ = window.emit("agent-selected", "MIKOMAI (アシスタント)");
+    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI (アシスタント)".to_string()));
 
     let chars: Vec<char> = intro.chars().collect();
     let chunk_size = 5;
     for chunk in chars.chunks(chunk_size) {
         let chunk_str: String = chunk.iter().collect();
-        let _ = window.emit("llm-chunk", &chunk_str);
+        let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(chunk_str));
         tokio::time::sleep(std::time::Duration::from_millis(15)).await;
     }
 

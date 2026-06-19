@@ -134,6 +134,56 @@ export interface AnalyzePayload {
   historyBlock?: string | null;
 }
 
+export interface ToolStartedPayload {
+  taskId: string;
+  toolId: string;
+  toolLabel: string;
+  args: any;
+  resolvedHost?: string;
+}
+
+export interface ToolFinishedPayload {
+  taskId: string;
+  success: boolean;
+  output: string;
+  savedPath?: string;
+  isCached?: boolean;
+  cacheTime?: string;
+}
+
+export interface AnalysisStartedPayload {
+  taskId: string;
+  analysisTaskId: string;
+}
+
+export interface InitialStartedPayload {
+  taskId: string;
+}
+
+export interface InitialFinishedPayload {
+  taskId: string;
+  content: string;
+}
+
+export interface SummarySavedPayload {
+  taskId: string;
+  summaryText: string;
+  summary: SummaryItem;
+  content: string;
+}
+
+export type ChatEvent =
+  | { type: "arpYamlSaved"; payload: { deviceName: string; savedPath: string } }
+  | { type: "routeYamlSaved"; payload: { deviceName: string; savedPath: string } }
+  | { type: "mcpToolStarted"; payload: ToolStartedPayload }
+  | { type: "mcpToolFinished"; payload: ToolFinishedPayload }
+  | { type: "mcpAnalysisStarted"; payload: AnalysisStartedPayload }
+  | { type: "llmChunk"; payload: string }
+  | { type: "agentSelected"; payload: string }
+  | { type: "mcpInitialStarted"; payload: InitialStartedPayload }
+  | { type: "mcpInitialFinished"; payload: InitialFinishedPayload }
+  | { type: "mcpSummarySaved"; payload: SummarySavedPayload };
+
 export interface ChatSession {
   id: string;
   type: "session";
