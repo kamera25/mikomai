@@ -160,64 +160,18 @@ pub async fn network_show(
     device: NetmikoDeviceConfig,
     command: String,
 ) -> Result<CommandResult, TauriError> {
-    let mut target_device = device.clone();
-    
-    // Try to resolve it from MCP/Connections, falling back to passed-in device if not found
-    if let Some((ip, user, password, enable_password, dtype)) = get_device_config(&app, &device.host) {
-        target_device.host = ip;
-        target_device.username = user;
-        if password.is_some() {
-            target_device.password = password;
-        }
-        if enable_password.is_some() {
-            target_device.enable_password = enable_password;
-        }
-        target_device.device_type = dtype;
-    }
+    let target_device = device_resolver::TargetDeviceBuilder::new(app.clone(), device)
+        .resolve()
+        .await?;
 
-    // Load settings for console override if connection type is console/serial
-    let mut is_console = target_device.console_port.is_some();
-    if !is_console {
-        if let Ok(connections) = crate::connections::load_connections(app.clone()) {
-            if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&target_device.host) || c.ip.as_str() == target_device.host) {
-                if conn.conn_type == crate::connections::ConnectionType::Console {
-                    is_console = true;
-                }
-            }
-        }
-    }
-
-
-    if is_console {
-        let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-        if let Some(ref port) = settings.console_port {
-            if !port.trim().is_empty() && port != "None" {
-                target_device.console_port = Some(port.clone());
-                target_device.console_baud_rate = settings.console_baud_rate;
-            }
-        }
+    if target_device.console_port().is_none() {
+        log::info!("Executing read-only command on {}: {}", target_device.host(), command);
     } else {
-        target_device.console_port = None;
-        target_device.console_baud_rate = None;
-    }
-
-    if target_device.console_port.is_none() {
-        // Resolve using preference
-        let host_to_resolve = target_device.host.clone();
-        let app_clone = app.clone();
-        let ip = tokio::task::spawn_blocking(move || {
-            crate::connections::resolve_host_with_preference(&app_clone, &host_to_resolve)
-        })
-        .await
-        .map_err(|e| NetworkError::SpawnBlocking(e.to_string()))??;
-        target_device.host = ip.to_string();
-        log::info!("Executing read-only command on {}: {}", target_device.host, command);
-    } else {
-        log::info!("Executing read-only command via console port {}: {}", target_device.console_port.as_ref().unwrap(), command);
+        log::info!("Executing read-only command via console port {}: {}", target_device.console_port().unwrap(), command);
     }
 
     let wrapper = SidecarNetmikoWrapper::new(&app);
-    match wrapper.execute_show(&target_device, &command).await {
+    match wrapper.execute_show(&target_device.to_netmiko_config(), &command).await {
         Ok(output) => Ok(CommandResult { success: true, output, saved_path: None, is_cached: None, cache_time: None }),
         Err(err) => Ok(CommandResult { success: false, output: err.to_string(), saved_path: None, is_cached: None, cache_time: None }),
     }
@@ -229,64 +183,18 @@ pub async fn network_config(
     device: NetmikoDeviceConfig,
     commands: Vec<String>,
 ) -> Result<CommandResult, TauriError> {
-    let mut target_device = device.clone();
-    
-    // Try to resolve it from MCP/Connections, falling back to passed-in device if not found
-    if let Some((ip, user, password, enable_password, dtype)) = get_device_config(&app, &device.host) {
-        target_device.host = ip;
-        target_device.username = user;
-        if password.is_some() {
-            target_device.password = password;
-        }
-        if enable_password.is_some() {
-            target_device.enable_password = enable_password;
-        }
-        target_device.device_type = dtype;
-    }
+    let target_device = device_resolver::TargetDeviceBuilder::new(app.clone(), device)
+        .resolve()
+        .await?;
 
-    // Load settings for console override if connection type is console/serial
-    let mut is_console = target_device.console_port.is_some();
-    if !is_console {
-        if let Ok(connections) = crate::connections::load_connections(app.clone()) {
-            if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&target_device.host) || c.ip.as_str() == target_device.host) {
-                if conn.conn_type == crate::connections::ConnectionType::Console {
-                    is_console = true;
-                }
-            }
-        }
-    }
-
-
-    if is_console {
-        let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-        if let Some(ref port) = settings.console_port {
-            if !port.trim().is_empty() && port != "None" {
-                target_device.console_port = Some(port.clone());
-                target_device.console_baud_rate = settings.console_baud_rate;
-            }
-        }
+    if target_device.console_port().is_none() {
+        log::info!("Executing WRITE command on {}: {:?}", target_device.host(), commands);
     } else {
-        target_device.console_port = None;
-        target_device.console_baud_rate = None;
-    }
-
-    if target_device.console_port.is_none() {
-        // Resolve using preference
-        let host_to_resolve = target_device.host.clone();
-        let app_clone = app.clone();
-        let ip = tokio::task::spawn_blocking(move || {
-            crate::connections::resolve_host_with_preference(&app_clone, &host_to_resolve)
-        })
-        .await
-        .map_err(|e| NetworkError::SpawnBlocking(e.to_string()))??;
-        target_device.host = ip.to_string();
-        log::info!("Executing WRITE command on {}: {:?}", target_device.host, commands);
-    } else {
-        log::info!("Executing WRITE command via console port {:?}: {:?}", target_device.console_port.as_ref().unwrap(), commands);
+        log::info!("Executing WRITE command via console port {:?}: {:?}", target_device.console_port().unwrap(), commands);
     }
 
     let wrapper = SidecarNetmikoWrapper::new(&app);
-    match wrapper.execute_config(&target_device, commands).await {
+    match wrapper.execute_config(&target_device.to_netmiko_config(), commands).await {
         Ok(output) => Ok(CommandResult { success: true, output, saved_path: None, is_cached: None, cache_time: None }),
         Err(err) => Ok(CommandResult { success: false, output: err.to_string(), saved_path: None, is_cached: None, cache_time: None }),
     }
@@ -358,6 +266,7 @@ pub async fn send_mcp_message(state: State<'_, McpState>, message: String) -> Re
 
 pub mod dns;
 pub mod fact_graph;
+pub mod device_resolver;
 
 #[cfg(test)]
 mod tests {
