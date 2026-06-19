@@ -64,6 +64,7 @@ pub fn run() {
             history::load_summaries,
             history::save_summary,
             connections::load_connections,
+            connections::get_mcp_hosts,
             connections::save_connections,
             scheduled_tasks::load_scheduled_tasks,
             scheduled_tasks::save_scheduled_tasks,

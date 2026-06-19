@@ -34,9 +34,16 @@ export function useHostSuggestions({
   const fetchHosts = useCallback(async (hostToResolve?: string) => {
     try {
       const [connections, mcpHosts] = await Promise.all([
-        invoke<Connection[]>("load_connections"),
-        invoke<McpHost[]>("get_mcp_hosts"),
+        invoke<Connection[]>("load_connections").catch((err) => {
+          console.error("Failed to load connections:", err);
+          return [];
+        }),
+        invoke<McpHost[]>("get_mcp_hosts").catch((err) => {
+          console.error("Failed to get MCP hosts:", err);
+          return [];
+        }),
       ]);
+
 
       const hostMap = new Map<string, string>();
       if (connections) {

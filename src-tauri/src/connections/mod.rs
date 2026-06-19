@@ -126,6 +126,13 @@ pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, TauriE
 }
 
 #[tauri::command]
+pub fn get_mcp_hosts() -> Result<Vec<McpHost>, TauriError> {
+    let hosts = vec![];
+    Ok(hosts)
+}
+
+
+#[tauri::command]
 pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>) -> Result<(), TauriError> {
     let old_connections = load_connections_raw(&app).unwrap_or_default();
     let path = get_connections_path(&app);
