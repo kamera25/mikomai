@@ -26,6 +26,9 @@ pub enum MikomaiError {
 
     #[error("Json error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("Validation error: {0}")]
+    Validation(String),
 }
 
 #[derive(Debug)]

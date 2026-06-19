@@ -28,6 +28,7 @@ use std::path::PathBuf;
 use tauri::Manager;
 use crate::crypto::{encrypt, decrypt};
 use crate::error::TauriError;
+use validator::Validate;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectionError {
@@ -53,7 +54,7 @@ pub enum ConnectionError {
     HostResolutionFailed(String, String),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Connection {
     pub id: ConnectionId,
@@ -61,6 +62,7 @@ pub struct Connection {
     pub hostname: Hostname,
     pub ip: IpAddress,
     #[serde(default)]
+    #[validate(range(min = 1, max = 65535))]
     pub port: Option<u16>,
     #[serde(rename = "type")]
     pub conn_type: ConnectionType,
@@ -135,6 +137,9 @@ pub fn get_mcp_hosts() -> Result<Vec<McpHost>, TauriError> {
 
 #[tauri::command]
 pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>) -> Result<(), TauriError> {
+    for conn in &connections {
+        conn.validate().map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
+    }
     let old_connections = load_connections_raw(&app).unwrap_or_default();
     let path = get_connections_path(&app);
 

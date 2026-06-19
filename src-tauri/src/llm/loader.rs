@@ -15,6 +15,9 @@ pub async fn load_model(
     path: String,
     state: tauri::State<'_, LlamaState>,
 ) -> Result<String, TauriError> {
+    if path.contains("..") {
+        return Err(TauriError(crate::error::MikomaiError::Validation("Path traversal detected".to_string())));
+    }
     {
         let mut status_lock = state.status.lock().await;
         *status_lock = ModelState::Loading;

@@ -5,6 +5,9 @@ use crate::llm::LlmError;
 
 #[tauri::command]
 pub async fn download_model(app: tauri::AppHandle, repo: String, filename: String) -> Result<String, TauriError> {
+    if repo.contains("..") || filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return Err(TauriError(crate::error::MikomaiError::Validation("Invalid path in repo or filename".to_string())));
+    }
     let res = download_model_inner(app, repo, filename).await?;
     Ok(res)
 }
@@ -62,6 +65,11 @@ async fn download_model_inner(app: tauri::AppHandle, repo: String, filename: Str
 
 #[tauri::command]
 pub fn open_model_dir(app: tauri::AppHandle, model_path: Option<String>) -> Result<(), TauriError> {
+    if let Some(ref path) = model_path {
+        if path.contains("..") {
+            return Err(TauriError(crate::error::MikomaiError::Validation("Path traversal detected".to_string())));
+        }
+    }
     open_model_dir_inner(app, model_path)?;
     Ok(())
 }

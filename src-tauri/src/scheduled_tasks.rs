@@ -9,6 +9,15 @@ use uuid::Uuid;
 use chrono::Local;
 use tracing::Instrument;
 use crate::error::TauriError;
+use validator::{Validate, ValidationError};
+
+pub fn validate_cron_expression(schedule: &str) -> Result<(), ValidationError> {
+    if Job::new_async(schedule, |_uuid, _l| Box::pin(async move {})).is_ok() {
+        Ok(())
+    } else {
+        Err(ValidationError::new("invalid_cron_expression"))
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ScheduledTaskError {
@@ -18,14 +27,17 @@ pub enum ScheduledTaskError {
     Json(#[from] serde_json::Error),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct ScheduledTask {
     pub id: String,
+    #[validate(length(min = 1))]
     pub name: String,
     pub status: String,
+    #[validate(custom(function = "validate_cron_expression"))]
     pub schedule: String,
     pub last_run: String,
+    #[validate(length(min = 1))]
     pub prompt: String,
 }
 
@@ -167,6 +179,9 @@ pub async fn load_scheduled_tasks(state: tauri::State<'_, SchedulerState>) -> Re
 
 #[tauri::command]
 pub async fn save_scheduled_tasks(app: tauri::AppHandle, tasks: Vec<ScheduledTask>, state: tauri::State<'_, SchedulerState>) -> Result<(), TauriError> {
+    for task in &tasks {
+        task.validate().map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
+    }
     {
         let mut state_tasks = state.tasks.lock().await;
         *state_tasks = tasks.clone();
@@ -198,6 +213,8 @@ pub async fn add_scheduled_task(
         prompt,
     };
 
+    task.validate().map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
+
     let path = get_tasks_path(&app);
     {
         let mut tasks = state.tasks.lock().await;
@@ -217,6 +234,8 @@ pub async fn update_scheduled_task(
     task: ScheduledTask,
     state: tauri::State<'_, SchedulerState>
 ) -> Result<(), TauriError> {
+    task.validate().map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
+
     let path = get_tasks_path(&app);
     {
         let mut tasks = state.tasks.lock().await;

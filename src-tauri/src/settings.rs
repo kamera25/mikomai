@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 use crate::error::TauriError;
+use validator::Validate;
 
 fn default_true() -> bool {
     true
@@ -28,15 +29,19 @@ fn default_max_gen() -> usize {
     2048
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
+    #[validate(range(min = 1, max = 100))]
     pub history_limit: usize,
+    #[validate(range(min = 0.0, max = 2.0))]
     pub temperature: f32,
+    #[validate(range(min = 0.5, max = 2.0))]
     pub repetition_penalty: f32,
     pub model_path: Option<String>,
     pub recent_ips: Vec<String>,
     #[serde(default)]
+    #[validate(range(min = 1, max = 300))]
     pub mcp_timeout: Option<u64>,
     pub db_path: Option<String>,
     #[serde(default)]
@@ -44,6 +49,7 @@ pub struct AppSettings {
     #[serde(default)]
     pub console_port: Option<String>,
     #[serde(default)]
+    #[validate(range(min = 110, max = 1000000))]
     pub console_baud_rate: Option<u32>,
     #[serde(default = "default_true")]
     pub preload_investigate: bool,
@@ -54,12 +60,16 @@ pub struct AppSettings {
     #[serde(default = "default_true")]
     pub preload_rag: bool,
     #[serde(default = "default_cache_expiry")]
+    #[validate(range(min = 1, max = 1440))]
     pub cache_expiry_minutes: Option<u64>,
     #[serde(default = "default_n_ctx")]
+    #[validate(range(min = 512, max = 32768))]
     pub n_ctx: usize,
     #[serde(default = "default_max_gen")]
+    #[validate(range(min = 1, max = 8192))]
     pub max_gen: usize,
     #[serde(default = "default_prompt_keep_tokens")]
+    #[validate(range(min = 0, max = 4096))]
     pub prompt_keep_tokens: usize,
 }
 
@@ -137,6 +147,7 @@ pub fn load_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<AppS
 
 #[tauri::command]
 pub fn save_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>, settings: AppSettings) -> Result<(), TauriError> {
+    settings.validate().map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
     let path = get_settings_path(&app);
     let data = serde_json::to_string_pretty(&settings)?;
     fs::write(path, data)?;
