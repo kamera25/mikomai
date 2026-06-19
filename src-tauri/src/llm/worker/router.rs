@@ -147,3 +147,51 @@ fn fallback_parse_route_output(output: &str) -> RouteResult {
         subsequent_task,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_route_output_json() {
+        let json_input = r#"{
+            "first_route": "KNOWLEDGE",
+            "subsequent_route": "ANALYSIS",
+            "subsequent_task": "Check network connectivity"
+        }"#;
+        let res = parse_route_output(json_input);
+        assert_eq!(res.routes, vec![Route::Knowledge, Route::Analysis]);
+        assert_eq!(res.subsequent_task, Some("Check network connectivity".to_string()));
+    }
+
+    #[test]
+    fn test_parse_route_output_json_markdown() {
+        let markdown_input = r#"```json
+        {
+            "first_route": "INVESTIGATE",
+            "subsequent_route": "NONE",
+            "subsequent_task": "NONE"
+        }
+        ```"#;
+        let res = parse_route_output(markdown_input);
+        assert_eq!(res.routes, vec![Route::Investigate]);
+        assert_eq!(res.subsequent_task, None);
+    }
+
+    #[test]
+    fn test_parse_route_output_fallback() {
+        let fallback_input = "FIRST_ROUTE: ANALYSIS\nSUBSEQUENT_ROUTE: INVESTIGATE\nTASK: Troubleshoot OSPF";
+        let res = parse_route_output(fallback_input);
+        assert_eq!(res.routes, vec![Route::Analysis, Route::Investigate]);
+        assert_eq!(res.subsequent_task, Some("Troubleshoot OSPF".to_string()));
+    }
+
+    #[test]
+    fn test_route_from_str() {
+        assert_eq!(Route::from_str("knowledge"), Route::Knowledge);
+        assert_eq!(Route::from_str("ANALYSIS"), Route::Analysis);
+        assert_eq!(Route::from_str("none"), Route::None);
+        assert_eq!(Route::from_str("anything_else"), Route::Investigate);
+    }
+}
+

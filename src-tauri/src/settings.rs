@@ -107,7 +107,7 @@ impl serde::Serialize for SettingsError {
     }
 }
 
-fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
+fn get_settings_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
     let path = app.path().app_data_dir().expect("Failed to get app data dir");
     if !path.exists() {
         let _ = fs::create_dir_all(&path);
@@ -116,7 +116,7 @@ fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
 }
 
 #[tauri::command]
-pub fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, TauriError> {
+pub fn load_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<AppSettings, TauriError> {
     let path = get_settings_path(&app);
     let mut settings = if !path.exists() {
         AppSettings::default()
@@ -134,8 +134,9 @@ pub fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, TauriError> {
     Ok(settings)
 }
 
+
 #[tauri::command]
-pub fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(), TauriError> {
+pub fn save_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>, settings: AppSettings) -> Result<(), TauriError> {
     let path = get_settings_path(&app);
     let data = serde_json::to_string_pretty(&settings)?;
     fs::write(path, data)?;

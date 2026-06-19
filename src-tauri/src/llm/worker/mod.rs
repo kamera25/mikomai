@@ -128,3 +128,43 @@ pub fn build_common_worker_prompt(
     }
     base
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_common_worker_prompt_default() {
+        let prompt = build_common_worker_prompt(
+            None,
+            Some("Check interfaces".to_string()),
+            Some("Show Interfaces".to_string()),
+            Some("GigabitEthernet0/1 is up".to_string()),
+            Some("\n\n<memory>\n1. memory content\n</memory>".to_string()),
+            Some("Fix interface duplex settings"),
+        );
+
+        assert!(prompt.contains("Check interfaces"));
+        assert!(prompt.contains("Show Interfaces"));
+        assert!(prompt.contains("GigabitEthernet0/1 is up"));
+        assert!(prompt.contains("memory content"));
+        assert!(prompt.contains("Fix interface duplex settings"));
+        assert!(prompt.contains("既にツールは実行済みです"));
+    }
+
+    #[test]
+    fn test_build_common_worker_prompt_override() {
+        let prompt = build_common_worker_prompt(
+            Some("Custom overriding prompt".to_string()),
+            None,
+            None,
+            None,
+            None,
+            Some("subsequent task"),
+        );
+
+        assert!(prompt.starts_with("Custom overriding prompt"));
+        assert!(prompt.contains("subsequent task"));
+    }
+}
+

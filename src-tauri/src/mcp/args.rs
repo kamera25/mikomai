@@ -1,7 +1,7 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 
-pub fn normalize_device_args(
-    app: &AppHandle,
+pub fn normalize_device_args<R: Runtime>(
+    app: &AppHandle<R>,
     device_name: Option<String>,
     device_name_camel: Option<String>,
     device: Option<String>,
@@ -42,8 +42,8 @@ pub fn normalize_device_args(
         .ok_or_else(|| "Error: device_name is required but was not provided or is empty.".to_string())
 }
 
-pub fn normalize_host_args(
-    app: &AppHandle,
+pub fn normalize_host_args<R: Runtime>(
+    app: &AppHandle<R>,
     host: Option<String>,
     device: Option<String>,
     device_name_camel: Option<String>,
@@ -70,7 +70,7 @@ pub fn normalize_host_args(
         .ok_or_else(|| "Error: host is required but was not provided or is empty.".to_string())
 }
 
-fn resolve_device_from_connections(app: &AppHandle, user_message: &str) -> Option<String> {
+fn resolve_device_from_connections<R: Runtime>(app: &AppHandle<R>, user_message: &str) -> Option<String> {
     let lower_msg = user_message.to_lowercase();
     if let Ok(connections) = crate::connections::load_connections_raw(app) {
         for conn in connections {
@@ -83,3 +83,78 @@ fn resolve_device_from_connections(app: &AppHandle, user_message: &str) -> Optio
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tauri::test::mock_app;
+
+    #[test]
+    fn test_normalize_device_args_direct() {
+        let app = mock_app();
+        let handle = app.handle();
+
+        // 1. Direct device name passing
+        let res = normalize_device_args(
+            handle,
+            Some("router-1".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(res.unwrap(), "router-1");
+
+        // 2. Direct device_name_camel
+        let res = normalize_device_args(
+            handle,
+            None,
+            Some("router-camel".to_string()),
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(res.unwrap(), "router-camel");
+
+        // 3. Fallback when everything is empty (should fail if settings/connections are empty)
+        let res = normalize_device_args(
+            handle,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_normalize_host_args_direct() {
+        let app = mock_app();
+        let handle = app.handle();
+
+        let res = normalize_host_args(
+            handle,
+            Some("192.168.1.1".to_string()),
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(res.unwrap(), "192.168.1.1");
+
+        let res = normalize_host_args(
+            handle,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(res.is_err());
+    }
+}
+

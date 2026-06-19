@@ -708,3 +708,95 @@ pub async fn handle_mcp_message(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_extract_json_blocks() {
+        let text = "Here is some text with { \"tool\": \"test\" } and another { \"abc\": 123 } block.";
+        let blocks = extract_json_blocks(text);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0], "{ \"tool\": \"test\" }");
+        assert_eq!(blocks[1], "{ \"abc\": 123 }");
+
+        let text_no_json = "No JSON blocks here.";
+        assert!(extract_json_blocks(text_no_json).is_empty());
+    }
+
+    #[test]
+    fn test_get_tool_label() {
+        assert_eq!(get_tool_label("self_network_ping"), "Ping");
+        assert_eq!(get_tool_label("network_query_nw_db"), "NWDB検索");
+        assert_eq!(get_tool_label("unknown_tool"), "unknown_tool");
+    }
+
+    #[test]
+    fn test_get_str_arg() {
+        let args = json!({
+            "host": "192.168.1.1",
+            "empty": "   "
+        });
+        assert_eq!(get_str_arg(&args, &["host"]), Some("192.168.1.1".to_string()));
+        assert_eq!(get_str_arg(&args, &["empty", "host"]), Some("192.168.1.1".to_string()));
+        assert_eq!(get_str_arg(&args, &["nonexistent"]), None);
+    }
+
+    #[test]
+    fn test_get_usize_arg() {
+        let args = json!({
+            "size": 64,
+            "size_str": "128"
+        });
+        assert_eq!(get_usize_arg(&args, &["size"]), Some(64));
+        assert_eq!(get_usize_arg(&args, &["size_str"]), Some(128));
+        assert_eq!(get_usize_arg(&args, &["nonexistent"]), None);
+    }
+
+    #[test]
+    fn test_get_u32_arg() {
+        let args = json!({
+            "count": 5,
+            "count_str": "10"
+        });
+        assert_eq!(get_u32_arg(&args, &["count"]), Some(5));
+        assert_eq!(get_u32_arg(&args, &["count_str"]), Some(10));
+        assert_eq!(get_u32_arg(&args, &["nonexistent"]), None);
+    }
+
+    #[test]
+    fn test_get_bool_arg() {
+        let args = json!({
+            "df_bool": true,
+            "df_str_true": "true",
+            "df_str_false": "FALSE"
+        });
+        assert_eq!(get_bool_arg(&args, &["df_bool"]), Some(true));
+        assert_eq!(get_bool_arg(&args, &["df_str_true"]), Some(true));
+        assert_eq!(get_bool_arg(&args, &["df_str_false"]), Some(false));
+        assert_eq!(get_bool_arg(&args, &["nonexistent"]), None);
+    }
+
+    #[test]
+    fn test_get_history_block_rust() {
+        let items = vec![
+            crate::history::SummaryItem {
+                timestamp: "2023-10-27".to_string(),
+                content: "First summary".to_string(),
+            },
+            crate::history::SummaryItem {
+                timestamp: "2023-10-28".to_string(),
+                content: "Second summary".to_string(),
+            },
+        ];
+        let block = get_history_block_rust(&items, 2);
+        assert!(block.contains("1. Second summary"));
+        assert!(block.contains("2. First summary"));
+
+        let empty_block = get_history_block_rust(&items, 0);
+        assert_eq!(empty_block, "");
+    }
+}
+

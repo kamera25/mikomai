@@ -86,7 +86,7 @@ pub struct McpHost {
     pub username: Username,
 }
 
-fn get_connections_path(app: &tauri::AppHandle) -> PathBuf {
+fn get_connections_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
     let path = app.path().app_data_dir().expect("Failed to get app data dir");
     if !path.exists() {
         let _ = fs::create_dir_all(&path);
@@ -94,7 +94,7 @@ fn get_connections_path(app: &tauri::AppHandle) -> PathBuf {
     path.join("connections.json")
 }
 
-pub(crate) fn load_connections_raw(app: &tauri::AppHandle) -> Result<Vec<Connection>, ConnectionError> {
+pub(crate) fn load_connections_raw<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<Connection>, ConnectionError> {
     let path = get_connections_path(app);
     if !path.exists() {
         return Ok(vec![]);
@@ -105,8 +105,9 @@ pub(crate) fn load_connections_raw(app: &tauri::AppHandle) -> Result<Vec<Connect
 }
 
 #[tauri::command]
-pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, TauriError> {
+pub fn load_connections<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<Vec<Connection>, TauriError> {
     let mut connections = load_connections_raw(&app)?;
+
 
     // Mask passwords for frontend so keychain is not accessed on startup/load.
     for conn in &mut connections {
