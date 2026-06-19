@@ -1,6 +1,8 @@
 use tauri::{AppHandle, Emitter, State, Window, Manager};
 use serde_json::Value;
 use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use crate::mcp::protocol::{
     ChatEvent, ChatRequest, ToolStartedPayload, ToolFinishedPayload,
@@ -8,6 +10,51 @@ use crate::mcp::protocol::{
     InitialFinishedPayload,
 };
 
+// McpTool Trait definition
+pub trait McpTool: Send + Sync {
+    fn name(&self) -> &'static str;
+    fn execute(
+        &self,
+        app: tauri::AppHandle,
+        args: serde_json::Value,
+    ) -> futures::future::BoxFuture<'static, Result<crate::network::CommandResult, String>>;
+}
+
+// Macros for defining and registering tools
+macro_rules! define_tool {
+    ($struct_name:ident, $tool_name:expr, |$app:ident, $args:ident| $body:expr) => {
+        pub struct $struct_name;
+        impl McpTool for $struct_name {
+            fn name(&self) -> &'static str {
+                $tool_name
+            }
+            fn execute(
+                &self,
+                $app: tauri::AppHandle,
+                $args: serde_json::Value,
+            ) -> futures::future::BoxFuture<'static, Result<crate::network::CommandResult, String>> {
+                Box::pin(async move {
+                    $body
+                })
+            }
+        }
+    };
+}
+
+macro_rules! register_tools {
+    ($($tool_type:ident),* $(,)?) => {
+        {
+            let mut registry = HashMap::new();
+            $(
+                let tool = $tool_type;
+                registry.insert(tool.name().to_string(), Box::new(tool) as Box<dyn McpTool>);
+            )*
+            registry
+        }
+    };
+}
+
+// Helper argument extractors
 fn get_str_arg(args: &Value, keys: &[&str]) -> Option<String> {
     for &key in keys {
         if let Some(val) = args.get(key) {
@@ -91,13 +138,207 @@ fn get_history_block_rust(items: &[crate::history::SummaryItem], limit: usize) -
     format!("\n\n<memory>\n{}\n</memory>", text)
 }
 
+// Define individual tools
+define_tool!(PingTool, "self_network_ping", |app, args| {
+    let host = get_str_arg(&args, &["host"]);
+    let device = get_str_arg(&args, &["device"]);
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let ip = get_str_arg(&args, &["ip"]);
+    let size = get_usize_arg(&args, &["size"]);
+    let count = get_u32_arg(&args, &["count"]);
+    let df = get_bool_arg(&args, &["df"]);
+    crate::mcp::ping::self_network_ping(
+        app,
+        host,
+        device,
+        device_name.clone(),
+        device_name,
+        ip,
+        size,
+        count,
+        df,
+    ).await.map(Into::into)
+});
+
+define_tool!(TracerouteTool, "self_network_traceroute", |app, args| {
+    let host = get_str_arg(&args, &["host"]);
+    let device = get_str_arg(&args, &["device"]);
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let ip = get_str_arg(&args, &["ip"]);
+    crate::mcp::traceroute::self_network_traceroute(
+        app,
+        host,
+        device,
+        device_name.clone(),
+        device_name,
+        ip,
+    ).await.map(Into::into)
+});
+
+define_tool!(FetchConfigTool, "fetch_config", |app, args| {
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let device = get_str_arg(&args, &["device"]);
+    let host = get_str_arg(&args, &["host"]);
+    let user_msg = get_str_arg(&args, &["userMessage", "user_message"]);
+    crate::mcp::fetch::fetch_config::fetch_config(
+        app,
+        device_name.clone(),
+        device_name,
+        device,
+        host,
+        user_msg.clone(),
+        user_msg,
+    ).await
+});
+
+define_tool!(FetchRoutingTool, "fetch_routing", |app, args| {
+    let llama_state = app.state::<crate::llm::llm::LlamaState>();
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let device = get_str_arg(&args, &["device"]);
+    let host = get_str_arg(&args, &["host"]);
+    let user_msg = get_str_arg(&args, &["userMessage", "user_message"]);
+    crate::mcp::fetch::fetch_routing::fetch_routing(
+        app.clone(),
+        llama_state,
+        device_name.clone(),
+        device_name,
+        device,
+        host,
+        user_msg.clone(),
+        user_msg,
+    ).await
+});
+
+define_tool!(FetchArpTool, "fetch_arp", |app, args| {
+    let llama_state = app.state::<crate::llm::llm::LlamaState>();
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let device = get_str_arg(&args, &["device"]);
+    let host = get_str_arg(&args, &["host"]);
+    let user_msg = get_str_arg(&args, &["userMessage", "user_message"]);
+    crate::mcp::fetch::fetch_arp::fetch_arp(
+        app.clone(),
+        llama_state,
+        device_name.clone(),
+        device_name,
+        device,
+        host,
+        user_msg.clone(),
+        user_msg,
+    ).await
+});
+
+define_tool!(QueryNwDbTool, "query_nw_db", |app, args| {
+    let query = get_str_arg(&args, &["query", "userMessage", "user_message"]).unwrap_or_default();
+    let filter = get_str_arg(&args, &["filter"]);
+    let rag_state = app.state::<crate::mcp::rag::RagState>();
+    crate::mcp::rag::query_nw_db(
+        query,
+        filter,
+        rag_state,
+        app.clone(),
+    ).await.map(Into::into)
+});
+
+define_tool!(QueryNwDbAliasTool, "network_query_nw_db", |app, args| {
+    let query = get_str_arg(&args, &["query", "userMessage", "user_message"]).unwrap_or_default();
+    let filter = get_str_arg(&args, &["filter"]);
+    let rag_state = app.state::<crate::mcp::rag::RagState>();
+    crate::mcp::rag::query_nw_db(
+        query,
+        filter,
+        rag_state,
+        app.clone(),
+    ).await.map(Into::into)
+});
+
+define_tool!(SelfNetworkArpTool, "self_network_arp", |app, _args| {
+    crate::mcp::arp::self_network_arp(app).await.map(Into::into)
+});
+
+define_tool!(SelfNetworkRouteTool, "self_network_route", |app, _args| {
+    crate::mcp::route::self_network_route(app).await.map(Into::into)
+});
+
+define_tool!(NetworkGetHostsTool, "network_get_hosts", |app, _args| {
+    crate::mcp::hosts::network_get_hosts(app).await.map(Into::into)
+});
+
+define_tool!(RequireHostRegisteredTool, "require_host_registered", |_app, _args| {
+    crate::mcp::hosts::require_host_registered().map(Into::into)
+});
+
+define_tool!(NetworkGetIpInfoTool, "network_get_ip_info", |_app, args| {
+    let verbose = get_bool_arg(&args, &["verbose"]);
+    crate::mcp::ip_info::network_get_ip_info(verbose).await.map(Into::into)
+});
+
+define_tool!(NetworkListSerialPortsTool, "network_list_serial_ports", |_app, _args| {
+    crate::mcp::console::network_list_serial_ports().map(Into::into)
+});
+
+define_tool!(NetworkSendConsoleMessageTool, "network_send_console_message", |_app, args| {
+    let port = get_str_arg(&args, &["port"]).unwrap_or_default();
+    let baud_rate = get_u32_arg(&args, &["baud_rate", "baudRate"]);
+    let message = get_str_arg(&args, &["message"]).unwrap_or_default();
+    let timeout_ms = args.get("timeout_ms").or(args.get("timeoutMs")).and_then(|v| v.as_u64());
+    crate::mcp::console::network_send_console_message(
+        port,
+        baud_rate,
+        message,
+        timeout_ms,
+    ).await.map(Into::into)
+});
+
+define_tool!(NetworkShowTool, "network_show", |app, args| {
+    let device = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(
+        args.get("device").cloned().unwrap_or(serde_json::Value::Null)
+    ).map_err(|e| e.to_string())?;
+    let command = get_str_arg(&args, &["command"]).unwrap_or_default();
+    crate::network::network_show(app, device, command).await.map_err(|e| e.to_string())
+});
+
+define_tool!(NetworkConfigTool, "network_config", |app, args| {
+    let device = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(
+        args.get("device").cloned().unwrap_or(serde_json::Value::Null)
+    ).map_err(|e| e.to_string())?;
+    let commands = serde_json::from_value::<Vec<String>>(
+        args.get("commands").cloned().unwrap_or(serde_json::Value::Null)
+    ).map_err(|e| e.to_string())?;
+    crate::network::network_config(app, device, commands).await.map_err(|e| e.to_string())
+});
+
+// Tool registry
+pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
+    static REGISTRY: OnceLock<HashMap<String, Box<dyn McpTool>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        register_tools![
+            PingTool,
+            TracerouteTool,
+            FetchConfigTool,
+            FetchRoutingTool,
+            FetchArpTool,
+            QueryNwDbTool,
+            QueryNwDbAliasTool,
+            SelfNetworkArpTool,
+            SelfNetworkRouteTool,
+            NetworkGetHostsTool,
+            RequireHostRegisteredTool,
+            NetworkGetIpInfoTool,
+            NetworkListSerialPortsTool,
+            NetworkSendConsoleMessageTool,
+            NetworkShowTool,
+            NetworkConfigTool,
+        ]
+    })
+}
+
 #[tauri::command]
 #[allow(non_snake_case)]
 pub async fn execute_mcp_tool(
     app: AppHandle,
     window: Window,
     llama_state: State<'_, crate::llm::llm::LlamaState>,
-    rag_state: State<'_, crate::mcp::rag::RagState>,
+    _rag_state: State<'_, crate::mcp::rag::RagState>,
     taskId: String,
     toolId: String,
     toolLabel: String,
@@ -174,146 +415,10 @@ pub async fn execute_mcp_tool(
 
     // 3. Match and execute the appropriate command in a future
     let execution_future = async {
-        match toolId.as_str() {
-            "self_network_ping" => {
-                let host = get_str_arg(&processed_args, &["host"]);
-                let device = get_str_arg(&processed_args, &["device"]);
-                let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
-                let ip = get_str_arg(&processed_args, &["ip"]);
-                let size = get_usize_arg(&processed_args, &["size"]);
-                let count = get_u32_arg(&processed_args, &["count"]);
-                let df = get_bool_arg(&processed_args, &["df"]);
-                crate::mcp::ping::self_network_ping(
-                    app.clone(),
-                    host,
-                    device,
-                    device_name.clone(),
-                    device_name,
-                    ip,
-                    size,
-                    count,
-                    df,
-                ).await.map(Into::into)
-            }
-            "self_network_traceroute" => {
-                let host = get_str_arg(&processed_args, &["host"]);
-                let device = get_str_arg(&processed_args, &["device"]);
-                let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
-                let ip = get_str_arg(&processed_args, &["ip"]);
-                crate::mcp::traceroute::self_network_traceroute(
-                    app.clone(),
-                    host,
-                    device,
-                    device_name.clone(),
-                    device_name,
-                    ip,
-                ).await.map(Into::into)
-            }
-            "fetch_config" => {
-                let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
-                let device = get_str_arg(&processed_args, &["device"]);
-                let host = get_str_arg(&processed_args, &["host"]);
-                let user_msg = get_str_arg(&processed_args, &["userMessage", "user_message"]);
-                crate::mcp::fetch::fetch_config::fetch_config(
-                    app.clone(),
-                    device_name.clone(),
-                    device_name,
-                    device,
-                    host,
-                    user_msg.clone(),
-                    user_msg,
-                ).await
-            }
-            "fetch_routing" => {
-                let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
-                let device = get_str_arg(&processed_args, &["device"]);
-                let host = get_str_arg(&processed_args, &["host"]);
-                let user_msg = get_str_arg(&processed_args, &["userMessage", "user_message"]);
-                crate::mcp::fetch::fetch_routing::fetch_routing(
-                    app.clone(),
-                    llama_state.clone(),
-                    device_name.clone(),
-                    device_name,
-                    device,
-                    host,
-                    user_msg.clone(),
-                    user_msg,
-                ).await
-            }
-            "fetch_arp" => {
-                let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
-                let device = get_str_arg(&processed_args, &["device"]);
-                let host = get_str_arg(&processed_args, &["host"]);
-                let user_msg = get_str_arg(&processed_args, &["userMessage", "user_message"]);
-                crate::mcp::fetch::fetch_arp::fetch_arp(
-                    app.clone(),
-                    llama_state.clone(),
-                    device_name.clone(),
-                    device_name,
-                    device,
-                    host,
-                    user_msg.clone(),
-                    user_msg,
-                ).await
-            }
-            "query_nw_db" | "network_query_nw_db" => {
-                let query = get_str_arg(&processed_args, &["query", "userMessage", "user_message"]).unwrap_or_default();
-                let filter = get_str_arg(&processed_args, &["filter"]);
-                crate::mcp::rag::query_nw_db(
-                    query,
-                    filter,
-                    rag_state.clone(),
-                    app.clone(),
-                ).await.map(Into::into)
-            }
-            "self_network_arp" => {
-                crate::mcp::arp::self_network_arp(app.clone()).await.map(Into::into)
-            }
-            "self_network_route" => {
-                crate::mcp::route::self_network_route(app.clone()).await.map(Into::into)
-            }
-            "network_get_hosts" => {
-                crate::mcp::hosts::network_get_hosts(app.clone()).await.map(Into::into)
-            }
-            "require_host_registered" => {
-                crate::mcp::hosts::require_host_registered().map(Into::into)
-            }
-            "network_get_ip_info" => {
-                let verbose = get_bool_arg(&processed_args, &["verbose"]);
-                crate::mcp::ip_info::network_get_ip_info(verbose).await.map(Into::into)
-            }
-            "network_list_serial_ports" => {
-                crate::mcp::console::network_list_serial_ports().map(Into::into)
-            }
-            "network_send_console_message" => {
-                let port = get_str_arg(&processed_args, &["port"]).unwrap_or_default();
-                let baud_rate = get_u32_arg(&processed_args, &["baud_rate", "baudRate"]);
-                let message = get_str_arg(&processed_args, &["message"]).unwrap_or_default();
-                let timeout_ms = args.get("timeout_ms").or(args.get("timeoutMs")).and_then(|v| v.as_u64());
-                crate::mcp::console::network_send_console_message(
-                    port,
-                    baud_rate,
-                    message,
-                    timeout_ms,
-                ).await.map(Into::into)
-            }
-            "network_show" => {
-                let device = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(
-                    processed_args.get("device").cloned().unwrap_or(serde_json::Value::Null)
-                ).map_err(|e| e.to_string())?;
-                let command = get_str_arg(&processed_args, &["command"]).unwrap_or_default();
-                crate::network::network_show(app.clone(), device, command).await.map_err(|e| e.to_string())
-            }
-            "network_config" => {
-                let device = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(
-                    processed_args.get("device").cloned().unwrap_or(serde_json::Value::Null)
-                ).map_err(|e| e.to_string())?;
-                let commands = serde_json::from_value::<Vec<String>>(
-                    processed_args.get("commands").cloned().unwrap_or(serde_json::Value::Null)
-                ).map_err(|e| e.to_string())?;
-                crate::network::network_config(app.clone(), device, commands).await.map_err(|e| e.to_string())
-            }
-            _ => Err(format!("Unknown tool ID: {}", toolId)),
+        if let Some(tool) = get_tool_registry().get(&toolId) {
+            tool.execute(app.clone(), processed_args.clone()).await
+        } else {
+            Err(format!("Unknown tool ID: {}", toolId))
         }
     };
 
@@ -571,7 +676,6 @@ pub async fn handle_mcp_message(
         // No tools called: perform summarizeAndSave for the initial response.
         let app_c = app.clone();
         let window_c = window.clone();
-        let llama_state_c = llama_state.clone();
         let thinking_task_id_c = thinking_task_id.clone();
         let user_message_c = userMessage.clone();
         let response_c = response.clone();
@@ -604,4 +708,3 @@ pub async fn handle_mcp_message(
 
     Ok(())
 }
-
