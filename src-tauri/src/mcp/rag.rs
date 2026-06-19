@@ -96,6 +96,19 @@ pub struct RagResult {
     pub output: String,
 }
 
+impl From<RagResult> for crate::network::CommandResult {
+    fn from(res: RagResult) -> Self {
+        Self {
+            success: res.success,
+            output: res.output,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }
+    }
+}
+
+
 use crate::mcp::brands;
 use regex::Regex;
 

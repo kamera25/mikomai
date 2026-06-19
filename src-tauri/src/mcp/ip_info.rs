@@ -8,6 +8,19 @@ pub struct IpInfoResult {
     pub output: String,
 }
 
+impl From<IpInfoResult> for crate::network::CommandResult {
+    fn from(res: IpInfoResult) -> Self {
+        Self {
+            success: res.success,
+            output: res.output,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }
+    }
+}
+
+
 #[tauri::command]
 pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, String> {
     let is_verbose = verbose.unwrap_or(false);

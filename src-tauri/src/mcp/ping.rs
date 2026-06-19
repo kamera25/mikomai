@@ -10,6 +10,19 @@ pub struct PingResult {
     pub output: String,
 }
 
+impl From<PingResult> for crate::network::CommandResult {
+    fn from(res: PingResult) -> Self {
+        Self {
+            success: res.success,
+            output: res.output,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }
+    }
+}
+
+
 fn resolve_host(host: &str) -> Result<IpAddr, String> {
     let addrs = format!("{}:80", host).to_socket_addrs().map_err(|e| e.to_string())?;
     addrs.into_iter().next().map(|a| a.ip()).ok_or("Could not resolve host".to_string())

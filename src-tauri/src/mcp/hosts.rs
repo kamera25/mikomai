@@ -6,6 +6,19 @@ pub struct HostListResult {
     pub output: String,
 }
 
+impl From<HostListResult> for crate::network::CommandResult {
+    fn from(res: HostListResult) -> Self {
+        Self {
+            success: res.success,
+            output: res.output,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }
+    }
+}
+
+
 #[tauri::command]
 pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, String> {
     use crate::connections::load_connections;

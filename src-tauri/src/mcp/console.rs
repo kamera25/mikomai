@@ -15,6 +15,19 @@ pub struct ConsoleResult {
     pub output: String,
 }
 
+impl From<ConsoleResult> for crate::network::CommandResult {
+    fn from(res: ConsoleResult) -> Self {
+        Self {
+            success: res.success,
+            output: res.output,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }
+    }
+}
+
+
 #[tauri::command]
 pub fn network_list_serial_ports() -> Result<ConsoleResult, String> {
     let ports = serialport::available_ports().map_err(|e| e.to_string())?;

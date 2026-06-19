@@ -222,7 +222,7 @@ pub async fn execute_mcp_tool(
                 let size = get_usize_arg(&processed_args, &["size"]);
                 let count = get_u32_arg(&processed_args, &["count"]);
                 let df = get_bool_arg(&processed_args, &["df"]);
-                match crate::mcp::ping::self_network_ping(
+                crate::mcp::ping::self_network_ping(
                     app.clone(),
                     host,
                     device,
@@ -232,39 +232,21 @@ pub async fn execute_mcp_tool(
                     size,
                     count,
                     df,
-                ).await {
-                    Ok(res) => Ok(crate::network::CommandResult {
-                        success: res.success,
-                        output: res.output,
-                        saved_path: None,
-                        is_cached: None,
-                        cache_time: None,
-                    }),
-                    Err(e) => Err(e),
-                }
+                ).await.map(Into::into)
             }
             "self_network_traceroute" => {
                 let host = get_str_arg(&processed_args, &["host"]);
                 let device = get_str_arg(&processed_args, &["device"]);
                 let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
                 let ip = get_str_arg(&processed_args, &["ip"]);
-                match crate::mcp::traceroute::self_network_traceroute(
+                crate::mcp::traceroute::self_network_traceroute(
                     app.clone(),
                     host,
                     device,
                     device_name.clone(),
                     device_name,
                     ip,
-                ).await {
-                    Ok(res) => Ok(crate::network::CommandResult {
-                        success: res.success,
-                        output: res.output,
-                        saved_path: None,
-                        is_cached: None,
-                        cache_time: None,
-                    }),
-                    Err(e) => Err(e),
-                }
+                ).await.map(Into::into)
             }
             "fetch_config" => {
                 let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
@@ -316,115 +298,43 @@ pub async fn execute_mcp_tool(
             "query_nw_db" | "network_query_nw_db" => {
                 let query = get_str_arg(&processed_args, &["query", "userMessage", "user_message"]).unwrap_or_default();
                 let filter = get_str_arg(&processed_args, &["filter"]);
-                match crate::mcp::rag::query_nw_db(
+                crate::mcp::rag::query_nw_db(
                     query,
                     filter,
                     rag_state.clone(),
                     app.clone(),
-                ).await {
-                    Ok(res) => Ok(crate::network::CommandResult {
-                        success: res.success,
-                        output: res.output,
-                        saved_path: None,
-                        is_cached: None,
-                        cache_time: None,
-                    }),
-                    Err(e) => Err(e),
-                }
+                ).await.map(Into::into)
             }
             "self_network_arp" => {
-                match crate::mcp::arp::self_network_arp(app.clone()).await {
-                    Ok(res) => Ok(crate::network::CommandResult {
-                        success: res.success,
-                        output: res.output,
-                        saved_path: res.saved_path,
-                        is_cached: None,
-                        cache_time: None,
-                    }),
-                    Err(e) => Err(e),
-                }
+                crate::mcp::arp::self_network_arp(app.clone()).await.map(Into::into)
             }
             "self_network_route" => {
-                match crate::mcp::route::self_network_route(app.clone()).await {
-                    Ok(res) => Ok(crate::network::CommandResult {
-                        success: res.success,
-                        output: res.output,
-                        saved_path: res.saved_path,
-                        is_cached: None,
-                        cache_time: None,
-                    }),
-                    Err(e) => Err(e),
-                }
+                crate::mcp::route::self_network_route(app.clone()).await.map(Into::into)
             }
             "network_get_hosts" => {
-                match crate::mcp::hosts::network_get_hosts(app.clone()).await {
-                    Ok(res) => Ok(crate::network::CommandResult {
-                        success: res.success,
-                        output: res.output,
-                        saved_path: None,
-                        is_cached: None,
-                        cache_time: None,
-                    }),
-                    Err(e) => Err(e),
-                }
+                crate::mcp::hosts::network_get_hosts(app.clone()).await.map(Into::into)
             }
             "require_host_registered" => {
-                match crate::mcp::hosts::require_host_registered() {
-                    Ok(res) => Ok(crate::network::CommandResult {
-                        success: res.success,
-                        output: res.output,
-                        saved_path: None,
-                        is_cached: None,
-                        cache_time: None,
-                    }),
-                    Err(e) => Err(e),
-                }
+                crate::mcp::hosts::require_host_registered().map(Into::into)
             }
             "network_get_ip_info" => {
                 let verbose = get_bool_arg(&processed_args, &["verbose"]);
-                match crate::mcp::ip_info::network_get_ip_info(verbose).await {
-                    Ok(res) => Ok(crate::network::CommandResult {
-                        success: res.success,
-                        output: res.output,
-                        saved_path: None,
-                        is_cached: None,
-                        cache_time: None,
-                    }),
-                    Err(e) => Err(e),
-                }
+                crate::mcp::ip_info::network_get_ip_info(verbose).await.map(Into::into)
             }
             "network_list_serial_ports" => {
-                match crate::mcp::console::network_list_serial_ports() {
-                    Ok(res) => Ok(crate::network::CommandResult {
-                        success: res.success,
-                        output: res.output,
-                        saved_path: None,
-                        is_cached: None,
-                        cache_time: None,
-                    }),
-                    Err(e) => Err(e),
-                }
+                crate::mcp::console::network_list_serial_ports().map(Into::into)
             }
             "network_send_console_message" => {
                 let port = get_str_arg(&processed_args, &["port"]).unwrap_or_default();
                 let baud_rate = get_u32_arg(&processed_args, &["baud_rate", "baudRate"]);
                 let message = get_str_arg(&processed_args, &["message"]).unwrap_or_default();
                 let timeout_ms = args.get("timeout_ms").or(args.get("timeoutMs")).and_then(|v| v.as_u64());
-                match crate::mcp::console::network_send_console_message(
+                crate::mcp::console::network_send_console_message(
                     port,
                     baud_rate,
                     message,
                     timeout_ms,
-                ).await {
-                    Ok(res) => Ok(crate::network::CommandResult {
-                        success: res.success,
-                        output: res.output,
-                        saved_path: None,
-                        is_cached: None,
-                        cache_time: None,
-                    }),
-                    Err(e) => Err(e),
-                }
+                ).await.map(Into::into)
             }
             "network_show" => {
                 let device = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(

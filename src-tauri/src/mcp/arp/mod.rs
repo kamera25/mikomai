@@ -16,6 +16,19 @@ pub struct ArpResult {
     pub saved_path: Option<String>,
 }
 
+impl From<ArpResult> for crate::network::CommandResult {
+    fn from(res: ArpResult) -> Self {
+        Self {
+            success: res.success,
+            output: res.output,
+            saved_path: res.saved_path,
+            is_cached: None,
+            cache_time: None,
+        }
+    }
+}
+
+
 #[tauri::command]
 pub async fn self_network_arp(app: tauri::AppHandle) -> Result<ArpResult, String> {
     // On macOS and Linux, 'arp -an' is a standard way to get the ARP table
