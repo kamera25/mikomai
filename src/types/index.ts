@@ -10,7 +10,7 @@ export interface BaseMessage {
 export interface UserMessage extends BaseMessage {
   role: "user";
   event_type: "UserInput";
-  status?: undefined;
+  status?: "Pending";
   action_name?: undefined;
   tool_id?: undefined;
   summary_text?: undefined;

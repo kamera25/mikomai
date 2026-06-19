@@ -167,7 +167,7 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
             alignItems: msg.role === "user" ? "flex-end" : "flex-start",
           }}
         >
-          <div className="message-bubble markdown-body">
+          <div className={`message-bubble markdown-body ${msg.status === "Pending" ? "pending" : ""}`}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
@@ -185,6 +185,12 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               {msg.content}
             </ReactMarkdown>
           </div>
+          {msg.role === "user" && msg.status === "Pending" && (
+            <div className="message-pending-indicator">
+              <span className="status-spinner-small"></span>
+              <span>{t("chat.pending")}</span>
+            </div>
+          )}
           {msg.role === "ai" && (
             <div className="message-actions">
               <button

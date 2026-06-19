@@ -499,3 +499,19 @@
     left: -34px;
   }
 }
+
+/* Pending user message styling */
+.message-bubble.pending {
+  opacity: 0.65;
+  border-style: dashed !important;
+}
+
+.message-pending-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}

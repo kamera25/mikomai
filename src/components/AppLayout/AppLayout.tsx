@@ -33,6 +33,7 @@ export function AppLayout() {
   const { state: uiState, dispatch: uiDispatch } = useUIContext();
   const {
     state: chatState,
+    dispatch: chatDispatch,
     createNewFolder,
     createNewSession,
     toggleFolder,
@@ -50,6 +51,13 @@ export function AppLayout() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isComposingHeader = useRef(false);
+  const isExecutingRef = useRef(false);
+  const queueRef = useRef<{
+    content: string;
+    timestamp: string;
+    task_id: string;
+    sessionId: string;
+  }[]>([]);
 
   const handleStartRenameHeader = () => {
     if (activeSession) {
@@ -137,11 +145,33 @@ export function AppLayout() {
     }
   };
 
+  const executeMessage = async (userMessage: string) => {
+    isExecutingRef.current = true;
+    try {
+      await handleMcpResponse(userMessage);
+    } catch (e) {
+      console.error("Failed to handle MCP response:", e);
+    } finally {
+      if (queueRef.current.length > 0) {
+        const next = queueRef.current.shift()!;
+        chatDispatch({
+          type: "SET_MESSAGE_STATUS",
+          payload: { sessionId: next.sessionId, taskId: next.task_id, status: undefined },
+        });
+        executeMessage(next.content);
+      } else {
+        isExecutingRef.current = false;
+      }
+    }
+  };
+
   const handleSend = async () => {
     if (!chatState.input.trim()) return;
 
     const userMessage = chatState.input.trim();
     const timestamp = new Date().toISOString();
+    const taskId = `task_user_${Date.now()}`;
+    const sessionId = chatState.activeSessionId;
 
     const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
     const mentionRegex = /@([a-zA-Z0-9.-]+)/g;
@@ -156,6 +186,9 @@ export function AppLayout() {
     }
 
     setInput("");
+
+    const isPending = isExecutingRef.current;
+
     setMessages((prev) => [
       ...prev,
       {
@@ -163,13 +196,21 @@ export function AppLayout() {
         content: userMessage,
         timestamp,
         event_type: "UserInput",
-        task_id: `task_user_${Date.now()}`,
+        task_id: taskId,
+        status: isPending ? "Pending" : undefined,
       },
     ]);
 
-    handleMcpResponse(userMessage).catch((e) => {
-      console.error("Failed to handle MCP response:", e);
-    });
+    if (isPending) {
+      queueRef.current.push({
+        content: userMessage,
+        timestamp,
+        task_id: taskId,
+        sessionId,
+      });
+    } else {
+      executeMessage(userMessage);
+    }
   };
 
   const scrollToMessage = (taskId: string) => {

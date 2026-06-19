@@ -35,7 +35,8 @@ export type ChatAction =
   | { type: "SET_INPUT"; payload: string }
   | { type: "SET_SUMMARIES"; payload: SummaryItem[] | ((prev: SummaryItem[]) => SummaryItem[]) }
   | { type: "SET_MODAL_CONFIG"; payload: ModalConfig | null }
-  | { type: "SET_LOADED"; payload: boolean };
+  | { type: "SET_LOADED"; payload: boolean }
+  | { type: "SET_MESSAGE_STATUS"; payload: { sessionId: string; taskId: string; status: "Pending" | undefined } };
 
 const initialState: ChatState = {
   history: [],
@@ -121,6 +122,42 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, modalConfig: action.payload };
     case "SET_LOADED":
       return { ...state, isLoaded: action.payload };
+    case "SET_MESSAGE_STATUS": {
+      const { sessionId, taskId, status } = action.payload;
+      const updateMessageStatusInHistory = (items: HistoryItem[]): HistoryItem[] => {
+        return items.map((item) => {
+          if (item.id === sessionId && item.type === "session") {
+            const updatedMessages = item.messages.map((msg) => {
+              if (msg.task_id === taskId && msg.role === "user") {
+                return { ...msg, status } as Message;
+              }
+              return msg;
+            });
+            return { ...item, messages: updatedMessages };
+          }
+          if (item.type === "folder") {
+            return { ...item, items: updateMessageStatusInHistory(item.items) };
+          }
+          return item;
+        });
+      };
+
+      const isCurrentActive = state.activeSessionId === sessionId;
+      const nextMessages = isCurrentActive
+        ? state.messages.map((msg) => {
+            if (msg.task_id === taskId && msg.role === "user") {
+              return { ...msg, status } as Message;
+            }
+            return msg;
+          })
+        : state.messages;
+
+      return {
+        ...state,
+        messages: nextMessages,
+        history: updateMessageStatusInHistory(state.history),
+      };
+    }
     default:
       return state;
   }

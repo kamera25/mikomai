@@ -43,7 +43,8 @@
     "tool_failed": "{{toolLabel}} 失敗",
     "tool_error": "{{toolLabel}} エラー",
     "agent_processing": "{{agentName}} が処理中...",
-    "agent_analyzing": "{{agentName}} が分析中..."
+    "agent_analyzing": "{{agentName}} が分析中...",
+    "pending": "保留中..."
   },
   "chat_input": {
     "placeholder": "mikomaiに質問する...",
