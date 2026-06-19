@@ -10,12 +10,12 @@ use llama_cpp_2::model::AddBos;
 use std::sync::Arc;
 use tauri::Emitter;
 pub struct SharedWorkers {
-    pub router: crate::llm::worker::Router,
-    pub investigate: crate::llm::worker::InvestigateWorker,
-    pub knowledge: crate::llm::worker::KnowledgeWorker,
-    pub analysis: crate::llm::worker::AnalysisWorker,
-    pub rag: crate::llm::worker::RagWorker,
-    pub summarization: crate::llm::worker::SummarizationWorker,
+    pub router: std::sync::Mutex<crate::llm::worker::Router>,
+    pub investigate: std::sync::Mutex<crate::llm::worker::InvestigateWorker>,
+    pub knowledge: std::sync::Mutex<crate::llm::worker::KnowledgeWorker>,
+    pub analysis: std::sync::Mutex<crate::llm::worker::AnalysisWorker>,
+    pub rag: std::sync::Mutex<crate::llm::worker::RagWorker>,
+    pub summarization: std::sync::Mutex<crate::llm::worker::SummarizationWorker>,
 }
 
 pub struct SharedModel {
@@ -35,12 +35,6 @@ impl std::ops::Deref for SharedModel {
     type Target = SharedWorkers;
     fn deref(&self) -> &Self::Target {
         self.workers.as_ref().expect("Workers not initialized or already dropped")
-    }
-}
-
-impl std::ops::DerefMut for SharedModel {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.workers.as_mut().expect("Workers not initialized or already dropped")
     }
 }
 

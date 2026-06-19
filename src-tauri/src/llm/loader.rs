@@ -60,18 +60,18 @@ pub async fn load_model(
     let (router, investigate, knowledge, analysis, rag, summarization) = workers_res;
     
     let mut shared_lock = state.shared.lock().await;
-    *shared_lock = Some(SharedModel {
+    *shared_lock = Some(Arc::new(SharedModel {
         workers: Some(crate::llm::llm_manager::SharedWorkers {
-            router,
-            investigate,
-            knowledge,
-            analysis,
-            rag,
-            summarization,
+            router: std::sync::Mutex::new(router),
+            investigate: std::sync::Mutex::new(investigate),
+            knowledge: std::sync::Mutex::new(knowledge),
+            analysis: std::sync::Mutex::new(analysis),
+            rag: std::sync::Mutex::new(rag),
+            summarization: std::sync::Mutex::new(summarization),
         }),
         model: model_arc,
         backend: state.backend.clone(),
-    });
+    }));
     
     {
         let mut status_lock = state.status.lock().await;
