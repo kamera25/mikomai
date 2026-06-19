@@ -61,15 +61,40 @@ pub fn parse_ping_command(input: &str) -> Option<Value> {
     Some(Value::Object(args))
 }
 
-pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String)> {
+fn has_question_keywords(input: &str) -> bool {
+    let lower = input.to_lowercase();
+    lower.contains("とは")
+        || lower.contains("何")
+        || lower.contains("？")
+        || lower.contains("?")
+        || lower.contains("どう")
+        || lower.contains("なぜ")
+        || lower.contains("why")
+        || lower.contains("what")
+        || lower.contains("how")
+}
+
+pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String, f64)> {
     let lower_input = input.to_lowercase();
     
     // 1. Ping
     if let Some(ping_args) = parse_ping_command(input) {
+        let confidence = if has_question_keywords(input) {
+            0.0
+        } else if let Some(host) = ping_args.get("host").and_then(|v| v.as_str()) {
+            if host.contains('.') || host.contains(':') || host == "localhost" {
+                1.0
+            } else {
+                0.9
+            }
+        } else {
+            0.8
+        };
         return Some((
             "self_network_ping".to_string(), 
             ping_args, 
-            "Pingを実行します。".to_string()
+            "Pingを実行します。".to_string(),
+            confidence
         ));
     }
     
@@ -86,11 +111,19 @@ pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String)> {
     };
     if let Some(host) = trace_host {
         let mut params = serde_json::Map::new();
-        params.insert("host".to_string(), Value::String(host));
+        params.insert("host".to_string(), Value::String(host.clone()));
+        let confidence = if has_question_keywords(input) {
+            0.0
+        } else if host.contains('.') || host.contains(':') || host == "localhost" {
+            1.0
+        } else {
+            0.9
+        };
         return Some((
             "self_network_traceroute".to_string(), 
             Value::Object(params),
-            "Tracerouteを実行します。".to_string()
+            "Tracerouteを実行します。".to_string(),
+            confidence
         ));
     }
     
@@ -98,47 +131,58 @@ pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String)> {
     let re_host_list1 = Regex::new(r"(?:host|ホスト|接続先|ターゲット).*(?:list|一覧|教え|見せ|確認)").expect("Invalid host list regex 1");
     let re_host_list2 = Regex::new(r"(?:list|一覧|教え|見せ|確認).*(?:host|ホスト|接続先|ターゲット)").expect("Invalid host list regex 2");
     if re_host_list1.is_match(&lower_input) || re_host_list2.is_match(&lower_input) {
+        let confidence = if has_question_keywords(input) { 0.4 } else { 1.0 };
         return Some((
             "network_get_hosts".to_string(),
             serde_json::json!({}),
-            "登録機器の一覧を取得します。".to_string()
+            "登録機器の一覧を取得します。".to_string(),
+            confidence
         ));
     }
     
     // 4. ARP
     if lower_input.contains("arp") && (lower_input.contains("ローカル") || lower_input.contains("自機") || lower_input.contains("このpc") || lower_input.contains("local")) {
+        let confidence = if has_question_keywords(input) { 0.4 } else { 1.0 };
         return Some((
             "self_network_arp".to_string(),
             serde_json::json!({}),
-            "ローカルのARPテーブルを取得します。".to_string()
+            "ローカルのARPテーブルを取得します。".to_string(),
+            confidence
         ));
     }
     
     // 5. Route Table
     if (lower_input.contains("route") || lower_input.contains("ルーティング")) && (lower_input.contains("ローカル") || lower_input.contains("自機") || lower_input.contains("このpc") || lower_input.contains("local")) {
+        let confidence = if has_question_keywords(input) { 0.4 } else { 1.0 };
         return Some((
             "self_network_route".to_string(),
             serde_json::json!({}),
-            "ローカルのルーティングテーブルを取得します。".to_string()
+            "ローカルのルーティングテーブルを取得します。".to_string(),
+            confidence
         ));
     }
     
     // 6. IP Info
-    if lower_input.contains("ip") || lower_input.contains("ネットワーク情報") {
+    let re_ip = Regex::new(r"(?i-u)\bip\b").expect("Invalid ip regex");
+    if re_ip.is_match(&lower_input) || lower_input.contains("ネットワーク情報") {
+        let confidence = if has_question_keywords(input) { 0.4 } else { 1.0 };
         return Some((
             "network_get_ip_info".to_string(),
             serde_json::json!({}),
-            "IP情報を取得します。".to_string()
+            "IP情報を取得します。".to_string(),
+            confidence
         ));
     }
     
     // 7. Serial Ports
     if lower_input.contains("console") || lower_input.contains("コンソール") || lower_input.contains("シリアル") {
         if lower_input.contains("list") || lower_input.contains("一覧") || lower_input.contains("ポート") || lower_input.contains("リスト") {
+            let confidence = if has_question_keywords(input) { 0.4 } else { 1.0 };
             return Some((
                 "network_list_serial_ports".to_string(),
                 serde_json::json!({}),
-                "シリアルポートの一覧を取得します。".to_string()
+                "シリアルポートの一覧を取得します。".to_string(),
+                confidence
             ));
         }
     }
@@ -170,33 +214,55 @@ mod tests {
         let res = detect_shortcut_tool("ping google.com").unwrap();
         assert_eq!(res.0, "self_network_ping");
         assert_eq!(res.1["host"], "google.com");
+        assert!(res.3 >= 0.8);
+
+        // Ping question fallback
+        let res_ping_q = detect_shortcut_tool("ping google.comとは何？").unwrap();
+        assert_eq!(res_ping_q.0, "self_network_ping");
+        assert!(res_ping_q.3 < 0.8);
 
         // Traceroute
         let res = detect_shortcut_tool("traceroute 1.1.1.1").unwrap();
         assert_eq!(res.0, "self_network_traceroute");
         assert_eq!(res.1["host"], "1.1.1.1");
+        assert!(res.3 >= 0.8);
 
         // Host List
         let res = detect_shortcut_tool("接続先一覧を確認したい").unwrap();
         assert_eq!(res.0, "network_get_hosts");
+        assert!(res.3 >= 0.8);
 
         // Local ARP
         let res = detect_shortcut_tool("自機のarpテーブル").unwrap();
         assert_eq!(res.0, "self_network_arp");
+        assert!(res.3 >= 0.8);
 
         // Local Route
         let res = detect_shortcut_tool("ローカルのルーティングテーブル").unwrap();
         assert_eq!(res.0, "self_network_route");
+        assert!(res.3 >= 0.8);
 
         // IP Info
-        let res = detect_shortcut_tool("このPC of IPアドレス、ネットワーク情報を教えて").unwrap(); // "このPC of IPアドレス" に "ip" が含まれる
+        let res = detect_shortcut_tool("このPC of IPアドレス、ネットワーク情報を教えて").unwrap(); // "このPC of IPアドレス" に "IP" が含まれる
         assert_eq!(res.0, "network_get_ip_info");
+        assert!(res.3 >= 0.8);
+
+        // IP Info low confidence fallback
+        let res_ip_q = detect_shortcut_tool("IPアドレスとは何ですか？").unwrap();
+        assert_eq!(res_ip_q.0, "network_get_ip_info");
+        assert!(res_ip_q.3 < 0.8);
 
         // Serial Ports
         let res = detect_shortcut_tool("コンソールポート一覧").unwrap();
         assert_eq!(res.0, "network_list_serial_ports");
+        assert!(res.3 >= 0.8);
 
         // None
         assert!(detect_shortcut_tool("普通の質問: NTPって何？").is_none());
+        
+        // Word boundaries check: script, recipe, stripe should not trigger IP info
+        assert!(detect_shortcut_tool("run the script").is_none());
+        assert!(detect_shortcut_tool("show recipe details").is_none());
+        assert!(detect_shortcut_tool("stripe test").is_none());
     }
 }

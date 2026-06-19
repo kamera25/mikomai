@@ -544,14 +544,16 @@ pub async fn ask_llm_initial(
         prompt.split("\n\n<memory>").next().unwrap_or(&prompt).chars().take(300).collect::<String>()
     };
 
-    if let Some((tool_name, params, message)) = crate::llm::shortcut::detect_shortcut_tool(&original_query) {
-        let tool_call = serde_json::json!({
-            "tool_name": tool_name,
-            "params": params
-        });
-        let response_str = format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap());
-        let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()));
-        return Ok(response_str);
+    if let Some((tool_name, params, message, confidence)) = crate::llm::shortcut::detect_shortcut_tool(&original_query) {
+        if confidence >= 0.8 {
+            let tool_call = serde_json::json!({
+                "tool_name": tool_name,
+                "params": params
+            });
+            let response_str = format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap());
+            let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()));
+            return Ok(response_str);
+        }
     }
 
     log::info!("Received original query: '{}'", original_query);
