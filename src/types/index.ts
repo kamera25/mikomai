@@ -63,25 +63,11 @@ export interface SystemMessage extends BaseMessage {
   cache_time?: undefined;
 }
 
-export interface LegacyMessage extends BaseMessage {
-  event_type?: undefined;
-  status?: "Running" | "Success" | "Failed";
-  action_name?: string;
-  tool_id?: string;
-  summary_text?: string;
-  raw_data?: string | null;
-  args?: any;
-  saved_path?: string;
-  is_cached?: boolean;
-  cache_time?: string;
-}
-
 export type Message =
   | UserMessage
   | ToolExecutionMessage
   | AgentResponseMessage
-  | SystemMessage
-  | LegacyMessage;
+  | SystemMessage;
 
 export type ModelState = "NotLoaded" | "Loading" | "Loaded" | { Error: string };
 

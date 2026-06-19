@@ -9,6 +9,7 @@ describe("TimelineEvent Component", () => {
   it("renders standard user message", () => {
     const msg: Message = {
       role: "user",
+      event_type: "UserInput",
       content: "Standard message",
       timestamp: new Date().toISOString(),
     };

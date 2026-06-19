@@ -15,11 +15,13 @@ describe("Chat Component", () => {
     const messages: Message[] = [
       {
         role: "user",
+        event_type: "UserInput",
         content: "Hello, robot",
         timestamp: new Date().toISOString(),
       },
       {
         role: "ai",
+        event_type: "AgentResponse",
         content: "Hello, user",
         timestamp: new Date().toISOString(),
       },
