@@ -149,6 +149,19 @@ pub fn run_inference(
     run_inference_with_grammar(agent_ctx, prompt, window, temperature, repetition_penalty, None)
 }
 
+struct KVCacheGuard<'a> {
+    ctx: &'a mut LlamaContext<'static>,
+    base_n_past: u32,
+}
+
+impl<'a> Drop for KVCacheGuard<'a> {
+    fn drop(&mut self) {
+        if let Err(e) = self.ctx.clear_kv_cache_seq(Some(0), Some(self.base_n_past), None) {
+            log::error!("Failed to clear KV cache in Drop guard: {:?}", e);
+        }
+    }
+}
+
 pub fn run_inference_with_grammar(
     agent_ctx: &mut AgentContext,
     prompt: &str,
@@ -187,7 +200,12 @@ pub fn run_inference_with_grammar(
         current_pos += 1;
     }
 
-    agent_ctx.ctx.decode(&mut batch)?;
+    let mut guard = KVCacheGuard {
+        ctx: &mut agent_ctx.ctx,
+        base_n_past: agent_ctx.base_n_past,
+    };
+
+    guard.ctx.decode(&mut batch)?;
 
     let mut result_string = String::new();
     let mut n_cur = current_pos;
@@ -212,7 +230,7 @@ pub fn run_inference_with_grammar(
     let mut bytes_accumulator = Vec::new();
 
     for _ in 0..n_len {
-        let new_token_id = sampler.sample(&mut agent_ctx.ctx, batch.n_tokens() - 1);
+        let new_token_id = sampler.sample(&mut guard.ctx, batch.n_tokens() - 1);
 
         if new_token_id == agent_ctx.model.token_eos() || Some(new_token_id) == turn_end_token {
             break;
@@ -227,15 +245,12 @@ pub fn run_inference_with_grammar(
         batch.add(new_token_id, n_cur, &[0], true)?;
         n_cur += 1;
 
-        agent_ctx.ctx.decode(&mut batch)?;
+        guard.ctx.decode(&mut batch)?;
     }
 
     if !bytes_accumulator.is_empty() {
         result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
     }
-
-    // 【最重要】推論終了後、伸びてしまったKVキャッシュを巻き戻す (Truncate)
-    agent_ctx.ctx.clear_kv_cache_seq(Some(0), Some(agent_ctx.base_n_past), None)?;
 
     Ok(result_string)
 }

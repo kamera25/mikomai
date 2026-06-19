@@ -371,7 +371,7 @@ impl LlamaState {
                             let mut ctx = shared_model.model.new_context(&shared_model.backend, ctx_params)
                                 .map_err(|e| LlmError::ContextCreation(format!("{:?}", e)))?;
 
-                            let tokens = prepare_prompt_tokens_with_limit(&shared_model.model, &formatted_prompt, n_ctx, max_gen)?;
+                            let tokens = prepare_prompt_tokens_with_limit(&shared_model.model, &formatted_prompt, n_ctx, max_gen, settings.prompt_keep_tokens)?;
 
                             let mut batch = LlamaBatch::new(n_ctx, 1);
                             let last_index = tokens.len() - 1;
@@ -458,13 +458,14 @@ fn prepare_prompt_tokens_with_limit(
     prompt: &str,
     n_ctx: usize,
     max_gen: usize,
+    keep_tokens: usize,
 ) -> Result<Vec<llama_cpp_2::token::LlamaToken>, LlmError> {
     let mut tokens = model.str_to_token(prompt, AddBos::Always).map_err(|e| LlmError::Tokenization(format!("{:?}", e)))?;
 
     let max_tokens = n_ctx.saturating_sub(max_gen);
     if tokens.len() > max_tokens {
         let to_remove = tokens.len() - max_tokens;
-        let start_keep = 500;
+        let start_keep = keep_tokens;
 
         if tokens.len() > start_keep + to_remove {
             tokens.drain(start_keep..(start_keep + to_remove));

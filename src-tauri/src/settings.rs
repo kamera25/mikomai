@@ -16,6 +16,10 @@ fn default_cache_expiry() -> Option<u64> {
     Some(10)
 }
 
+fn default_prompt_keep_tokens() -> usize {
+    500
+}
+
 fn default_n_ctx() -> usize {
     4096
 }
@@ -55,6 +59,8 @@ pub struct AppSettings {
     pub n_ctx: usize,
     #[serde(default = "default_max_gen")]
     pub max_gen: usize,
+    #[serde(default = "default_prompt_keep_tokens")]
+    pub prompt_keep_tokens: usize,
 }
 
 impl Default for AppSettings {
@@ -77,6 +83,7 @@ impl Default for AppSettings {
             cache_expiry_minutes: Some(10),
             n_ctx: 4096,
             max_gen: 2048,
+            prompt_keep_tokens: 500,
         }
     }
 }
@@ -157,6 +164,7 @@ mod tests {
         assert!(settings.preload_analysis);
         assert!(settings.preload_rag);
         assert_eq!(settings.cache_expiry_minutes, Some(10));
+        assert_eq!(settings.prompt_keep_tokens, 500);
     }
 
     #[test]
@@ -179,6 +187,7 @@ mod tests {
             cache_expiry_minutes: Some(15),
             n_ctx: 4096,
             max_gen: 2048,
+            prompt_keep_tokens: 500,
         };
 
         let serialized = serde_json::to_string(&settings).unwrap();
@@ -194,5 +203,6 @@ mod tests {
         assert!(serialized.contains(r#""consoleBaudRate":115200"#));
         assert!(serialized.contains(r#""preloadInvestigate":false"#));
         assert!(serialized.contains(r#""cacheExpiryMinutes":15"#));
+        assert!(serialized.contains(r#""promptKeepTokens":500"#));
     }
 }
