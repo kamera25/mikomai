@@ -3,30 +3,72 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Message {
-    pub role: String,
-    pub content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<String>,
-    #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
-    pub is_tool_loading: Option<bool>,
-    #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
-    pub is_hidden: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub task_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub action_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub summary_text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub raw_data: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub args: Option<serde_json::Value>,
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "event_type")]
+pub enum Message {
+    UserInput {
+        role: String,
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        timestamp: Option<String>,
+        #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
+        is_tool_loading: Option<bool>,
+        #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
+        is_hidden: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        task_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+    },
+    ToolExecution {
+        role: String,
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        timestamp: Option<String>,
+        #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
+        is_tool_loading: Option<bool>,
+        #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
+        is_hidden: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        task_id: Option<String>,
+        status: String,
+        action_name: String,
+        tool_id: String,
+        summary_text: String,
+        raw_data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        args: Option<serde_json::Value>,
+        #[serde(rename = "saved_path", skip_serializing_if = "Option::is_none")]
+        saved_path: Option<String>,
+        #[serde(rename = "is_cached", skip_serializing_if = "Option::is_none")]
+        is_cached: Option<bool>,
+        #[serde(rename = "cache_time", skip_serializing_if = "Option::is_none")]
+        cache_time: Option<String>,
+    },
+    AgentResponse {
+        role: String,
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        timestamp: Option<String>,
+        #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
+        is_tool_loading: Option<bool>,
+        #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
+        is_hidden: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        task_id: Option<String>,
+    },
+    SystemMessage {
+        role: String,
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        timestamp: Option<String>,
+        #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
+        is_tool_loading: Option<bool>,
+        #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
+        is_hidden: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        task_id: Option<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -103,23 +145,19 @@ mod tests {
 
     #[test]
     fn test_message_serialization() {
-        let msg = Message {
+        let msg = Message::UserInput {
             role: "user".to_string(),
             content: "Hello".to_string(),
             timestamp: None,
             is_tool_loading: None,
             is_hidden: None,
             task_id: None,
-            event_type: None,
             status: None,
-            action_name: None,
-            summary_text: None,
-            raw_data: None,
-            args: None,
         };
         let serialized = serde_json::to_string(&msg).unwrap();
         assert!(serialized.contains(r#""role":"user""#));
         assert!(serialized.contains(r#""content":"Hello""#));
+        assert!(serialized.contains(r#""event_type":"UserInput""#));
     }
 
     #[test]
@@ -127,19 +165,14 @@ mod tests {
         let session = ChatSession {
             id: "session-1".to_string(),
             title: "Test Session".to_string(),
-            messages: vec![Message {
+            messages: vec![Message::UserInput {
                 role: "user".to_string(),
                 content: "Hi".to_string(),
                 timestamp: None,
                 is_tool_loading: None,
                 is_hidden: None,
                 task_id: None,
-                event_type: None,
                 status: None,
-                action_name: None,
-                summary_text: None,
-                raw_data: None,
-                args: None,
             }],
             recent_ips: None,
         };
