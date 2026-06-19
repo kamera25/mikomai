@@ -58,7 +58,7 @@ pub fn is_greeting(query: &str) -> bool {
 }
 
 pub async fn stream_self_introduction(window: &tauri::Window) -> String {
-    let intro = "はじめまして！私は「MIKOMAI (Managed Infrastructure Knowledge Operator ML Agent Interface)」です。\n\
+    let intro = "こんにちは！私は「MIKOMAI (Managed Infrastructure Knowledge Operator ML Agent Interface)」です。\n\
                  ネットワークインフラの診断、運用、トラブルシューティングを最高精度で支援するプロフェッショナルAIアシスタントです。\n\n\
                  以下のような操作や調査をお手伝いできます：\n\
                  - **ネットワーク機器のステータス確認** (例: `show ip int brief` など)\n\

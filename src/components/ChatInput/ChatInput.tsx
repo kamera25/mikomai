@@ -191,7 +191,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
             )}
           </div>
         )}
-        <div className={`input-container ${modelStatus !== "Loaded" ? "disabled" : ""}`}>
+        <div className="input-container">
           <SuggestionsList
             showSuggestions={showSuggestions}
             filteredSuggestions={filteredSuggestions}
@@ -209,7 +209,6 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
               value={input}
               onChange={handleInputChange}
               rows={1}
-              disabled={modelStatus !== "Loaded"}
               onCompositionStart={() => {
                 isComposing.current = true;
               }}

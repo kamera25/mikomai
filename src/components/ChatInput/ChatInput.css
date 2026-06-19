@@ -251,12 +251,18 @@
   margin-left: 12px;
 }
 
-.send-button:hover {
+.send-button:disabled {
+  background-color: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.send-button:hover:not(:disabled) {
   background-color: var(--accent-hover);
   transform: translateY(-1px);
 }
 
-.send-button:active {
+.send-button:active:not(:disabled) {
   transform: translateY(1px);
 }
 
