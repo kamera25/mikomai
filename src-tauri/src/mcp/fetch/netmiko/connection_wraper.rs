@@ -20,7 +20,7 @@ impl NetmikoConnectionWrapper {
         device: &NetmikoDeviceConfig,
         command: &str,
     ) -> Result<String, String> {
-        self.wrapper.execute_show(device, command).await
+        self.wrapper.execute_show(device, command).await.map_err(|e| e.to_string())
     }
 }
 

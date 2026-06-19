@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
+use crate::error::TauriError;
 
 fn default_true() -> bool {
     true
@@ -108,7 +109,7 @@ fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
 }
 
 #[tauri::command]
-pub fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, SettingsError> {
+pub fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, TauriError> {
     let path = get_settings_path(&app);
     let mut settings = if !path.exists() {
         AppSettings::default()
@@ -127,7 +128,7 @@ pub fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, SettingsError
 }
 
 #[tauri::command]
-pub fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(), SettingsError> {
+pub fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(), TauriError> {
     let path = get_settings_path(&app);
     let data = serde_json::to_string_pretty(&settings)?;
     fs::write(path, data)?;

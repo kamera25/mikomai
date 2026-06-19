@@ -11,6 +11,7 @@ use tauri::Manager;
 use crate::llm::llm_manager::SharedModel;
 use std::sync::Arc;
 use crate::llm::worker::{LlmWorker, Route};
+use crate::error::TauriError;
 
 
 #[derive(serde::Serialize)]
@@ -41,6 +42,22 @@ pub enum LlmError {
     Routing(String),
     #[error("Background worker failed: {0}")]
     Worker(String),
+    #[error("Failed to get home directory")]
+    HomeDirResolution,
+    #[error("File I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("HTTP request failed: {0}")]
+    Http(#[from] reqwest::Error),
+    #[error("Download failed with status: {0}")]
+    DownloadStatus(String),
+    #[error("Opener error: {0}")]
+    Opener(String),
+    #[error("Failed to load model file: {0}")]
+    ModelLoad(String),
+    #[error("Spawn blocking failed: {0}")]
+    SpawnBlocking(String),
+    #[error("Tauri error: {0}")]
+    Tauri(#[from] tauri::Error),
 }
 
 impl serde::Serialize for LlmError {
@@ -74,7 +91,7 @@ impl LlamaState {
 
 
 #[tauri::command]
-pub async fn get_model_status(state: tauri::State<'_, LlamaState>) -> Result<ModelState, String> {
+pub async fn get_model_status(state: tauri::State<'_, LlamaState>) -> Result<ModelState, TauriError> {
     let status_lock = state.status.lock().await;
     let status = match &*status_lock {
         ModelState::NotLoaded => ModelState::NotLoaded,
@@ -160,7 +177,7 @@ pub async fn ask_llm_initial(
     window: tauri::Window,
     payload: AskInitialPayload,
     llama_state: tauri::State<'_, LlamaState>,
-) -> Result<String, LlmError> {
+) -> Result<String, TauriError> {
     let AskInitialPayload { prompt } = payload;
     let original_query = if prompt.starts_with("【ユーザー入力】\n") {
         prompt.strip_prefix("【ユーザー入力】\n")
@@ -241,7 +258,7 @@ pub async fn ask_llm_initial(
             settings.temperature,
             settings.repetition_penalty,
         ).map_err(LlmError::Worker)
-    }).await.map_err(|e| LlmError::Worker(format!("Spawn blocking failed: {}", e)))??;
+    }).await.map_err(|e| LlmError::SpawnBlocking(e.to_string()))??;
 
     log::info!("LLM Initial Prompt: {:?}\nResponse: {}", prompt, inference_result);
     Ok(inference_result)
@@ -252,7 +269,7 @@ pub async fn analyze_tool_output(
     window: tauri::Window,
     payload: AnalyzePayload,
     llama_state: tauri::State<'_, LlamaState>,
-) -> Result<String, LlmError> {
+) -> Result<String, TauriError> {
     let AnalyzePayload {
         user_message,
         tool_label,
@@ -339,7 +356,7 @@ pub async fn analyze_tool_output(
                 settings.repetition_penalty,
             ).map_err(LlmError::Worker)
         }
-    }).await.map_err(|e| LlmError::Worker(format!("Spawn blocking failed: {}", e)))??;
+    }).await.map_err(|e| LlmError::SpawnBlocking(e.to_string()))??;
 
     log::info!("LLM Analysis User Message: {:?}\nResponse: {}", user_message, inference_result);
     Ok(inference_result)
@@ -444,7 +461,7 @@ pub async fn ask_llm_background(
     prompt: String, 
     app: tauri::AppHandle,
     state: tauri::State<'_, LlamaState>
-) -> Result<String, LlmError> {
+) -> Result<String, TauriError> {
     let prompt_clone = prompt.clone();
     let app_clone = app.clone();
     let inference_result = tokio::task::spawn_blocking(move || -> Result<String, LlmError> {
@@ -480,7 +497,7 @@ pub async fn ask_llm_background(
             Err(e) => log::error!("LLM Background Error: {}", e),
         }
         res
-    }).await.map_err(|e| LlmError::Worker(format!("Spawn blocking failed: {}", e)))??;
+    }).await.map_err(|e| LlmError::SpawnBlocking(e.to_string()))??;
     Ok(inference_result)
 }
 

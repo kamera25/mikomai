@@ -8,6 +8,15 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 use uuid::Uuid;
 use chrono::Local;
 use tracing::Instrument;
+use crate::error::TauriError;
+
+#[derive(Debug, thiserror::Error)]
+pub enum ScheduledTaskError {
+    #[error("File I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Serialization/Deserialization error: {0}")]
+    Json(#[from] serde_json::Error),
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -151,21 +160,21 @@ pub async fn restart_scheduler(app: &AppHandle, sched_state: &SchedulerState) {
 }
 
 #[tauri::command]
-pub async fn load_scheduled_tasks(state: tauri::State<'_, SchedulerState>) -> Result<Vec<ScheduledTask>, String> {
+pub async fn load_scheduled_tasks(state: tauri::State<'_, SchedulerState>) -> Result<Vec<ScheduledTask>, TauriError> {
     let tasks = state.tasks.lock().await;
     Ok(tasks.clone())
 }
 
 #[tauri::command]
-pub async fn save_scheduled_tasks(app: tauri::AppHandle, tasks: Vec<ScheduledTask>, state: tauri::State<'_, SchedulerState>) -> Result<(), String> {
+pub async fn save_scheduled_tasks(app: tauri::AppHandle, tasks: Vec<ScheduledTask>, state: tauri::State<'_, SchedulerState>) -> Result<(), TauriError> {
     {
         let mut state_tasks = state.tasks.lock().await;
         *state_tasks = tasks.clone();
     }
 
     let path = get_tasks_path(&app);
-    let data = serde_json::to_string_pretty(&tasks).map_err(|e| e.to_string())?;
-    fs::write(path, data).map_err(|e| e.to_string())?;
+    let data = serde_json::to_string_pretty(&tasks)?;
+    fs::write(path, data)?;
 
     restart_scheduler(&app, &*state).await;
 
@@ -179,7 +188,7 @@ pub async fn add_scheduled_task(
     schedule: String,
     prompt: String,
     state: tauri::State<'_, SchedulerState>
-) -> Result<ScheduledTask, String> {
+) -> Result<ScheduledTask, TauriError> {
     let task = ScheduledTask {
         id: Uuid::new_v4().to_string(),
         name,
@@ -189,12 +198,12 @@ pub async fn add_scheduled_task(
         prompt,
     };
 
+    let path = get_tasks_path(&app);
     {
         let mut tasks = state.tasks.lock().await;
         tasks.push(task.clone());
-        let path = get_tasks_path(&app);
-        let data = serde_json::to_string_pretty(&*tasks).map_err(|e| e.to_string())?;
-        let _ = fs::write(path, data);
+        let data = serde_json::to_string_pretty(&*tasks)?;
+        fs::write(path, data)?;
     }
 
     restart_scheduler(&app, &*state).await;
@@ -207,15 +216,15 @@ pub async fn update_scheduled_task(
     app: tauri::AppHandle,
     task: ScheduledTask,
     state: tauri::State<'_, SchedulerState>
-) -> Result<(), String> {
+) -> Result<(), TauriError> {
+    let path = get_tasks_path(&app);
     {
         let mut tasks = state.tasks.lock().await;
         if let Some(pos) = tasks.iter().position(|t| t.id == task.id) {
             tasks[pos] = task;
         }
-        let path = get_tasks_path(&app);
-        let data = serde_json::to_string_pretty(&*tasks).map_err(|e| e.to_string())?;
-        let _ = fs::write(path, data);
+        let data = serde_json::to_string_pretty(&*tasks)?;
+        fs::write(path, data)?;
     }
 
     restart_scheduler(&app, &*state).await;
@@ -228,13 +237,13 @@ pub async fn delete_scheduled_task(
     app: tauri::AppHandle,
     id: String,
     state: tauri::State<'_, SchedulerState>
-) -> Result<(), String> {
+) -> Result<(), TauriError> {
+    let path = get_tasks_path(&app);
     {
         let mut tasks = state.tasks.lock().await;
         tasks.retain(|t| t.id != id);
-        let path = get_tasks_path(&app);
-        let data = serde_json::to_string_pretty(&*tasks).map_err(|e| e.to_string())?;
-        let _ = fs::write(path, data);
+        let data = serde_json::to_string_pretty(&*tasks)?;
+        fs::write(path, data)?;
     }
 
     restart_scheduler(&app, &*state).await;
@@ -247,7 +256,7 @@ pub async fn execute_task(
     app: tauri::AppHandle,
     id: String,
     state: tauri::State<'_, SchedulerState>
-) -> Result<(), String> {
+) -> Result<(), TauriError> {
     let span = tracing::info_span!("execute_task", task_id = %id);
     async move {
         tracing::info!("Manually executing task");
@@ -256,9 +265,8 @@ pub async fn execute_task(
             t.last_run = Local::now().format("%Y-%m-%d %H:%M").to_string();
 
             let path = get_tasks_path(&app);
-            if let Ok(data) = serde_json::to_string_pretty(&*tasks) {
-                let _ = fs::write(path, data);
-            }
+            let data = serde_json::to_string_pretty(&*tasks)?;
+            fs::write(path, data)?;
         }
         // Logic to actually execute would go here
         Ok(())

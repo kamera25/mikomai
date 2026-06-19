@@ -104,7 +104,8 @@ pub async fn self_network_ping(
         crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
     
     network_ping_core(ip_addr.to_string(), size, count, df).await
 }

@@ -431,7 +431,7 @@ pub async fn execute_mcp_tool(
                     processed_args.get("device").cloned().unwrap_or(serde_json::Value::Null)
                 ).map_err(|e| e.to_string())?;
                 let command = get_str_arg(&processed_args, &["command"]).unwrap_or_default();
-                crate::network::network_show(app.clone(), device, command).await
+                crate::network::network_show(app.clone(), device, command).await.map_err(|e| e.to_string())
             }
             "network_config" => {
                 let device = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(
@@ -440,7 +440,7 @@ pub async fn execute_mcp_tool(
                 let commands = serde_json::from_value::<Vec<String>>(
                     processed_args.get("commands").cloned().unwrap_or(serde_json::Value::Null)
                 ).map_err(|e| e.to_string())?;
-                crate::network::network_config(app.clone(), device, commands).await
+                crate::network::network_config(app.clone(), device, commands).await.map_err(|e| e.to_string())
             }
             _ => Err(format!("Unknown tool ID: {}", toolId)),
         }

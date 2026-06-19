@@ -1,11 +1,18 @@
 use std::path::PathBuf;
 use tauri::Manager;
+use crate::error::TauriError;
+use crate::llm::LlmError;
 
 #[tauri::command]
-pub async fn download_model(app: tauri::AppHandle, repo: String, filename: String) -> Result<String, String> {
+pub async fn download_model(app: tauri::AppHandle, repo: String, filename: String) -> Result<String, TauriError> {
+    let res = download_model_inner(app, repo, filename).await?;
+    Ok(res)
+}
+
+async fn download_model_inner(app: tauri::AppHandle, repo: String, filename: String) -> Result<String, LlmError> {
     tracing::info!("Starting model download: {}/{}", repo, filename);
     
-    let home = app.path().home_dir().map_err(|e: tauri::Error| e.to_string())?;
+    let home = app.path().home_dir().map_err(|_| LlmError::HomeDirResolution)?;
     let target_dir = std::env::var("HF_HUB_CACHE")
         .map(PathBuf::from)
         .or_else(|_| {
@@ -17,17 +24,17 @@ pub async fn download_model(app: tauri::AppHandle, repo: String, filename: Strin
     let dest_path = target_dir.join(&repo).join(&filename);
     
     if let Some(parent) = dest_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
+        std::fs::create_dir_all(parent)?;
     }
 
     let url = format!("https://huggingface.co/{}/resolve/main/{}", repo, filename);
     tracing::info!("Downloading from URL: {}", url);
 
     let client = reqwest::Client::new();
-    let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let response = client.get(&url).send().await?;
 
     if !response.status().is_success() {
-        return Err(format!("Download failed with status: {}", response.status()));
+        return Err(LlmError::DownloadStatus(response.status().to_string()));
     }
 
     let temp_path = dest_path.with_extension("downloading");
@@ -36,17 +43,17 @@ pub async fn download_model(app: tauri::AppHandle, repo: String, filename: Strin
         use futures::StreamExt;
         use tokio::io::AsyncWriteExt;
         
-        let mut file = tokio::fs::File::create(&temp_path).await.map_err(|e| e.to_string())?;
+        let mut file = tokio::fs::File::create(&temp_path).await?;
         let mut stream = response.bytes_stream();
         
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.map_err(|e| e.to_string())?;
-            file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+            let chunk = chunk_result?;
+            file.write_all(&chunk).await?;
         }
-        file.flush().await.map_err(|e| e.to_string())?;
+        file.flush().await?;
     }
     
-    tokio::fs::rename(&temp_path, &dest_path).await.map_err(|e| e.to_string())?;
+    tokio::fs::rename(&temp_path, &dest_path).await?;
     
     tracing::info!("Model available at: {:?}", dest_path);
     Ok(dest_path.to_string_lossy().to_string())
@@ -54,7 +61,12 @@ pub async fn download_model(app: tauri::AppHandle, repo: String, filename: Strin
 
 
 #[tauri::command]
-pub fn open_model_dir(app: tauri::AppHandle, model_path: Option<String>) -> Result<(), String> {
+pub fn open_model_dir(app: tauri::AppHandle, model_path: Option<String>) -> Result<(), TauriError> {
+    open_model_dir_inner(app, model_path)?;
+    Ok(())
+}
+
+fn open_model_dir_inner(app: tauri::AppHandle, model_path: Option<String>) -> Result<(), LlmError> {
     use std::path::PathBuf;
     use tauri::Manager;
     use tauri_plugin_opener::OpenerExt;
@@ -68,7 +80,7 @@ pub fn open_model_dir(app: tauri::AppHandle, model_path: Option<String>) -> Resu
                 path
             }
         } else {
-            let home = app.path().home_dir().map_err(|e: tauri::Error| e.to_string())?;
+            let home = app.path().home_dir().map_err(LlmError::Tauri)?;
             std::env::var("HF_HUB_CACHE")
                 .map(PathBuf::from)
                 .or_else(|_| {
@@ -78,7 +90,7 @@ pub fn open_model_dir(app: tauri::AppHandle, model_path: Option<String>) -> Resu
                 .unwrap_or_else(|_| home.join(".cache").join("huggingface").join("hub"))
         }
     } else {
-        let home = app.path().home_dir().map_err(|e: tauri::Error| e.to_string())?;
+        let home = app.path().home_dir().map_err(LlmError::Tauri)?;
         std::env::var("HF_HUB_CACHE")
             .map(PathBuf::from)
             .or_else(|_| {
@@ -93,8 +105,7 @@ pub fn open_model_dir(app: tauri::AppHandle, model_path: Option<String>) -> Resu
     }
 
     app.opener().open_path(target_dir.to_string_lossy().to_string(), None::<String>)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| LlmError::Opener(e.to_string()))?;
 
     Ok(())
 }
-

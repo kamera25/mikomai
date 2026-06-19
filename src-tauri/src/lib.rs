@@ -9,6 +9,7 @@ pub(crate) mod settings;
 pub(crate) mod crypto;
 pub mod schema;
 mod logger;
+pub mod error;
 
 use tauri::Manager;
 

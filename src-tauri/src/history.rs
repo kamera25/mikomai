@@ -68,22 +68,32 @@ fn get_history_path(app: &tauri::AppHandle) -> PathBuf {
     path.join("history.json")
 }
 
+use crate::error::TauriError;
+
+#[derive(Debug, thiserror::Error)]
+pub enum HistoryError {
+    #[error("File I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Serialization/Deserialization error: {0}")]
+    Json(#[from] serde_json::Error),
+}
+
 #[tauri::command]
-pub fn load_history(app: tauri::AppHandle) -> Result<Vec<HistoryItem>, String> {
+pub fn load_history(app: tauri::AppHandle) -> Result<Vec<HistoryItem>, TauriError> {
     let path = get_history_path(&app);
     if !path.exists() {
         return Ok(vec![]);
     }
-    let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let history: Vec<HistoryItem> = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    let data = fs::read_to_string(path)?;
+    let history: Vec<HistoryItem> = serde_json::from_str(&data)?;
     Ok(history)
 }
 
 #[tauri::command]
-pub fn save_history(app: tauri::AppHandle, history: Vec<HistoryItem>) -> Result<(), String> {
+pub fn save_history(app: tauri::AppHandle, history: Vec<HistoryItem>) -> Result<(), TauriError> {
     let path = get_history_path(&app);
-    let data = serde_json::to_string_pretty(&history).map_err(|e| e.to_string())?;
-    fs::write(path, data).map_err(|e| e.to_string())?;
+    let data = serde_json::to_string_pretty(&history)?;
+    fs::write(path, data)?;
     Ok(())
 }
 
@@ -175,18 +185,18 @@ fn get_summaries_path(app: &tauri::AppHandle) -> PathBuf {
 }
 
 #[tauri::command]
-pub fn load_summaries(app: tauri::AppHandle) -> Result<Vec<SummaryItem>, String> {
+pub fn load_summaries(app: tauri::AppHandle) -> Result<Vec<SummaryItem>, TauriError> {
     let path = get_summaries_path(&app);
     if !path.exists() {
         return Ok(vec![]);
     }
-    let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let summaries: Vec<SummaryItem> = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    let data = fs::read_to_string(path)?;
+    let summaries: Vec<SummaryItem> = serde_json::from_str(&data)?;
     Ok(summaries)
 }
 
 #[tauri::command]
-pub fn save_summary(app: tauri::AppHandle, summary: SummaryItem) -> Result<(), String> {
+pub fn save_summary(app: tauri::AppHandle, summary: SummaryItem) -> Result<(), TauriError> {
     let mut summaries = load_summaries(app.clone()).unwrap_or_default();
     summaries.push(summary);
     
@@ -197,7 +207,7 @@ pub fn save_summary(app: tauri::AppHandle, summary: SummaryItem) -> Result<(), S
     }
 
     let path = get_summaries_path(&app);
-    let data = serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())?;
-    fs::write(path, data).map_err(|e| e.to_string())?;
+    let data = serde_json::to_string_pretty(&summaries)?;
+    fs::write(path, data)?;
     Ok(())
 }

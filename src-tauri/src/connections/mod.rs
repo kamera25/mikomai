@@ -27,6 +27,31 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 use crate::crypto::{encrypt, decrypt};
+use crate::error::TauriError;
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConnectionError {
+    #[error("File I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Serialization/Deserialization error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("Crypto error: {0}")]
+    Crypto(#[from] crate::crypto::CryptoError),
+    #[error("Old connection not found for ID {0}")]
+    OldConnectionNotFound(String),
+    #[error("Failed to validate encrypted password for connection {0}: {1}")]
+    PasswordValidation(String, String),
+    #[error("Failed to validate encrypted enable password for connection {0}: {1}")]
+    EnablePasswordValidation(String, String),
+    #[error("Failed to encrypt password for connection {0}: {1}")]
+    PasswordEncryption(String, String),
+    #[error("Failed to encrypt enable password for connection {0}: {1}")]
+    EnablePasswordEncryption(String, String),
+    #[error("Connection target is {0}, but IP preference is set to {1}")]
+    IpPreferenceMismatch(String, String),
+    #[error("Could not resolve host '{0}' with IP preference '{1}'")]
+    HostResolutionFailed(String, String),
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -69,18 +94,18 @@ fn get_connections_path(app: &tauri::AppHandle) -> PathBuf {
     path.join("connections.json")
 }
 
-pub(crate) fn load_connections_raw(app: &tauri::AppHandle) -> Result<Vec<Connection>, String> {
+pub(crate) fn load_connections_raw(app: &tauri::AppHandle) -> Result<Vec<Connection>, ConnectionError> {
     let path = get_connections_path(app);
     if !path.exists() {
         return Ok(vec![]);
     }
-    let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let connections: Vec<Connection> = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    let data = fs::read_to_string(path)?;
+    let connections: Vec<Connection> = serde_json::from_str(&data)?;
     Ok(connections)
 }
 
 #[tauri::command]
-pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, String> {
+pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, TauriError> {
     let mut connections = load_connections_raw(&app)?;
 
     // Mask passwords for frontend so keychain is not accessed on startup/load.
@@ -101,7 +126,7 @@ pub fn load_connections(app: tauri::AppHandle) -> Result<Vec<Connection>, String
 }
 
 #[tauri::command]
-pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>) -> Result<(), String> {
+pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>) -> Result<(), TauriError> {
     let old_connections = load_connections_raw(&app).unwrap_or_default();
     let path = get_connections_path(&app);
 
@@ -115,17 +140,17 @@ pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>)
                     if let Some(oc) = old_conn {
                         conn.password = oc.password.clone();
                     } else {
-                        return Err(format!("Old connection not found for ID {}", conn.id));
+                        return Err(ConnectionError::OldConnectionNotFound(conn.id.to_string()).into());
                     }
                 } else {
                     match encrypt(&app, plain_password.as_str()) {
                         Ok(encrypted) => {
                             match Password::try_from(encrypted) {
                                 Ok(p) => conn.password = Some(p),
-                                Err(e) => return Err(format!("Failed to validate encrypted password for connection {}: {}", conn.id, e)),
+                                Err(e) => return Err(ConnectionError::PasswordValidation(conn.id.to_string(), e).into()),
                             }
                         }
-                        Err(e) => return Err(format!("Failed to encrypt password for connection {}: {}", conn.id, e)),
+                        Err(e) => return Err(ConnectionError::PasswordEncryption(conn.id.to_string(), e.to_string()).into()),
                     }
                 }
             }
@@ -136,25 +161,25 @@ pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>)
                     if let Some(oc) = old_conn {
                         conn.enable_password = oc.enable_password.clone();
                     } else {
-                        return Err(format!("Old connection not found for ID {}", conn.id));
+                        return Err(ConnectionError::OldConnectionNotFound(conn.id.to_string()).into());
                     }
                 } else {
                     match encrypt(&app, plain_enable_password.as_str()) {
                         Ok(encrypted) => {
                             match EnablePassword::try_from(encrypted) {
                                 Ok(ep) => conn.enable_password = Some(ep),
-                                Err(e) => return Err(format!("Failed to validate encrypted enable password for connection {}: {}", conn.id, e)),
+                                Err(e) => return Err(ConnectionError::EnablePasswordValidation(conn.id.to_string(), e).into()),
                             }
                         }
-                        Err(e) => return Err(format!("Failed to encrypt enable password for connection {}: {}", conn.id, e)),
+                        Err(e) => return Err(ConnectionError::EnablePasswordEncryption(conn.id.to_string(), e.to_string()).into()),
                     }
                 }
             }
         }
     }
 
-    let data = serde_json::to_string_pretty(&connections).map_err(|e| e.to_string())?;
-    fs::write(path, data).map_err(|e| e.to_string())?;
+    let data = serde_json::to_string_pretty(&connections)?;
+    fs::write(path, data)?;
     Ok(())
 }
 
@@ -233,7 +258,7 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
     None
 }
 
-pub fn resolve_host_with_preference(app: &tauri::AppHandle, host: &str) -> Result<std::net::IpAddr, String> {
+pub fn resolve_host_with_preference(app: &tauri::AppHandle, host: &str) -> Result<std::net::IpAddr, ConnectionError> {
     use std::net::{IpAddr, ToSocketAddrs};
     
     let parsed_ip = host.parse::<IpAddr>();
@@ -245,12 +270,12 @@ pub fn resolve_host_with_preference(app: &tauri::AppHandle, host: &str) -> Resul
         match pref {
             "ipv4" => {
                 if ip.is_ipv6() {
-                    return Err("Connection target is IPv6, but IP preference is set to IPv4 Only".to_string());
+                    return Err(ConnectionError::IpPreferenceMismatch("IPv6".to_string(), "IPv4 Only".to_string()));
                 }
             }
             "ipv6" => {
                 if ip.is_ipv4() {
-                    return Err("Connection target is IPv4, but IP preference is set to IPv6 Only".to_string());
+                    return Err(ConnectionError::IpPreferenceMismatch("IPv4".to_string(), "IPv6 Only".to_string()));
                 }
             }
             _ => {}
@@ -258,7 +283,7 @@ pub fn resolve_host_with_preference(app: &tauri::AppHandle, host: &str) -> Resul
         return Ok(ip);
     }
     
-    let addrs = format!("{}:80", host).to_socket_addrs().map_err(|e| e.to_string())?;
+    let addrs = format!("{}:80", host).to_socket_addrs()?;
     let filtered: Vec<IpAddr> = addrs.into_iter().map(|a| a.ip()).filter(|ip| {
         match pref {
             "ipv4" => ip.is_ipv4(),
@@ -268,7 +293,7 @@ pub fn resolve_host_with_preference(app: &tauri::AppHandle, host: &str) -> Resul
     }).collect();
     
     filtered.first().cloned().ok_or_else(|| {
-        format!("Could not resolve host '{}' with IP preference '{}'", host, pref)
+        ConnectionError::HostResolutionFailed(host.to_string(), pref.to_string())
     })
 }
 

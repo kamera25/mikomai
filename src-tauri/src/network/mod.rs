@@ -3,6 +3,31 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
 use crate::connections::get_device_config;
+use crate::error::TauriError;
+
+#[derive(Debug, thiserror::Error)]
+pub enum NetworkError {
+    #[error("Failed to serialize payload: {0}")]
+    Serialization(#[from] serde_json::Error),
+    #[error("Failed to create sidecar command: {0}")]
+    SidecarCreate(String),
+    #[error("Failed to spawn sidecar: {0}")]
+    SidecarSpawn(String),
+    #[error("Failed to write to sidecar stdin: {0}")]
+    SidecarWrite(String),
+    #[error("Sidecar error: {0}")]
+    SidecarError(String),
+    #[error("Sidecar failed with exit code {0}: {1}")]
+    SidecarFailed(i32, String),
+    #[error("Sidecar completed unexpectedly")]
+    SidecarUnexpectedCompletion,
+    #[error("Mutex lock poisoned")]
+    PoisonedLock,
+    #[error("Spawn blocking failed: {0}")]
+    SpawnBlocking(String),
+    #[error("Connection resolution failed: {0}")]
+    ConnectionError(#[from] crate::connections::ConnectionError),
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -34,8 +59,8 @@ pub struct CommandResult {
 
 // Abstract trait for network operations
 pub trait NetworkInterface {
-    async fn execute_show(&self, device: &NetmikoDeviceConfig, command: &str) -> Result<String, String>;
-    async fn execute_config(&self, device: &NetmikoDeviceConfig, commands: Vec<String>) -> Result<String, String>;
+    async fn execute_show(&self, device: &NetmikoDeviceConfig, command: &str) -> Result<String, NetworkError>;
+    async fn execute_config(&self, device: &NetmikoDeviceConfig, commands: Vec<String>) -> Result<String, NetworkError>;
 }
 
 // Implementation using a Tauri Sidecar fallback
@@ -48,19 +73,18 @@ impl SidecarNetmikoWrapper {
         Self { app: app.clone() }
     }
 
-    async fn run_sidecar(&self, payload: serde_json::Value) -> Result<String, String> {
-        let payload_str = serde_json::to_string(&payload)
-            .map_err(|e| format!("Failed to serialize payload: {}", e))?;
+    async fn run_sidecar(&self, payload: serde_json::Value) -> Result<String, NetworkError> {
+        let payload_str = serde_json::to_string(&payload)?;
 
         let (mut rx, mut child) = self.app.shell()
             .sidecar("netmiko_wrapper")
-            .map_err(|e| format!("Failed to create sidecar command: {}", e))?
+            .map_err(|e| NetworkError::SidecarCreate(e.to_string()))?
             .arg("--stdin")
             .spawn()
-            .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+            .map_err(|e| NetworkError::SidecarSpawn(e.to_string()))?;
 
         child.write(format!("{}\n", payload_str).as_bytes())
-            .map_err(|e| format!("Failed to write to sidecar stdin: {}", e))?;
+            .map_err(|e| NetworkError::SidecarWrite(e.to_string()))?;
 
         let mut stdout = String::new();
         let mut stderr = String::new();
@@ -76,26 +100,26 @@ impl SidecarNetmikoWrapper {
                     stderr.push('\n');
                 }
                 tauri_plugin_shell::process::CommandEvent::Error(err) => {
-                    return Err(format!("Sidecar error: {}", err));
+                    return Err(NetworkError::SidecarError(err.to_string()));
                 }
                 tauri_plugin_shell::process::CommandEvent::Terminated(payload) => {
                     let code = payload.code.unwrap_or(-1);
                     if code == 0 {
                         return Ok(stdout);
                     } else {
-                        return Err(stderr.trim().to_string());
+                        return Err(NetworkError::SidecarFailed(code, stderr.trim().to_string()));
                     }
                 }
                 _ => {}
             }
         }
 
-        Err("Sidecar completed unexpectedly".to_string())
+        Err(NetworkError::SidecarUnexpectedCompletion)
     }
 }
 
 impl NetworkInterface for SidecarNetmikoWrapper {
-    async fn execute_show(&self, device: &NetmikoDeviceConfig, command: &str) -> Result<String, String> {
+    async fn execute_show(&self, device: &NetmikoDeviceConfig, command: &str) -> Result<String, NetworkError> {
         let mut payload = serde_json::json!({
             "action": "show",
             "username": device.username,
@@ -112,7 +136,7 @@ impl NetworkInterface for SidecarNetmikoWrapper {
         self.run_sidecar(payload).await
     }
 
-    async fn execute_config(&self, device: &NetmikoDeviceConfig, commands: Vec<String>) -> Result<String, String> {
+    async fn execute_config(&self, device: &NetmikoDeviceConfig, commands: Vec<String>) -> Result<String, NetworkError> {
         let mut payload = serde_json::json!({
             "action": "config",
             "username": device.username,
@@ -135,7 +159,7 @@ pub async fn network_show(
     app: AppHandle,
     device: NetmikoDeviceConfig,
     command: String,
-) -> Result<CommandResult, String> {
+) -> Result<CommandResult, TauriError> {
     let mut target_device = device.clone();
     
     // Try to resolve it from MCP/Connections, falling back to passed-in device if not found
@@ -185,7 +209,7 @@ pub async fn network_show(
             crate::connections::resolve_host_with_preference(&app_clone, &host_to_resolve)
         })
         .await
-        .map_err(|e| e.to_string())??;
+        .map_err(|e| NetworkError::SpawnBlocking(e.to_string()))??;
         target_device.host = ip.to_string();
         log::info!("Executing read-only command on {}: {}", target_device.host, command);
     } else {
@@ -195,7 +219,7 @@ pub async fn network_show(
     let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_show(&target_device, &command).await {
         Ok(output) => Ok(CommandResult { success: true, output, saved_path: None, is_cached: None, cache_time: None }),
-        Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None, is_cached: None, cache_time: None }),
+        Err(err) => Ok(CommandResult { success: false, output: err.to_string(), saved_path: None, is_cached: None, cache_time: None }),
     }
 }
 
@@ -204,7 +228,7 @@ pub async fn network_config(
     app: AppHandle,
     device: NetmikoDeviceConfig,
     commands: Vec<String>,
-) -> Result<CommandResult, String> {
+) -> Result<CommandResult, TauriError> {
     let mut target_device = device.clone();
     
     // Try to resolve it from MCP/Connections, falling back to passed-in device if not found
@@ -254,7 +278,7 @@ pub async fn network_config(
             crate::connections::resolve_host_with_preference(&app_clone, &host_to_resolve)
         })
         .await
-        .map_err(|e| e.to_string())??;
+        .map_err(|e| NetworkError::SpawnBlocking(e.to_string()))??;
         target_device.host = ip.to_string();
         log::info!("Executing WRITE command on {}: {:?}", target_device.host, commands);
     } else {
@@ -264,7 +288,7 @@ pub async fn network_config(
     let wrapper = SidecarNetmikoWrapper::new(&app);
     match wrapper.execute_config(&target_device, commands).await {
         Ok(output) => Ok(CommandResult { success: true, output, saved_path: None, is_cached: None, cache_time: None }),
-        Err(err) => Ok(CommandResult { success: false, output: err, saved_path: None, is_cached: None, cache_time: None }),
+        Err(err) => Ok(CommandResult { success: false, output: err.to_string(), saved_path: None, is_cached: None, cache_time: None }),
     }
 }
 
@@ -273,19 +297,19 @@ pub struct McpState {
 }
 
 #[tauri::command]
-pub async fn start_ns_mcp_server(app: AppHandle, state: State<'_, McpState>) -> Result<String, String> {
+pub async fn start_ns_mcp_server(app: AppHandle, state: State<'_, McpState>) -> Result<String, TauriError> {
     log::info!("Starting Network Sketcher MCP Server...");
 
-    let mut process_lock = state.process.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    let mut process_lock = state.process.lock().map_err(|_| NetworkError::PoisonedLock)?;
     if process_lock.is_some() {
         return Ok("MCP Server is already running".to_string());
     }
 
     let (mut rx, child) = app.shell()
         .sidecar("ns_mcp_server")
-        .map_err(|e| format!("Failed to create sidecar command: {}", e))?
+        .map_err(|e| NetworkError::SidecarCreate(e.to_string()))?
         .spawn()
-        .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+        .map_err(|e| NetworkError::SidecarSpawn(e.to_string()))?;
 
     *process_lock = Some(child);
 
@@ -320,15 +344,15 @@ pub async fn start_ns_mcp_server(app: AppHandle, state: State<'_, McpState>) -> 
 }
 
 #[tauri::command]
-pub async fn send_mcp_message(state: State<'_, McpState>, message: String) -> Result<(), String> {
-    let mut process_lock = state.process.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+pub async fn send_mcp_message(state: State<'_, McpState>, message: String) -> Result<(), TauriError> {
+    let mut process_lock = state.process.lock().map_err(|_| NetworkError::PoisonedLock)?;
     if let Some(child) = process_lock.as_mut() {
         let payload = format!("{}\n", message);
         child.write(payload.as_bytes())
-            .map_err(|e| format!("Failed to write to MCP Server stdin: {}", e))?;
+            .map_err(|e| NetworkError::SidecarWrite(e.to_string()))?;
         Ok(())
     } else {
-        Err("MCP Server is not running".to_string())
+        Err(NetworkError::SidecarError("MCP Server is not running".to_string()).into())
     }
 }
 

@@ -40,7 +40,8 @@ pub async fn self_network_traceroute(
         crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
 
 
     let mut output = format!("Tracing route to {} over a maximum of 30 hops:\n\n", ip_addr);
