@@ -158,3 +158,71 @@
 .terminal-copy-button svg {
   flex-shrink: 0;
 }
+
+/* Config Syntax Highlighting */
+.terminal-comment {
+  color: var(--terminal-bright-black);
+  font-style: italic;
+}
+
+.terminal-keyword {
+  color: var(--terminal-bright-cyan);
+  font-weight: bold;
+}
+
+.terminal-interface {
+  color: var(--terminal-bright-magenta);
+}
+
+.terminal-ip {
+  color: var(--terminal-bright-yellow);
+}
+
+.terminal-mac {
+  color: var(--terminal-bright-yellow);
+}
+
+.terminal-fqdn {
+  color: var(--terminal-bright-yellow);
+}
+
+.terminal-status-up {
+  color: var(--terminal-bright-green);
+  font-weight: bold;
+}
+
+.terminal-status-down {
+  color: var(--terminal-bright-red);
+  font-weight: bold;
+}
+
+.terminal-string {
+  color: var(--terminal-bright-green);
+}
+
+.terminal-number {
+  color: var(--terminal-bright-blue);
+}
+
+.terminal-diff-prefix.add {
+  color: var(--terminal-green);
+  font-weight: bold;
+}
+
+.terminal-diff-prefix.remove {
+  color: var(--terminal-red);
+  font-weight: bold;
+}
+
+.terminal-diff-add {
+  background-color: rgba(163, 190, 140, 0.15); /* Light transparent green */
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+.terminal-diff-remove {
+  background-color: rgba(191, 97, 106, 0.15); /* Light transparent red */
+  text-decoration: line-through;
+  padding: 2px 4px;
+  border-radius: 2px;
+}
