@@ -8,6 +8,7 @@ Your options for workers are:
 - KNOWLEDGE: For general explanations of network concepts, protocols (OSPF/BGP/VLAN/NTP), or theory (e.g., "What is NTP?").
   *CRITICAL: Do NOT choose this if the request mentions a specific device or requires checking the actual network environment. No real-time data retrieval.*
 - ANALYSIS: Choose this for analyzing logs, configs, or errors. (Note: When chosen as SUBSEQUENT_ROUTE, this applies to the data that WILL BE retrieved by the FIRST_ROUTE).
+- PLOTER: Choose this for drawing network diagrams, visualization, or generating network topologies using nwdiag (e.g., "ネットワーク構成図を描画して", "nwdiagで構成図を作成して").
 
 ### Routing Sequence
 1. FIRST_ROUTE: The worker that should be run first (before MCP execution, or directly to answer the question if no MCP is needed). Usually, if a tool execution or real data fetch is needed, this MUST be INVESTIGATE.
@@ -47,8 +48,8 @@ TASK: NONE
 ### Response Instructions
 You must respond ONLY with a JSON object containing the following keys. Do not include any markdown backticks, explanations, or other text outside the JSON object.
 {
-  "first_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS",
-  "subsequent_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS" or "NONE",
+  "first_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS" or "PLOTER",
+  "subsequent_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS" or "PLOTER" or "NONE",
   "subsequent_task": "Describe the task in Japanese" or "NONE"
 }
 

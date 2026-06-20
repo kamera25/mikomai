@@ -37,8 +37,8 @@ impl Router {
         let schema = r#"{
             "type": "object",
             "properties": {
-                "first_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS"] },
-                "subsequent_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "NONE"] },
+                "first_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "PLOTER"] },
+                "subsequent_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "PLOTER", "NONE"] },
                 "subsequent_task": { "type": "string" }
             },
             "required": ["first_route", "subsequent_route", "subsequent_task"]
@@ -191,6 +191,8 @@ mod tests {
         assert_eq!(Route::from_str("knowledge"), Route::Knowledge);
         assert_eq!(Route::from_str("ANALYSIS"), Route::Analysis);
         assert_eq!(Route::from_str("none"), Route::None);
+        assert_eq!(Route::from_str("ploter"), Route::Ploter);
+        assert_eq!(Route::from_str("PLOTTER"), Route::Ploter);
         assert_eq!(Route::from_str("anything_else"), Route::Investigate);
     }
 }

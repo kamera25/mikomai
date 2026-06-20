@@ -4,7 +4,7 @@ use llama_cpp_2::model::LlamaModel;
 use crate::llm::llm_manager::SharedModel;
 use crate::llm::llm::{LlamaState, ModelState, LlmError};
 use crate::llm::worker::{
-    Router, InvestigateWorker, KnowledgeWorker, AnalysisWorker, RagWorker, SummarizationWorker
+    Router, InvestigateWorker, KnowledgeWorker, AnalysisWorker, RagWorker, SummarizationWorker, PloterWorker
 };
 use tauri::Emitter;
 use crate::error::TauriError;
@@ -84,13 +84,20 @@ pub async fn load_model(
         SummarizationWorker::new(&summarization_model, &summarization_backend).map_err(LlmError::Worker)
     });
 
-    let (router_res, investigate_res, knowledge_res, analysis_res, rag_res, summarization_res) = tokio::try_join!(
+    let ploter_model = model_arc.clone();
+    let ploter_backend = state.backend.clone();
+    let ploter_task = tokio::task::spawn_blocking(move || {
+        PloterWorker::new(&ploter_model, &ploter_backend, settings.preload_ploter).map_err(LlmError::Worker)
+    });
+
+    let (router_res, investigate_res, knowledge_res, analysis_res, rag_res, summarization_res, ploter_res) = tokio::try_join!(
         router_task,
         investigate_task,
         knowledge_task,
         analysis_task,
         rag_task,
-        summarization_task
+        summarization_task,
+        ploter_task
     ).map_err(|e| LlmError::SpawnBlocking(e.to_string()))?;
 
     let router = router_res?;
@@ -99,6 +106,7 @@ pub async fn load_model(
     let analysis = analysis_res?;
     let rag = rag_res?;
     let summarization = summarization_res?;
+    let ploter = ploter_res?;
     
     let mut shared_lock = state.shared.lock().await;
     *shared_lock = Some(Arc::new(SharedModel {
@@ -109,6 +117,7 @@ pub async fn load_model(
             analysis: std::sync::Mutex::new(analysis),
             rag: std::sync::Mutex::new(rag),
             summarization: std::sync::Mutex::new(summarization),
+            ploter: std::sync::Mutex::new(ploter),
         }),
         model: model_arc,
         backend: state.backend.clone(),

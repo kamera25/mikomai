@@ -59,6 +59,8 @@ pub struct AppSettings {
     pub preload_analysis: bool,
     #[serde(default = "default_true")]
     pub preload_rag: bool,
+    #[serde(default = "default_true")]
+    pub preload_ploter: bool,
     #[serde(default = "default_cache_expiry")]
     #[validate(range(min = 1, max = 1440))]
     pub cache_expiry_minutes: Option<u64>,
@@ -90,6 +92,7 @@ impl Default for AppSettings {
             preload_knowledge: true,
             preload_analysis: true,
             preload_rag: true,
+            preload_ploter: true,
             cache_expiry_minutes: Some(10),
             n_ctx: 4096,
             max_gen: 2048,
@@ -175,6 +178,7 @@ mod tests {
         assert!(settings.preload_knowledge);
         assert!(settings.preload_analysis);
         assert!(settings.preload_rag);
+        assert!(settings.preload_ploter);
         assert_eq!(settings.cache_expiry_minutes, Some(10));
         assert_eq!(settings.prompt_keep_tokens, 500);
     }
@@ -196,6 +200,7 @@ mod tests {
             preload_knowledge: true,
             preload_analysis: false,
             preload_rag: true,
+            preload_ploter: true,
             cache_expiry_minutes: Some(15),
             n_ctx: 4096,
             max_gen: 2048,

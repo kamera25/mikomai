@@ -210,6 +210,24 @@ impl LlamaState {
                                         settings.repetition_penalty,
                                     ).map_err(LlmError::Worker)
                                 }
+                                Route::Ploter => {
+                                    let mut worker = shared_model.ploter.lock().unwrap();
+                                    let agent_name = worker.agent_name();
+                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
+                                    worker.ask(
+                                        &model,
+                                        &backend,
+                                        Some(prompt),
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                        route_result.subsequent_task.as_deref(),
+                                        Some(&window),
+                                        settings.temperature,
+                                        settings.repetition_penalty,
+                                    ).map_err(LlmError::Worker)
+                                }
                                 Route::None => Ok("実行が完了しました。".to_string()),
                             };
                             worker_res
@@ -297,6 +315,24 @@ impl LlamaState {
                                     }
                                     Route::Analysis => {
                                         let mut worker = shared_model.analysis.lock().unwrap();
+                                        let agent_name = worker.agent_name();
+                                        let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
+                                        worker.ask(
+                                            &model,
+                                            &backend,
+                                            None,
+                                            Some(user_message),
+                                            Some(tool_label),
+                                            Some(output),
+                                            history_block,
+                                            route_result.subsequent_task.as_deref(),
+                                            Some(&window),
+                                            settings.temperature,
+                                            settings.repetition_penalty,
+                                        ).map_err(LlmError::Worker)
+                                    }
+                                    Route::Ploter => {
+                                        let mut worker = shared_model.ploter.lock().unwrap();
                                         let agent_name = worker.agent_name();
                                         let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
                                         worker.ask(

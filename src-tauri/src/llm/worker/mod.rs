@@ -4,6 +4,7 @@ pub mod knowledge;
 pub mod analysis;
 pub mod investigate;
 pub mod summarization;
+pub mod ploter;
 
 pub use router::Router;
 pub use rag::RagWorker;
@@ -11,12 +12,14 @@ pub use knowledge::KnowledgeWorker;
 pub use analysis::AnalysisWorker;
 pub use investigate::InvestigateWorker;
 pub use summarization::SummarizationWorker;
+pub use ploter::PloterWorker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
     Investigate,
     Knowledge,
     Analysis,
+    Ploter,
     None,
 }
 
@@ -27,6 +30,8 @@ impl Route {
             Route::Knowledge
         } else if upper.contains("ANALYSIS") {
             Route::Analysis
+        } else if upper.contains("PLOTER") || upper.contains("PLOTTER") {
+            Route::Ploter
         } else if upper.contains("NONE") {
             Route::None
         } else {
