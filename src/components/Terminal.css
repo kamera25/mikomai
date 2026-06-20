@@ -209,6 +209,10 @@
   color: var(--terminal-bright-blue);
 }
 
+.terminal-slash-number {
+  color: var(--terminal-bright-magenta);
+}
+
 .terminal-diff-prefix.add {
   color: var(--terminal-green);
   font-weight: bold;
