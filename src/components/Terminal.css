@@ -170,6 +170,11 @@
   font-weight: bold;
 }
 
+.terminal-protocol {
+  color: var(--terminal-bright-red);
+  font-weight: bold;
+}
+
 .terminal-interface {
   color: var(--terminal-bright-magenta);
 }
