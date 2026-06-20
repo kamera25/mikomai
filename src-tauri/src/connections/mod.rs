@@ -9,6 +9,7 @@ pub mod password;
 pub mod enable_password;
 pub mod device_type;
 pub mod vendor_type;
+pub mod device_types_data;
 
 pub use id::ConnectionId;
 pub use status::ConnectionStatus;
@@ -21,6 +22,8 @@ pub use password::Password;
 pub use enable_password::EnablePassword;
 pub use device_type::DeviceType;
 pub use vendor_type::VendorType;
+pub use device_types_data::*;
+
 
 use serde::{Deserialize, Serialize};
 use std::fs;

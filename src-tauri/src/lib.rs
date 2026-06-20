@@ -66,6 +66,7 @@ pub fn run() {
             connections::load_connections,
             connections::get_mcp_hosts,
             connections::save_connections,
+            connections::get_device_types,
             scheduled_tasks::load_scheduled_tasks,
             scheduled_tasks::save_scheduled_tasks,
             scheduled_tasks::add_scheduled_task,

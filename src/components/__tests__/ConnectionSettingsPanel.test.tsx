@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { ConnectionSettingsPanel } from "../ConnectionSettingsPanel.tsx";
+import { ConnectionSettingsPanel } from "../ConnectionSettingsPanel/ConnectionSettingsPanel.tsx";
 import * as tauriApi from "@tauri-apps/api/core";
 import * as tauriDialog from "@tauri-apps/plugin-dialog";
 
@@ -23,6 +23,12 @@ describe("ConnectionSettingsPanel", () => {
     vi.clearAllMocks();
     // Default mocks
     vi.mocked(tauriApi.invoke).mockImplementation(async (cmd, _args) => {
+      if (cmd === "get_device_types") {
+        return {
+          deviceTypes: ["cisco_ios"],
+          deviceTypeAliases: { cisco_ios: "Cisco IOS" },
+        };
+      }
       if (cmd === "get_mcp_hosts") {
         return [
           {
