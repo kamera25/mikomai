@@ -105,7 +105,40 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
             {isExpanded && msg.raw_data && (
               <div className="timeline-raw-data-wrapper">
                 <div className="timeline-raw-data">
-                  <Terminal content={msg.raw_data} />
+                  {msg.tool_id === "self_network_nwdiag" ? (
+                    (() => {
+                      const match = msg.raw_data.match(/!\[.*?\]\((.*?)\)/);
+                      const src = match ? match[1] : msg.raw_data;
+                      return (
+                        <div
+                          className="nwdiag-preview-container"
+                          style={{
+                            padding: "16px",
+                            background: "#ffffff",
+                            borderRadius: "6px",
+                            display: "flex",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            border: "1px solid #2d2d2d",
+                            marginTop: "8px",
+                          }}
+                        >
+                          <img
+                            src={src}
+                            alt="Network Diagram"
+                            style={{
+                              maxWidth: "100%",
+                              maxHeight: "500px",
+                              height: "auto",
+                              borderRadius: "4px",
+                            }}
+                          />
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <Terminal content={msg.raw_data} />
+                  )}
                 </div>
               </div>
             )}

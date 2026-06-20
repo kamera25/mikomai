@@ -187,6 +187,28 @@ pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String, f64)>
         }
     }
     
+    // 8. nwdiag shortcut
+    let lower_trimmed = input.trim();
+    if lower_trimmed.contains('{') {
+        let re_nwdiag = regex::Regex::new(r"(?i)nwdiag\s*\{").unwrap();
+        if let Some(mat) = re_nwdiag.find(lower_trimmed) {
+            let start_idx = mat.start();
+            if let Some(end_idx) = lower_trimmed.rfind('}') {
+                if end_idx > start_idx {
+                    let schema = lower_trimmed[start_idx..=end_idx].to_string();
+                    let mut params = serde_json::Map::new();
+                    params.insert("schema".to_string(), Value::String(schema));
+                    return Some((
+                        "self_network_nwdiag".to_string(),
+                        Value::Object(params),
+                        "ネットワーク図(nwdiag)を生成します。".to_string(),
+                        1.0,
+                    ));
+                }
+            }
+        }
+    }
+    
     None
 }
 
@@ -256,6 +278,12 @@ mod tests {
         let res = detect_shortcut_tool("コンソールポート一覧").unwrap();
         assert_eq!(res.0, "network_list_serial_ports");
         assert!(res.3 >= 0.8);
+
+        // nwdiag
+        let res = detect_shortcut_tool("nwdiagで図を作成して：\nnwdiag {\n  network {\n    web01;\n  }\n}").unwrap();
+        assert_eq!(res.0, "self_network_nwdiag");
+        assert_eq!(res.1["schema"], "nwdiag {\n  network {\n    web01;\n  }\n}");
+        assert_eq!(res.3, 1.0);
 
         // None
         assert!(detect_shortcut_tool("普通の質問: NTPって何？").is_none());

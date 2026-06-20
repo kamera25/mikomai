@@ -307,6 +307,11 @@ define_tool!(NetworkConfigTool, "network_config", |app, args| {
     crate::network::network_config(app, device, commands).await.map_err(|e| e.to_string())
 });
 
+define_tool!(NwDiagTool, "self_network_nwdiag", |app, args| {
+    let schema = get_str_arg(&args, &["schema"]).unwrap_or_default();
+    crate::mcp::nwdiag::self_network_nwdiag(app, schema).await
+});
+
 // Tool registry
 pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
     static REGISTRY: OnceLock<HashMap<String, Box<dyn McpTool>>> = OnceLock::new();
@@ -328,6 +333,7 @@ pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
             NetworkSendConsoleMessageTool,
             NetworkShowTool,
             NetworkConfigTool,
+            NwDiagTool,
         ]
     })
 }
@@ -472,7 +478,11 @@ pub async fn execute_mcp_tool(
     let analyze_payload = crate::llm::llm::AnalyzePayload {
         user_message: userMessage.clone(),
         tool_label: toolLabel.clone(),
-        output: result.output.clone(),
+        output: if toolId == "self_network_nwdiag" && result.success {
+            "Success: Network diagram generated successfully and saved to artifact.".to_string()
+        } else {
+            result.output.clone()
+        },
         is_rag,
         history_block: Some(history_block),
     };
@@ -557,6 +567,7 @@ fn get_tool_label(tool_name: &str) -> String {
         "fetch_routing" => "Fetch Routing".to_string(),
         "fetch_arp" => "Fetch ARP".to_string(),
         "require_host_registered" => "ホスト登録要求".to_string(),
+        "self_network_nwdiag" => "ネットワーク図生成".to_string(),
         _ => tool_name.to_string(),
     }
 }

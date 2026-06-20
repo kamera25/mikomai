@@ -37,8 +37,8 @@ function highlightConfigLine(line: string): React.ReactNode[] {
     cleanLine = line.substring(1);
   }
 
-  // Define regex for highlighting: double-quoted strings, MAC addresses, IPv6, IPv4, interfaces, slash-numbers, protocols/ports, keywords, FQDNs, statuses, numbers
-  const tokenRegex = /("[^"]*"|\b(?:(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}|[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4})\b|\b(?:[0-9a-fA-F]{1,4}::?){1,7}[0-9a-fA-F]{1,4}\b|\b::1\b|\b::\b|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|\b(?:GigabitEthernet|FastEthernet|Ethernet|Vlan|Loopback|Tunnel|Port-channel|ge-|xe-|et-|lan|wan)(?:\d+(?:\/\d+)*(?:\.\d+)*)?\b|\/\d+|\b(?:udp|tcp|smtp|www|http|https|ssh|dns|ftp|telnet|dhcp|tftp|ntp|snmp|domain|pop3)\b|\b(?:interface|ip address|no|shutdown|router|vlan|ip route|switchport|description|set|delete|commit|rollback|configure|exit|end|write|system|protocols|routing-options|policy-options|security|firewall|show)\b|\b[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+\b|\b(?:up|down)\b|\b\d+\b)/gi;
+  // Define regex for highlighting: double-quoted strings, MAC addresses, IPv6, IPv4, interfaces, slash-numbers, FQDNs, protocols/ports, keywords, statuses, numbers
+  const tokenRegex = /("[^"]*"|\b(?:(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}|[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4})\b|\b(?:[0-9a-fA-F]{1,4}::?){1,7}[0-9a-fA-F]{1,4}\b|\b::1\b|\b::\b|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|\b(?:GigabitEthernet|FastEthernet|Ethernet|Vlan|Loopback|Tunnel|Port-channel|ge-|xe-|et-|lan|wan)(?:\d+(?:\/\d+)*(?:\.\d+)*)?\b|\/\d+|\b[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+\b|\b(?:udp|tcp|smtp|www|http|https|ssh|dns|ftp|telnet|dhcp|tftp|ntp|snmp|domain|pop3)\b|\b(?:interface|ip address|no|shutdown|router|vlan|ip route|switchport|description|set|delete|commit|rollback|configure|exit|end|write|system|protocols|routing-options|policy-options|security|firewall|show)\b|\b(?:up|down)\b|\b\d+\b)/gi;
 
   const parts = cleanLine.split(tokenRegex);
   const nodes: React.ReactNode[] = [];
