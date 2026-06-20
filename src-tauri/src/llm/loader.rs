@@ -48,19 +48,57 @@ pub async fn load_model(
     
     let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
 
-    let model_clone = model_arc.clone();
-    let backend_clone = state.backend.clone();
-    let workers_res = tokio::task::spawn_blocking(move || -> Result<_, LlmError> {
-        let router = Router::new(&model_clone, &backend_clone).map_err(|e| LlmError::Routing(format!("{:?}", e)))?;
-        let investigate = InvestigateWorker::new(&model_clone, &backend_clone, settings.preload_investigate).map_err(LlmError::Worker)?;
-        let knowledge = KnowledgeWorker::new(&model_clone, &backend_clone, settings.preload_knowledge).map_err(LlmError::Worker)?;
-        let analysis = AnalysisWorker::new(&model_clone, &backend_clone, settings.preload_analysis).map_err(LlmError::Worker)?;
-        let rag = RagWorker::new(&model_clone, &backend_clone, settings.preload_rag).map_err(LlmError::Worker)?;
-        let summarization = SummarizationWorker::new(&model_clone, &backend_clone).map_err(LlmError::Worker)?;
-        Ok((router, investigate, knowledge, analysis, rag, summarization))
-    }).await.map_err(|e| LlmError::SpawnBlocking(e.to_string()))??;
+    let router_model = model_arc.clone();
+    let router_backend = state.backend.clone();
+    let router_task = tokio::task::spawn_blocking(move || {
+        Router::new(&router_model, &router_backend).map_err(|e| LlmError::Routing(format!("{:?}", e)))
+    });
 
-    let (router, investigate, knowledge, analysis, rag, summarization) = workers_res;
+    let investigate_model = model_arc.clone();
+    let investigate_backend = state.backend.clone();
+    let investigate_task = tokio::task::spawn_blocking(move || {
+        InvestigateWorker::new(&investigate_model, &investigate_backend, settings.preload_investigate).map_err(LlmError::Worker)
+    });
+
+    let knowledge_model = model_arc.clone();
+    let knowledge_backend = state.backend.clone();
+    let knowledge_task = tokio::task::spawn_blocking(move || {
+        KnowledgeWorker::new(&knowledge_model, &knowledge_backend, settings.preload_knowledge).map_err(LlmError::Worker)
+    });
+
+    let analysis_model = model_arc.clone();
+    let analysis_backend = state.backend.clone();
+    let analysis_task = tokio::task::spawn_blocking(move || {
+        AnalysisWorker::new(&analysis_model, &analysis_backend, settings.preload_analysis).map_err(LlmError::Worker)
+    });
+
+    let rag_model = model_arc.clone();
+    let rag_backend = state.backend.clone();
+    let rag_task = tokio::task::spawn_blocking(move || {
+        RagWorker::new(&rag_model, &rag_backend, settings.preload_rag).map_err(LlmError::Worker)
+    });
+
+    let summarization_model = model_arc.clone();
+    let summarization_backend = state.backend.clone();
+    let summarization_task = tokio::task::spawn_blocking(move || {
+        SummarizationWorker::new(&summarization_model, &summarization_backend).map_err(LlmError::Worker)
+    });
+
+    let (router_res, investigate_res, knowledge_res, analysis_res, rag_res, summarization_res) = tokio::try_join!(
+        router_task,
+        investigate_task,
+        knowledge_task,
+        analysis_task,
+        rag_task,
+        summarization_task
+    ).map_err(|e| LlmError::SpawnBlocking(e.to_string()))?;
+
+    let router = router_res?;
+    let investigate = investigate_res?;
+    let knowledge = knowledge_res?;
+    let analysis = analysis_res?;
+    let rag = rag_res?;
+    let summarization = summarization_res?;
     
     let mut shared_lock = state.shared.lock().await;
     *shared_lock = Some(Arc::new(SharedModel {
