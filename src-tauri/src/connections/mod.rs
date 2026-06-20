@@ -77,6 +77,14 @@ pub struct Connection {
     pub device_type: Option<DeviceType>,
     #[serde(default)]
     pub vendor_type: Option<VendorType>,
+    #[serde(default, skip_serializing)]
+    pub has_password: Option<bool>,
+    #[serde(default, skip_serializing)]
+    pub has_enable_password: Option<bool>,
+    #[serde(default, skip_serializing)]
+    pub password_changed: Option<bool>,
+    #[serde(default, skip_serializing)]
+    pub enable_password_changed: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -113,16 +121,10 @@ pub fn load_connections<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<V
 
     // Mask passwords for frontend so keychain is not accessed on startup/load.
     for conn in &mut connections {
-        if let Some(ref p) = conn.password {
-            if !p.is_empty() {
-                conn.password = Some(Password::try_from("__SAVED_PASSWORD__").unwrap());
-            }
-        }
-        if let Some(ref ep) = conn.enable_password {
-            if !ep.is_empty() {
-                conn.enable_password = Some(EnablePassword::try_from("__SAVED_PASSWORD__").unwrap());
-            }
-        }
+        conn.has_password = Some(conn.password.as_ref().map(|p| !p.is_empty()).unwrap_or(false));
+        conn.has_enable_password = Some(conn.enable_password.as_ref().map(|ep| !ep.is_empty()).unwrap_or(false));
+        conn.password = None;
+        conn.enable_password = None;
     }
 
     Ok(connections)
@@ -143,19 +145,14 @@ pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>)
     let old_connections = load_connections_raw(&app).unwrap_or_default();
     let path = get_connections_path(&app);
 
-    // Encrypt passwords before saving if they have changed from the __SAVED_PASSWORD__ placeholder
+    // Encrypt passwords before saving if they have changed from the placeholder flags
     for conn in &mut connections {
         let old_conn = old_connections.iter().find(|oc| oc.id == conn.id);
 
-        if let Some(plain_password) = &conn.password {
-            if !plain_password.is_empty() {
-                if plain_password.as_str() == "__SAVED_PASSWORD__" {
-                    if let Some(oc) = old_conn {
-                        conn.password = oc.password.clone();
-                    } else {
-                        return Err(ConnectionError::OldConnectionNotFound(conn.id.to_string()).into());
-                    }
-                } else {
+        let password_changed = conn.password_changed.unwrap_or(old_conn.is_none());
+        if password_changed {
+            if let Some(plain_password) = &conn.password {
+                if !plain_password.is_empty() {
                     match encrypt(&app, plain_password.as_str()) {
                         Ok(encrypted) => {
                             match Password::try_from(encrypted) {
@@ -165,18 +162,22 @@ pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>)
                         }
                         Err(e) => return Err(ConnectionError::PasswordEncryption(conn.id.to_string(), e.to_string()).into()),
                     }
+                } else {
+                    conn.password = None;
                 }
+            } else {
+                conn.password = None;
+            }
+        } else {
+            if let Some(oc) = old_conn {
+                conn.password = oc.password.clone();
             }
         }
-        if let Some(plain_enable_password) = &conn.enable_password {
-            if !plain_enable_password.is_empty() {
-                if plain_enable_password.as_str() == "__SAVED_PASSWORD__" {
-                    if let Some(oc) = old_conn {
-                        conn.enable_password = oc.enable_password.clone();
-                    } else {
-                        return Err(ConnectionError::OldConnectionNotFound(conn.id.to_string()).into());
-                    }
-                } else {
+
+        let enable_password_changed = conn.enable_password_changed.unwrap_or(old_conn.is_none());
+        if enable_password_changed {
+            if let Some(plain_enable_password) = &conn.enable_password {
+                if !plain_enable_password.is_empty() {
                     match encrypt(&app, plain_enable_password.as_str()) {
                         Ok(encrypted) => {
                             match EnablePassword::try_from(encrypted) {
@@ -186,7 +187,15 @@ pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>)
                         }
                         Err(e) => return Err(ConnectionError::EnablePasswordEncryption(conn.id.to_string(), e.to_string()).into()),
                     }
+                } else {
+                    conn.enable_password = None;
                 }
+            } else {
+                conn.enable_password = None;
+            }
+        } else {
+            if let Some(oc) = old_conn {
+                conn.enable_password = oc.enable_password.clone();
             }
         }
     }
@@ -329,6 +338,10 @@ mod tests {
             enable_password: None,
             device_type: None,
             vendor_type: None,
+            has_password: None,
+            has_enable_password: None,
+            password_changed: None,
+            enable_password_changed: None,
         };
 
         let serialized = serde_json::to_string(&conn).unwrap();

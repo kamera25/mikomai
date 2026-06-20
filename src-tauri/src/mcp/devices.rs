@@ -58,6 +58,10 @@ mod tests {
                 enable_password: None,
                 device_type: Some(crate::connections::DeviceType::try_from("Router").unwrap()),
                 vendor_type: Some(crate::connections::VendorType::try_from("Cisco").unwrap()),
+                has_password: None,
+                has_enable_password: None,
+                password_changed: None,
+                enable_password_changed: None,
             }
         ];
 

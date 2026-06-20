@@ -366,6 +366,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const [searchQuery, setSearchQuery] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [passwordChanged, setPasswordChanged] = useState(false);
+  const [enablePasswordChanged, setEnablePasswordChanged] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mcpHosts, setMcpHosts] = useState<McpHost[]>([]);
@@ -433,8 +435,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       port: conn.port ? conn.port.toString() : "",
       type: conn.type.split(" ")[0] as any,
       username: conn.username || "root", // Mock data doesn't have these, using defaults
-      password: conn.password || "",
-      enablePassword: conn.enablePassword || "",
+      password: "",
+      enablePassword: "",
       passphrase: "",
       rememberPassword: true,
       agentForwarding: false,
@@ -445,6 +447,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       deviceType: conn.deviceType || "cisco_ios",
       vendorType: conn.vendorType || "",
     });
+    setPasswordChanged(false);
+    setEnablePasswordChanged(false);
     setErrors({});
     setIsEditing(true);
   };
@@ -469,6 +473,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       deviceType: "cisco_ios",
       vendorType: "",
     });
+    setPasswordChanged(false);
+    setEnablePasswordChanged(false);
     setErrors({});
     setIsEditing(true);
   };
@@ -537,6 +543,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                 enablePassword: formData.enablePassword,
                 deviceType: formData.deviceType,
                 vendorType: formData.vendorType,
+                passwordChanged: passwordChanged,
+                enablePasswordChanged: enablePasswordChanged,
               }
             : conn
         );
@@ -557,6 +565,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
           enablePassword: formData.enablePassword,
           deviceType: formData.deviceType,
           vendorType: formData.vendorType,
+          passwordChanged: true,
+          enablePasswordChanged: true,
         };
         updatedConnections = [...connections, newConnection];
       }
@@ -893,7 +903,11 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     <input
                       type="password"
                       value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      onChange={(e) => {
+                        setFormData({ ...formData, password: e.target.value });
+                        setPasswordChanged(true);
+                      }}
+                      placeholder={editingId && connections.find(c => c.id === editingId)?.hasPassword ? "••••••••" : ""}
                     />
                   </div>
                   <div className="form-group">
@@ -901,7 +915,11 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
                     <input
                       type="password"
                       value={formData.enablePassword}
-                      onChange={(e) => setFormData({ ...formData, enablePassword: e.target.value })}
+                      onChange={(e) => {
+                        setFormData({ ...formData, enablePassword: e.target.value });
+                        setEnablePasswordChanged(true);
+                      }}
+                      placeholder={editingId && connections.find(c => c.id === editingId)?.hasEnablePassword ? "••••••••" : ""}
                     />
                   </div>
                 </>

@@ -98,6 +98,10 @@ export interface Connection {
   enablePassword?: string;
   deviceType?: string;
   vendorType?: string;
+  hasPassword?: boolean;
+  hasEnablePassword?: boolean;
+  passwordChanged?: boolean;
+  enablePasswordChanged?: boolean;
 }
 
 export interface McpHost {
