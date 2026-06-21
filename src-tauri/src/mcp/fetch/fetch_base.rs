@@ -96,6 +96,7 @@ pub async fn resolve_device_config(app: &tauri::AppHandle, device_name: &str) ->
     }
 }
 
+#[allow(async_fn_in_trait)]
 pub trait McpCommandFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String;
     fn get_log_prefix(&self) -> &'static str;
