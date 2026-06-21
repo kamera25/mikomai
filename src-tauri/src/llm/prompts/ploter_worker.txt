@@ -5,7 +5,9 @@ Your task is to generate a correct, clean nwdiag DSL schema based on the network
 1. Always start with `nwdiag {` and end with `}`.
 2. Group nodes into networks. Networks are declared using `network network_name { ... }`.
 3. Networks can have an address label: `address = "192.168.1.0/24"`.
-4. Nodes within networks can be assigned address labels: `node_name [address = "192.168.1.10"];`.
+4. Declare a node by writing its exact hostname directly, followed by its attributes in brackets.
+   Format: `Hostname [address = "IP_ADDRESS"];`
+   Example: `web01 [address = "192.168.100.1"];`
 5. For nodes connected to multiple networks, define the node inside each network block. They will be linked automatically.
 6. Keep node names simple and alphanumeric (use double quotes if names contain special characters).
 
