@@ -581,11 +581,11 @@ pub async fn handle_mcp_message(
     payload: ChatRequest,
 ) -> Result<(), String> {
     let ChatRequest {
-        user_message: userMessage,
+        user_message,
         summaries,
-        recent_ips: recentIps,
-        history_limit: historyLimit,
-        mcp_timeout: mcpTimeout,
+        recent_ips,
+        history_limit,
+        mcp_timeout,
     } = payload;
 
     // 1. Generate thinkingTaskId and emit mcp-initial-started
@@ -596,8 +596,8 @@ pub async fn handle_mcp_message(
     }));
 
     // 2. Build history block and prompt
-    let history_block = get_history_block_rust(&summaries, historyLimit);
-    let prompt_with_context = format!("【ユーザー入力】\n{}{}", userMessage, history_block);
+    let history_block = get_history_block_rust(&summaries, history_limit);
+    let prompt_with_context = format!("【ユーザー入力】\n{}{}", user_message, history_block);
 
     // 3. Call ask_llm_initial
     let payload_initial = crate::llm::llm::AskInitialPayload {
@@ -657,12 +657,12 @@ pub async fn handle_mcp_message(
             
             let tool_id = tool_call.tool;
             let tool_label = get_tool_label(&tool_id);
-            let user_message_c = userMessage.clone();
+            let user_message_c = user_message.clone();
             let args_c = tool_call.args;
             let summaries_c = summaries.clone();
-            let recent_ips_c = recentIps.clone();
-            let history_limit_c = historyLimit;
-            let mcp_timeout_c = mcpTimeout;
+            let recent_ips_c = recent_ips.clone();
+            let history_limit_c = history_limit;
+            let mcp_timeout_c = mcp_timeout;
 
             futures.push(async move {
                 let _ = execute_mcp_tool(
@@ -688,7 +688,7 @@ pub async fn handle_mcp_message(
         let app_c = app.clone();
         let window_c = window.clone();
         let thinking_task_id_c = thinking_task_id.clone();
-        let user_message_c = userMessage.clone();
+        let user_message_c = user_message.clone();
         let response_c = response.clone();
 
         tokio::spawn(async move {

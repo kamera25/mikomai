@@ -86,7 +86,7 @@ pub async fn connect_db(path: String, state: tauri::State<'_, RagState>) -> Resu
 }
 
 #[tauri::command]
-pub async fn ingest_document(path: String) -> Result<String, String> {
+pub async fn ingest_document(_path: String) -> Result<String, String> {
     Ok("Document ingested successfully (stub)".to_string())
 }
 

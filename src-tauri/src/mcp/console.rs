@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serialport::{SerialPort, SerialPortType};
+use serialport::SerialPortType;
 use std::io::{Read, Write};
 use std::time::Duration;
 

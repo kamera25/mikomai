@@ -19,18 +19,22 @@ impl TargetDevice {
         &self.host
     }
 
+    #[allow(dead_code)]
     pub fn username(&self) -> &str {
         &self.username
     }
 
+    #[allow(dead_code)]
     pub fn password(&self) -> Option<&str> {
         self.password.as_deref()
     }
 
+    #[allow(dead_code)]
     pub fn enable_password(&self) -> Option<&str> {
         self.enable_password.as_deref()
     }
 
+    #[allow(dead_code)]
     pub fn device_type(&self) -> &str {
         &self.device_type
     }
@@ -39,6 +43,7 @@ impl TargetDevice {
         self.console_port.as_deref()
     }
 
+    #[allow(dead_code)]
     pub fn console_baud_rate(&self) -> Option<u32> {
         self.console_baud_rate
     }

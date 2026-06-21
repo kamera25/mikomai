@@ -1,5 +1,5 @@
 use surge_ping::{Client, Config, PingIdentifier, PingSequence, ICMP};
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::IpAddr;
 use tokio::time::Duration;
 use serde::{Deserialize, Serialize};
 use crate::connections::resolve_host_with_mcp;
@@ -23,7 +23,9 @@ impl From<TracerouteResult> for crate::network::CommandResult {
 }
 
 
+#[cfg(test)]
 fn resolve_host(host: &str) -> Result<IpAddr, String> {
+    use std::net::ToSocketAddrs;
     let addrs = format!("{}:80", host).to_socket_addrs().map_err(|e| e.to_string())?;
     addrs.into_iter().next().map(|a| a.ip()).ok_or("Could not resolve host".to_string())
 }

@@ -9,9 +9,6 @@ fn default_true() -> bool {
     true
 }
 
-fn default_false() -> bool {
-    false
-}
 
 fn default_cache_expiry() -> Option<u64> {
     Some(10)

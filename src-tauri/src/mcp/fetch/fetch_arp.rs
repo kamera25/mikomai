@@ -14,13 +14,6 @@ impl McpCommandFetcher for ArpFetcher {
     }
 }
 
-#[derive(serde::Serialize, Clone)]
-struct ArpYamlSavedPayload {
-    #[serde(rename = "deviceName")]
-    device_name: String,
-    #[serde(rename = "savedPath")]
-    saved_path: String,
-}
 
 #[tauri::command]
 #[allow(non_snake_case)]

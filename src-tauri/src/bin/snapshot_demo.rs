@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 use mikomai_lib::snapshot::SnapshotManager;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
