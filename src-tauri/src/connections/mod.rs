@@ -1,7 +1,6 @@
 pub mod id;
 pub mod status;
 pub mod hostname;
-pub mod ip_address;
 pub mod conn_type;
 pub mod last_connected;
 pub mod username;
@@ -14,7 +13,6 @@ pub mod device_types_data;
 pub use id::ConnectionId;
 pub use status::ConnectionStatus;
 pub use hostname::Hostname;
-pub use ip_address::IpAddress;
 pub use conn_type::ConnectionType;
 pub use last_connected::LastConnected;
 pub use username::Username;
@@ -27,6 +25,7 @@ pub use device_types_data::*;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::net::IpAddr;
 use std::path::PathBuf;
 use tauri::Manager;
 use crate::crypto::{encrypt, decrypt};
@@ -63,7 +62,7 @@ pub struct Connection {
     pub id: ConnectionId,
     pub status: ConnectionStatus,
     pub hostname: Hostname,
-    pub ip: IpAddress,
+    pub ip: IpAddr,
     #[serde(default)]
     #[validate(range(min = 1, max = 65535))]
     pub port: Option<u16>,
@@ -94,7 +93,7 @@ pub struct Connection {
 #[serde(rename_all = "camelCase")]
 pub struct McpHost {
     pub hostname: Hostname,
-    pub ip: IpAddress,
+    pub ip: IpAddr,
     pub device_type: DeviceType,
     pub username: Username,
 }
@@ -226,7 +225,7 @@ pub fn get_device_config(app: &tauri::AppHandle, host: &str) -> Option<(String, 
     
     // 1. Check local connections
     if let Ok(connections) = load_connections_raw(app) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(host) || c.ip.as_str() == host) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(host) || c.ip.to_string() == host) {
             let mut dtype = if let Some(dt) = &conn.device_type {
                 dt.as_str().to_string()
             } else if let Some(vt) = &conn.vendor_type {
@@ -332,7 +331,7 @@ mod tests {
             id: ConnectionId::try_from("test-1").unwrap(),
             status: ConnectionStatus::try_from("active").unwrap(),
             hostname: Hostname::try_from("router-1").unwrap(),
-            ip: IpAddress::try_from("10.0.0.1").unwrap(),
+            ip: "10.0.0.1".parse().unwrap(),
             port: Some(22),
             conn_type: ConnectionType::try_from("SSH").unwrap(),
             last_connected: LastConnected::try_from("2023-10-27").unwrap(),
@@ -357,7 +356,7 @@ mod tests {
     fn test_mcp_host_serialization() {
         let host = McpHost {
             hostname: Hostname::try_from("switch-1").unwrap(),
-            ip: IpAddress::try_from("10.0.0.2").unwrap(),
+            ip: "10.0.0.2".parse().unwrap(),
             device_type: DeviceType::try_from("Telnet").unwrap(),
             username: Username::try_from("admin").unwrap(),
         };

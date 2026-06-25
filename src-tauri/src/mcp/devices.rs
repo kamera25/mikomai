@@ -13,7 +13,7 @@ pub fn get_registered_device_info_from_lists(
     let target = query.trim().to_lowercase();
     
     // Check local connections
-    if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&target) || c.ip.as_str() == target) {
+    if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&target) || c.ip.to_string() == target) {
         let mut info = format!("登録済み機器 '{}' の接続情報:\n\n", conn.hostname);
         info.push_str(&format!("- ホスト名: {}\n", conn.hostname));
         info.push_str(&format!("- IPアドレス: {}\n", conn.ip));
@@ -49,7 +49,7 @@ mod tests {
                 id: crate::connections::ConnectionId::try_from("1").unwrap(),
                 status: crate::connections::ConnectionStatus::try_from("active").unwrap(),
                 hostname: crate::connections::Hostname::try_from("router-cisco").unwrap(),
-                ip: crate::connections::IpAddress::try_from("192.168.1.1").unwrap(),
+                ip: "192.168.1.1".parse().unwrap(),
                 port: Some(22),
                 conn_type: crate::connections::ConnectionType::try_from("SSH").unwrap(),
                 last_connected: crate::connections::LastConnected::try_from("2026-06-11").unwrap(),

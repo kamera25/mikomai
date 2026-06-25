@@ -75,7 +75,7 @@ fn resolve_device_from_connections<R: Runtime>(app: &AppHandle<R>, user_message:
     if let Ok(connections) = crate::connections::load_connections_raw(app) {
         for conn in connections {
             if (!conn.hostname.as_str().is_empty() && lower_msg.contains(&conn.hostname.to_lowercase()))
-                || (!conn.ip.as_str().is_empty() && lower_msg.contains(conn.ip.as_str()))
+                || lower_msg.contains(&conn.ip.to_string())
             {
                 return Some(conn.hostname.to_string());
             }

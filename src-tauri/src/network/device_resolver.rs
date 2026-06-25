@@ -91,7 +91,7 @@ impl TargetDeviceBuilder {
         let mut is_console = target_device.console_port.is_some();
         if !is_console {
             if let Ok(connections) = load_connections(self.app.clone()) {
-                if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&target_device.host) || c.ip.as_str() == target_device.host) {
+                if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&target_device.host) || c.ip.to_string() == target_device.host) {
                     if conn.conn_type == ConnectionType::Console {
                         is_console = true;
                     }

@@ -20,7 +20,7 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
     let mut resolved_device = None;
     
     if let Ok(connections) = load_connections_raw(app) {
-        if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(resolved_name) || c.ip.as_str() == resolved_name) {
+        if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(resolved_name) || c.ip.to_string() == resolved_name) {
             let dtype = if let Some(dt) = &conn.device_type {
                 dt.to_string()
             } else if let Some(vt) = &conn.vendor_type {
