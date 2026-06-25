@@ -5,25 +5,25 @@ use llama_cpp_2::llama_backend::LlamaBackend;
 use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
 
-const PLOTER_WORKER_PROMPT: &str = include_str!("../prompts/ploter_worker.txt");
+const PLOTTER_WORKER_PROMPT: &str = include_str!("../prompts/plotter_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 2048;
 const N_CTX: u32 = 4096;
 
-pub struct PloterWorker {
+pub struct PlotterWorker {
     pub ctx: Option<AgentContext>,
 }
 
-impl PloterWorker {
+impl PlotterWorker {
     pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>, preload: bool) -> Result<Self, String> {
         if preload {
             let full_system_prompt = format!(
-                "{}\n\n=== Current Role ===\nあなたは現在「Ploter (作図器)」として動作しています。以下の役割指示に特化してください:\n{}",
+                "{}\n\n=== Current Role ===\nあなたは現在「Plotter (作図器)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
-                PLOTER_WORKER_PROMPT
+                PLOTTER_WORKER_PROMPT
             );
             let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 6, MAX_NEW_TOKENS, N_CTX)
-                .map_err(|e| format!("Failed to create Ploter context: {:?}", e))?;
+                .map_err(|e| format!("Failed to create Plotter context: {:?}", e))?;
             
             Ok(Self { ctx: Some(ctx) })
         } else {
@@ -32,13 +32,13 @@ impl PloterWorker {
     }
 }
 
-impl LlmWorker for PloterWorker {
+impl LlmWorker for PlotterWorker {
     fn agent_name(&self) -> &'static str {
-        "Ploter (作図器)"
+        "Plotter (作図器)"
     }
 
     fn context_mut(&mut self) -> &mut AgentContext {
-        self.ctx.as_mut().expect("Ploter context not initialized")
+        self.ctx.as_mut().expect("Plotter context not initialized")
     }
 
     fn ensure_initialized(
@@ -48,12 +48,12 @@ impl LlmWorker for PloterWorker {
     ) -> Result<(), String> {
         if self.ctx.is_none() {
             let full_system_prompt = format!(
-                "{}\n\n=== Current Role ===\nあなたは現在「Ploter (作図器)」として動作しています。以下の役割指示に特化してください:\n{}",
+                "{}\n\n=== Current Role ===\nあなたは現在「Plotter (作図器)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
-                PLOTER_WORKER_PROMPT
+                PLOTTER_WORKER_PROMPT
             );
             let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 6, MAX_NEW_TOKENS, N_CTX)
-                .map_err(|e| format!("Failed to create Ploter context: {:?}", e))?;
+                .map_err(|e| format!("Failed to create Plotter context: {:?}", e))?;
             
             self.ctx = Some(ctx);
         }
@@ -117,7 +117,7 @@ impl LlmWorker for PloterWorker {
             temperature,
             repetition_penalty,
             Some(grammar_sampler),
-        ).map_err(|e| format!("Ploter inference failed: {:?}", e))
+        ).map_err(|e| format!("Plotter inference failed: {:?}", e))
     }
 
     fn build_prompt(

@@ -16,7 +16,7 @@ pub struct SharedWorkers {
     pub analysis: std::sync::Mutex<crate::llm::worker::AnalysisWorker>,
     pub rag: std::sync::Mutex<crate::llm::worker::RagWorker>,
     pub summarization: std::sync::Mutex<crate::llm::worker::SummarizationWorker>,
-    pub ploter: std::sync::Mutex<crate::llm::worker::PloterWorker>,
+    pub plotter: std::sync::Mutex<crate::llm::worker::PlotterWorker>,
 }
 
 pub struct SharedModel {

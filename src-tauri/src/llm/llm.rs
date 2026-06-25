@@ -110,7 +110,7 @@ fn get_worker_for_route(shared: &SharedModel, route: Route) -> Option<&std::sync
         Route::Investigate => Some(&shared.investigate),
         Route::Knowledge => Some(&shared.knowledge),
         Route::Analysis => Some(&shared.analysis),
-        Route::Ploter => Some(&shared.ploter),
+        Route::Plotter => Some(&shared.plotter),
         Route::None => None,
     }
 }
