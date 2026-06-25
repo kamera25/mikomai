@@ -338,32 +338,47 @@ pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
     })
 }
 
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecuteMcpToolPayload {
+    pub task_id: String,
+    pub tool_id: String,
+    pub tool_label: String,
+    pub user_message: String,
+    pub args: Value,
+    pub summaries: Vec<crate::history::SummaryItem>,
+    pub recent_ips: Vec<String>,
+    pub history_limit: usize,
+    pub mcp_timeout: u64,
+}
+
 #[tauri::command]
-#[allow(non_snake_case)]
 pub async fn execute_mcp_tool(
     app: AppHandle,
     window: Window,
     llama_state: State<'_, crate::llm::llm::LlamaState>,
-    _rag_state: State<'_, crate::mcp::rag::RagState>,
-    taskId: String,
-    toolId: String,
-    toolLabel: String,
-    userMessage: String,
-    args: Value,
-    summaries: Vec<crate::history::SummaryItem>,
-    recentIps: Vec<String>,
-    historyLimit: usize,
-    mcpTimeout: u64,
+    payload: ExecuteMcpToolPayload,
 ) -> Result<String, String> {
+    let ExecuteMcpToolPayload {
+        task_id,
+        tool_id,
+        tool_label,
+        user_message,
+        args,
+        summaries,
+        recent_ips,
+        history_limit,
+        mcp_timeout,
+    } = payload;
     // 1. Normalize arguments by injecting userMessage/user_message
     let mut processed_args = args.clone();
     if let serde_json::Value::Object(ref mut map) = processed_args {
-        map.insert("userMessage".to_string(), serde_json::Value::String(userMessage.clone()));
-        map.insert("user_message".to_string(), serde_json::Value::String(userMessage.clone()));
+        map.insert("userMessage".to_string(), serde_json::Value::String(user_message.clone()));
+        map.insert("user_message".to_string(), serde_json::Value::String(user_message.clone()));
     }
 
     // 2. Extract resolved host for recentIPs updates in the frontend
-    let resolved_host = if ["fetch_config", "fetch_routing", "fetch_arp"].contains(&toolId.as_str()) {
+    let resolved_host = if ["fetch_config", "fetch_routing", "fetch_arp"].contains(&tool_id.as_str()) {
         let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
         let device = get_str_arg(&processed_args, &["device"]);
         let host = get_str_arg(&processed_args, &["host"]);
@@ -374,17 +389,17 @@ pub async fn execute_mcp_tool(
             device_name.clone(),
             device,
             host,
-            Some(userMessage.clone()),
-            Some(userMessage.clone()),
+            Some(user_message.clone()),
+            Some(user_message.clone()),
         ).ok();
 
         // Apply fallback if still empty
         if resolved.as_ref().map_or(true, |r| r.trim().is_empty()) {
-            recentIps.first().cloned()
+            recent_ips.first().cloned()
         } else {
             resolved
         }
-    } else if ["self_network_ping", "self_network_traceroute"].contains(&toolId.as_str()) {
+    } else if ["self_network_ping", "self_network_traceroute"].contains(&tool_id.as_str()) {
         let host = get_str_arg(&processed_args, &["host"]);
         let device = get_str_arg(&processed_args, &["device"]);
         let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
@@ -401,7 +416,7 @@ pub async fn execute_mcp_tool(
 
         // Apply fallback if still empty
         if resolved.as_ref().map_or(true, |r| r.trim().is_empty()) {
-            recentIps.first().cloned()
+            recent_ips.first().cloned()
         } else {
             resolved
         }
@@ -411,9 +426,9 @@ pub async fn execute_mcp_tool(
 
     // Emit started event
     let start_payload = ToolStartedPayload {
-        task_id: taskId.clone(),
-        tool_id: toolId.clone(),
-        tool_label: toolLabel.clone(),
+        task_id: task_id.clone(),
+        tool_id: tool_id.clone(),
+        tool_label: tool_label.clone(),
         args: processed_args.clone(),
         resolved_host: resolved_host.clone(),
     };
@@ -421,15 +436,15 @@ pub async fn execute_mcp_tool(
 
     // 3. Match and execute the appropriate command in a future
     let execution_future = async {
-        if let Some(tool) = get_tool_registry().get(&toolId) {
+        if let Some(tool) = get_tool_registry().get(&tool_id) {
             tool.execute(app.clone(), processed_args.clone()).await
         } else {
-            Err(format!("Unknown tool ID: {}", toolId))
+            Err(format!("Unknown tool ID: {}", tool_id))
         }
     };
 
     // Run execution with timeout
-    let mcp_timeout_duration = Duration::from_secs(mcpTimeout);
+    let mcp_timeout_duration = Duration::from_secs(mcp_timeout);
     let result = match tokio::time::timeout(mcp_timeout_duration, execution_future).await {
         Ok(Ok(res)) => res,
         Ok(Err(e)) => crate::network::CommandResult {
@@ -450,7 +465,7 @@ pub async fn execute_mcp_tool(
 
     // Emit finished event
     let finished_payload = ToolFinishedPayload {
-        task_id: taskId.clone(),
+        task_id: task_id.clone(),
         success: result.success,
         output: result.output.clone(),
         saved_path: result.saved_path.clone(),
@@ -460,7 +475,7 @@ pub async fn execute_mcp_tool(
     let _ = window.emit("chat-event", ChatEvent::McpToolFinished(finished_payload));
 
     // 4. Analysis phase
-    let history_block = get_history_block_rust(&summaries, historyLimit);
+    let history_block = get_history_block_rust(&summaries, history_limit);
     let analysis_task_id = format!(
         "task_{}_{}",
         chrono::Utc::now().timestamp_millis(),
@@ -469,16 +484,16 @@ pub async fn execute_mcp_tool(
 
     // Emit analysis started event
     let analysis_started_payload = AnalysisStartedPayload {
-        task_id: taskId.clone(),
+        task_id: task_id.clone(),
         analysis_task_id: analysis_task_id.clone(),
     };
     let _ = window.emit("chat-event", ChatEvent::McpAnalysisStarted(analysis_started_payload));
 
-    let is_rag = toolId == "query_nw_db" || toolId == "network_query_nw_db";
+    let is_rag = tool_id == "query_nw_db" || tool_id == "network_query_nw_db";
     let analyze_payload = crate::llm::llm::AnalyzePayload {
-        user_message: userMessage.clone(),
-        tool_label: toolLabel.clone(),
-        output: if toolId == "self_network_nwdiag" && result.success {
+        user_message: user_message.clone(),
+        tool_label: tool_label.clone(),
+        output: if tool_id == "self_network_nwdiag" && result.success {
             "Success: Network diagram generated successfully and saved to artifact.".to_string()
         } else {
             result.output.clone()
@@ -496,7 +511,7 @@ pub async fn execute_mcp_tool(
     // 5. Generate and save summary
     let summary_prompt = format!(
         "以下の内容を要約してください。\n\nユーザー入力: {}\n実行ツール: {}\n分析結果: {}",
-        userMessage, toolLabel, response_str
+        user_message, tool_label, response_str
     );
     if let Ok(summary_text) = crate::llm::llm::ask_llm_background(
         summary_prompt,
@@ -577,7 +592,6 @@ pub async fn handle_mcp_message(
     app: AppHandle,
     window: Window,
     llama_state: State<'_, crate::llm::llm::LlamaState>,
-    rag_state: State<'_, crate::mcp::rag::RagState>,
     payload: ChatRequest,
 ) -> Result<(), String> {
     let ChatRequest {
@@ -647,7 +661,6 @@ pub async fn handle_mcp_message(
             let app_c = app.clone();
             let window_c = window.clone();
             let llama_state_c = llama_state.clone();
-            let rag_state_c = rag_state.clone();
             
             let task_id = format!(
                 "task_{}_{}",
@@ -669,16 +682,17 @@ pub async fn handle_mcp_message(
                     app_c,
                     window_c,
                     llama_state_c,
-                    rag_state_c,
-                    task_id,
-                    tool_id,
-                    tool_label,
-                    user_message_c,
-                    args_c,
-                    summaries_c,
-                    recent_ips_c,
-                    history_limit_c,
-                    mcp_timeout_c,
+                    ExecuteMcpToolPayload {
+                        task_id,
+                        tool_id,
+                        tool_label,
+                        user_message: user_message_c,
+                        args: args_c,
+                        summaries: summaries_c,
+                        recent_ips: recent_ips_c,
+                        history_limit: history_limit_c,
+                        mcp_timeout: mcp_timeout_c,
+                    },
                 ).await;
             });
         }
