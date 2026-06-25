@@ -124,10 +124,13 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, isLoaded: action.payload };
     case "SET_MESSAGE_STATUS": {
       const { sessionId, taskId, status } = action.payload;
+      const isCurrentActive = state.activeSessionId === sessionId;
+      let updatedMessages: Message[] | null = null;
+
       const updateMessageStatusInHistory = (items: HistoryItem[]): HistoryItem[] => {
         return items.map((item) => {
           if (item.id === sessionId && item.type === "session") {
-            const updatedMessages = item.messages.map((msg) => {
+            updatedMessages = item.messages.map((msg) => {
               if (msg.task_id === taskId && msg.role === "user") {
                 return { ...msg, status } as Message;
               }
@@ -142,20 +145,15 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         });
       };
 
-      const isCurrentActive = state.activeSessionId === sessionId;
-      const nextMessages = isCurrentActive
-        ? state.messages.map((msg) => {
-            if (msg.task_id === taskId && msg.role === "user") {
-              return { ...msg, status } as Message;
-            }
-            return msg;
-          })
+      const nextHistory = updateMessageStatusInHistory(state.history);
+      const nextMessages = isCurrentActive && updatedMessages
+        ? updatedMessages
         : state.messages;
 
       return {
         ...state,
         messages: nextMessages,
-        history: updateMessageStatusInHistory(state.history),
+        history: nextHistory,
       };
     }
     default:
@@ -246,12 +244,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const session = findSession(state.history, state.activeSessionId);
     if (session) {
-      // Compare message lengths and simple identity check to avoid infinite loop
-      if (JSON.stringify(state.messages) !== JSON.stringify(session.messages)) {
+      // Compare message array references to avoid infinite loop
+      if (state.messages !== session.messages) {
         dispatch({ type: "SET_MESSAGES", payload: session.messages });
       }
     }
-  }, [state.activeSessionId, state.history]);
+  }, [state.activeSessionId, state.history, state.messages]);
 
   // Sync recentIPs with the active session's cached recent IPs when session changes
   useEffect(() => {
