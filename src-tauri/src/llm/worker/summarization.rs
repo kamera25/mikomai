@@ -2,6 +2,7 @@ use crate::llm::worker::LlmWorker;
 use crate::llm::llm_manager::AgentContext;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
+use std::sync::Arc;
 
 const SUMMARIZATION_PROMPT: &str = include_str!("../prompts/summarization_prompt.txt");
 
@@ -13,8 +14,8 @@ pub struct SummarizationWorker {
 }
 
 impl SummarizationWorker {
-    pub fn new(model: &std::sync::Arc<LlamaModel>, backend: &LlamaBackend) -> Result<Self, String> {
-        let ctx = AgentContext::new(model.clone(), backend, SUMMARIZATION_PROMPT, 5, MAX_NEW_TOKENS, N_CTX)
+    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>) -> Result<Self, String> {
+        let ctx = AgentContext::new(model.clone(), backend.clone(), SUMMARIZATION_PROMPT, 5, MAX_NEW_TOKENS, N_CTX)
             .map_err(|e| format!("Failed to create Summarization context: {:?}", e))?;
         
         Ok(Self { ctx })
@@ -32,8 +33,8 @@ impl LlmWorker for SummarizationWorker {
 
     fn ensure_initialized(
         &mut self,
-        _model: &std::sync::Arc<LlamaModel>,
-        _backend: &LlamaBackend,
+        _model: &Arc<LlamaModel>,
+        _backend: &Arc<LlamaBackend>,
     ) -> Result<(), String> {
         Ok(())
     }

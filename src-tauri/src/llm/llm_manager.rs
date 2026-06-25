@@ -40,21 +40,29 @@ impl std::ops::Deref for SharedModel {
 }
 
 pub struct AgentContext {
-    pub model: Arc<LlamaModel>,
+    // IMPORTANT: Field ordering matters for drop safety.
+    // `ctx` MUST be declared before `_backend` and `model` so that it is dropped first.
+    // This guarantees the LlamaContext (which borrows from model/backend) is destroyed
+    // before the Arc references that keep the underlying data alive.
     pub ctx: LlamaContext<'static>,
+    pub model: Arc<LlamaModel>,
+    _backend: Arc<LlamaBackend>,
     pub base_n_past: u32,
     pub id: i32,
     pub n_ctx: u32,
     pub max_new_tokens: u32,
 }
 
+// SAFETY: AgentContext is only accessed through std::sync::Mutex in SharedWorkers,
+// ensuring exclusive access. LlamaContext itself is not Send/Sync, but our usage
+// pattern (single-threaded inference worker with Mutex protection) makes this safe.
 unsafe impl Send for AgentContext {}
 unsafe impl Sync for AgentContext {}
 
 impl AgentContext {
     pub fn new(
         model: Arc<LlamaModel>,
-        backend: &LlamaBackend,
+        backend: Arc<LlamaBackend>,
         system_prompt: &str,
         id: i32,
         max_new_tokens: u32,
@@ -78,7 +86,15 @@ impl AgentContext {
         ctx_params = ctx_params.with_type_v(llama_cpp_2::context::params::KvCacheType::Q4_0);
         ctx_params = ctx_params.with_flash_attention_policy(1);
 
-        let mut ctx = model.new_context(backend, ctx_params)?;
+        // SAFETY: We obtain a &'static reference from the Arc pointer. This is safe because:
+        // 1. The Arc<LlamaBackend> is stored in `self._backend`, keeping the data alive.
+        // 2. The `ctx` field is declared before `_backend` in the struct, so Rust's drop order
+        //    guarantees the LlamaContext is dropped before the Arc<LlamaBackend>.
+        // 3. Therefore, the backend reference remains valid for the entire lifetime of `ctx`.
+        let backend_ref: &'static LlamaBackend = unsafe { &*Arc::as_ptr(&backend) };
+        let model_ref: &'static LlamaModel = unsafe { &*Arc::as_ptr(&model) };
+
+        let mut ctx = model_ref.new_context(backend_ref, ctx_params)?;
 
         let mut batch = LlamaBatch::new(n_ctx as usize, 1);
         let last_index = tokens_len - 1;
@@ -92,13 +108,10 @@ impl AgentContext {
 
         let base_n_past = tokens_len as u32;
 
-        let ctx_static = unsafe {
-            std::mem::transmute::<LlamaContext<'_>, LlamaContext<'static>>(ctx)
-        };
-
         Ok(Self {
+            ctx,
             model,
-            ctx: ctx_static,
+            _backend: backend,
             base_n_past,
             id,
             n_ctx,

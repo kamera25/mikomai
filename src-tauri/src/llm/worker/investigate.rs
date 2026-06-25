@@ -2,6 +2,7 @@ use crate::llm::worker::{LlmWorker, build_common_worker_prompt};
 use crate::llm::llm_manager::AgentContext;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
+use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
 use tauri::Manager;
 
@@ -16,14 +17,14 @@ pub struct InvestigateWorker {
 }
 
 impl InvestigateWorker {
-    pub fn new(model: &std::sync::Arc<LlamaModel>, backend: &LlamaBackend, preload: bool) -> Result<Self, String> {
+    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>, preload: bool) -> Result<Self, String> {
         if preload {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Investigator (調査員)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
                 INVESTIGATE_WORKER_PROMPT
             );
-            let ctx = AgentContext::new(model.clone(), backend, &full_system_prompt, 1, MAX_NEW_TOKENS, N_CTX)
+            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 1, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Investigate context: {:?}", e))?;
             
             Ok(Self { ctx: Some(ctx), active_vendor: None })
@@ -34,8 +35,8 @@ impl InvestigateWorker {
 
     pub fn ensure_initialized_with_vendor(
         &mut self,
-        model: &std::sync::Arc<LlamaModel>,
-        backend: &LlamaBackend,
+        model: &Arc<LlamaModel>,
+        backend: &Arc<LlamaBackend>,
         vendor: Option<String>,
     ) -> Result<(), String> {
         let needs_init = match &self.ctx {
@@ -65,7 +66,7 @@ impl InvestigateWorker {
                 role_desc
             );
 
-            let ctx = AgentContext::new(model.clone(), backend, &full_system_prompt, 1, MAX_NEW_TOKENS, N_CTX)
+            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 1, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Investigate context: {:?}", e))?;
             
             self.ctx = Some(ctx);
@@ -86,16 +87,16 @@ impl LlmWorker for InvestigateWorker {
 
     fn ensure_initialized(
         &mut self,
-        model: &std::sync::Arc<LlamaModel>,
-        backend: &LlamaBackend,
+        model: &Arc<LlamaModel>,
+        backend: &Arc<LlamaBackend>,
     ) -> Result<(), String> {
         self.ensure_initialized_with_vendor(model, backend, None)
     }
 
     fn ask(
         &mut self,
-        model: &std::sync::Arc<LlamaModel>,
-        backend: &llama_cpp_2::llama_backend::LlamaBackend,
+        model: &Arc<LlamaModel>,
+        backend: &Arc<LlamaBackend>,
         prompt: Option<String>,
         user_message: Option<String>,
         tool_label: Option<String>,

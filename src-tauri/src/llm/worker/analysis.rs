@@ -2,6 +2,7 @@ use crate::llm::worker::LlmWorker;
 use crate::llm::llm_manager::AgentContext;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
+use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
 
 const ANALYSIS_WORKER_PROMPT: &str = include_str!("../prompts/analysis_worker.txt");
@@ -14,14 +15,14 @@ pub struct AnalysisWorker {
 }
 
 impl AnalysisWorker {
-    pub fn new(model: &std::sync::Arc<LlamaModel>, backend: &LlamaBackend, preload: bool) -> Result<Self, String> {
+    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>, preload: bool) -> Result<Self, String> {
         if preload {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Analyst (分析官)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
                 ANALYSIS_WORKER_PROMPT
             );
-            let ctx = AgentContext::new(model.clone(), backend, &full_system_prompt, 3, MAX_NEW_TOKENS, N_CTX)
+            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 3, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Analysis context: {:?}", e))?;
             
             Ok(Self { ctx: Some(ctx) })
@@ -42,8 +43,8 @@ impl LlmWorker for AnalysisWorker {
 
     fn ensure_initialized(
         &mut self,
-        model: &std::sync::Arc<LlamaModel>,
-        backend: &LlamaBackend,
+        model: &Arc<LlamaModel>,
+        backend: &Arc<LlamaBackend>,
     ) -> Result<(), String> {
         if self.ctx.is_none() {
             let full_system_prompt = format!(
@@ -51,7 +52,7 @@ impl LlmWorker for AnalysisWorker {
                 SYSTEM_PROMPT,
                 ANALYSIS_WORKER_PROMPT
             );
-            let ctx = AgentContext::new(model.clone(), backend, &full_system_prompt, 3, MAX_NEW_TOKENS, N_CTX)
+            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 3, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Analysis context: {:?}", e))?;
             
             self.ctx = Some(ctx);

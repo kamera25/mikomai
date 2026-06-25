@@ -2,6 +2,7 @@ use crate::llm::llm_manager::AgentContext;
 use crate::llm::worker::Route;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
+use std::sync::Arc;
 use llama_cpp_2::sampling::LlamaSampler;
 use serde::Deserialize;
 
@@ -21,8 +22,8 @@ pub struct Router {
 }
 
 impl Router {
-    pub fn new(model: &std::sync::Arc<LlamaModel>, backend: &LlamaBackend) -> Result<Self, String> {
-        let ctx = AgentContext::new(model.clone(), backend, ROUTER_PROMPT, 0, MAX_NEW_TOKENS, N_CTX)
+    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>) -> Result<Self, String> {
+        let ctx = AgentContext::new(model.clone(), backend.clone(), ROUTER_PROMPT, 0, MAX_NEW_TOKENS, N_CTX)
             .map_err(|e| format!("Failed to create router context: {:?}", e))?;
         
         Ok(Self { ctx })
@@ -30,7 +31,7 @@ impl Router {
 
     pub fn route(
         &mut self,
-        _model: &std::sync::Arc<LlamaModel>,
+        _model: &Arc<LlamaModel>,
         query: &str,
         repetition_penalty: f32,
     ) -> Result<RouteResult, String> {

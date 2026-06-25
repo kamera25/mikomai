@@ -46,7 +46,7 @@ pub trait LlmWorker {
     fn ensure_initialized(
         &mut self,
         model: &std::sync::Arc<llama_cpp_2::model::LlamaModel>,
-        backend: &llama_cpp_2::llama_backend::LlamaBackend,
+        backend: &std::sync::Arc<llama_cpp_2::llama_backend::LlamaBackend>,
     ) -> Result<(), String>;
     fn build_prompt(
         &self,
@@ -65,7 +65,7 @@ pub trait LlmWorker {
     fn ask(
         &mut self,
         model: &std::sync::Arc<llama_cpp_2::model::LlamaModel>,
-        backend: &llama_cpp_2::llama_backend::LlamaBackend,
+        backend: &std::sync::Arc<llama_cpp_2::llama_backend::LlamaBackend>,
         prompt: Option<String>,
         user_message: Option<String>,
         tool_label: Option<String>,

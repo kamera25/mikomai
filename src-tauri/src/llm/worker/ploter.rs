@@ -2,6 +2,7 @@ use crate::llm::worker::LlmWorker;
 use crate::llm::llm_manager::AgentContext;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
+use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
 
 const PLOTER_WORKER_PROMPT: &str = include_str!("../prompts/ploter_worker.txt");
@@ -14,14 +15,14 @@ pub struct PloterWorker {
 }
 
 impl PloterWorker {
-    pub fn new(model: &std::sync::Arc<LlamaModel>, backend: &LlamaBackend, preload: bool) -> Result<Self, String> {
+    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>, preload: bool) -> Result<Self, String> {
         if preload {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Ploter (作図器)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
                 PLOTER_WORKER_PROMPT
             );
-            let ctx = AgentContext::new(model.clone(), backend, &full_system_prompt, 6, MAX_NEW_TOKENS, N_CTX)
+            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 6, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Ploter context: {:?}", e))?;
             
             Ok(Self { ctx: Some(ctx) })
@@ -42,8 +43,8 @@ impl LlmWorker for PloterWorker {
 
     fn ensure_initialized(
         &mut self,
-        model: &std::sync::Arc<LlamaModel>,
-        backend: &LlamaBackend,
+        model: &Arc<LlamaModel>,
+        backend: &Arc<LlamaBackend>,
     ) -> Result<(), String> {
         if self.ctx.is_none() {
             let full_system_prompt = format!(
@@ -51,7 +52,7 @@ impl LlmWorker for PloterWorker {
                 SYSTEM_PROMPT,
                 PLOTER_WORKER_PROMPT
             );
-            let ctx = AgentContext::new(model.clone(), backend, &full_system_prompt, 6, MAX_NEW_TOKENS, N_CTX)
+            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 6, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Ploter context: {:?}", e))?;
             
             self.ctx = Some(ctx);
@@ -65,8 +66,8 @@ impl LlmWorker for PloterWorker {
 
     fn ask(
         &mut self,
-        model: &std::sync::Arc<LlamaModel>,
-        backend: &LlamaBackend,
+        model: &Arc<LlamaModel>,
+        backend: &Arc<LlamaBackend>,
         prompt: Option<String>,
         user_message: Option<String>,
         tool_label: Option<String>,
