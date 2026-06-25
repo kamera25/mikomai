@@ -105,6 +105,16 @@ pub struct LlamaState {
     pub inference_tx: tokio::sync::mpsc::Sender<InferenceRequest>,
 }
 
+fn get_worker_for_route(shared: &SharedModel, route: Route) -> Option<&std::sync::Mutex<dyn LlmWorker>> {
+    match route {
+        Route::Investigate => Some(&shared.investigate),
+        Route::Knowledge => Some(&shared.knowledge),
+        Route::Analysis => Some(&shared.analysis),
+        Route::Ploter => Some(&shared.ploter),
+        Route::None => None,
+    }
+}
+
 impl LlamaState {
     pub fn new() -> Result<Self, LlmError> {
         let backend = LlamaBackend::init().map_err(|_| LlmError::BackendInit)?;
@@ -154,81 +164,25 @@ impl LlamaState {
                             log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
 
                             let active_route = route_result.routes[0];
-
-                            let worker_res = match active_route {
-                                Route::Investigate => {
-                                    let mut worker = shared_model.investigate.lock().unwrap();
-                                    let agent_name = worker.agent_name();
-                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-                                    worker.ask(
-                                        &model,
-                                        &backend,
-                                        Some(prompt),
-                                        None,
-                                        None,
-                                        None,
-                                        None,
-                                        route_result.subsequent_task.as_deref(),
-                                        Some(&window),
-                                        settings.temperature,
-                                        settings.repetition_penalty,
-                                    ).map_err(LlmError::Worker)
-                                }
-                                Route::Knowledge => {
-                                    let mut worker = shared_model.knowledge.lock().unwrap();
-                                    let agent_name = worker.agent_name();
-                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-                                    worker.ask(
-                                        &model,
-                                        &backend,
-                                        Some(prompt),
-                                        None,
-                                        None,
-                                        None,
-                                        None,
-                                        route_result.subsequent_task.as_deref(),
-                                        Some(&window),
-                                        settings.temperature,
-                                        settings.repetition_penalty,
-                                    ).map_err(LlmError::Worker)
-                                }
-                                Route::Analysis => {
-                                    let mut worker = shared_model.analysis.lock().unwrap();
-                                    let agent_name = worker.agent_name();
-                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-                                    worker.ask(
-                                        &model,
-                                        &backend,
-                                        Some(prompt),
-                                        None,
-                                        None,
-                                        None,
-                                        None,
-                                        route_result.subsequent_task.as_deref(),
-                                        Some(&window),
-                                        settings.temperature,
-                                        settings.repetition_penalty,
-                                    ).map_err(LlmError::Worker)
-                                }
-                                Route::Ploter => {
-                                    let mut worker = shared_model.ploter.lock().unwrap();
-                                    let agent_name = worker.agent_name();
-                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-                                    worker.ask(
-                                        &model,
-                                        &backend,
-                                        Some(prompt),
-                                        None,
-                                        None,
-                                        None,
-                                        None,
-                                        route_result.subsequent_task.as_deref(),
-                                        Some(&window),
-                                        settings.temperature,
-                                        settings.repetition_penalty,
-                                    ).map_err(LlmError::Worker)
-                                }
-                                Route::None => Ok("実行が完了しました。".to_string()),
+                            let worker_res = if let Some(worker_mutex) = get_worker_for_route(&shared_model, active_route) {
+                                let mut worker = worker_mutex.lock().unwrap();
+                                let agent_name = worker.agent_name();
+                                let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
+                                worker.ask(
+                                    &model,
+                                    &backend,
+                                    Some(prompt),
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    route_result.subsequent_task.as_deref(),
+                                    Some(&window),
+                                    settings.temperature,
+                                    settings.repetition_penalty,
+                                ).map_err(LlmError::Worker)
+                            } else {
+                                Ok("実行が完了しました。".to_string())
                             };
                             worker_res
                         })();
@@ -276,80 +230,25 @@ impl LlamaState {
                                     return Ok("実行が完了しました。".to_string());
                                 };
 
-                                let worker_res = match active_route {
-                                    Route::Investigate => {
-                                        let mut worker = shared_model.investigate.lock().unwrap();
-                                        let agent_name = worker.agent_name();
-                                        let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-                                        worker.ask(
-                                            &model,
-                                            &backend,
-                                            None,
-                                            Some(user_message),
-                                            Some(tool_label),
-                                            Some(output),
-                                            history_block,
-                                            route_result.subsequent_task.as_deref(),
-                                            Some(&window),
-                                            settings.temperature,
-                                            settings.repetition_penalty,
-                                        ).map_err(LlmError::Worker)
-                                    }
-                                    Route::Knowledge => {
-                                        let mut worker = shared_model.knowledge.lock().unwrap();
-                                        let agent_name = worker.agent_name();
-                                        let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-                                        worker.ask(
-                                            &model,
-                                            &backend,
-                                            None,
-                                            Some(user_message),
-                                            Some(tool_label),
-                                            Some(output),
-                                            history_block,
-                                            route_result.subsequent_task.as_deref(),
-                                            Some(&window),
-                                            settings.temperature,
-                                            settings.repetition_penalty,
-                                        ).map_err(LlmError::Worker)
-                                    }
-                                    Route::Analysis => {
-                                        let mut worker = shared_model.analysis.lock().unwrap();
-                                        let agent_name = worker.agent_name();
-                                        let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-                                        worker.ask(
-                                            &model,
-                                            &backend,
-                                            None,
-                                            Some(user_message),
-                                            Some(tool_label),
-                                            Some(output),
-                                            history_block,
-                                            route_result.subsequent_task.as_deref(),
-                                            Some(&window),
-                                            settings.temperature,
-                                            settings.repetition_penalty,
-                                        ).map_err(LlmError::Worker)
-                                    }
-                                    Route::Ploter => {
-                                        let mut worker = shared_model.ploter.lock().unwrap();
-                                        let agent_name = worker.agent_name();
-                                        let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-                                        worker.ask(
-                                            &model,
-                                            &backend,
-                                            None,
-                                            Some(user_message),
-                                            Some(tool_label),
-                                            Some(output),
-                                            history_block,
-                                            route_result.subsequent_task.as_deref(),
-                                            Some(&window),
-                                            settings.temperature,
-                                            settings.repetition_penalty,
-                                        ).map_err(LlmError::Worker)
-                                    }
-                                    Route::None => Ok("実行が完了しました。".to_string()),
+                                let worker_res = if let Some(worker_mutex) = get_worker_for_route(&shared_model, active_route) {
+                                    let mut worker = worker_mutex.lock().unwrap();
+                                    let agent_name = worker.agent_name();
+                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
+                                    worker.ask(
+                                        &model,
+                                        &backend,
+                                        None,
+                                        Some(user_message),
+                                        Some(tool_label),
+                                        Some(output),
+                                        history_block,
+                                        route_result.subsequent_task.as_deref(),
+                                        Some(&window),
+                                        settings.temperature,
+                                        settings.repetition_penalty,
+                                    ).map_err(LlmError::Worker)
+                                } else {
+                                    Ok("実行が完了しました。".to_string())
                                 };
                                 worker_res
                             }
