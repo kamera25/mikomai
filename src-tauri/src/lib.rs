@@ -1,15 +1,16 @@
 mod llm;
-pub mod mcp;
+pub(crate) mod mcp;
 mod network;
-pub mod snapshot;
+pub(crate) mod snapshot;
 mod history;
 mod connections;
-pub mod scheduled_tasks;
+pub(crate) mod scheduled_tasks;
 pub(crate) mod settings;
 pub(crate) mod crypto;
-pub mod schema;
+pub(crate) mod schema;
 mod logger;
-pub mod error;
+pub(crate) mod error;
+
 
 use tauri::Manager;
 
