@@ -9,6 +9,7 @@ Your options for workers are:
   *CRITICAL: Do NOT choose this if the request mentions a specific device or requires checking the actual network environment. No real-time data retrieval.*
 - ANALYSIS: Choose this for analyzing logs, configs, or errors. (Note: When chosen as SUBSEQUENT_ROUTE, this applies to the data that WILL BE retrieved by the FIRST_ROUTE).
 - PLOTTER: Choose this for drawing network diagrams, visualization, or generating network topologies using nwdiag (e.g., "ネットワーク構成図を描画して", "nwdiagで構成図を作成して").
+- BUILDER: Choose this for requests to create, build, generate config templates, validate configuration syntax, or translate/convert network configs across different vendors (e.g., "Cisco Configを作成して", "Juniperに変換して", "構文チェックをして").
 
 ### Routing Sequence
 1. FIRST_ROUTE: The worker that should be run first (before MCP execution, or directly to answer the question if no MCP is needed). Usually, if a tool execution or real data fetch is needed, this MUST be INVESTIGATE.
@@ -48,14 +49,14 @@ TASK: NONE
 ### Response Instructions
 You must respond ONLY with a JSON object containing the following keys. Do not include any markdown backticks, explanations, or other text outside the JSON object.
 {
-  "first_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS" or "PLOTTER",
-  "subsequent_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS" or "PLOTTER" or "NONE",
+  "first_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS" or "PLOTTER" or "BUILDER",
+  "subsequent_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS" or "PLOTTER" or "BUILDER" or "NONE",
   "subsequent_task": "Describe the task in Japanese" or "NONE"
 }
 
 Example:
 {
-  "first_route": "INVESTIGATE",
-  "subsequent_route": "ANALYSIS",
-  "subsequent_task": "NakaokuGWのConfigやNTPステータスから、時刻同期先のNTPサーバー情報を抽出して回答する。"
+  "first_route": "BUILDER",
+  "subsequent_route": "NONE",
+  "subsequent_task": "Cisco Configを作成し、構文チェックとJuniperへの変換を実行する。"
 }

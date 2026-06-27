@@ -312,6 +312,17 @@ define_tool!(NwDiagTool, "self_network_nwdiag", |app, args| {
     crate::mcp::nwdiag::self_network_nwdiag(app, schema).await
 });
 
+define_tool!(ValidateCiscoConfigTool, "validate_cisco_config", |_app, args| {
+    let config = get_str_arg(&args, &["config"]).unwrap_or_default();
+    crate::mcp::config_helper::validate_cisco_config(config).await
+});
+
+define_tool!(ConvertCiscoConfigTool, "convert_cisco_config", |_app, args| {
+    let config = get_str_arg(&args, &["config"]).unwrap_or_default();
+    let target_vendor = get_str_arg(&args, &["target_vendor", "targetVendor"]).unwrap_or_default();
+    crate::mcp::config_helper::convert_cisco_config(config, target_vendor).await
+});
+
 // Tool registry
 pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
     static REGISTRY: OnceLock<HashMap<String, Box<dyn McpTool>>> = OnceLock::new();
@@ -334,6 +345,8 @@ pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
             NetworkShowTool,
             NetworkConfigTool,
             NwDiagTool,
+            ValidateCiscoConfigTool,
+            ConvertCiscoConfigTool,
         ]
     })
 }

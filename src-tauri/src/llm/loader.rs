@@ -4,7 +4,7 @@ use llama_cpp_2::model::LlamaModel;
 use crate::llm::llm_manager::SharedModel;
 use crate::llm::llm::{LlamaState, ModelState, LlmError};
 use crate::llm::worker::{
-    Router, InvestigateWorker, KnowledgeWorker, AnalysisWorker, RagWorker, SummarizationWorker, PlotterWorker
+    Router, InvestigateWorker, KnowledgeWorker, AnalysisWorker, RagWorker, SummarizationWorker, PlotterWorker, BuilderWorker
 };
 use tauri::Emitter;
 use crate::error::TauriError;
@@ -90,14 +90,21 @@ pub async fn load_model(
         PlotterWorker::new(&plotter_model, &plotter_backend, settings.preload_plotter).map_err(LlmError::Worker)
     });
 
-    let (router_res, investigate_res, knowledge_res, analysis_res, rag_res, summarization_res, plotter_res) = tokio::try_join!(
+    let builder_model = model_arc.clone();
+    let builder_backend = state.backend.clone();
+    let builder_task = tokio::task::spawn_blocking(move || {
+        BuilderWorker::new(&builder_model, &builder_backend, true).map_err(LlmError::Worker)
+    });
+
+    let (router_res, investigate_res, knowledge_res, analysis_res, rag_res, summarization_res, plotter_res, builder_res) = tokio::try_join!(
         router_task,
         investigate_task,
         knowledge_task,
         analysis_task,
         rag_task,
         summarization_task,
-        plotter_task
+        plotter_task,
+        builder_task
     ).map_err(|e| LlmError::SpawnBlocking(e.to_string()))?;
 
     let router = router_res?;
@@ -107,6 +114,7 @@ pub async fn load_model(
     let rag = rag_res?;
     let summarization = summarization_res?;
     let plotter = plotter_res?;
+    let builder = builder_res?;
     
     let mut shared_lock = state.shared.lock().await;
     *shared_lock = Some(Arc::new(SharedModel {
@@ -118,6 +126,7 @@ pub async fn load_model(
             rag: std::sync::Mutex::new(rag),
             summarization: std::sync::Mutex::new(summarization),
             plotter: std::sync::Mutex::new(plotter),
+            builder: std::sync::Mutex::new(builder),
         }),
         model: model_arc,
         backend: state.backend.clone(),

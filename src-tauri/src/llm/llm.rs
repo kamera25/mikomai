@@ -111,6 +111,7 @@ fn get_worker_for_route(shared: &SharedModel, route: Route) -> Option<&std::sync
         Route::Knowledge => Some(&shared.knowledge),
         Route::Analysis => Some(&shared.analysis),
         Route::Plotter => Some(&shared.plotter),
+        Route::Builder => Some(&shared.builder),
         Route::None => None,
     }
 }

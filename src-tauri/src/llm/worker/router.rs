@@ -39,8 +39,8 @@ impl Router {
         let schema = r#"{
             "type": "object",
             "properties": {
-                "first_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "PLOTTER"] },
-                "subsequent_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "PLOTTER", "NONE"] },
+                "first_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "PLOTTER", "BUILDER"] },
+                "subsequent_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "PLOTTER", "BUILDER", "NONE"] },
                 "subsequent_task": { "type": "string" }
             },
             "required": ["first_route", "subsequent_route", "subsequent_task"]

@@ -1,5 +1,19 @@
 import React, { createContext, useContext, useReducer } from "react";
 
+export interface DiffLine {
+  type: "normal" | "insert" | "delete";
+  oldLine: number | null;
+  newLine: number | null;
+  content: string;
+}
+
+export interface ConfigDiffData {
+  fileName: string;
+  additions: number;
+  deletions: number;
+  diffLines: DiffLine[];
+}
+
 export interface UIState {
   isSidebarOpen: boolean;
   isSettingsOpen: boolean;
@@ -8,6 +22,7 @@ export interface UIState {
   isEditingHeader: boolean;
   headerTitle: string;
   isConfigDiffOpen: boolean;
+  configDiffData: ConfigDiffData | null;
 }
 
 export type UIAction =
@@ -18,7 +33,8 @@ export type UIAction =
   | { type: "START_EDITING_HEADER"; payload: string }
   | { type: "SET_HEADER_TITLE"; payload: string }
   | { type: "STOP_EDITING_HEADER" }
-  | { type: "SET_CONFIG_DIFF_OPEN"; payload: boolean };
+  | { type: "SET_CONFIG_DIFF_OPEN"; payload: boolean }
+  | { type: "SET_CONFIG_DIFF_DATA"; payload: ConfigDiffData | null };
 
 const initialState: UIState = {
   isSidebarOpen: true,
@@ -28,6 +44,7 @@ const initialState: UIState = {
   isEditingHeader: false,
   headerTitle: "",
   isConfigDiffOpen: false,
+  configDiffData: null,
 };
 
 function uiReducer(state: UIState, action: UIAction): UIState {
@@ -66,6 +83,8 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return { ...state, headerTitle: action.payload };
     case "STOP_EDITING_HEADER":
       return { ...state, isEditingHeader: false };
+    case "SET_CONFIG_DIFF_DATA":
+      return { ...state, configDiffData: action.payload };
     default:
       return state;
   }

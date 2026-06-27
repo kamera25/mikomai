@@ -1,6 +1,7 @@
 import React from "react";
 import "./ConfigDiffPanel.css";
 import { ConfigFileIcon } from "../Icons";
+import { useUIContext } from "../../contexts/UIContext";
 
 interface ConfigDiffPanelProps {
   isOpen: boolean;
@@ -8,25 +9,35 @@ interface ConfigDiffPanelProps {
 }
 
 export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ isOpen, onClose }) => {
-  // Mock diff data structure
-  const diffLines = [
-    { type: "normal", oldLine: 1, newLine: 1, content: "{" },
-    { type: "delete", oldLine: 2, newLine: null, content: '  "model": "gpt-4-turbo",' },
-    { type: "insert", oldLine: null, newLine: 2, content: '  "model": "gpt-5-codex-pro",' },
-    { type: "delete", oldLine: 3, newLine: null, content: '  "temperature": 0.7,' },
-    { type: "insert", oldLine: null, newLine: 3, content: '  "temperature": 0.2,' },
-    { type: "normal", oldLine: 4, newLine: 4, content: '  "max_tokens": 4096,' },
-    { type: "delete", oldLine: 5, newLine: null, content: '  "system_prompt": "You are a helpful coding assistant designed to write clean code."' },
-    { type: "insert", oldLine: null, newLine: 5, content: '  "system_prompt": "You are Antigravity, a premium agentic AI coding assistant designed by Google DeepMind."' },
-    { type: "normal", oldLine: 6, newLine: 6, content: "}" }
-  ];
+  const { state: uiState } = useUIContext();
+  const diffData = uiState.configDiffData;
+
+  if (!diffData) {
+    return (
+      <div className={`config-diff-panel ${isOpen ? "open" : "collapsed"}`}>
+        <div className="diff-header">
+          <div className="diff-header-left">
+            <span className="diff-title">変更箇所</span>
+          </div>
+          <div className="diff-header-right">
+            <button className="close-btn" onClick={onClose} aria-label="Close diff panel">
+              &times;
+            </button>
+          </div>
+        </div>
+        <div className="diff-content" style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", color: "var(--text-secondary)", padding: "20px", textAlign: "center" }}>
+          <div>表示できるConfigの変更点はありません。</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`config-diff-panel ${isOpen ? "open" : "collapsed"}`}>
       <div className="diff-header">
         <div className="diff-header-left">
           <span className="diff-title">変更箇所</span>
-          <span className="diff-count-badge">+3 -3</span>
+          <span className="diff-count-badge">+{diffData.additions} -{diffData.deletions}</span>
         </div>
         <div className="diff-header-right">
           <button className="btn btn-secondary btn-sm review-btn">レビュー</button>
@@ -42,18 +53,18 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ isOpen, onClos
             <span className="file-icon" style={{ display: "flex", alignItems: "center", color: "var(--text-secondary)" }}>
               <ConfigFileIcon size={16} />
             </span>
-            <span className="file-name">running-config</span>
+            <span className="file-name">{diffData.fileName}</span>
           </div>
           <div className="file-actions">
-            <span className="diff-stat-addition">+3</span>
-            <span className="diff-stat-deletion">-3</span>
+            <span className="diff-stat-addition">+{diffData.additions}</span>
+            <span className="diff-stat-deletion">-{diffData.deletions}</span>
           </div>
         </div>
 
         <div className="diff-viewer-wrapper">
           <table className="diff-table">
             <tbody>
-              {diffLines.map((line, idx) => {
+              {diffData.diffLines.map((line, idx) => {
                 let rowClass = "diff-row-normal";
                 let prefix = " ";
                 if (line.type === "delete") {

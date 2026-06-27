@@ -1,0 +1,11 @@
+{% if hostname %}hostname {{ hostname }}
+{% endif %}{% for dns in dns_servers %}ip name-server {{ dns }}
+{% endfor %}{% for ntp in ntp_servers %}ntp server {{ ntp }}
+{% endfor %}{% for intf in interfaces %}interface {{ intf.name }}
+{% if intf.description %}   description {{ intf.description }}
+{% endif %}{% if intf.ip_address %}   ip address {{ intf.ip_address }}/{{ intf.cidr }}
+{% endif %}{% if intf.shutdown %}   shutdown
+{% else %}   no shutdown
+{% endif %}!
+{% endfor %}{% for route in routes %}ip route {{ route.prefix }}/{{ route.cidr }} {{ route.next_hop }}
+{% endfor %}

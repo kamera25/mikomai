@@ -1,0 +1,9 @@
+{% if hostname %}set system host-name {{ hostname }}
+{% endif %}{% for dns in dns_servers %}set system name-server {{ dns }}
+{% endfor %}{% for ntp in ntp_servers %}set system ntp server {{ ntp }}
+{% endfor %}{% for intf in interfaces %}set interfaces {{ intf.name }} unit 0 family inet address {{ intf.ip_address }}/{{ intf.cidr }}
+{% if intf.description %}set interfaces {{ intf.name }} description "{{ intf.description }}"
+{% endif %}{% if intf.shutdown %}set interfaces {{ intf.name }} disable
+{% else %}delete interfaces {{ intf.name }} disable
+{% endif %}{% endfor %}{% for route in routes %}set routing-options static route {{ route.prefix }}/{{ route.cidr }} next-hop {{ route.next_hop }}
+{% endfor %}

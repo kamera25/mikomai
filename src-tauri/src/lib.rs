@@ -81,7 +81,9 @@ pub fn run() {
             mcp::route::self_network_route,
             mcp::executor::execute_mcp_tool,
             mcp::executor::handle_mcp_message,
-            mcp::nwdiag::self_network_nwdiag
+            mcp::nwdiag::self_network_nwdiag,
+            mcp::config_helper::validate_cisco_config,
+            mcp::config_helper::convert_cisco_config
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

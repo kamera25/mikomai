@@ -5,6 +5,7 @@ pub mod analysis;
 pub mod investigate;
 pub mod summarization;
 pub mod plotter;
+pub mod builder;
 
 pub use router::Router;
 pub use rag::RagWorker;
@@ -13,6 +14,7 @@ pub use analysis::AnalysisWorker;
 pub use investigate::InvestigateWorker;
 pub use summarization::SummarizationWorker;
 pub use plotter::PlotterWorker;
+pub use builder::BuilderWorker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
@@ -20,6 +22,7 @@ pub enum Route {
     Knowledge,
     Analysis,
     Plotter,
+    Builder,
     None,
 }
 
@@ -34,6 +37,8 @@ impl std::str::FromStr for Route {
             Route::Analysis
         } else if upper.contains("PLOTTER") || upper.contains("PLOTER") {
             Route::Plotter
+        } else if upper.contains("BUILDER") {
+            Route::Builder
         } else if upper.contains("NONE") {
             Route::None
         } else {
