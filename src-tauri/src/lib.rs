@@ -88,9 +88,28 @@ pub fn run() {
         .run(|app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
                 let state = app_handle.state::<llm::LlamaState>();
-                let mut shared = state.shared.blocking_lock();
-                *shared = None;
-                log::info!("Llama model cleared on exit.");
+                let status = state.status.blocking_lock();
+                if let llm::ModelState::Loading = *status {
+                    log::info!("Exiting while model is loading; using fast exit to prevent crash.");
+                    #[cfg(unix)]
+                    unsafe {
+                        extern "C" {
+                            fn _exit(status: std::os::raw::c_int) -> !;
+                        }
+                        _exit(0);
+                    }
+                    #[cfg(windows)]
+                    unsafe {
+                        extern "system" {
+                            fn ExitProcess(uExitCode: u32) -> !;
+                        }
+                        ExitProcess(0);
+                    }
+                } else {
+                    let mut shared = state.shared.blocking_lock();
+                    *shared = None;
+                    log::info!("Llama model cleared on exit.");
+                }
             }
             _ => {}
         });
