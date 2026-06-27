@@ -33,6 +33,7 @@ export interface ToolExecutionMessage extends BaseMessage {
   saved_path?: string;
   is_cached?: boolean;
   cache_time?: string;
+  waitingForApproval?: boolean;
 }
 
 export interface AgentResponseMessage extends BaseMessage {

@@ -4,7 +4,7 @@ use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 const BUILDER_WORKER_PROMPT: &str = include_str!("../prompts/builder_worker.txt");
 
@@ -148,51 +148,72 @@ impl LlmWorker for BuilderWorker {
                 let _ = w.emit("chat-event", finish_payload_val);
 
                 // Step B: Convert Cisco Config (to Juniper and Arista)
-                let user_msg_lower = user_message.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
-                let prompt_lower = prompt.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
-                
-                let target_vendors = if user_msg_lower.contains("arista") || prompt_lower.contains("arista") {
-                    vec!["arista".to_string()]
-                } else if user_msg_lower.contains("juniper") || prompt_lower.contains("juniper") {
-                    vec!["juniper".to_string()]
-                } else {
-                    vec!["juniper".to_string(), "arista".to_string()]
-                };
-
-                for vendor in target_vendors {
-                    let conv_task_id = format!("task_conv_{}", uuid::Uuid::new_v4());
-                    let start_payload_conv = crate::mcp::protocol::ChatEvent::McpToolStarted(
-                        crate::mcp::protocol::ToolStartedPayload {
-                            task_id: conv_task_id.clone(),
-                            tool_id: "convert_cisco_config".to_string(),
-                            tool_label: format!("convert_cisco_config ({})", vendor),
-                            args: serde_json::json!({ "config": config.clone(), "target_vendor": vendor.clone() }),
-                            resolved_host: None,
+                let mut is_cisco_ios = true;
+                let app_handle = w.app_handle();
+                if let Some(host) = crate::settings::load_settings(app_handle.clone())
+                    .ok()
+                    .and_then(|settings| settings.recent_ips.first().cloned())
+                {
+                    if let Ok(connections) = crate::connections::load_connections_raw(app_handle) {
+                        if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&host) || c.ip.to_string() == host) {
+                            let device_type_str = conn.device_type.as_ref().map(|d| d.as_str().to_lowercase()).unwrap_or_default();
+                            let vendor_type_str = conn.vendor_type.as_ref().map(|v| v.as_str().to_lowercase()).unwrap_or_default();
+                            let is_cisco = device_type_str == "cisco_ios"
+                                || vendor_type_str == "cisco_ios"
+                                || device_type_str.contains("cisco")
+                                || vendor_type_str.contains("cisco");
+                            is_cisco_ios = is_cisco;
                         }
-                    );
-                    let _ = w.emit("chat-event", start_payload_conv);
+                    }
+                }
 
-                    // Run convert_cisco_config
-                    let conv_res = rt.block_on(async {
-                        crate::mcp::config_helper::convert_cisco_config(config.clone(), vendor.clone()).await
-                    });
-
-                    let (conv_success, conv_output) = match conv_res {
-                        Ok(res) => (res.success, res.output),
-                        Err(e) => (false, format!("Conversion error: {}", e)),
+                if !is_cisco_ios {
+                    let user_msg_lower = user_message.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
+                    let prompt_lower = prompt.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
+                    
+                    let target_vendors = if user_msg_lower.contains("arista") || prompt_lower.contains("arista") {
+                        vec!["arista".to_string()]
+                    } else if user_msg_lower.contains("juniper") || prompt_lower.contains("juniper") {
+                        vec!["juniper".to_string()]
+                    } else {
+                        vec!["juniper".to_string(), "arista".to_string()]
                     };
 
-                    let finish_payload_conv = crate::mcp::protocol::ChatEvent::McpToolFinished(
-                        crate::mcp::protocol::ToolFinishedPayload {
-                            task_id: conv_task_id,
-                            success: conv_success,
-                            output: conv_output,
-                            saved_path: None,
-                            is_cached: None,
-                            cache_time: None,
-                        }
-                    );
-                    let _ = w.emit("chat-event", finish_payload_conv);
+                    for vendor in target_vendors {
+                        let conv_task_id = format!("task_conv_{}", uuid::Uuid::new_v4());
+                        let start_payload_conv = crate::mcp::protocol::ChatEvent::McpToolStarted(
+                            crate::mcp::protocol::ToolStartedPayload {
+                                task_id: conv_task_id.clone(),
+                                tool_id: "convert_cisco_config".to_string(),
+                                tool_label: format!("convert_cisco_config ({})", vendor),
+                                args: serde_json::json!({ "config": config.clone(), "target_vendor": vendor.clone() }),
+                                resolved_host: None,
+                            }
+                        );
+                        let _ = w.emit("chat-event", start_payload_conv);
+
+                        // Run convert_cisco_config
+                        let conv_res = rt.block_on(async {
+                            crate::mcp::config_helper::convert_cisco_config(config.clone(), vendor.clone()).await
+                        });
+
+                        let (conv_success, conv_output) = match conv_res {
+                            Ok(res) => (res.success, res.output),
+                            Err(e) => (false, format!("Conversion error: {}", e)),
+                        };
+
+                        let finish_payload_conv = crate::mcp::protocol::ChatEvent::McpToolFinished(
+                            crate::mcp::protocol::ToolFinishedPayload {
+                                task_id: conv_task_id,
+                                success: conv_success,
+                                output: conv_output,
+                                saved_path: None,
+                                is_cached: None,
+                                cache_time: None,
+                            }
+                        );
+                        let _ = w.emit("chat-event", finish_payload_conv);
+                    }
                 }
             }
         }

@@ -515,3 +515,112 @@
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* Custom Cisco Config Validation UI */
+.cisco-validation-card {
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(20, 20, 25, 0.95), rgba(30, 30, 40, 0.95));
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 15px rgba(59, 130, 246, 0.1);
+  padding: 20px;
+  width: 100%;
+  max-width: 900px;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  margin-top: 8px;
+}
+
+.cisco-validation-card.running {
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+}
+
+.cisco-validation-card.waiting-approval {
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+}
+
+.cisco-validation-card.success {
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.cisco-validation-card.failed {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.cisco-validation-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.cisco-validation-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.cisco-validation-desc {
+  font-size: 0.9rem;
+  color: #9ca3af;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.cisco-validation-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.cisco-validation-btn-commit {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+.cisco-validation-btn-commit:hover {
+  transform: translateY(-1px);
+  opacity: 0.95;
+}
+
+.cisco-validation-btn-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e5e7eb;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cisco-validation-btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Pulsing glow animation */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.pulsing-dot {
+  width: 10px;
+  height: 10px;
+  background-color: #3b82f6;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #3b82f6;
+  animation: pulse-glow 1.5s infinite;
+}
+
+.pulsing-dot.green {
+  background-color: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}

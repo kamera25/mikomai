@@ -34,6 +34,7 @@ export function useMcpListeners({
   useEffect(() => {
     let isCancelled = false;
     let unlistenFn: (() => void) | null = null;
+    let unlistenDiffFn: (() => void) | null = null;
 
     const setupListeners = async () => {
       const unlisten = await listen<ChatEvent>(
@@ -98,7 +99,9 @@ export function useMcpListeners({
             case "mcpToolStarted": {
               const { taskId, toolId, toolLabel, args, resolvedHost } = chatEvent.payload;
               const isRag = toolId === "query_nw_db" || toolId === "network_query_nw_db";
-              const statusMsg = isRag
+              const statusMsg = toolId === "validate_cisco_config"
+                ? "Configのチェック中"
+                : isRag
                 ? i18n.t("chat.searching_nwdb")
                 : i18n.t("chat.running_tool", { toolLabel });
 
@@ -299,10 +302,40 @@ export function useMcpListeners({
         }
       );
 
+      const unlistenDiff = await listen<any>(
+        "request-diff-commit",
+        () => {
+          if (isCancelled) return;
+          const updateMsg = () => {
+            setMessagesRef.current((prev) => {
+              let lastIdx = -1;
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].tool_id === "validate_cisco_config" && prev[i].isToolLoading) {
+                  lastIdx = i;
+                  break;
+                }
+              }
+              if (lastIdx !== -1) {
+                return prev.map((msg, idx) =>
+                  idx === lastIdx ? { ...msg, waitingForApproval: true } : msg
+                );
+              }
+              return prev;
+            });
+          };
+
+          updateMsg();
+          setTimeout(updateMsg, 50);
+          setTimeout(updateMsg, 200);
+        }
+      );
+
       if (isCancelled) {
         unlisten();
+        unlistenDiff();
       } else {
         unlistenFn = unlisten;
+        unlistenDiffFn = unlistenDiff;
       }
     };
 
@@ -312,6 +345,9 @@ export function useMcpListeners({
       isCancelled = true;
       if (unlistenFn) {
         unlistenFn();
+      }
+      if (unlistenDiffFn) {
+        unlistenDiffFn();
       }
     };
   }, []); // Only register once on mount!
