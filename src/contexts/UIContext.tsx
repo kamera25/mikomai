@@ -7,6 +7,7 @@ export interface UIState {
   isScheduledTasksOpen: boolean;
   isEditingHeader: boolean;
   headerTitle: string;
+  isConfigDiffOpen: boolean;
 }
 
 export type UIAction =
@@ -16,7 +17,8 @@ export type UIAction =
   | { type: "SET_SCHEDULED_TASKS_OPEN"; payload: boolean }
   | { type: "START_EDITING_HEADER"; payload: string }
   | { type: "SET_HEADER_TITLE"; payload: string }
-  | { type: "STOP_EDITING_HEADER" };
+  | { type: "STOP_EDITING_HEADER" }
+  | { type: "SET_CONFIG_DIFF_OPEN"; payload: boolean };
 
 const initialState: UIState = {
   isSidebarOpen: true,
@@ -25,6 +27,7 @@ const initialState: UIState = {
   isScheduledTasksOpen: false,
   isEditingHeader: false,
   headerTitle: "",
+  isConfigDiffOpen: false,
 };
 
 function uiReducer(state: UIState, action: UIAction): UIState {
@@ -36,7 +39,7 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return {
         ...state,
         isSettingsOpen: nextOpen,
-        ...(nextOpen ? { isConnectionOpen: false, isScheduledTasksOpen: false, isSidebarOpen: false } : {}),
+        ...(nextOpen ? { isConnectionOpen: false, isScheduledTasksOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
       };
     }
     case "SET_CONNECTION_OPEN": {
@@ -44,7 +47,7 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return {
         ...state,
         isConnectionOpen: nextOpen,
-        ...(nextOpen ? { isSettingsOpen: false, isScheduledTasksOpen: false, isSidebarOpen: false } : {}),
+        ...(nextOpen ? { isSettingsOpen: false, isScheduledTasksOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
       };
     }
     case "SET_SCHEDULED_TASKS_OPEN": {
@@ -52,9 +55,11 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return {
         ...state,
         isScheduledTasksOpen: nextOpen,
-        ...(nextOpen ? { isSettingsOpen: false, isConnectionOpen: false, isSidebarOpen: false } : {}),
+        ...(nextOpen ? { isSettingsOpen: false, isConnectionOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
       };
     }
+    case "SET_CONFIG_DIFF_OPEN":
+      return { ...state, isConfigDiffOpen: action.payload };
     case "START_EDITING_HEADER":
       return { ...state, isEditingHeader: true, headerTitle: action.payload };
     case "SET_HEADER_TITLE":

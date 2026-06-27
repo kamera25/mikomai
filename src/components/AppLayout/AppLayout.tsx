@@ -17,7 +17,8 @@ import { useChatContext } from "../../contexts/ChatContext";
 import { useModelContext } from "../../contexts/ModelContext";
 import { useHostSuggestions } from "../../hooks/useHostSuggestions";
 import { CustomModal } from "../CustomModal";
-import { SidebarIcon, ServerIcon } from "../Icons";
+import { SidebarIcon, ServerIcon, DiffIcon } from "../Icons";
+import { ConfigDiffPanel } from "../ConfigDiffPanel/ConfigDiffPanel";
 
 export function AppLayout() {
   const { t } = useTranslation();
@@ -271,107 +272,122 @@ export function AppLayout() {
               onClose={() => uiDispatch({ type: "SET_SCHEDULED_TASKS_OPEN", payload: false })}
             />
           ) : (
-            <main className="main-chat">
-              <header className="chat-header">
-                <div className="header-left">
-                  <button
-                    className="sidebar-toggle-button"
-                    onClick={() => uiDispatch({ type: "SET_SIDEBAR_OPEN", payload: !uiState.isSidebarOpen })}
-                    title={uiState.isSidebarOpen ? t("app.sidebar_close") : t("app.sidebar_open")}
-                  >
-                    <SidebarIcon size={20} />
-                  </button>
-                  {uiState.isEditingHeader ? (
-                    <input
-                      className="header-title-input"
-                      value={uiState.headerTitle}
-                      onChange={(e) => uiDispatch({ type: "SET_HEADER_TITLE", payload: e.target.value })}
-                      onBlur={handleSaveRenameHeader}
-                      onCompositionStart={() => {
-                        isComposingHeader.current = true;
-                      }}
-                      onCompositionEnd={() => {
-                        setTimeout(() => {
-                          isComposingHeader.current = false;
-                        }, 150);
-                      }}
-                      onKeyDown={(e) => {
-                        const isComp =
-                          isComposingHeader.current ||
-                          e.nativeEvent.isComposing ||
-                          e.keyCode === 229;
-                        if (isComp) {
-                          return;
-                        }
-                        if (e.key === "Enter") {
-                          handleSaveRenameHeader();
-                        } else if (e.key === "Escape") {
-                          uiDispatch({ type: "STOP_EDITING_HEADER" });
-                        }
-                      }}
-                      autoFocus
-                    />
-                  ) : (
-                    <h1
-                      className="header-title clickable"
-                      onDoubleClick={handleStartRenameHeader}
-                      title={t("app.double_click_rename")}
+            <div className="chat-workspace-container">
+              <main className="main-chat">
+                <header className="chat-header">
+                  <div className="header-left">
+                    <button
+                      className="sidebar-toggle-button"
+                      onClick={() => uiDispatch({ type: "SET_SIDEBAR_OPEN", payload: !uiState.isSidebarOpen })}
+                      title={uiState.isSidebarOpen ? t("app.sidebar_close") : t("app.sidebar_open")}
                     >
-                      {activeSession?.title || "mikomai"}
-                    </h1>
-                  )}
-                  {recentIPs.length > 0 && (
-                    <div style={{ display: "flex", alignItems: "center" }}>
-                      <ServerIcon size={12} style={{ marginRight: "4px" }} />
-                      <span className="header-hostname">
-                        {(() => {
-                          const current = recentIPs[0];
-                          const host = availableHosts.find(
-                            (h) => h.ip === current || h.hostname === current
-                          );
-                          if (host && host.hostname && host.ip && host.hostname !== host.ip) {
-                            return `${host.hostname} (${host.ip})`;
+                      <SidebarIcon size={20} />
+                    </button>
+                    {uiState.isEditingHeader ? (
+                      <input
+                        className="header-title-input"
+                        value={uiState.headerTitle}
+                        onChange={(e) => uiDispatch({ type: "SET_HEADER_TITLE", payload: e.target.value })}
+                        onBlur={handleSaveRenameHeader}
+                        onCompositionStart={() => {
+                          isComposingHeader.current = true;
+                        }}
+                        onCompositionEnd={() => {
+                          setTimeout(() => {
+                            isComposingHeader.current = false;
+                          }, 150);
+                        }}
+                        onKeyDown={(e) => {
+                          const isComp =
+                            isComposingHeader.current ||
+                            e.nativeEvent.isComposing ||
+                            e.keyCode === 229;
+                          if (isComp) {
+                            return;
                           }
-                          return current;
-                        })()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </header>
+                          if (e.key === "Enter") {
+                            handleSaveRenameHeader();
+                          } else if (e.key === "Escape") {
+                            uiDispatch({ type: "STOP_EDITING_HEADER" });
+                          }
+                        }}
+                        autoFocus
+                      />
+                    ) : (
+                      <h1
+                        className="header-title clickable"
+                        onDoubleClick={handleStartRenameHeader}
+                        title={t("app.double_click_rename")}
+                      >
+                        {activeSession?.title || "mikomai"}
+                      </h1>
+                    )}
+                    {recentIPs.length > 0 && (
+                      <div style={{ display: "flex", alignItems: "center" }}>
+                        <ServerIcon size={12} style={{ marginRight: "4px" }} />
+                        <span className="header-hostname">
+                          {(() => {
+                            const current = recentIPs[0];
+                            const host = availableHosts.find(
+                              (h) => h.ip === current || h.hostname === current
+                            );
+                            if (host && host.hostname && host.ip && host.hostname !== host.ip) {
+                              return `${host.hostname} (${host.ip})`;
+                            }
+                            return current;
+                          })()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="header-right">
+                    <button
+                      className={`sidebar-toggle-button ${uiState.isConfigDiffOpen ? "active" : ""}`}
+                      onClick={() => uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: !uiState.isConfigDiffOpen })}
+                      title={uiState.isConfigDiffOpen ? "Close Config Diff" : "Open Config Diff"}
+                    >
+                      <DiffIcon size={20} />
+                    </button>
+                  </div>
+                </header>
 
-              <Chat
-                ref={messagesEndRef}
-                messages={chatState.messages}
-                formatMessageTime={formatMessageTime}
-              />
-
-              <div className="input-area-wrapper">
-                {chatState.messages.some((m) => m.status === "Running") && (
-                  <div className="global-loading-indicator"></div>
-                )}
-                <ChatInput
-                  ref={textareaRef}
-                  modelStatus={modelState.modelStatus}
-                  modelPath={modelPath}
-                  input={chatState.input}
-                  setInput={setInput}
-                  showSuggestions={showSuggestions}
-                  setShowSuggestions={setShowSuggestions}
-                  filteredSuggestions={filteredSuggestions}
-                  suggestionIndex={suggestionIndex}
-                  setSuggestionIndex={setSuggestionIndex}
-                  handleSelectSuggestion={handleSelectSuggestion}
-                  handleSend={handleSend}
-                  handleLoadModel={handleLoadModel}
-                  setIsSettingsOpen={(open) => uiDispatch({ type: "SET_SETTINGS_OPEN", payload: open })}
-                  setCursorPos={setCursorPos}
-                  availableHosts={availableHosts}
-                  recentIPs={recentIPs}
-                  setFilteredSuggestions={setFilteredSuggestions}
+                <Chat
+                  ref={messagesEndRef}
+                  messages={chatState.messages}
+                  formatMessageTime={formatMessageTime}
                 />
-              </div>
-            </main>
+
+                <div className="input-area-wrapper">
+                  {chatState.messages.some((m) => m.status === "Running") && (
+                    <div className="global-loading-indicator"></div>
+                  )}
+                  <ChatInput
+                    ref={textareaRef}
+                    modelStatus={modelState.modelStatus}
+                    modelPath={modelPath}
+                    input={chatState.input}
+                    setInput={setInput}
+                    showSuggestions={showSuggestions}
+                    setShowSuggestions={setShowSuggestions}
+                    filteredSuggestions={filteredSuggestions}
+                    suggestionIndex={suggestionIndex}
+                    setSuggestionIndex={setSuggestionIndex}
+                    handleSelectSuggestion={handleSelectSuggestion}
+                    handleSend={handleSend}
+                    handleLoadModel={handleLoadModel}
+                    setIsSettingsOpen={(open) => uiDispatch({ type: "SET_SETTINGS_OPEN", payload: open })}
+                    setCursorPos={setCursorPos}
+                    availableHosts={availableHosts}
+                    recentIPs={recentIPs}
+                    setFilteredSuggestions={setFilteredSuggestions}
+                  />
+                </div>
+              </main>
+              <ConfigDiffPanel
+                isOpen={uiState.isConfigDiffOpen}
+                onClose={() => uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false })}
+              />
+            </div>
           )}
         </div>
       </div>

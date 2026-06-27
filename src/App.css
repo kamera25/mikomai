@@ -36,6 +36,16 @@
   overflow: hidden;
 }
 
+.chat-workspace-container {
+  display: flex;
+  flex-direction: row;
+  flex-grow: 1;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  position: relative;
+}
+
 /* Main Chat Area */
 .main-chat {
   flex-grow: 1;
@@ -76,8 +86,9 @@
   transition: all 0.2s ease;
 }
 
-.sidebar-toggle-button:hover {
-  color: var(--text-primary);
+.sidebar-toggle-button:hover,
+.sidebar-toggle-button.active {
+  color: var(--accent-color);
   background-color: var(--bg-hover);
 }
 

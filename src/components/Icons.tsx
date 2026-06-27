@@ -494,6 +494,48 @@ export const UpdateIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, ..
   </svg>
 );
 
+export const DiffIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+    <line x1="15" y1="3" x2="15" y2="21"></line>
+  </svg>
+);
+
+export const ConfigFileIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    {/* File background outline */}
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    
+    {/* Gear icon centered inside the file */}
+    <circle cx="12" cy="14" r="2.5" />
+    <path d="M12 10.5v1M12 16.5v1M8.5 14h1M14.5 14h1" />
+    <path d="M9.5 11.5l.7.7M13.8 15.8l.7.7M9.5 16.5l.7-.7M13.8 12.2l.7-.7" />
+  </svg>
+);
+
+
+
 
 
 
