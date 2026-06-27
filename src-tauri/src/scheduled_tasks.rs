@@ -314,4 +314,13 @@ mod tests {
         assert!(serialized.contains(r#""name":"Test Task""#));
         assert!(serialized.contains(r#""schedule":"0 0 * * * *""#));
     }
+
+    #[test]
+    fn test_rust_settings_integration() {
+        // Let's verify we can serialize and parse app settings, and it fails for ScheduledTask.
+        let serialized = r#"{"repoPath":"/mock/repo","modelFilename":"test.gguf","dbPath":"/mock/db","consolePort":"COM1","consoleBaudRate":9600,"ipVersion":"ipv4","autoSaveHistory":true}"#;
+        let settings: Result<ScheduledTask, _> = serde_json::from_str(serialized);
+        assert!(settings.is_err());
+    }
 }
+

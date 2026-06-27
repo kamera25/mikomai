@@ -187,8 +187,7 @@ pub fn sanitize_network_command(cmd: &str) -> Result<(), String> {
 
     let blocked_keywords = [
         "config", "configure", "write", "reload", "reboot", "erase", "delete", "copy",
-        "format", "sysreq", "terminal", "enable", "disable", "run", "running-config",
-        "startup-config", "configuration"
+        "format", "sysreq", "terminal", "enable", "disable", "configuration"
     ];
     for word in &words {
         if blocked_keywords.contains(word) {
@@ -339,7 +338,7 @@ mod tests {
     fn test_sanitize_network_command() {
         assert!(sanitize_network_command("show ip interface brief").is_ok());
         assert!(sanitize_network_command("show version").is_ok());
-        assert!(sanitize_network_command("show run").is_err()); // "run" contains blocked word "reload" prefix? Wait, "run" is not in blocked list, but let's check blocked list: ["config", "configure", "write", "reload", "reboot", "erase", "delete", "copy", "format", "sysreq", "terminal", "enable", "disable"]. Let's try:
+        assert!(sanitize_network_command("show run").is_ok());
         assert!(sanitize_network_command("configure terminal").is_err());
         assert!(sanitize_network_command("show run; rm -rf /").is_err()); // contains semicolon
         assert!(sanitize_network_command("show version | include 12.4").is_err()); // contains pipe
