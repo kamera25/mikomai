@@ -225,10 +225,24 @@ impl LlamaState {
                                 };
                                 log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
 
-                                let active_route = if route_result.routes.len() > 1 {
+                                let is_ask_user_choice = tool_label.contains("ask_user_choice");
+                                let active_route = if is_ask_user_choice {
+                                    Route::Builder
+                                } else if route_result.routes.len() > 1 {
                                     route_result.routes[1]
                                 } else {
                                     return Ok("実行が完了しました。".to_string());
+                                };
+
+                                let custom_subsequent_task = if is_ask_user_choice {
+                                    Some(format!("ユーザーが「{}」を選択しました。この回答要件を含めてCisco Configを設定・生成してください。", output))
+                                } else {
+                                    None
+                                };
+                                let subsequent_task_ref = if is_ask_user_choice {
+                                    custom_subsequent_task.as_deref()
+                                } else {
+                                    route_result.subsequent_task.as_deref()
                                 };
 
                                 let worker_res = if let Some(worker_mutex) = get_worker_for_route(&shared_model, active_route) {
@@ -243,7 +257,7 @@ impl LlamaState {
                                         Some(tool_label),
                                         Some(output),
                                         history_block,
-                                        route_result.subsequent_task.as_deref(),
+                                        subsequent_task_ref,
                                         Some(&window),
                                         settings.temperature,
                                         settings.repetition_penalty,

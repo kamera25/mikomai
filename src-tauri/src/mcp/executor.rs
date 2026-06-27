@@ -323,6 +323,32 @@ define_tool!(ConvertCiscoConfigTool, "convert_cisco_config", |_app, args| {
     crate::mcp::config_helper::convert_cisco_config(config, target_vendor).await
 });
 
+define_tool!(AskUserChoiceTool, "ask_user_choice", |app, args| {
+    let title = get_str_arg(&args, &["title"]).unwrap_or_default();
+    let message = get_str_arg(&args, &["message"]).unwrap_or_default();
+    
+    let options: Vec<String> = if let Some(opt_val) = args.get("options") {
+        if let Some(arr) = opt_val.as_array() {
+            arr.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    match crate::mcp::config_helper::ask_user_choice(app.clone(), title, message, options).await {
+        Ok(res) => Ok(crate::network::CommandResult {
+            success: true,
+            output: res,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }),
+        Err(e) => Err(e),
+    }
+});
+
 // Tool registry
 pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
     static REGISTRY: OnceLock<HashMap<String, Box<dyn McpTool>>> = OnceLock::new();
@@ -347,6 +373,7 @@ pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
             NwDiagTool,
             ValidateCiscoConfigTool,
             ConvertCiscoConfigTool,
+            AskUserChoiceTool,
         ]
     })
 }

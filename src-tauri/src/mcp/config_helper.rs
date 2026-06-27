@@ -194,6 +194,41 @@ pub async fn convert_cisco_config(config: String, target_vendor: String) -> Resu
     })
 }
 
+#[tauri::command]
+pub async fn ask_user_choice(
+    app: tauri::AppHandle,
+    title: String,
+    message: String,
+    options: Vec<String>,
+) -> Result<String, String> {
+    use tauri::Emitter;
+    use tauri::Manager;
+    
+    let choice_manager = app.state::<ChoiceManager>();
+    
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    {
+        let mut lock = choice_manager.tx.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+        *lock = Some(tx);
+    }
+
+    // Emit event to request user choice
+    let payload = serde_json::json!({
+        "title": title,
+        "message": message,
+        "options": options
+    });
+    
+    let _ = app.emit("request-user-choice", payload);
+
+    // Wait for frontend response
+    match rx.await {
+        Ok(c) => Ok(c),
+        Err(_) => Ok("cancelled".to_string()),
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

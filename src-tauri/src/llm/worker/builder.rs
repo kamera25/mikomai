@@ -4,7 +4,7 @@ use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 const BUILDER_WORKER_PROMPT: &str = include_str!("../prompts/builder_worker.txt");
 
@@ -81,52 +81,8 @@ impl LlmWorker for BuilderWorker {
     ) -> Result<String, String> {
         self.ensure_initialized(model, backend)?;
 
-        // 1. Detect if this is a VLAN configuration request and ask user if needed
-        let query_lower = user_message.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
-        let prompt_lower = prompt.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
-        let is_vlan_request = (query_lower.contains("vlan") && (query_lower.contains("追加") || query_lower.contains("add") || query_lower.contains("作成") || query_lower.contains("create") || query_lower.contains("設定") || query_lower.contains("config")))
-            || (prompt_lower.contains("vlan") && (prompt_lower.contains("追加") || prompt_lower.contains("add") || prompt_lower.contains("作成") || prompt_lower.contains("create") || prompt_lower.contains("設定") || prompt_lower.contains("config")));
-
-        let mut user_choice = None;
-        if is_vlan_request {
-            if let Some(w) = window {
-                let app = w.app_handle();
-                let choice_manager = app.state::<crate::mcp::config_helper::ChoiceManager>();
-                
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                {
-                    let mut lock = choice_manager.tx.lock().unwrap();
-                    *lock = Some(tx);
-                }
-
-                // Emit event to request user choice
-                let payload = serde_json::json!({
-                    "title": "VLAN接続モードの選択",
-                    "message": "追加するVLANポートの接続モードを選択してください：",
-                    "options": [
-                        "Access Mode (エンドデバイス/PCを接続する場合)",
-                        "Trunk Mode (他のスイッチやルータとトランキングする場合)"
-                    ]
-                });
-                let _ = w.emit("request-user-choice", payload);
-
-                // Wait for frontend response
-                let rt = tauri::async_runtime::handle();
-                let choice = rt.block_on(async {
-                    match rx.await {
-                        Ok(c) => c,
-                        Err(_) => "cancelled".to_string(),
-                    }
-                });
-
-                if choice != "cancelled" {
-                    user_choice = Some(choice);
-                }
-            }
-        }
-
-        // 2. Generate Cisco config text using standard LLM inference
-        let mut worker_prompt = self.build_prompt(
+        // 1. Generate config text using standard LLM inference
+        let worker_prompt = self.build_prompt(
             prompt.clone(),
             user_message.clone(),
             tool_label.clone(),
@@ -134,13 +90,6 @@ impl LlmWorker for BuilderWorker {
             history_block.clone(),
             subsequent_task,
         );
-
-        if let Some(ref choice) = user_choice {
-            worker_prompt.push_str(&format!(
-                "\n\n[重要 - ユーザー選択結果]: ユーザーはVLANのポートタイプとして「{}」を選択しました。このモードに合致した正しいスイッチポート設定（Accessの場合は switchport mode access / switchport access vlan X、Trunkの場合は switchport mode trunk / switchport trunk allowed vlan add X など）を出力するConfigに必ず含めて作成してください。",
-                choice
-            ));
-        }
 
         let initial_response = crate::llm::llm_manager::run_inference(
             self.context_mut(),
@@ -150,7 +99,12 @@ impl LlmWorker for BuilderWorker {
             repetition_penalty,
         ).map_err(|e| format!("Worker inference failed: {:?}", e))?;
 
-        // 2. Extract Cisco configuration block from the response
+        // 2. If the response contains a tool call, return it directly so the chat controller executes it
+        if initial_response.contains("\"tool_name\":") {
+            return Ok(initial_response);
+        }
+
+        // 3. Extract Cisco configuration block from the response
         let config_to_validate = extract_config_block(&initial_response);
 
         if let Some(config) = config_to_validate {
