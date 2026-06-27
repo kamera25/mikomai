@@ -2,6 +2,7 @@ import React from "react";
 import "./ConfigDiffPanel.css";
 import { ConfigFileIcon } from "../Icons";
 import { useUIContext } from "../../contexts/UIContext";
+import { invoke } from "@tauri-apps/api/core";
 
 interface ConfigDiffPanelProps {
   isOpen: boolean;
@@ -97,7 +98,14 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ isOpen, onClos
 
       <div className="diff-footer">
         <button className="btn btn-secondary" onClick={onClose}>中止</button>
-        <button className="btn btn-primary" onClick={onClose}>コミット</button>
+        <button className="btn btn-primary" onClick={async () => {
+          try {
+            await invoke("submit_user_choice", { choice: "commit" });
+          } catch (e) {
+            console.error("Failed to submit commit choice:", e);
+          }
+          onClose();
+        }}>コミット</button>
       </div>
     </div>
   );

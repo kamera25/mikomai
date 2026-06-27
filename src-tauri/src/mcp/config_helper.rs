@@ -101,8 +101,7 @@ fn run_config_helper(payload: serde_json::Value) -> Result<String, String> {
     Ok(stdout)
 }
 
-#[tauri::command]
-pub async fn validate_cisco_config(config: String) -> Result<CommandResult, String> {
+pub async fn validate_cisco_config_impl(app: Option<tauri::AppHandle>, config: String) -> Result<CommandResult, String> {
     if config.trim().is_empty() {
         return Err("Configuration text cannot be empty".to_string());
     }
@@ -138,13 +137,79 @@ pub async fn validate_cisco_config(config: String) -> Result<CommandResult, Stri
         }
     }
 
-    Ok(CommandResult {
-        success: res.success,
-        output: md,
-        saved_path: None,
-        is_cached: None,
-        cache_time: None,
-    })
+    if res.success {
+        if let Some(app_handle) = app {
+            use tauri::Emitter;
+            use tauri::Manager;
+
+            let choice_manager = app_handle.state::<ChoiceManager>();
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            {
+                let mut lock = choice_manager.tx.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+                *lock = Some(tx);
+            }
+
+            // Emit event to request diff commit
+            let payload = serde_json::json!({
+                "config": config,
+                "fileName": "cisco.conf"
+            });
+            let _ = app_handle.emit("request-diff-commit", payload);
+
+            // Wait for frontend response (commit or cancel)
+            match rx.await {
+                Ok(c) => {
+                    if c == "commit" {
+                        Ok(CommandResult {
+                            success: true,
+                            output: format!("{}\n\n**Status**: 🚀 Configuration successfully committed/deployed by user.", md),
+                            saved_path: None,
+                            is_cached: None,
+                            cache_time: None,
+                        })
+                    } else {
+                        Ok(CommandResult {
+                            success: false,
+                            output: format!("{}\n\n**Status**: ⚠️ Configuration deployment cancelled by user.", md),
+                            saved_path: None,
+                            is_cached: None,
+                            cache_time: None,
+                        })
+                    }
+                }
+                Err(_) => {
+                    Ok(CommandResult {
+                        success: false,
+                        output: format!("{}\n\n**Status**: ⚠️ Configuration deployment cancelled/aborted.", md),
+                        saved_path: None,
+                        is_cached: None,
+                        cache_time: None,
+                    })
+                }
+            }
+        } else {
+            Ok(CommandResult {
+                success: true,
+                output: md,
+                saved_path: None,
+                is_cached: None,
+                cache_time: None,
+            })
+        }
+    } else {
+        Ok(CommandResult {
+            success: false,
+            output: md,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        })
+    }
+}
+
+#[tauri::command]
+pub async fn validate_cisco_config(app: tauri::AppHandle, config: String) -> Result<CommandResult, String> {
+    validate_cisco_config_impl(Some(app), config).await
 }
 
 #[tauri::command]
@@ -290,7 +355,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_cisco_config() {
         let config = "hostname RouterA\ninterface GigabitEthernet0/1\n ip address 192.168.1.1 255.255.255.0\n".to_string();
-        let result = validate_cisco_config(config).await;
+        let result = validate_cisco_config_impl(None, config).await;
         assert!(result.is_ok(), "Expected success, got: {:?}", result);
         let res = result.unwrap();
         assert!(res.success);

@@ -312,9 +312,9 @@ define_tool!(NwDiagTool, "self_network_nwdiag", |app, args| {
     crate::mcp::nwdiag::self_network_nwdiag(app, schema).await
 });
 
-define_tool!(ValidateCiscoConfigTool, "validate_cisco_config", |_app, args| {
+define_tool!(ValidateCiscoConfigTool, "validate_cisco_config", |app, args| {
     let config = get_str_arg(&args, &["config"]).unwrap_or_default();
-    crate::mcp::config_helper::validate_cisco_config(config).await
+    crate::mcp::config_helper::validate_cisco_config_impl(Some(app), config).await
 });
 
 define_tool!(ConvertCiscoConfigTool, "convert_cisco_config", |_app, args| {

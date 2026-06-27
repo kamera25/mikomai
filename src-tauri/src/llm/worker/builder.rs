@@ -126,7 +126,8 @@ impl LlmWorker for BuilderWorker {
 
                 // Run validate_cisco_config
                 let val_res = rt.block_on(async {
-                    crate::mcp::config_helper::validate_cisco_config(config.clone()).await
+                    use tauri::Manager;
+                    crate::mcp::config_helper::validate_cisco_config_impl(Some(w.app_handle().clone()), config.clone()).await
                 });
 
                 let (val_success, val_output) = match val_res {

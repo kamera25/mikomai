@@ -186,6 +186,37 @@ export function AppLayout() {
     };
   }, [uiDispatch]);
 
+  // Listen to request-diff-commit from Rust
+  useEffect(() => {
+    const unlisten = listen<any>("request-diff-commit", (event) => {
+      const { config, fileName } = event.payload;
+      if (config) {
+        const lines = config.split("\n");
+        const diffLines = lines.map((line: string, idx: number) => ({
+          type: "insert" as const,
+          oldLine: null,
+          newLine: idx + 1,
+          content: line,
+        }));
+        
+        uiDispatch({
+          type: "SET_CONFIG_DIFF_DATA",
+          payload: {
+            fileName: fileName || "cisco.conf",
+            additions: lines.length,
+            deletions: 0,
+            diffLines,
+          },
+        });
+        uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: true });
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [uiDispatch]);
+
   // Listen to user choice requests from Rust
   useEffect(() => {
     const unlisten = listen<any>("request-user-choice", (event) => {
@@ -838,7 +869,12 @@ export function AppLayout() {
               </main>
               <ConfigDiffPanel
                 isOpen={uiState.isConfigDiffOpen}
-                onClose={() => uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false })}
+                onClose={() => {
+                  uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false });
+                  invoke("submit_user_choice", { choice: "cancel" }).catch((err) => {
+                    console.error("Failed to cancel user choice on close:", err);
+                  });
+                }}
               />
             </div>
           )}
