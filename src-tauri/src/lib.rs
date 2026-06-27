@@ -38,6 +38,7 @@ pub fn run() {
         .manage(llama_state)
         .manage(rag_state)
         .manage(mcp::config_helper::ChoiceManager::new())
+        .manage(mcp::config_helper::InterfaceChoiceManager::new())
         .invoke_handler(tauri::generate_handler![
             llm::download_model,
             llm::open_model_dir,
@@ -86,7 +87,9 @@ pub fn run() {
             mcp::config_helper::validate_cisco_config,
             mcp::config_helper::convert_cisco_config,
             mcp::config_helper::submit_user_choice,
-            mcp::config_helper::ask_user_choice
+            mcp::config_helper::ask_user_choice,
+            mcp::config_helper::submit_interface_choice,
+            mcp::config_helper::ask_interface_choice
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

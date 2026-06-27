@@ -349,6 +349,21 @@ define_tool!(AskUserChoiceTool, "ask_user_choice", |app, args| {
     }
 });
 
+define_tool!(AskInterfaceChoiceTool, "ask_interface_choice", |app, args| {
+    let vendor = get_str_arg(&args, &["vendor"]).unwrap_or_default();
+
+    match crate::mcp::config_helper::ask_interface_choice(app.clone(), vendor).await {
+        Ok(res) => Ok(crate::network::CommandResult {
+            success: true,
+            output: res,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }),
+        Err(e) => Err(e),
+    }
+});
+
 // Tool registry
 pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
     static REGISTRY: OnceLock<HashMap<String, Box<dyn McpTool>>> = OnceLock::new();
@@ -374,6 +389,7 @@ pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
             ValidateCiscoConfigTool,
             ConvertCiscoConfigTool,
             AskUserChoiceTool,
+            AskInterfaceChoiceTool,
         ]
     })
 }

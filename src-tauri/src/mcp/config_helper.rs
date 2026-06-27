@@ -228,6 +228,60 @@ pub async fn ask_user_choice(
     }
 }
 
+pub struct InterfaceChoiceManager {
+    pub tx: Mutex<Option<tokio::sync::oneshot::Sender<String>>>,
+}
+
+impl InterfaceChoiceManager {
+    pub fn new() -> Self {
+        Self {
+            tx: Mutex::new(None),
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn submit_interface_choice(
+    choice: String,
+    state: tauri::State<'_, InterfaceChoiceManager>
+) -> Result<(), String> {
+    let mut lock = state.tx.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    if let Some(tx) = lock.take() {
+        let _ = tx.send(choice);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn ask_interface_choice(
+    app: tauri::AppHandle,
+    vendor: String,
+) -> Result<String, String> {
+    use tauri::Emitter;
+    use tauri::Manager;
+    
+    let choice_manager = app.state::<InterfaceChoiceManager>();
+    
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    {
+        let mut lock = choice_manager.tx.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+        *lock = Some(tx);
+    }
+
+    // Emit event to request interface choice
+    let payload = serde_json::json!({
+        "vendor": vendor,
+    });
+    
+    let _ = app.emit("request-interface-choice", payload);
+
+    // Wait for frontend response
+    match rx.await {
+        Ok(c) => Ok(c),
+        Err(_) => Ok("cancelled".to_string()),
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

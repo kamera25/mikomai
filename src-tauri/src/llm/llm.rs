@@ -226,7 +226,10 @@ impl LlamaState {
                                 log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
 
                                 let is_ask_user_choice = tool_label.contains("ask_user_choice");
-                                let active_route = if is_ask_user_choice {
+                                let is_ask_interface_choice = tool_label.contains("ask_interface_choice");
+                                let is_any_choice = is_ask_user_choice || is_ask_interface_choice;
+
+                                let active_route = if is_any_choice {
                                     Route::Builder
                                 } else if route_result.routes.len() > 1 {
                                     route_result.routes[1]
@@ -236,10 +239,12 @@ impl LlamaState {
 
                                 let custom_subsequent_task = if is_ask_user_choice {
                                     Some(format!("ユーザーが「{}」を選択しました。この回答要件を含めてCisco Configを設定・生成してください。", output))
+                                } else if is_ask_interface_choice {
+                                    Some(format!("ユーザーがインターフェースとして「{}」を選択・入力しました。この情報を反映して設定を生成または変更してください。", output))
                                 } else {
                                     None
                                 };
-                                let subsequent_task_ref = if is_ask_user_choice {
+                                let subsequent_task_ref = if is_any_choice {
                                     custom_subsequent_task.as_deref()
                                 } else {
                                     route_result.subsequent_task.as_deref()
