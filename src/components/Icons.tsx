@@ -534,6 +534,31 @@ export const ConfigFileIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2
   </svg>
 );
 
+export const SpeechIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    {/* Voice lines */}
+    <line x1="2" y1="9" x2="5" y2="10" />
+    <line x1="1.5" y1="12.5" x2="5.5" y2="12.5" />
+    <line x1="2" y1="16" x2="5" y2="15" />
+    
+    {/* Head profile */}
+    <path d="M15 4a8 8 0 0 1 0 16c-1.5 0-3-.5-4-1.5L13.5 14H10c-1 0-2-1-3-2 1-1 2-1.5 3-3.5 1-2 2-3.5 5-4.5z" />
+    
+    {/* Eye */}
+    <circle cx="13.5" cy="10" r="1" fill="currentColor" />
+  </svg>
+);
+
 
 
 

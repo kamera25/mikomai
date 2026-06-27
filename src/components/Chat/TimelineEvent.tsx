@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Terminal } from "../Terminal";
-import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon } from "../Icons";
+import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon, SpeechIcon } from "../Icons";
 import { Message } from "../../types";
 
 interface TimelineEventProps {
@@ -16,7 +16,8 @@ interface TimelineEventProps {
 export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) => {
   const { t } = useTranslation();
   const isNwDb = msg.tool_id === "query_nw_db" || msg.tool_id === "network_query_nw_db";
-  const defaultExpanded = msg.event_type === "ToolExecution" && !isNwDb;
+  const isChoice = msg.tool_id === "ask_user_choice" || msg.tool_id === "ask_interface_choice";
+  const defaultExpanded = msg.event_type === "ToolExecution" && !isNwDb && !isChoice;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
@@ -88,6 +89,8 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
                 <div className="timeline-type-icon">
                   {isNwDb ? (
                     <BookIcon size={14} />
+                  ) : isChoice ? (
+                    <SpeechIcon size={14} />
                   ) : (
                     <TerminalIcon size={14} />
                   )}
