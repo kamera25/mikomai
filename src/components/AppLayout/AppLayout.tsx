@@ -1,6 +1,7 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { SettingsPanel } from "../SettingsPanel";
 import { ConnectionSettingsPanel } from "../ConnectionSettingsPanel";
 import { ScheduledTasksPanel } from "../ScheduledTasksPanel";
@@ -33,6 +34,14 @@ export function AppLayout() {
   } = useSettingsContext();
 
   const { state: uiState, dispatch: uiDispatch } = useUIContext();
+  const [selectModalConfig, setSelectModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    options: string[];
+    onSelect: (option: string) => void;
+    onCancel: () => void;
+  } | null>(null);
   const {
     state: chatState,
     dispatch: chatDispatch,
@@ -165,6 +174,58 @@ export function AppLayout() {
       unlisten.then((fn) => fn());
     };
   }, [uiDispatch]);
+
+  // Listen to user choice requests from Rust
+  useEffect(() => {
+    const unlisten = listen<any>("request-user-choice", (event) => {
+      const { title, message, options } = event.payload;
+      setSelectModalConfig({
+        isOpen: true,
+        title,
+        message,
+        options,
+        onSelect: async (option: string) => {
+          setSelectModalConfig(null);
+          try {
+            await invoke("submit_user_choice", { choice: option });
+          } catch (err) {
+            console.error("Failed to submit user choice:", err);
+          }
+        },
+        onCancel: async () => {
+          setSelectModalConfig(null);
+          try {
+            await invoke("submit_user_choice", { choice: "cancelled" });
+          } catch (err) {
+            console.error("Failed to cancel user choice:", err);
+          }
+        }
+      });
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  // Listen to keyboard numeric selections when choice panel is active
+  useEffect(() => {
+    if (!selectModalConfig || !selectModalConfig.isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const num = parseInt(e.key, 10);
+      if (!isNaN(num) && num >= 1 && num <= selectModalConfig.options.length) {
+        e.preventDefault();
+        selectModalConfig.onSelect(selectModalConfig.options[num - 1]);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        selectModalConfig.onCancel();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [selectModalConfig]);
 
   const formatMessageTime = (isoString?: string) => {
     if (!isoString) return "";
@@ -399,9 +460,88 @@ export function AppLayout() {
                   formatMessageTime={formatMessageTime}
                 />
 
-                <div className="input-area-wrapper">
+                <div className="input-area-wrapper" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                   {chatState.messages.some((m) => m.status === "Running") && (
                     <div className="global-loading-indicator"></div>
+                  )}
+                  {selectModalConfig && selectModalConfig.isOpen && (
+                    <div className="input-choice-panel" style={{
+                      background: "var(--bg-secondary)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                      padding: "12px",
+                      boxShadow: "0 -2px 10px rgba(0,0,0,0.15)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                      animation: "fadeIn 0.2s ease",
+                    }}>
+                      <div style={{ fontWeight: "600", fontSize: "13px", color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span>{selectModalConfig.message}</span>
+                        <button
+                          onClick={selectModalConfig.onCancel}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "var(--text-secondary)",
+                            cursor: "pointer",
+                            fontSize: "11px",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"}
+                          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                        >
+                          スキップ (Esc)
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        {selectModalConfig.options.map((opt, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => selectModalConfig.onSelect(opt)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              width: "100%",
+                              padding: "10px 14px",
+                              background: "var(--bg-tertiary)",
+                              border: "1px solid var(--border)",
+                              borderRadius: "6px",
+                              color: "var(--text-primary)",
+                              textAlign: "left",
+                              cursor: "pointer",
+                              fontSize: "13px",
+                              fontWeight: "500",
+                              transition: "all 0.15s ease",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = "var(--primary)";
+                              e.currentTarget.style.background = "var(--bg-hover)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = "var(--border)";
+                              e.currentTarget.style.background = "var(--bg-tertiary)";
+                            }}
+                          >
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: "22px",
+                              height: "22px",
+                              borderRadius: "50%",
+                              background: "var(--bg-secondary)",
+                              marginRight: "12px",
+                              fontSize: "11px",
+                              fontWeight: "bold",
+                              color: "var(--text-secondary)",
+                            }}>{idx + 1}</span>
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
                   <ChatInput
                     ref={textareaRef}

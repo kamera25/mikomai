@@ -4,13 +4,14 @@ import "./CustomModal.css";
 
 interface CustomModalProps {
   isOpen: boolean;
-  type: "confirm" | "prompt";
+  type: "confirm" | "prompt" | "select";
   title: string;
   message: string;
   placeholder?: string;
   initialValue?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  options?: string[];
   onConfirm: (value?: string) => void;
   onCancel: () => void;
 }
@@ -24,6 +25,7 @@ export const CustomModal: React.FC<CustomModalProps> = ({
   initialValue = "",
   confirmLabel,
   cancelLabel,
+  options = [],
   onConfirm,
   onCancel,
 }) => {
@@ -99,18 +101,54 @@ export const CustomModal: React.FC<CustomModalProps> = ({
                 onChange={(e) => setInputValue(e.target.value)}
               />
             )}
+            {type === "select" && (
+              <div className="custom-modal-select-options" style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "16px" }}>
+                {options.map((opt, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className="custom-modal-btn option-btn"
+                    style={{
+                      width: "100%",
+                      padding: "12px 16px",
+                      background: "var(--bg-secondary)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      color: "var(--text-primary)",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      transition: "all 0.2s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--bg-tertiary)";
+                      e.currentTarget.style.borderColor = "var(--primary)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "var(--bg-secondary)";
+                      e.currentTarget.style.borderColor = "var(--border)";
+                    }}
+                    onClick={() => onConfirm(opt)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="custom-modal-footer">
             <button type="button" className="custom-modal-btn cancel" onClick={onCancel}>
               {displayCancelLabel}
             </button>
-            <button
-              type="submit"
-              className={`custom-modal-btn confirm ${type === "confirm" ? "danger" : "primary"}`}
-              disabled={type === "prompt" && !inputValue.trim()}
-            >
-              {displayConfirmLabel}
-            </button>
+            {type !== "select" && (
+              <button
+                type="submit"
+                className={`custom-modal-btn confirm ${type === "confirm" ? "danger" : "primary"}`}
+                disabled={type === "prompt" && !inputValue.trim()}
+              >
+                {displayConfirmLabel}
+              </button>
+            )}
           </div>
         </form>
       </div>

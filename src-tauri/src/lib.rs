@@ -37,6 +37,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(llama_state)
         .manage(rag_state)
+        .manage(mcp::config_helper::ChoiceManager::new())
         .invoke_handler(tauri::generate_handler![
             llm::download_model,
             llm::open_model_dir,
@@ -83,7 +84,8 @@ pub fn run() {
             mcp::executor::handle_mcp_message,
             mcp::nwdiag::self_network_nwdiag,
             mcp::config_helper::validate_cisco_config,
-            mcp::config_helper::convert_cisco_config
+            mcp::config_helper::convert_cisco_config,
+            mcp::config_helper::submit_user_choice
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

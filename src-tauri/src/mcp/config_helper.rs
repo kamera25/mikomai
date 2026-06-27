@@ -1,7 +1,32 @@
+use std::sync::Mutex;
 use std::process::Command;
 use std::io::Write;
 use serde::{Serialize, Deserialize};
 use crate::network::CommandResult;
+
+pub struct ChoiceManager {
+    pub tx: Mutex<Option<tokio::sync::oneshot::Sender<String>>>,
+}
+
+impl ChoiceManager {
+    pub fn new() -> Self {
+        Self {
+            tx: Mutex::new(None),
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn submit_user_choice(
+    choice: String,
+    state: tauri::State<'_, ChoiceManager>
+) -> Result<(), String> {
+    let mut lock = state.tx.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    if let Some(tx) = lock.take() {
+        let _ = tx.send(choice);
+    }
+    Ok(())
+}
 
 #[derive(Serialize)]
 struct ValidatePayload {
