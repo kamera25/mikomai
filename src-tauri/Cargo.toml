@@ -59,6 +59,9 @@ thiserror = "1.0"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "std", "fmt"] }
 tracing-log = "0.2.0"
+jsonrepair-rs = "0.2.1"
+
+
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

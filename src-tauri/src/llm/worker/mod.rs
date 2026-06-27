@@ -23,10 +23,12 @@ pub enum Route {
     None,
 }
 
-impl Route {
-    pub fn from_str(s: &str) -> Self {
+impl std::str::FromStr for Route {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let upper = s.to_uppercase();
-        if upper.contains("KNOWLEDGE") {
+        let route = if upper.contains("KNOWLEDGE") {
             Route::Knowledge
         } else if upper.contains("ANALYSIS") {
             Route::Analysis
@@ -36,7 +38,8 @@ impl Route {
             Route::None
         } else {
             Route::Investigate
-        }
+        };
+        Ok(route)
     }
 }
 

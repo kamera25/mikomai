@@ -5,6 +5,7 @@ use llama_cpp_2::llama_backend::LlamaBackend;
 use std::sync::Arc;
 use llama_cpp_2::sampling::LlamaSampler;
 use serde::Deserialize;
+use std::str::FromStr;
 
 const ROUTER_PROMPT: &str = include_str!("../prompts/router.txt");
 
@@ -64,88 +65,69 @@ impl Router {
     }
 }
 
-pub fn parse_route_output(output: &str) -> RouteResult {
-    #[derive(Deserialize, Debug)]
-    struct RouterJsonResponse {
-        first_route: String,
-        subsequent_route: String,
-        subsequent_task: String,
-    }
+#[derive(Deserialize, Debug)]
+struct RouterJsonResponse {
+    first_route: String,
+    subsequent_route: String,
+    subsequent_task: String,
+}
 
+fn clean_json_str(output: &str) -> &str {
     let trimmed = output.trim();
-    let clean_json = if trimmed.starts_with("```json") && trimmed.ends_with("```") {
+    if trimmed.starts_with("```json") && trimmed.ends_with("```") {
         trimmed["```json".len()..trimmed.len() - 3].trim()
     } else if trimmed.starts_with("```") && trimmed.ends_with("```") {
         trimmed[3..trimmed.len() - 3].trim()
     } else {
         trimmed
+    }
+}
+
+fn to_route_result(parsed: RouterJsonResponse) -> RouteResult {
+    let first = Route::from_str(&parsed.first_route).unwrap();
+    let subsequent = Route::from_str(&parsed.subsequent_route).unwrap();
+    let subsequent_task = {
+        let task_val = parsed.subsequent_task.trim();
+        if task_val.is_empty() || task_val.to_uppercase() == "NONE" {
+            None
+        } else {
+            Some(task_val.to_string())
+        }
     };
 
+    let mut routes = vec![first];
+    if subsequent != Route::None {
+        routes.push(subsequent);
+    }
+
+    RouteResult {
+        routes,
+        subsequent_task,
+    }
+}
+
+pub fn parse_route_output(output: &str) -> RouteResult {
+    let clean_json = clean_json_str(output);
+
     if let Ok(parsed) = serde_json::from_str::<RouterJsonResponse>(clean_json) {
-        let first = Route::from_str(&parsed.first_route);
-        let subsequent = Route::from_str(&parsed.subsequent_route);
-        let subsequent_task = {
-            let task_val = parsed.subsequent_task.trim();
-            if task_val.is_empty() || task_val.to_uppercase() == "NONE" {
-                None
-            } else {
-                Some(task_val.to_string())
-            }
-        };
-
-        let mut routes = vec![first];
-        if subsequent != Route::None {
-            routes.push(subsequent);
-        }
-
-        RouteResult {
-            routes,
-            subsequent_task,
-        }
+        to_route_result(parsed)
     } else {
         fallback_parse_route_output(output)
     }
 }
 
 fn fallback_parse_route_output(output: &str) -> RouteResult {
-    let mut first_route = Route::Investigate;
-    let mut subsequent_route = Route::None;
-    let mut subsequent_task = None;
+    let clean_json = clean_json_str(output);
 
-    for line in output.lines() {
-        let trimmed = line.trim();
-        let trimmed_upper = trimmed.to_uppercase();
-        if trimmed_upper.starts_with("FIRST_ROUTE:") {
-            let val = trimmed["FIRST_ROUTE:".len()..].trim();
-            first_route = Route::from_str(val);
-        } else if trimmed_upper.starts_with("SUBSEQUENT_ROUTE:") {
-            let val = trimmed["SUBSEQUENT_ROUTE:".len()..].trim();
-            subsequent_route = Route::from_str(val);
-        } else if trimmed_upper.starts_with("TASK:") {
-            let val = trimmed["TASK:".len()..].trim();
-            let val_upper = val.to_uppercase();
-            if val_upper != "NONE" && !val.is_empty() {
-                subsequent_task = Some(val.to_string());
-            }
+    if let Ok(repaired_str) = jsonrepair_rs::jsonrepair(clean_json) {
+        if let Ok(parsed) = serde_json::from_str::<RouterJsonResponse>(&repaired_str) {
+            return to_route_result(parsed);
         }
     }
 
-    if !output.to_uppercase().contains("FIRST_ROUTE:") {
-        first_route = Route::from_str(output);
-    }
-
-    if subsequent_route == Route::None && subsequent_task.is_some() {
-        subsequent_route = Route::Analysis;
-    }
-
-    let mut routes = vec![first_route];
-    if subsequent_route != Route::None {
-        routes.push(subsequent_route);
-    }
-
     RouteResult {
-        routes,
-        subsequent_task,
+        routes: vec![Route::None],
+        subsequent_task: None,
     }
 }
 
@@ -180,21 +162,34 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_route_output_fallback() {
-        let fallback_input = "FIRST_ROUTE: ANALYSIS\nSUBSEQUENT_ROUTE: INVESTIGATE\nTASK: Troubleshoot OSPF";
+    fn test_parse_route_output_fallback_repair() {
+        // Missing closing brace, trailing comma, single quotes
+        let fallback_input = r#"{
+            'first_route': 'ANALYSIS',
+            'subsequent_route': 'INVESTIGATE',
+            'subsequent_task': 'Troubleshoot OSPF',
+        "#;
         let res = parse_route_output(fallback_input);
         assert_eq!(res.routes, vec![Route::Analysis, Route::Investigate]);
         assert_eq!(res.subsequent_task, Some("Troubleshoot OSPF".to_string()));
     }
 
     #[test]
+    fn test_parse_route_output_fallback_failure() {
+        let invalid_input = "This is completely garbage text that cannot be repaired into a JSON object.";
+        let res = parse_route_output(invalid_input);
+        assert_eq!(res.routes, vec![Route::None]);
+        assert_eq!(res.subsequent_task, None);
+    }
+
+    #[test]
     fn test_route_from_str() {
-        assert_eq!(Route::from_str("knowledge"), Route::Knowledge);
-        assert_eq!(Route::from_str("ANALYSIS"), Route::Analysis);
-        assert_eq!(Route::from_str("none"), Route::None);
-        assert_eq!(Route::from_str("ploter"), Route::Plotter);
-        assert_eq!(Route::from_str("PLOTTER"), Route::Plotter);
-        assert_eq!(Route::from_str("anything_else"), Route::Investigate);
+        assert_eq!(Route::from_str("knowledge").unwrap(), Route::Knowledge);
+        assert_eq!(Route::from_str("ANALYSIS").unwrap(), Route::Analysis);
+        assert_eq!(Route::from_str("none").unwrap(), Route::None);
+        assert_eq!(Route::from_str("ploter").unwrap(), Route::Plotter);
+        assert_eq!(Route::from_str("PLOTTER").unwrap(), Route::Plotter);
+        assert_eq!(Route::from_str("anything_else").unwrap(), Route::Investigate);
     }
 }
 
