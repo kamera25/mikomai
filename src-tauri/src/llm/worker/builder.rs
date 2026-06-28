@@ -100,7 +100,7 @@ impl LlmWorker for BuilderWorker {
         ).map_err(|e| format!("Worker inference failed: {:?}", e))?;
 
         // 2. If the response contains a tool call, return it directly so the chat controller executes it
-        if initial_response.contains("\"tool_name\":") {
+        if initial_response.contains("\"tool_name\":") || initial_response.contains("\"tool\":") {
             return Ok(initial_response);
         }
 

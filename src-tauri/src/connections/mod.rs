@@ -56,28 +56,49 @@ pub enum ConnectionError {
     HostResolutionFailed(String, String),
 }
 
+fn deserialize_empty_as_none<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: std::convert::TryFrom<String>,
+    <T as std::convert::TryFrom<String>>::Error: std::fmt::Display,
+{
+    let s: Option<String> = serde::Deserialize::deserialize(deserializer)?;
+    match s {
+        Some(val) => {
+            if val.trim().is_empty() {
+                Ok(None)
+            } else {
+                T::try_from(val)
+                    .map(Some)
+                    .map_err(serde::de::Error::custom)
+            }
+        }
+        None => Ok(None),
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Connection {
     pub id: ConnectionId,
     pub status: ConnectionStatus,
     pub hostname: Hostname,
-    pub ip: IpAddr,
+    pub ip: String,
     #[serde(default)]
     #[validate(range(min = 1, max = 65535))]
     pub port: Option<u16>,
     #[serde(rename = "type")]
     pub conn_type: ConnectionType,
     pub last_connected: LastConnected,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_empty_as_none")]
     pub username: Option<Username>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_empty_as_none")]
     pub password: Option<Password>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_empty_as_none")]
     pub enable_password: Option<EnablePassword>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_empty_as_none")]
     pub device_type: Option<DeviceType>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_empty_as_none")]
     pub vendor_type: Option<VendorType>,
     #[serde(default, skip_serializing)]
     pub has_password: Option<bool>,
@@ -331,7 +352,7 @@ mod tests {
             id: ConnectionId::try_from("test-1").unwrap(),
             status: ConnectionStatus::try_from("active").unwrap(),
             hostname: Hostname::try_from("router-1").unwrap(),
-            ip: "10.0.0.1".parse().unwrap(),
+            ip: "10.0.0.1".to_string(),
             port: Some(22),
             conn_type: ConnectionType::try_from("SSH").unwrap(),
             last_connected: LastConnected::try_from("2023-10-27").unwrap(),

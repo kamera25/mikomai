@@ -251,6 +251,18 @@ define_tool!(QueryNwDbAliasTool, "network_query_nw_db", |app, args| {
     ).await.map(Into::into)
 });
 
+define_tool!(QueryRagTool, "query_rag", |app, args| {
+    let query = get_str_arg(&args, &["query", "userMessage", "user_message"]).unwrap_or_default();
+    let filter = get_str_arg(&args, &["filter"]);
+    let rag_state = app.state::<crate::mcp::rag::RagState>();
+    crate::mcp::rag::query_nw_db(
+        query,
+        filter,
+        rag_state,
+        app.clone(),
+    ).await.map(Into::into)
+});
+
 define_tool!(SelfNetworkArpTool, "self_network_arp", |app, _args| {
     crate::mcp::arp::self_network_arp(app).await.map(Into::into)
 });
@@ -376,6 +388,7 @@ pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
             FetchArpTool,
             QueryNwDbTool,
             QueryNwDbAliasTool,
+            QueryRagTool,
             SelfNetworkArpTool,
             SelfNetworkRouteTool,
             NetworkGetHostsTool,
@@ -547,7 +560,7 @@ fn execute_mcp_tool_internal(
         };
         let _ = window.emit("chat-event", ChatEvent::McpAnalysisStarted(analysis_started_payload));
 
-        let is_rag = tool_id == "query_nw_db" || tool_id == "network_query_nw_db";
+        let is_rag = tool_id == "query_nw_db" || tool_id == "network_query_nw_db" || tool_id == "query_rag";
         let analyze_payload = crate::llm::llm::AnalyzePayload {
             user_message: user_message.clone(),
             tool_label: tool_label.clone(),
@@ -708,7 +721,7 @@ fn get_tool_label(tool_name: &str) -> String {
         "self_network_ping" => "Ping".to_string(),
         "self_network_traceroute" => "Traceroute".to_string(),
         "network_get_hosts" => "Host List".to_string(),
-        "network_query_nw_db" | "query_nw_db" => "NWDB検索".to_string(),
+        "network_query_nw_db" | "query_nw_db" | "query_rag" => "NWDB検索".to_string(),
         "self_network_arp" => "ARP Table".to_string(),
         "self_network_route" => "Route Table".to_string(),
         "network_get_ip_info" => "IP Info".to_string(),
