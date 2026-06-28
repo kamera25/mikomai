@@ -62,6 +62,7 @@ export function AppLayout() {
   const [interfaceModalConfig, setInterfaceModalConfig] = useState<{
     isOpen: boolean;
     vendor: string;
+    message?: string;
     onSelect: (option: string) => void;
     onCancel: () => void;
   } | null>(null);
@@ -253,10 +254,11 @@ export function AppLayout() {
   // Listen to interface choice requests from Rust
   useEffect(() => {
     const unlisten = listen<any>("request-interface-choice", (event) => {
-      const { vendor } = event.payload;
+      const { vendor, message } = event.payload;
       setInterfaceModalConfig({
         isOpen: true,
         vendor: vendor || "Cisco_IOS",
+        message: message,
         onSelect: async (option: string) => {
           setInterfaceModalConfig(null);
           try {
@@ -662,6 +664,12 @@ export function AppLayout() {
                           キャンセル (Esc)
                         </button>
                       </div>
+
+                      {interfaceModalConfig.message && (
+                        <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "4px", whiteSpace: "pre-wrap" }}>
+                          {interfaceModalConfig.message}
+                        </div>
+                      )}
 
                       {/* Cisco_IOS の UI */}
                       {(interfaceModalConfig.vendor.toLowerCase().includes("cisco") || interfaceModalConfig.vendor.toLowerCase().includes("ios")) && (

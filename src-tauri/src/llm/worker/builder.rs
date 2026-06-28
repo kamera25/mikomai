@@ -13,6 +13,7 @@ const N_CTX: u32 = 4096;
 
 pub struct BuilderWorker {
     pub ctx: Option<AgentContext>,
+    pub collected_choices: Vec<(String, String)>,
 }
 
 impl BuilderWorker {
@@ -26,9 +27,9 @@ impl BuilderWorker {
             let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 7, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Builder context: {:?}", e))?;
             
-            Ok(Self { ctx: Some(ctx) })
+            Ok(Self { ctx: Some(ctx), collected_choices: Vec::new() })
         } else {
-            Ok(Self { ctx: None })
+            Ok(Self { ctx: None, collected_choices: Vec::new() })
         }
     }
 }
@@ -81,10 +82,40 @@ impl LlmWorker for BuilderWorker {
     ) -> Result<String, String> {
         self.ensure_initialized(model, backend)?;
 
+        if prompt.is_some() {
+            self.collected_choices.clear();
+        }
+
+        if let (Some(label), Some(out)) = (&tool_label, &output) {
+            if label.contains("ask_user_choice") || label.contains("ask_interface_choice") {
+                self.collected_choices.push((label.clone(), out.clone()));
+            }
+        }
+
+        let modified_user_message = if !self.collected_choices.is_empty() {
+            if let Some(ref original_msg) = user_message {
+                let mut msg = original_msg.clone();
+                msg.push_str("\n\n【ユーザーの追加回答（これまでの選択情報）】");
+                for (label, val) in &self.collected_choices {
+                    let type_name = if label.contains("ask_interface_choice") {
+                        "選択されたインターフェース"
+                    } else {
+                        "選択された回答"
+                    };
+                    msg.push_str(&format!("\n- {}: {}", type_name, val));
+                }
+                Some(msg)
+            } else {
+                user_message.clone()
+            }
+        } else {
+            user_message.clone()
+        };
+
         // 1. Generate config text using standard LLM inference
         let worker_prompt = self.build_prompt(
             prompt.clone(),
-            user_message.clone(),
+            modified_user_message,
             tool_label.clone(),
             output.clone(),
             history_block.clone(),

@@ -321,6 +321,7 @@ pub async fn submit_interface_choice(
 pub async fn ask_interface_choice(
     app: tauri::AppHandle,
     vendor: String,
+    message: Option<String>,
 ) -> Result<String, String> {
     use tauri::Emitter;
     use tauri::Manager;
@@ -336,6 +337,7 @@ pub async fn ask_interface_choice(
     // Emit event to request interface choice
     let payload = serde_json::json!({
         "vendor": vendor,
+        "message": message,
     });
     
     let _ = app.emit("request-interface-choice", payload);

@@ -363,8 +363,9 @@ define_tool!(AskUserChoiceTool, "ask_user_choice", |app, args| {
 
 define_tool!(AskInterfaceChoiceTool, "ask_interface_choice", |app, args| {
     let vendor = get_str_arg(&args, &["vendor"]).unwrap_or_default();
+    let message = get_str_arg(&args, &["message"]);
 
-    match crate::mcp::config_helper::ask_interface_choice(app.clone(), vendor).await {
+    match crate::mcp::config_helper::ask_interface_choice(app.clone(), vendor, message).await {
         Ok(res) => Ok(crate::network::CommandResult {
             success: true,
             output: res,
@@ -580,6 +581,7 @@ fn execute_mcp_tool_internal(
         ).await.unwrap_or_else(|e| format!("Analysis failed: {}", e));
 
         // 5. Generate and save summary
+        let mut next_summaries = summaries.clone();
         let summary_prompt = format!(
             "以下の内容を要約してください。\n\nユーザー入力: {}\n実行ツール: {}\n分析結果: {}",
             user_message, tool_label, response_str
@@ -594,6 +596,7 @@ fn execute_mcp_tool_internal(
                 content: summary_text.clone(),
             };
             let _ = crate::history::save_summary(app.clone(), new_summary.clone());
+            next_summaries.push(new_summary.clone());
 
             // Emit summary saved event
             let summary_payload = SummarySavedPayload {
@@ -644,7 +647,7 @@ fn execute_mcp_tool_internal(
                     
                     let next_tool_label = get_tool_label(&nested_tool_id);
                     let user_message_c = user_message.clone();
-                    let summaries_c = summaries.clone();
+                    let summaries_c = next_summaries.clone();
                     let recent_ips_c = recent_ips.clone();
                     let history_limit_c = history_limit;
                     let mcp_timeout_c = mcp_timeout;
