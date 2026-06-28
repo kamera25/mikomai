@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Terminal } from "../Terminal";
-import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon, SpeechIcon } from "../Icons";
+import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon, SpeechIcon, RobotIcon } from "../Icons";
 import { Message } from "../../types";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -293,6 +293,23 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
   }
 
   // Handle standard User/AI messages as timeline events
+  let thoughtContent = "";
+  let remainingContent = msg.content;
+  let hasThought = false;
+
+  if (msg.role === "ai" && msg.content.startsWith("<thought>")) {
+    const thoughtIndex = msg.content.indexOf("</thought>");
+    if (thoughtIndex !== -1) {
+      thoughtContent = msg.content.substring(9, thoughtIndex);
+      remainingContent = msg.content.substring(thoughtIndex + 10).trim();
+      hasThought = true;
+    } else {
+      thoughtContent = msg.content.substring(9);
+      remainingContent = "";
+      hasThought = true;
+    }
+  }
+
   return (
     <div className={getContainerClass()} id={msg.task_id}>
       <div className="timeline-node"></div>
@@ -309,24 +326,42 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
             alignItems: msg.role === "user" ? "flex-end" : "flex-start",
           }}
         >
-          <div className={`message-bubble markdown-body ${msg.status === "Pending" ? "pending" : ""}`}>
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex]}
-              components={{
-                pre({ children }) {
-                  const codeElement = React.Children.toArray(children)[0];
-                  if (React.isValidElement(codeElement) && codeElement.props) {
-                    const codeText = String((codeElement.props as any).children || "").replace(/\n$/, "");
-                    return <Terminal content={codeText} />;
+          {hasThought && (
+            <div className="thought-container">
+              <div className="thought-icon" title="Thinking process">
+                <RobotIcon size={16} />
+              </div>
+              <div className="thought-bubble">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                >
+                  {thoughtContent}
+                </ReactMarkdown>
+              </div>
+            </div>
+          )}
+
+          {(!hasThought || remainingContent !== "") && (
+            <div className={`message-bubble markdown-body ${msg.status === "Pending" ? "pending" : ""}`}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  pre({ children }) {
+                    const codeElement = React.Children.toArray(children)[0];
+                    if (React.isValidElement(codeElement) && codeElement.props) {
+                      const codeText = String((codeElement.props as any).children || "").replace(/\n$/, "");
+                      return <Terminal content={codeText} />;
+                    }
+                    return <pre>{children}</pre>;
                   }
-                  return <pre>{children}</pre>;
-                }
-              }}
-            >
-              {msg.content}
-            </ReactMarkdown>
-          </div>
+                }}
+              >
+                {remainingContent}
+              </ReactMarkdown>
+            </div>
+          )}
           {msg.role === "user" && msg.status === "Pending" && (
             <div className="message-pending-indicator">
               <span className="status-spinner-small"></span>
@@ -338,7 +373,7 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               <button
                 className="message-action-btn"
                 title={t("common.copy")}
-                onClick={() => handleCopy(msg.content)}
+                onClick={() => handleCopy(remainingContent || msg.content)}
               >
                 {copied ? (
                   <CheckIcon size={16} style={{ color: "var(--success)" }} />

@@ -559,6 +559,28 @@ export const SpeechIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, ..
   </svg>
 );
 
+export const RobotIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M12 8V4H8"></path>
+    <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+    <path d="M2 14h2"></path>
+    <path d="M20 14h2"></path>
+    <path d="M15 13v2"></path>
+    <path d="M9 13v2"></path>
+  </svg>
+);
+
+
 
 
 

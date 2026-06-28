@@ -515,24 +515,38 @@ fn execute_mcp_tool_internal(
             }
         };
 
-        // Run execution with timeout
-        let mcp_timeout_duration = Duration::from_secs(mcp_timeout);
-        let result = match tokio::time::timeout(mcp_timeout_duration, execution_future).await {
-            Ok(Ok(res)) => res,
-            Ok(Err(e)) => crate::network::CommandResult {
-                success: false,
-                output: format!("Execution failed: {}", e),
-                saved_path: None,
-                is_cached: None,
-                cache_time: None,
-            },
-            Err(_) => crate::network::CommandResult {
-                success: false,
-                output: "MCP execution timed out".to_string(),
-                saved_path: None,
-                is_cached: None,
-                cache_time: None,
-            },
+        // Run execution with timeout (bypass timeout for user choice prompts)
+        let is_choice_tool = tool_id == "ask_user_choice" || tool_id == "ask_interface_choice";
+        let result = if is_choice_tool {
+            match execution_future.await {
+                Ok(res) => res,
+                Err(e) => crate::network::CommandResult {
+                    success: false,
+                    output: format!("Execution failed: {}", e),
+                    saved_path: None,
+                    is_cached: None,
+                    cache_time: None,
+                },
+            }
+        } else {
+            let mcp_timeout_duration = Duration::from_secs(mcp_timeout);
+            match tokio::time::timeout(mcp_timeout_duration, execution_future).await {
+                Ok(Ok(res)) => res,
+                Ok(Err(e)) => crate::network::CommandResult {
+                    success: false,
+                    output: format!("Execution failed: {}", e),
+                    saved_path: None,
+                    is_cached: None,
+                    cache_time: None,
+                },
+                Err(_) => crate::network::CommandResult {
+                    success: false,
+                    output: "MCP execution timed out".to_string(),
+                    saved_path: None,
+                    is_cached: None,
+                    cache_time: None,
+                },
+            }
         };
 
         // Emit finished event
