@@ -325,8 +325,9 @@ define_tool!(NwDiagTool, "self_network_nwdiag", |app, args| {
 });
 
 define_tool!(ValidateCiscoConfigTool, "validate_cisco_config", |app, args| {
+    let id = get_str_arg(&args, &["task_id"]);
     let config = get_str_arg(&args, &["config"]).unwrap_or_default();
-    crate::mcp::config_helper::validate_cisco_config_impl(Some(app), config).await
+    crate::mcp::config_helper::validate_cisco_config_impl(Some(app), id, config).await
 });
 
 define_tool!(ConvertCiscoConfigTool, "convert_cisco_config", |_app, args| {
@@ -336,6 +337,7 @@ define_tool!(ConvertCiscoConfigTool, "convert_cisco_config", |_app, args| {
 });
 
 define_tool!(AskUserChoiceTool, "ask_user_choice", |app, args| {
+    let id = get_str_arg(&args, &["task_id"]);
     let title = get_str_arg(&args, &["title"]).unwrap_or_default();
     let message = get_str_arg(&args, &["message"]).unwrap_or_default();
     
@@ -349,7 +351,7 @@ define_tool!(AskUserChoiceTool, "ask_user_choice", |app, args| {
         Vec::new()
     };
 
-    match crate::mcp::config_helper::ask_user_choice(app.clone(), title, message, options).await {
+    match crate::mcp::config_helper::ask_user_choice(app.clone(), id, title, message, options).await {
         Ok(res) => Ok(crate::network::CommandResult {
             success: true,
             output: res,
@@ -362,10 +364,11 @@ define_tool!(AskUserChoiceTool, "ask_user_choice", |app, args| {
 });
 
 define_tool!(AskInterfaceChoiceTool, "ask_interface_choice", |app, args| {
+    let id = get_str_arg(&args, &["task_id"]);
     let vendor = get_str_arg(&args, &["vendor"]).unwrap_or_default();
     let message = get_str_arg(&args, &["message"]);
 
-    match crate::mcp::config_helper::ask_interface_choice(app.clone(), vendor, message).await {
+    match crate::mcp::config_helper::ask_interface_choice(app.clone(), id, vendor, message).await {
         Ok(res) => Ok(crate::network::CommandResult {
             success: true,
             output: res,
@@ -447,6 +450,7 @@ fn execute_mcp_tool_internal(
         if let serde_json::Value::Object(ref mut map) = processed_args {
             map.insert("userMessage".to_string(), serde_json::Value::String(user_message.clone()));
             map.insert("user_message".to_string(), serde_json::Value::String(user_message.clone()));
+            map.insert("task_id".to_string(), serde_json::Value::String(task_id.clone()));
         }
 
         // 2. Extract resolved host for recentIPs updates in the frontend
@@ -576,9 +580,73 @@ fn execute_mcp_tool_internal(
         let _ = window.emit("chat-event", ChatEvent::McpAnalysisStarted(analysis_started_payload));
 
         let is_rag = tool_id == "query_nw_db" || tool_id == "network_query_nw_db" || tool_id == "query_rag";
+        
+        let custom_tool_label = if tool_id == "ask_user_choice" {
+            let q_msg = get_str_arg(&processed_args, &["message"]).unwrap_or_default();
+            format!("ask_user_choice: {}", q_msg)
+        } else if tool_id == "ask_interface_choice" {
+            let q_msg = get_str_arg(&processed_args, &["message"]).unwrap_or_default();
+            format!("ask_interface_choice: {}", q_msg)
+        } else {
+            tool_label.clone()
+        };
+
+        // 4.1. Check if all choices are answered and synthesize true query
+        let choice_mgr = app.state::<crate::mcp::config_helper::ChoiceManager>();
+        let iface_mgr = app.state::<crate::mcp::config_helper::InterfaceChoiceManager>();
+        let pending_choices = choice_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
+        let pending_ifaces = iface_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
+
+        let mut synthesized_task = None;
+        let is_choice_tool = tool_id == "ask_user_choice" || tool_id == "ask_interface_choice";
+
+        if is_choice_tool && pending_choices == 0 && pending_ifaces == 0 {
+            // すべての回答が揃った最後のタイミングで真のユーザーの質問を再生成する
+            let mut collected_choices = {
+                let shared_opt = llama_state.shared.lock().await;
+                if let Some(shared) = &*shared_opt {
+                    let builder = shared.builder.lock().unwrap();
+                    builder.collected_choices.clone()
+                } else {
+                    Vec::new()
+                }
+            };
+            
+            // 今回の回答もリストに含める
+            collected_choices.push((custom_tool_label.clone(), result.output.clone()));
+
+            if !collected_choices.is_empty() {
+                let answers_block = collected_choices.iter().map(|(label, val)| {
+                    if label.starts_with("ask_user_choice:") {
+                        let q_msg = label.strip_prefix("ask_user_choice:").unwrap().trim();
+                        format!("- 「{}」の回答: {}", q_msg, val)
+                    } else if label.starts_with("ask_interface_choice:") {
+                        let q_msg = label.strip_prefix("ask_interface_choice:").unwrap().trim();
+                        format!("- 「{}」の回答: {}", q_msg, val)
+                    } else {
+                        format!("- {}: {}", label, val)
+                    }
+                }).collect::<Vec<String>>().join("\n");
+
+                let synth_system_prompt = "あなたは優秀なネットワーク要件定義アナリストです。\n元のユーザーの曖昧な質問と、その後に対話によって得られた具体的な回答パラメータを組み合わせて、1つの明確で詳細な「ネットワーク設定要望」の文章（日本語）を再構成してください。\n解説や前置きは一切出力せず、再構成された要望の文章のみを直接出力してください。";
+                let synth_prompt = format!("元のユーザーの質問:\n{}\n\n得られた回答リスト:\n{}", user_message, answers_block);
+                
+                log::info!("Synthesizing true user query from choices (async)...");
+                if let Ok(synthesized_query) = crate::llm::llm::ask_llm_internal(
+                    &synth_prompt,
+                    synth_system_prompt,
+                    &app,
+                    &llama_state,
+                ).await {
+                    log::info!("Synthesized Query: {}", synthesized_query);
+                    synthesized_task = Some(synthesized_query);
+                }
+            }
+        }
+
         let analyze_payload = crate::llm::llm::AnalyzePayload {
             user_message: user_message.clone(),
-            tool_label: tool_label.clone(),
+            tool_label: custom_tool_label,
             output: if tool_id == "self_network_nwdiag" && result.success {
                 "Success: Network diagram generated successfully and saved to artifact.".to_string()
             } else {
@@ -586,6 +654,7 @@ fn execute_mcp_tool_internal(
             },
             is_rag,
             history_block: Some(history_block),
+            subsequent_task: synthesized_task,
         };
 
         let response_str = crate::llm::llm::analyze_tool_output(

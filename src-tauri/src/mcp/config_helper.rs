@@ -5,24 +5,26 @@ use serde::{Serialize, Deserialize};
 use crate::network::CommandResult;
 
 pub struct ChoiceManager {
-    pub tx: Mutex<Option<tokio::sync::oneshot::Sender<String>>>,
+    pub txs: Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
 }
 
 impl ChoiceManager {
     pub fn new() -> Self {
         Self {
-            tx: Mutex::new(None),
+            txs: Mutex::new(std::collections::HashMap::new()),
         }
     }
 }
 
 #[tauri::command]
 pub async fn submit_user_choice(
+    id: Option<String>,
     choice: String,
     state: tauri::State<'_, ChoiceManager>
 ) -> Result<(), String> {
-    let mut lock = state.tx.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-    if let Some(tx) = lock.take() {
+    let id = id.unwrap_or_else(|| "default".to_string());
+    let mut lock = state.txs.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    if let Some(tx) = lock.remove(&id) {
         let _ = tx.send(choice);
     }
     Ok(())
@@ -101,7 +103,7 @@ fn run_config_helper(payload: serde_json::Value) -> Result<String, String> {
     Ok(stdout)
 }
 
-pub async fn validate_cisco_config_impl(app: Option<tauri::AppHandle>, config: String) -> Result<CommandResult, String> {
+pub async fn validate_cisco_config_impl(app: Option<tauri::AppHandle>, id: Option<String>, config: String) -> Result<CommandResult, String> {
     if config.trim().is_empty() {
         return Err("Configuration text cannot be empty".to_string());
     }
@@ -142,15 +144,17 @@ pub async fn validate_cisco_config_impl(app: Option<tauri::AppHandle>, config: S
             use tauri::Emitter;
             use tauri::Manager;
 
+            let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
             let choice_manager = app_handle.state::<ChoiceManager>();
             let (tx, rx) = tokio::sync::oneshot::channel();
             {
-                let mut lock = choice_manager.tx.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-                *lock = Some(tx);
+                let mut lock = choice_manager.txs.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+                lock.insert(id.clone(), tx);
             }
 
             // Emit event to request diff commit
             let payload = serde_json::json!({
+                "id": id,
                 "config": config,
                 "fileName": "cisco.conf"
             });
@@ -209,7 +213,7 @@ pub async fn validate_cisco_config_impl(app: Option<tauri::AppHandle>, config: S
 
 #[tauri::command]
 pub async fn validate_cisco_config(app: tauri::AppHandle, config: String) -> Result<CommandResult, String> {
-    validate_cisco_config_impl(Some(app), config).await
+    validate_cisco_config_impl(Some(app), None, config).await
 }
 
 #[tauri::command]
@@ -262,6 +266,7 @@ pub async fn convert_cisco_config(config: String, target_vendor: String) -> Resu
 #[tauri::command]
 pub async fn ask_user_choice(
     app: tauri::AppHandle,
+    id: Option<String>,
     title: String,
     message: String,
     options: Vec<String>,
@@ -269,16 +274,18 @@ pub async fn ask_user_choice(
     use tauri::Emitter;
     use tauri::Manager;
     
+    let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let choice_manager = app.state::<ChoiceManager>();
     
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
-        let mut lock = choice_manager.tx.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-        *lock = Some(tx);
+        let mut lock = choice_manager.txs.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+        lock.insert(id.clone(), tx);
     }
 
     // Emit event to request user choice
     let payload = serde_json::json!({
+        "id": id,
         "title": title,
         "message": message,
         "options": options
@@ -294,24 +301,26 @@ pub async fn ask_user_choice(
 }
 
 pub struct InterfaceChoiceManager {
-    pub tx: Mutex<Option<tokio::sync::oneshot::Sender<String>>>,
+    pub txs: Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
 }
 
 impl InterfaceChoiceManager {
     pub fn new() -> Self {
         Self {
-            tx: Mutex::new(None),
+            txs: Mutex::new(std::collections::HashMap::new()),
         }
     }
 }
 
 #[tauri::command]
 pub async fn submit_interface_choice(
+    id: Option<String>,
     choice: String,
     state: tauri::State<'_, InterfaceChoiceManager>
 ) -> Result<(), String> {
-    let mut lock = state.tx.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-    if let Some(tx) = lock.take() {
+    let id = id.unwrap_or_else(|| "default".to_string());
+    let mut lock = state.txs.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    if let Some(tx) = lock.remove(&id) {
         let _ = tx.send(choice);
     }
     Ok(())
@@ -320,22 +329,25 @@ pub async fn submit_interface_choice(
 #[tauri::command]
 pub async fn ask_interface_choice(
     app: tauri::AppHandle,
+    id: Option<String>,
     vendor: String,
     message: Option<String>,
 ) -> Result<String, String> {
     use tauri::Emitter;
     use tauri::Manager;
     
+    let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let choice_manager = app.state::<InterfaceChoiceManager>();
     
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
-        let mut lock = choice_manager.tx.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
-        *lock = Some(tx);
+        let mut lock = choice_manager.txs.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+        lock.insert(id.clone(), tx);
     }
 
     // Emit event to request interface choice
     let payload = serde_json::json!({
+        "id": id,
         "vendor": vendor,
         "message": message,
     });

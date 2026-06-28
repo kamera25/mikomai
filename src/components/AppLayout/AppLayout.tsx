@@ -34,14 +34,27 @@ export function AppLayout() {
   } = useSettingsContext();
 
   const { state: uiState, dispatch: uiDispatch } = useUIContext();
-  const [selectModalConfig, setSelectModalConfig] = useState<{
-    isOpen: boolean;
+  interface ChoiceConfig {
+    id: string;
     title: string;
     message: string;
     options: string[];
-    onSelect: (option: string) => void;
-    onCancel: () => void;
-  } | null>(null);
+  }
+
+  interface InterfaceChoiceConfig {
+    id: string;
+    vendor: string;
+    message?: string;
+  }
+
+  type QuestionItem = 
+    | { type: "choice"; data: ChoiceConfig }
+    | { type: "interface"; data: InterfaceChoiceConfig };
+
+  const [questionQueue, setQuestionQueue] = useState<QuestionItem[]>([]);
+  const [totalQuestionsCount, setTotalQuestionsCount] = useState(0);
+  const [diffCommitId, setDiffCommitId] = useState<string | null>(null);
+
   const {
     state: chatState,
     dispatch: chatDispatch,
@@ -58,18 +71,6 @@ export function AppLayout() {
     activeSession,
   } = useChatContext();
   const { state: modelState, handleLoadModel } = useModelContext();
-
-  const [interfaceModalConfig, setInterfaceModalConfig] = useState<{
-    isOpen: boolean;
-    vendor: string;
-    message?: string;
-    onSelect: (option: string) => void;
-    onCancel: () => void;
-  } | null>(null);
-
-  const [ciscoType, setCiscoType] = useState("GigabitEthernet");
-  const [ciscoNum, setCiscoNum] = useState("0/1");
-  const [customInterface, setCustomInterface] = useState("");
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -190,7 +191,10 @@ export function AppLayout() {
   // Listen to request-diff-commit from Rust
   useEffect(() => {
     const unlisten = listen<any>("request-diff-commit", (event) => {
-      const { config, fileName } = event.payload;
+      const { id, config, fileName } = event.payload;
+      if (id) {
+        setDiffCommitId(id);
+      }
       if (config) {
         const lines = config.split("\n");
         const diffLines = lines.map((line: string, idx: number) => ({
@@ -221,28 +225,16 @@ export function AppLayout() {
   // Listen to user choice requests from Rust
   useEffect(() => {
     const unlisten = listen<any>("request-user-choice", (event) => {
-      const { title, message, options } = event.payload;
-      setSelectModalConfig({
-        isOpen: true,
-        title,
-        message,
-        options,
-        onSelect: async (option: string) => {
-          setSelectModalConfig(null);
-          try {
-            await invoke("submit_user_choice", { choice: option });
-          } catch (err) {
-            console.error("Failed to submit user choice:", err);
-          }
-        },
-        onCancel: async () => {
-          setSelectModalConfig(null);
-          try {
-            await invoke("submit_user_choice", { choice: "cancelled" });
-          } catch (err) {
-            console.error("Failed to cancel user choice:", err);
-          }
-        }
+      const { id, title, message, options } = event.payload;
+      const item: QuestionItem = {
+        type: "choice",
+        data: { id: id || "default", title, message, options }
+      };
+      setQuestionQueue(prev => {
+        const filtered = prev.filter(q => q.data.id !== item.data.id);
+        const next = [...filtered, item];
+        setTotalQuestionsCount(prevTotal => Math.max(prevTotal, next.length));
+        return next;
       });
     });
 
@@ -254,27 +246,16 @@ export function AppLayout() {
   // Listen to interface choice requests from Rust
   useEffect(() => {
     const unlisten = listen<any>("request-interface-choice", (event) => {
-      const { vendor, message } = event.payload;
-      setInterfaceModalConfig({
-        isOpen: true,
-        vendor: vendor || "Cisco_IOS",
-        message: message,
-        onSelect: async (option: string) => {
-          setInterfaceModalConfig(null);
-          try {
-            await invoke("submit_interface_choice", { choice: option });
-          } catch (err) {
-            console.error("Failed to submit interface choice:", err);
-          }
-        },
-        onCancel: async () => {
-          setInterfaceModalConfig(null);
-          try {
-            await invoke("submit_interface_choice", { choice: "cancelled" });
-          } catch (err) {
-            console.error("Failed to cancel interface choice:", err);
-          }
-        }
+      const { id, vendor, message } = event.payload;
+      const item: QuestionItem = {
+        type: "interface",
+        data: { id: id || "default", vendor, message }
+      };
+      setQuestionQueue(prev => {
+        const filtered = prev.filter(q => q.data.id !== item.data.id);
+        const next = [...filtered, item];
+        setTotalQuestionsCount(prevTotal => Math.max(prevTotal, next.length));
+        return next;
       });
     });
 
@@ -283,39 +264,76 @@ export function AppLayout() {
     };
   }, []);
 
-  // Listen to keyboard Escape when interface choice panel is active
+  // Listen to keyboard Escape when choice panels are active
   useEffect(() => {
-    if (!interfaceModalConfig || !interfaceModalConfig.isOpen) return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        interfaceModalConfig.onCancel();
+      if (e.key === "Escape" && questionQueue.length > 0) {
+        const current = questionQueue[0];
+        if (current.type === "interface") {
+          handleCancelInterface(current.data.id);
+        } else {
+          handleCancelChoice(current.data.id);
+        }
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [interfaceModalConfig]);
-
-  // Listen to keyboard numeric selections when choice panel is active
-  useEffect(() => {
-    if (!selectModalConfig || !selectModalConfig.isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const num = parseInt(e.key, 10);
-      if (!isNaN(num) && num >= 1 && num <= selectModalConfig.options.length) {
-        e.preventDefault();
-        selectModalConfig.onSelect(selectModalConfig.options[num - 1]);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        selectModalConfig.onCancel();
-      }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
     };
+  }, [questionQueue]);
 
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [selectModalConfig]);
+  const handleSelectChoice = async (id: string, option: string) => {
+    setQuestionQueue(prev => {
+      const next = prev.filter(q => q.data.id !== id);
+      if (next.length === 0) setTotalQuestionsCount(0);
+      return next;
+    });
+    try {
+      await invoke("submit_user_choice", { id, choice: option });
+    } catch (err) {
+      console.error("Failed to submit user choice:", err);
+    }
+  };
+
+  const handleCancelChoice = async (id: string) => {
+    setQuestionQueue(prev => {
+      const next = prev.filter(q => q.data.id !== id);
+      if (next.length === 0) setTotalQuestionsCount(0);
+      return next;
+    });
+    try {
+      await invoke("submit_user_choice", { id, choice: "cancelled" });
+    } catch (err) {
+      console.error("Failed to cancel user choice:", err);
+    }
+  };
+
+  const handleSelectInterface = async (id: string, option: string) => {
+    setQuestionQueue(prev => {
+      const next = prev.filter(q => q.data.id !== id);
+      if (next.length === 0) setTotalQuestionsCount(0);
+      return next;
+    });
+    try {
+      await invoke("submit_interface_choice", { id, choice: option });
+    } catch (err) {
+      console.error("Failed to submit interface choice:", err);
+    }
+  };
+
+  const handleCancelInterface = async (id: string) => {
+    setQuestionQueue(prev => {
+      const next = prev.filter(q => q.data.id !== id);
+      if (next.length === 0) setTotalQuestionsCount(0);
+      return next;
+    });
+    try {
+      await invoke("submit_interface_choice", { id, choice: "cancelled" });
+    } catch (err) {
+      console.error("Failed to cancel interface choice:", err);
+    }
+  };
 
   const formatMessageTime = (isoString?: string) => {
     if (!isoString) return "";
@@ -554,305 +572,105 @@ export function AppLayout() {
                   {chatState.messages.some((m) => m.status === "Running") && (
                     <div className="global-loading-indicator"></div>
                   )}
-                  {selectModalConfig && selectModalConfig.isOpen && (
-                    <div className="input-choice-panel" style={{
-                      background: "var(--bg-secondary)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      padding: "12px",
-                      boxShadow: "0 -2px 10px rgba(0,0,0,0.15)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "10px",
-                      animation: "fadeIn 0.2s ease",
-                    }}>
-                      <div style={{ fontWeight: "600", fontSize: "13px", color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span>{selectModalConfig.message}</span>
-                        <button
-                          onClick={selectModalConfig.onCancel}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "var(--text-secondary)",
-                            cursor: "pointer",
-                            fontSize: "11px",
-                            padding: "2px 6px",
-                            borderRadius: "4px",
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"}
-                          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                        >
-                          スキップ (Esc)
-                        </button>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                        {selectModalConfig.options.map((opt, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => selectModalConfig.onSelect(opt)}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              width: "100%",
-                              padding: "10px 14px",
-                              background: "var(--bg-tertiary)",
-                              border: "1px solid var(--border)",
-                              borderRadius: "6px",
-                              color: "var(--text-primary)",
-                              textAlign: "left",
-                              cursor: "pointer",
-                              fontSize: "13px",
-                              fontWeight: "500",
-                              transition: "all 0.15s ease",
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = "var(--primary)";
-                              e.currentTarget.style.background = "var(--bg-hover)";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = "var(--border)";
-                              e.currentTarget.style.background = "var(--bg-tertiary)";
-                            }}
-                          >
-                            <span style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              width: "22px",
-                              height: "22px",
-                              borderRadius: "50%",
-                              background: "var(--bg-secondary)",
-                              marginRight: "12px",
-                              fontSize: "11px",
-                              fontWeight: "bold",
-                              color: "var(--text-secondary)",
-                            }}>{idx + 1}</span>
-                            {opt}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {interfaceModalConfig && interfaceModalConfig.isOpen && (
-                    <div className="input-choice-panel" style={{
-                      background: "var(--bg-secondary)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      padding: "16px",
-                      boxShadow: "0 -2px 10px rgba(0,0,0,0.15)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "12px",
-                      animation: "fadeIn 0.2s ease",
-                    }}>
-                      <div style={{ fontWeight: "600", fontSize: "14px", color: "var(--text-primary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span>インターフェースの選択 - {interfaceModalConfig.vendor}</span>
-                        <button
-                          onClick={interfaceModalConfig.onCancel}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "var(--text-secondary)",
-                            cursor: "pointer",
-                            fontSize: "11px",
-                            padding: "2px 6px",
-                            borderRadius: "4px",
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"}
-                          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                        >
-                          キャンセル (Esc)
-                        </button>
-                      </div>
-
-                      {interfaceModalConfig.message && (
-                        <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "4px", whiteSpace: "pre-wrap" }}>
-                          {interfaceModalConfig.message}
-                        </div>
-                      )}
-
-                      {/* Cisco_IOS の UI */}
-                      {(interfaceModalConfig.vendor.toLowerCase().includes("cisco") || interfaceModalConfig.vendor.toLowerCase().includes("ios")) && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                          <div style={{ display: "flex", gap: "10px" }}>
-                            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
-                              <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>種別</label>
-                              <select
-                                value={ciscoType}
-                                onChange={(e) => setCiscoType(e.target.value)}
-                                style={{
-                                  padding: "8px",
-                                  background: "var(--bg-tertiary)",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: "6px",
-                                  color: "var(--text-primary)",
-                                }}
-                              >
-                                <option value="GigabitEthernet">GigabitEthernet</option>
-                                <option value="FastEthernet">FastEthernet</option>
-                                <option value="TenGigabitEthernet">TenGigabitEthernet</option>
-                                <option value="Ethernet">Ethernet</option>
-                                <option value="Vlan">Vlan</option>
-                                <option value="Loopback">Loopback</option>
-                              </select>
-                            </div>
-                            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
-                              <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>番号</label>
-                              <input
-                                type="text"
-                                value={ciscoNum}
-                                onChange={(e) => setCiscoNum(e.target.value)}
-                                placeholder="例: 0/1, 1/0/1"
-                                style={{
-                                  padding: "8px",
-                                  background: "var(--bg-tertiary)",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: "6px",
-                                  color: "var(--text-primary)",
-                                }}
-                              />
-                            </div>
+                  {questionQueue.length > 0 && (() => {
+                    const currentQuestion = questionQueue[0];
+                    const currentIndex = totalQuestionsCount - questionQueue.length + 1;
+                    const progressPrefix = `【質問 ${currentIndex}/${totalQuestionsCount}】`;
+                    
+                    if (currentQuestion.type === "choice") {
+                      const choice = currentQuestion.data;
+                      return (
+                        <div key={choice.id} className="input-choice-panel" style={{
+                          background: "var(--bg-secondary)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "8px",
+                          padding: "12px",
+                          boxShadow: "0 -2px 10px rgba(0,0,0,0.15)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "10px",
+                          animation: "fadeIn 0.2s ease",
+                        }}>
+                          <div style={{ fontWeight: "600", fontSize: "13px", color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span>{progressPrefix} {choice.message}</span>
+                            <button
+                              onClick={() => handleCancelChoice(choice.id)}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: "var(--text-secondary)",
+                                cursor: "pointer",
+                                fontSize: "11px",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"}
+                              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                            >
+                              スキップ (Esc)
+                            </button>
                           </div>
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => interfaceModalConfig.onSelect(`${ciscoType}${ciscoNum}`)}
-                            style={{
-                              width: "100%",
-                              padding: "10px",
-                              fontWeight: "500",
-                            }}
-                          >
-                            選択を確定 : {ciscoType}{ciscoNum}
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Yamaha の UI */}
-                      {interfaceModalConfig.vendor.toLowerCase().includes("yamaha") && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                            {["lan1", "lan2", "lan3", "lan4", "wan1", "wan2"].map((opt) => (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            {choice.options.map((opt, idx) => (
                               <button
-                                key={opt}
-                                onClick={() => interfaceModalConfig.onSelect(opt)}
+                                key={idx}
+                                onClick={() => handleSelectChoice(choice.id, opt)}
                                 style={{
-                                  padding: "8px 12px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  width: "100%",
+                                  padding: "10px 14px",
                                   background: "var(--bg-tertiary)",
                                   border: "1px solid var(--border)",
                                   borderRadius: "6px",
                                   color: "var(--text-primary)",
+                                  textAlign: "left",
                                   cursor: "pointer",
-                                  transition: "border-color 0.15s ease",
+                                  fontSize: "13px",
+                                  fontWeight: "500",
+                                  transition: "all 0.15s ease",
                                 }}
-                                onMouseEnter={(e) => e.currentTarget.style.borderColor = "var(--primary)"}
-                                onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.borderColor = "var(--primary)";
+                                  e.currentTarget.style.background = "var(--bg-hover)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.borderColor = "var(--border)";
+                                  e.currentTarget.style.background = "var(--bg-tertiary)";
+                                }}
                               >
+                                <span style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  width: "22px",
+                                  height: "22px",
+                                  borderRadius: "50%",
+                                  background: "var(--bg-secondary)",
+                                  marginRight: "12px",
+                                  fontSize: "11px",
+                                  fontWeight: "bold",
+                                  color: "var(--text-secondary)",
+                                }}>{idx + 1}</span>
                                 {opt}
                               </button>
                             ))}
                           </div>
-                          <div style={{ borderTop: "1px solid var(--border)", paddingTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                            <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>カスタム入力</label>
-                            <div style={{ display: "flex", gap: "10px" }}>
-                              <input
-                                type="text"
-                                value={customInterface}
-                                onChange={(e) => setCustomInterface(e.target.value)}
-                                placeholder="例: lan1.1, tunnel1"
-                                style={{
-                                  flex: 1,
-                                  padding: "8px",
-                                  background: "var(--bg-tertiary)",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: "6px",
-                                  color: "var(--text-primary)",
-                                }}
-                              />
-                              <button
-                                className="btn btn-primary"
-                                onClick={() => {
-                                  if (customInterface.trim()) {
-                                    interfaceModalConfig.onSelect(customInterface.trim());
-                                  }
-                                }}
-                                disabled={!customInterface.trim()}
-                                style={{
-                                  padding: "8px 16px",
-                                  fontWeight: "500",
-                                }}
-                              >
-                                確定
-                              </button>
-                            </div>
-                          </div>
                         </div>
-                      )}
-
-                      {/* その他のベンダー (Cisco, Yamaha 以外) の UI */}
-                      {!interfaceModalConfig.vendor.toLowerCase().includes("cisco") && 
-                       !interfaceModalConfig.vendor.toLowerCase().includes("ios") && 
-                       !interfaceModalConfig.vendor.toLowerCase().includes("yamaha") && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                          {/* Arista用に Ethernet1 などのクイック選択を提供 */}
-                          {interfaceModalConfig.vendor.toLowerCase().includes("arista") && (
-                            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
-                              {["Ethernet1", "Ethernet2", "Ethernet3", "Ethernet4"].map((opt) => (
-                                <button
-                                  key={opt}
-                                  onClick={() => interfaceModalConfig.onSelect(opt)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    background: "var(--bg-tertiary)",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: "6px",
-                                    color: "var(--text-primary)",
-                                    cursor: "pointer",
-                                    fontSize: "12px",
-                                  }}
-                                >
-                                  {opt}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>インターフェース名を入力してください</label>
-                            <div style={{ display: "flex", gap: "10px" }}>
-                              <input
-                                type="text"
-                                value={customInterface}
-                                onChange={(e) => setCustomInterface(e.target.value)}
-                                placeholder="例: Ethernet1, ge-0/0/0"
-                                style={{
-                                  flex: 1,
-                                  padding: "8px",
-                                  background: "var(--bg-tertiary)",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: "6px",
-                                  color: "var(--text-primary)",
-                                }}
-                              />
-                              <button
-                                className="btn btn-primary"
-                                onClick={() => {
-                                  if (customInterface.trim()) {
-                                    interfaceModalConfig.onSelect(customInterface.trim());
-                                  }
-                                }}
-                                disabled={!customInterface.trim()}
-                                style={{
-                                  padding: "8px 16px",
-                                  fontWeight: "500",
-                                }}
-                              >
-                                確定
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      );
+                    } else {
+                      const choice = currentQuestion.data;
+                      return (
+                        <InterfaceChoicePanel
+                          key={choice.id}
+                          choice={choice}
+                          progressPrefix={progressPrefix}
+                          onSelect={handleSelectInterface}
+                          onCancel={handleCancelInterface}
+                        />
+                      );
+                    }
+                  })()}
                   <ChatInput
                     ref={textareaRef}
                     modelStatus={modelState.modelStatus}
@@ -876,12 +694,16 @@ export function AppLayout() {
                 </div>
               </main>
               <ConfigDiffPanel
+                id={diffCommitId}
                 isOpen={uiState.isConfigDiffOpen}
                 onClose={() => {
                   uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false });
-                  invoke("submit_user_choice", { choice: "cancel" }).catch((err) => {
-                    console.error("Failed to cancel user choice on close:", err);
-                  });
+                  if (diffCommitId) {
+                    invoke("submit_user_choice", { id: diffCommitId, choice: "cancel" }).catch((err) => {
+                      console.error("Failed to cancel user choice on close:", err);
+                    });
+                    setDiffCommitId(null);
+                  }
                 }}
               />
             </div>
@@ -893,3 +715,244 @@ export function AppLayout() {
     </div>
   );
 }
+
+interface InterfaceChoicePanelProps {
+  choice: {
+    id: string;
+    vendor: string;
+    message?: string;
+  };
+  progressPrefix: string;
+  onSelect: (id: string, option: string) => void;
+  onCancel: (id: string) => void;
+}
+
+function InterfaceChoicePanel({ choice, progressPrefix, onSelect, onCancel }: InterfaceChoicePanelProps) {
+  const [ciscoType, setCiscoType] = useState("GigabitEthernet");
+  const [ciscoNum, setCiscoNum] = useState("0/1");
+  const [customInterface, setCustomInterface] = useState("");
+
+  const vendor = choice.vendor || "Cisco_IOS";
+  const isCisco = vendor.toLowerCase().includes("cisco") || vendor.toLowerCase().includes("ios");
+  const isYamaha = vendor.toLowerCase().includes("yamaha");
+  const isArista = vendor.toLowerCase().includes("arista");
+
+  return (
+    <div className="input-choice-panel" style={{
+      background: "var(--bg-secondary)",
+      border: "1px solid var(--border)",
+      borderRadius: "8px",
+      padding: "16px",
+      boxShadow: "0 -2px 10px rgba(0,0,0,0.15)",
+      display: "flex",
+      flexDirection: "column",
+      gap: "12px",
+      animation: "fadeIn 0.2s ease",
+    }}>
+      <div style={{ fontWeight: "600", fontSize: "14px", color: "var(--text-primary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>{progressPrefix} インターフェースの選択 - {vendor}</span>
+        <button
+          onClick={() => onCancel(choice.id)}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--text-secondary)",
+            cursor: "pointer",
+            fontSize: "11px",
+            padding: "2px 6px",
+            borderRadius: "4px",
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"}
+          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+        >
+          キャンセル (Esc)
+        </button>
+      </div>
+
+      {choice.message && (
+        <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "4px", whiteSpace: "pre-wrap" }}>
+          {choice.message}
+        </div>
+      )}
+
+      {/* Cisco_IOS の UI */}
+      {isCisco && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+              <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>種別</label>
+              <select
+                value={ciscoType}
+                onChange={(e) => setCiscoType(e.target.value)}
+                style={{
+                  padding: "8px",
+                  background: "var(--bg-tertiary)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  color: "var(--text-primary)",
+                }}
+              >
+                <option value="GigabitEthernet">GigabitEthernet</option>
+                <option value="FastEthernet">FastEthernet</option>
+                <option value="TenGigabitEthernet">TenGigabitEthernet</option>
+                <option value="Ethernet">Ethernet</option>
+                <option value="Vlan">Vlan</option>
+                <option value="Loopback">Loopback</option>
+              </select>
+            </div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+              <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>番号</label>
+              <input
+                type="text"
+                value={ciscoNum}
+                onChange={(e) => setCiscoNum(e.target.value)}
+                placeholder="例: 0/1, 1/0/1"
+                style={{
+                  padding: "8px",
+                  background: "var(--bg-tertiary)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={() => onSelect(choice.id, `${ciscoType}${ciscoNum}`)}
+            style={{
+              width: "100%",
+              padding: "10px",
+              fontWeight: "500",
+            }}
+          >
+            選択を確定 : {ciscoType}{ciscoNum}
+          </button>
+        </div>
+      )}
+
+      {/* Yamaha の UI */}
+      {isYamaha && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {["lan1", "lan2", "lan3", "lan4", "wan1", "wan2"].map((opt) => (
+              <button
+                key={opt}
+                onClick={() => onSelect(choice.id, opt)}
+                style={{
+                  padding: "8px 12px",
+                  background: "var(--bg-tertiary)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  color: "var(--text-primary)",
+                  cursor: "pointer",
+                  transition: "border-color 0.15s ease",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = "var(--primary)"}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+            <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>カスタム入力</label>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <input
+                type="text"
+                value={customInterface}
+                onChange={(e) => setCustomInterface(e.target.value)}
+                placeholder="例: lan1.1, tunnel1"
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  background: "var(--bg-tertiary)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  color: "var(--text-primary)",
+                }}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  if (customInterface.trim()) {
+                    onSelect(choice.id, customInterface.trim());
+                  }
+                }}
+                disabled={!customInterface.trim()}
+                style={{
+                  padding: "8px 16px",
+                  fontWeight: "500",
+                }}
+              >
+                確定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* その他のベンダー (Cisco, Yamaha 以外) の UI */}
+      {!isCisco && !isYamaha && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {isArista && (
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+              {["Ethernet1", "Ethernet2", "Ethernet3", "Ethernet4"].map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => onSelect(choice.id, opt)}
+                  style={{
+                    padding: "6px 10px",
+                    background: "var(--bg-tertiary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    color: "var(--text-primary)",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                  }}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>インターフェース名を入力してください</label>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <input
+                type="text"
+                value={customInterface}
+                onChange={(e) => setCustomInterface(e.target.value)}
+                placeholder="例: Ethernet1, ge-0/0/0"
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  background: "var(--bg-tertiary)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  color: "var(--text-primary)",
+                }}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  if (customInterface.trim()) {
+                    onSelect(choice.id, customInterface.trim());
+                  }
+                }}
+                disabled={!customInterface.trim()}
+                style={{
+                  padding: "8px 16px",
+                  fontWeight: "500",
+                }}
+              >
+                確定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

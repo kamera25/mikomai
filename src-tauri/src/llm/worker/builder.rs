@@ -92,17 +92,45 @@ impl LlmWorker for BuilderWorker {
             }
         }
 
+        // 未回答の質問があるかチェック
+        let has_pending_choices = if let Some(w) = window {
+            use tauri::Manager;
+            let app = w.app_handle();
+            let choice_mgr = app.state::<crate::mcp::config_helper::ChoiceManager>();
+            let iface_mgr = app.state::<crate::mcp::config_helper::InterfaceChoiceManager>();
+            
+            let pending_choices = choice_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
+            let pending_ifaces = iface_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
+            
+            pending_choices > 0 || pending_ifaces > 0
+        } else {
+            false
+        };
+
+        if has_pending_choices {
+            log::info!("BuilderWorker: Other pending choices exist. Skipping inference.");
+            return Ok("他の質問への回答を待っています...".to_string());
+        }
+
         let modified_user_message = if !self.collected_choices.is_empty() {
             if let Some(ref original_msg) = user_message {
                 let mut msg = original_msg.clone();
                 msg.push_str("\n\n【ユーザーの追加回答（これまでの選択情報）】");
                 for (label, val) in &self.collected_choices {
-                    let type_name = if label.contains("ask_interface_choice") {
-                        "選択されたインターフェース"
+                    if label.starts_with("ask_user_choice:") {
+                        let q_msg = label.strip_prefix("ask_user_choice:").unwrap().trim();
+                        msg.push_str(&format!("\n- 「{}」のユーザ回答 : {}", q_msg, val));
+                    } else if label.starts_with("ask_interface_choice:") {
+                        let q_msg = label.strip_prefix("ask_interface_choice:").unwrap().trim();
+                        msg.push_str(&format!("\n- 「{}」のユーザ回答 : {}", q_msg, val));
                     } else {
-                        "選択された回答"
-                    };
-                    msg.push_str(&format!("\n- {}: {}", type_name, val));
+                        let type_name = if label.contains("ask_interface_choice") {
+                            "選択されたインターフェース"
+                        } else {
+                            "選択された回答"
+                        };
+                        msg.push_str(&format!("\n- {}: {}", type_name, val));
+                    }
                 }
                 Some(msg)
             } else {
@@ -111,6 +139,8 @@ impl LlmWorker for BuilderWorker {
         } else {
             user_message.clone()
         };
+
+        log::info!("BuilderWorker: subsequent_task to be sent: {:?}", subsequent_task);
 
         // 1. Generate config text using standard LLM inference
         let worker_prompt = self.build_prompt(
@@ -158,7 +188,7 @@ impl LlmWorker for BuilderWorker {
                 // Run validate_cisco_config
                 let val_res = rt.block_on(async {
                     use tauri::Manager;
-                    crate::mcp::config_helper::validate_cisco_config_impl(Some(w.app_handle().clone()), config.clone()).await
+                    crate::mcp::config_helper::validate_cisco_config_impl(Some(w.app_handle().clone()), Some(val_task_id.clone()), config.clone()).await
                 });
 
                 let (val_success, val_output) = match val_res {

@@ -5,11 +5,12 @@ import { useUIContext } from "../../contexts/UIContext";
 import { invoke } from "@tauri-apps/api/core";
 
 interface ConfigDiffPanelProps {
+  id: string | null;
   isOpen: boolean;
   onClose: () => void;
 }
 
-export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ isOpen, onClose }) => {
+export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, onClose }) => {
   const { state: uiState } = useUIContext();
   const diffData = uiState.configDiffData;
 
@@ -100,7 +101,7 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ isOpen, onClos
         <button className="btn btn-secondary" onClick={onClose}>中止</button>
         <button className="btn btn-primary" onClick={async () => {
           try {
-            await invoke("submit_user_choice", { choice: "commit" });
+            await invoke("submit_user_choice", { id, choice: "commit" });
           } catch (e) {
             console.error("Failed to submit commit choice:", e);
           }

@@ -83,6 +83,7 @@ pub enum InferenceRequest {
         output: String,
         is_rag: bool,
         history_block: Option<String>,
+        subsequent_task: Option<String>,
         respond_to: tokio::sync::oneshot::Sender<Result<String, LlmError>>,
     },
     Background {
@@ -189,7 +190,7 @@ impl LlamaState {
                         })();
                         let _ = respond_to.send(res);
                     }
-                    InferenceRequest::Analyze { window, user_message, tool_label, output, is_rag, history_block, respond_to } => {
+                    InferenceRequest::Analyze { window, user_message, tool_label, output, is_rag, history_block, subsequent_task, respond_to } => {
                         let res = (|| -> Result<String, LlmError> {
                             let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
                             let model = shared_model.model.clone();
@@ -214,27 +215,30 @@ impl LlamaState {
                                     settings.repetition_penalty,
                                 ).map_err(LlmError::Worker)
                             } else {
-                                log::info!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", user_message);
-                                let route_result = {
-                                    let mut router_lock = shared_model.router.lock().unwrap();
-                                    router_lock.route(
-                                        &model,
-                                        &user_message,
-                                        settings.repetition_penalty,
-                                    ).map_err(|e| LlmError::Routing(format!("{:?}", e)))?
-                                };
-                                log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
-
                                 let is_ask_user_choice = tool_label.contains("ask_user_choice");
                                 let is_ask_interface_choice = tool_label.contains("ask_interface_choice");
                                 let is_any_choice = is_ask_user_choice || is_ask_interface_choice;
 
-                                let active_route = if is_any_choice {
-                                    Route::Builder
-                                } else if route_result.routes.len() > 1 {
-                                    route_result.routes[1]
+                                let (active_route, route_subsequent_task) = if is_any_choice {
+                                    (Route::Builder, None)
                                 } else {
-                                    return Ok("実行が完了しました。".to_string());
+                                    log::info!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", user_message);
+                                    let route_result = {
+                                        let mut router_lock = shared_model.router.lock().unwrap();
+                                        router_lock.route(
+                                            &model,
+                                            &user_message,
+                                            settings.repetition_penalty,
+                                        ).map_err(|e| LlmError::Routing(format!("{:?}", e)))?
+                                    };
+                                    log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
+
+                                    let route = if route_result.routes.len() > 1 {
+                                        route_result.routes[1]
+                                    } else {
+                                        return Ok("実行が完了しました。".to_string());
+                                    };
+                                    (route, route_result.subsequent_task)
                                 };
 
                                 let custom_subsequent_task = if is_ask_user_choice {
@@ -244,10 +248,12 @@ impl LlamaState {
                                 } else {
                                     None
                                 };
-                                let subsequent_task_ref = if is_any_choice {
+                                let subsequent_task_ref = if let Some(ref s) = subsequent_task {
+                                    Some(s.as_str())
+                                } else if is_any_choice {
                                     custom_subsequent_task.as_deref()
                                 } else {
-                                    route_result.subsequent_task.as_deref()
+                                    route_subsequent_task.as_deref()
                                 };
 
                                 let worker_res = if let Some(worker_mutex) = get_worker_for_route(&shared_model, active_route) {
@@ -479,6 +485,7 @@ pub struct AnalyzePayload {
     pub output: String,
     pub is_rag: bool,
     pub history_block: Option<String>,
+    pub subsequent_task: Option<String>,
 }
 
 #[tauri::command]
@@ -543,6 +550,7 @@ pub async fn analyze_tool_output(
         output,
         is_rag,
         history_block,
+        subsequent_task,
     } = payload;
 
     let user_message_log = user_message.clone();
@@ -555,6 +563,7 @@ pub async fn analyze_tool_output(
         output,
         is_rag,
         history_block,
+        subsequent_task,
         respond_to: tx,
     }).await.map_err(|e| TauriError::from(LlmError::Worker(format!("Failed to send inference request: {}", e))))?;
 

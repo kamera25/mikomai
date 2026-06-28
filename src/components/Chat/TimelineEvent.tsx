@@ -55,7 +55,7 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
   if (msg.event_type === "ToolExecution" && msg.tool_id === "validate_cisco_config") {
     const handleCommitChoice = async (choice: "commit" | "cancelled") => {
       try {
-        await invoke("submit_user_choice", { choice });
+        await invoke("submit_user_choice", { id: msg.task_id, choice });
       } catch (err) {
         console.error(`Failed to submit choice ${choice}:`, err);
       }
