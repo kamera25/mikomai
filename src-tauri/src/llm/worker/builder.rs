@@ -148,6 +148,7 @@ impl LlmWorker for BuilderWorker {
         };
 
         let mut prompt = prompt;
+        let mut matched_device: Option<(String, String)> = None;
         if let Some(w) = window {
             let app = w.app_handle();
             let text_to_check = match (&prompt, &modified_user_message) {
@@ -167,6 +168,7 @@ impl LlmWorker for BuilderWorker {
                         }
                     }
                     if matched_conns.len() == 1 {
+                        matched_device = Some((matched_conns[0].hostname.as_str().to_string(), matched_conns[0].ip.to_string()));
                         if let Some(vendor_type) = &matched_conns[0].vendor_type {
                             let injection = format!("\n\n【対象機器のベンダーID】: {}", vendor_type.as_str());
                             if let Some(ref mut p) = prompt {
@@ -228,7 +230,12 @@ impl LlmWorker for BuilderWorker {
                 // Run validate_cisco_config
                 let val_res = rt.block_on(async {
                     use tauri::Manager;
-                    crate::mcp::config_helper::validate_cisco_config_impl(Some(w.app_handle().clone()), Some(val_task_id.clone()), config.clone()).await
+                    crate::mcp::config_helper::validate_cisco_config_impl(
+                        Some(w.app_handle().clone()),
+                        Some(val_task_id.clone()),
+                        config.clone(),
+                        matched_device.clone()
+                    ).await
                 });
 
                 let (val_success, val_output) = match val_res {

@@ -200,7 +200,7 @@ export function AppLayout() {
   // Listen to request-diff-commit from Rust
   useEffect(() => {
     const unlisten = listen<any>("request-diff-commit", (event) => {
-      const { id, config, fileName } = event.payload;
+      const { id, config, fileName, hostname, ip } = event.payload;
       if (id) {
         setDiffCommitId(id);
       }
@@ -220,6 +220,8 @@ export function AppLayout() {
             additions: lines.length,
             deletions: 0,
             diffLines,
+            hostname,
+            ip,
           },
         });
         uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: true });

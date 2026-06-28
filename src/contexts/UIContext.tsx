@@ -12,6 +12,8 @@ export interface ConfigDiffData {
   additions: number;
   deletions: number;
   diffLines: DiffLine[];
+  hostname?: string;
+  ip?: string;
 }
 
 export interface UIState {

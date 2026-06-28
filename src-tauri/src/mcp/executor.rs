@@ -325,9 +325,9 @@ define_tool!(NwDiagTool, "self_network_nwdiag", |app, args| {
 });
 
 define_tool!(ValidateCiscoConfigTool, "validate_cisco_config", |app, args| {
-    let id = get_str_arg(&args, &["task_id"]);
-    let config = get_str_arg(&args, &["config"]).unwrap_or_default();
-    crate::mcp::config_helper::validate_cisco_config_impl(Some(app), id, config).await
+    let id: Option<String> = args.get("id").and_then(|v| v.as_str().map(|s| s.to_string()));
+    let config: String = args.get("config").and_then(|v| v.as_str().map(|s| s.to_string())).ok_or("config is required")?;
+    crate::mcp::config_helper::validate_cisco_config_impl(Some(app), id, config, None).await
 });
 
 define_tool!(ConvertCiscoConfigTool, "convert_cisco_config", |_app, args| {

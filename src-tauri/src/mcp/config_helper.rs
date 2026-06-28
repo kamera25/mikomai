@@ -103,7 +103,12 @@ fn run_config_helper(payload: serde_json::Value) -> Result<String, String> {
     Ok(stdout)
 }
 
-pub async fn validate_cisco_config_impl(app: Option<tauri::AppHandle>, id: Option<String>, config: String) -> Result<CommandResult, String> {
+pub async fn validate_cisco_config_impl(
+    app: Option<tauri::AppHandle>,
+    id: Option<String>,
+    config: String,
+    target_device: Option<(String, String)>,
+) -> Result<CommandResult, String> {
     if config.trim().is_empty() {
         return Err("Configuration text cannot be empty".to_string());
     }
@@ -152,11 +157,30 @@ pub async fn validate_cisco_config_impl(app: Option<tauri::AppHandle>, id: Optio
                 lock.insert(id.clone(), tx);
             }
 
+            let mut hostname = None;
+            let mut ip = None;
+            if let Some((h, i)) = target_device {
+                hostname = Some(h);
+                ip = Some(i);
+            } else if let Some(host) = crate::settings::load_settings(app_handle.clone())
+                .ok()
+                .and_then(|settings| settings.recent_ips.first().cloned())
+            {
+                if let Ok(connections) = crate::connections::load_connections_raw(&app_handle) {
+                    if let Some(conn) = connections.iter().find(|c| c.hostname.eq_ignore_ascii_case(&host) || c.ip.to_string() == host) {
+                        hostname = Some(conn.hostname.as_str().to_string());
+                        ip = Some(conn.ip.to_string());
+                    }
+                }
+            }
+
             // Emit event to request diff commit
             let payload = serde_json::json!({
                 "id": id,
                 "config": config,
-                "fileName": "cisco.conf"
+                "fileName": "cisco.conf",
+                "hostname": hostname,
+                "ip": ip
             });
             let _ = app_handle.emit("request-diff-commit", payload);
 
@@ -181,15 +205,7 @@ pub async fn validate_cisco_config_impl(app: Option<tauri::AppHandle>, id: Optio
                         })
                     }
                 }
-                Err(_) => {
-                    Ok(CommandResult {
-                        success: false,
-                        output: format!("{}\n\n**Status**: ⚠️ Configuration deployment cancelled/aborted.", md),
-                        saved_path: None,
-                        is_cached: None,
-                        cache_time: None,
-                    })
-                }
+                Err(_) => Err("Failed to receive user choice".to_string()),
             }
         } else {
             Ok(CommandResult {
@@ -213,7 +229,7 @@ pub async fn validate_cisco_config_impl(app: Option<tauri::AppHandle>, id: Optio
 
 #[tauri::command]
 pub async fn validate_cisco_config(app: tauri::AppHandle, config: String) -> Result<CommandResult, String> {
-    validate_cisco_config_impl(Some(app), None, config).await
+    validate_cisco_config_impl(Some(app), None, config, None).await
 }
 
 #[tauri::command]

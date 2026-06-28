@@ -50,17 +50,26 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
       </div>
 
       <div className="diff-content">
-        <div className="diff-file-header">
-          <div className="file-info">
-            <span className="file-icon" style={{ display: "flex", alignItems: "center", color: "var(--text-secondary)" }}>
-              <ConfigFileIcon size={16} />
-            </span>
-            <span className="file-name">{diffData.fileName}</span>
+        <div className="diff-file-header" style={{ flexDirection: "column", alignItems: "flex-start", gap: "4px", padding: "12px 16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
+            <div className="file-info">
+              <span className="file-icon" style={{ display: "flex", alignItems: "center", color: "var(--text-secondary)" }}>
+                <ConfigFileIcon size={16} />
+              </span>
+              <span className="file-name">
+                {diffData.fileName === "cisco.conf" ? "running-config" : diffData.fileName}
+              </span>
+            </div>
+            <div className="file-actions">
+              <span className="diff-stat-addition">+{diffData.additions}</span>
+              <span className="diff-stat-deletion">-{diffData.deletions}</span>
+            </div>
           </div>
-          <div className="file-actions">
-            <span className="diff-stat-addition">+{diffData.additions}</span>
-            <span className="diff-stat-deletion">-{diffData.deletions}</span>
-          </div>
+          {(diffData.hostname || diffData.ip) && (
+            <div className="file-device-info" style={{ fontSize: "0.85em", color: "var(--text-secondary)", paddingLeft: "24px" }}>
+              {diffData.hostname || ""}{diffData.ip ? ` (${diffData.ip})` : ""}
+            </div>
+          )}
         </div>
 
         <div className="diff-viewer-wrapper">
