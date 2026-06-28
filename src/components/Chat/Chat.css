@@ -692,3 +692,65 @@
   border-right: 6px solid var(--bg-secondary);
 }
 
+/* Chat Container & Scroll to Latest Button */
+.chat-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.scroll-to-latest-btn {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fadeInUp 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.scroll-to-latest-btn:hover {
+  background: var(--bg-hover);
+  transform: translate(-50%, -2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+
+.scroll-to-latest-btn:active {
+  transform: translate(-50%, 0);
+}
+
+.scroll-to-latest-btn svg {
+  display: block;
+  transition: transform 0.2s ease;
+}
+
+.scroll-to-latest-btn:hover svg {
+  transform: translateY(2px);
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
