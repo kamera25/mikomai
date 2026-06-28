@@ -148,6 +148,7 @@ impl LlmWorker for BuilderWorker {
         };
 
         let mut prompt = prompt;
+        let mut subsequent_task_owned = subsequent_task.map(|s| s.to_string());
         let mut matched_device: Option<(String, String)> = None;
         if let Some(w) = window {
             let app = w.app_handle();
@@ -169,10 +170,24 @@ impl LlmWorker for BuilderWorker {
                     }
                     if matched_conns.len() == 1 {
                         matched_device = Some((matched_conns[0].hostname.as_str().to_string(), matched_conns[0].ip.to_string()));
-                        if let Some(vendor_type) = &matched_conns[0].vendor_type {
-                            let injection = format!("\n\n【対象機器のベンダーID】: {}", vendor_type.as_str());
+                        let vendor_name = if let Some(vt) = &matched_conns[0].vendor_type {
+                            Some(vt.as_str())
+                        } else if let Some(dt) = &matched_conns[0].device_type {
+                            Some(dt.as_str())
+                        } else {
+                            None
+                        };
+
+                        if let Some(v_name) = vendor_name {
+                            let injection = format!("\n\n【対象機器のベンダーID】: {}", v_name);
                             if let Some(ref mut p) = prompt {
                                 p.push_str(&injection);
+                                let vendor_info = format!(" (対象機器ベンダー: {})", v_name);
+                                if let Some(ref mut task) = subsequent_task_owned {
+                                    task.push_str(&vendor_info);
+                                } else {
+                                    subsequent_task_owned = Some(format!("対象機器ベンダー: {}", v_name));
+                                }
                             } else if let Some(ref mut um) = modified_user_message {
                                 um.push_str(&injection);
                             }
@@ -182,7 +197,7 @@ impl LlmWorker for BuilderWorker {
             }
         }
 
-        log::info!("BuilderWorker: subsequent_task to be sent: {:?}", subsequent_task);
+        log::info!("BuilderWorker: subsequent_task to be sent: {:?}", subsequent_task_owned);
 
         // 1. Generate config text using standard LLM inference
         let worker_prompt = self.build_prompt(
@@ -191,7 +206,7 @@ impl LlmWorker for BuilderWorker {
             tool_label.clone(),
             output.clone(),
             history_block.clone(),
-            subsequent_task,
+            subsequent_task_owned.as_deref(),
         );
 
         let initial_response = crate::llm::llm_manager::run_inference(
