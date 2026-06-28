@@ -7,7 +7,7 @@ use std::sync::Arc;
 const SUMMARIZATION_PROMPT: &str = include_str!("../prompts/summarization_prompt.txt");
 
 const MAX_NEW_TOKENS: u32 = 256;
-const N_CTX: u32 = 4096;
+const N_CTX: u32 = 8192;
 
 pub struct SummarizationWorker {
     pub ctx: AgentContext,

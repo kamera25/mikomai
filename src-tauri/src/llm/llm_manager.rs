@@ -185,11 +185,12 @@ pub fn run_inference_with_grammar(
     repetition_penalty: f32,
     grammar_sampler: Option<LlamaSampler>,
 ) -> Result<String> {
-    let formatted_prompt = format!("<|turn>user\n{}<turn|>\n<|turn>model\n", prompt);
-    let mut tokens = agent_ctx.model.str_to_token(&formatted_prompt, AddBos::Never)?;
+    let prefix_tokens = agent_ctx.model.str_to_token("<|turn>user\n", AddBos::Never).unwrap_or_default();
+    let suffix_tokens = agent_ctx.model.str_to_token("<turn|>\n<|turn>model\n", AddBos::Never).unwrap_or_default();
+    let mut user_tokens = agent_ctx.model.str_to_token(prompt, AddBos::Never)?;
 
-    if tokens.is_empty() {
-        tokens = agent_ctx.model.str_to_token("hi", AddBos::Never)?;
+    if user_tokens.is_empty() {
+        user_tokens = agent_ctx.model.str_to_token("hi", AddBos::Never)?;
     }
 
     // Truncate to avoid context exhaustion (use dynamic n_ctx, leave max_new_tokens for generation)
@@ -197,14 +198,18 @@ pub fn run_inference_with_grammar(
     let base_n_past = agent_ctx.base_n_past as i32;
     let n_ctx = agent_ctx.n_ctx as i32;
     let max_gen = agent_ctx.max_new_tokens as i32;
-    let max_tokens = (n_ctx - base_n_past - max_gen).max(16) as usize;
-    if tokens.len() > max_tokens {
-        tokens.truncate(max_tokens);
+    let max_user_tokens = (n_ctx - base_n_past - max_gen - prefix_tokens.len() as i32 - suffix_tokens.len() as i32).max(16) as usize;
+    
+    if user_tokens.len() > max_user_tokens {
+        log::warn!("Prompt too long ({} tokens). Truncating to {} tokens by removing older history.", user_tokens.len(), max_user_tokens);
+        let drain_len = user_tokens.len() - max_user_tokens;
+        user_tokens.drain(0..drain_len);
     }
 
-    if tokens.is_empty() {
-        return Err(anyhow::anyhow!("Tokens list is empty after truncation"));
-    }
+    let mut tokens = Vec::new();
+    tokens.extend(prefix_tokens);
+    tokens.extend(user_tokens);
+    tokens.extend(suffix_tokens);
 
     let mut batch = LlamaBatch::new(n_ctx as usize, 1);
     let mut current_pos = agent_ctx.base_n_past as i32;

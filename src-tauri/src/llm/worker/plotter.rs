@@ -8,7 +8,7 @@ use crate::llm::llm::SYSTEM_PROMPT;
 const PLOTTER_WORKER_PROMPT: &str = include_str!("../prompts/plotter_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 2048;
-const N_CTX: u32 = 4096;
+const N_CTX: u32 = 8192;
 
 pub struct PlotterWorker {
     pub ctx: Option<AgentContext>,

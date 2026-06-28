@@ -671,8 +671,7 @@ fn execute_mcp_tool_internal(
                 }
             }
         }
-
-        let analyze_payload = crate::llm::llm::AnalyzePayload {
+            let analyze_payload = crate::llm::llm::AnalyzePayload {
             user_message: user_message.clone(),
             tool_label: custom_tool_label,
             output: if tool_id == "self_network_nwdiag" && result.success {
@@ -693,30 +692,43 @@ fn execute_mcp_tool_internal(
 
         // 5. Generate and save summary
         let mut next_summaries = summaries.clone();
-        let summary_prompt = format!(
-            "以下の内容を要約してください。\n\nユーザー入力: {}\n実行ツール: {}\n分析結果: {}",
-            user_message, tool_label, response_str
-        );
-        if let Ok(summary_text) = crate::llm::llm::ask_llm_background(
-            summary_prompt,
-            app.clone(),
-            llama_state.clone(),
-        ).await {
-            let new_summary = crate::history::SummaryItem {
-                timestamp: chrono::Utc::now().to_rfc3339(),
-                content: summary_text.clone(),
-            };
-            let _ = crate::history::save_summary(app.clone(), new_summary.clone());
-            next_summaries.push(new_summary.clone());
-
-            // Emit summary saved event
+        if response_str == "PENDING_DECISION" {
             let summary_payload = SummarySavedPayload {
                 task_id: analysis_task_id.clone(),
-                summary_text,
-                summary: new_summary,
+                summary_text: "".to_string(),
+                summary: crate::history::SummaryItem {
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    content: "PENDING_DECISION".to_string(),
+                },
                 content: response_str.clone(),
             };
             let _ = window.emit("chat-event", ChatEvent::McpSummarySaved(summary_payload));
+        } else {
+            let summary_prompt = format!(
+                "以下の内容を要約してください。\n\nユーザー入力: {}\n実行ツール: {}\n分析結果: {}",
+                user_message, tool_label, response_str
+            );
+            if let Ok(summary_text) = crate::llm::llm::ask_llm_background(
+                summary_prompt,
+                app.clone(),
+                llama_state.clone(),
+            ).await {
+                let new_summary = crate::history::SummaryItem {
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    content: summary_text.clone(),
+                };
+                let _ = crate::history::save_summary(app.clone(), new_summary.clone());
+                next_summaries.push(new_summary.clone());
+
+                // Emit summary saved event
+                let summary_payload = SummarySavedPayload {
+                    task_id: analysis_task_id.clone(),
+                    summary_text,
+                    summary: new_summary,
+                    content: response_str.clone(),
+                };
+                let _ = window.emit("chat-event", ChatEvent::McpSummarySaved(summary_payload));
+            }
         }
 
         // 6. Check for nested tool calls (nested MCP) for Builder

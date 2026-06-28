@@ -9,7 +9,7 @@ use tauri::{Emitter, Manager};
 const BUILDER_WORKER_PROMPT: &str = include_str!("../prompts/builder_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 2048;
-const N_CTX: u32 = 4096;
+const N_CTX: u32 = 8192;
 
 pub struct BuilderWorker {
     pub ctx: Option<AgentContext>,
@@ -111,7 +111,7 @@ impl LlmWorker for BuilderWorker {
 
         if has_pending_choices {
             log::info!("BuilderWorker: Other pending choices exist. Skipping inference.");
-            return Ok("他の質問への回答を待っています...".to_string());
+            return Ok("PENDING_DECISION".to_string());
         }
 
         let modified_user_message = if !self.collected_choices.is_empty() {

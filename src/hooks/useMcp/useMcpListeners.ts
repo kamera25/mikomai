@@ -272,13 +272,14 @@ export function useMcpListeners({
 
             case "mcpSummarySaved": {
               const { taskId, summaryText, summary, content } = chatEvent.payload;
+              const shouldHide = content === "PENDING_DECISION" || content === "他の質問への回答を待っています...";
               setMessagesRef.current((prev) =>
                 prev.map((msg) =>
                   msg.task_id === taskId
                     ? ({
                         ...msg,
                         content,
-                        isHidden: false,
+                        isHidden: shouldHide ? true : false,
                         isToolLoading: false,
                         summary_text: summaryText,
                       } as Message)
@@ -286,10 +287,12 @@ export function useMcpListeners({
                 )
               );
 
-              setSummariesRef.current((prev) => {
-                const next = [...prev, summary];
-                return next.length > 20 ? next.slice(next.length - 20) : next;
-              });
+              if (!shouldHide) {
+                setSummariesRef.current((prev) => {
+                  const next = [...prev, summary];
+                  return next.length > 20 ? next.slice(next.length - 20) : next;
+                });
+              }
 
               // Reset active analysis state
               if (activeAnalysisTaskIdRef.current === taskId) {

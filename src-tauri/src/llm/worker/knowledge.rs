@@ -9,7 +9,7 @@ use tauri::Manager;
 const KNOWLEDGE_WORKER_PROMPT: &str = include_str!("../prompts/knowledge_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 2048;
-const N_CTX: u32 = 4096;
+const N_CTX: u32 = 8192;
 
 pub struct KnowledgeWorker {
     pub ctx: Option<AgentContext>,

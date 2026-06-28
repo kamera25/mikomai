@@ -9,7 +9,7 @@ use tauri::Manager;
 const INVESTIGATE_WORKER_PROMPT: &str = include_str!("../prompts/investigate_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 256;
-const N_CTX: u32 = 4096;
+const N_CTX: u32 = 8192;
 
 pub struct InvestigateWorker {
     pub ctx: Option<AgentContext>,

@@ -8,7 +8,7 @@ use crate::llm::llm::SYSTEM_PROMPT;
 const RAG_WORKER_PROMPT: &str = include_str!("../prompts/rag_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 512;
-const N_CTX: u32 = 4096;
+const N_CTX: u32 = 8192;
 
 pub struct RagWorker {
     pub ctx: Option<AgentContext>,
