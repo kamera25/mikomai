@@ -361,6 +361,71 @@ pub async fn ask_interface_choice(
     }
 }
 
+pub struct IpAddressChoiceManager {
+    pub txs: Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
+}
+
+impl IpAddressChoiceManager {
+    pub fn new() -> Self {
+        Self {
+            txs: Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn submit_ipaddress_choice(
+    id: Option<String>,
+    choice: String,
+    state: tauri::State<'_, IpAddressChoiceManager>
+) -> Result<(), String> {
+    let id = id.unwrap_or_else(|| "default".to_string());
+    let mut lock = state.txs.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+    if let Some(tx) = lock.remove(&id) {
+        let _ = tx.send(choice);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn ask_ipaddress_choice(
+    app: tauri::AppHandle,
+    id: Option<String>,
+    title: String,
+    message: String,
+    subnet: String,
+    default_ip: Option<String>,
+) -> Result<String, String> {
+    use tauri::Emitter;
+    use tauri::Manager;
+    
+    let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let choice_manager = app.state::<IpAddressChoiceManager>();
+    
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    {
+        let mut lock = choice_manager.txs.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+        lock.insert(id.clone(), tx);
+    }
+
+    // Emit event to request IP address choice
+    let payload = serde_json::json!({
+        "id": id,
+        "title": title,
+        "message": message,
+        "subnet": subnet,
+        "defaultIp": default_ip,
+    });
+    
+    let _ = app.emit("request-ipaddress-choice", payload);
+
+    // Wait for frontend response
+    match rx.await {
+        Ok(c) => Ok(c),
+        Err(_) => Ok("cancelled".to_string()),
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

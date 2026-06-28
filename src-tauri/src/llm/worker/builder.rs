@@ -87,7 +87,7 @@ impl LlmWorker for BuilderWorker {
         }
 
         if let (Some(label), Some(out)) = (&tool_label, &output) {
-            if label.contains("ask_user_choice") || label.contains("ask_interface_choice") {
+            if label.contains("ask_user_choice") || label.contains("ask_interface_choice") || label.contains("ask_ipaddress_choice") {
                 self.collected_choices.push((label.clone(), out.clone()));
             }
         }
@@ -98,11 +98,13 @@ impl LlmWorker for BuilderWorker {
             let app = w.app_handle();
             let choice_mgr = app.state::<crate::mcp::config_helper::ChoiceManager>();
             let iface_mgr = app.state::<crate::mcp::config_helper::InterfaceChoiceManager>();
+            let ip_mgr = app.state::<crate::mcp::config_helper::IpAddressChoiceManager>();
             
             let pending_choices = choice_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
             let pending_ifaces = iface_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
+            let pending_ips = ip_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
             
-            pending_choices > 0 || pending_ifaces > 0
+            pending_choices > 0 || pending_ifaces > 0 || pending_ips > 0
         } else {
             false
         };
@@ -123,9 +125,14 @@ impl LlmWorker for BuilderWorker {
                     } else if label.starts_with("ask_interface_choice:") {
                         let q_msg = label.strip_prefix("ask_interface_choice:").unwrap().trim();
                         msg.push_str(&format!("\n- 「{}」のユーザ回答 : {}", q_msg, val));
+                    } else if label.starts_with("ask_ipaddress_choice:") {
+                        let q_msg = label.strip_prefix("ask_ipaddress_choice:").unwrap().trim();
+                        msg.push_str(&format!("\n- 「{}」のユーザ回答 : {}", q_msg, val));
                     } else {
                         let type_name = if label.contains("ask_interface_choice") {
                             "選択されたインターフェース"
+                        } else if label.contains("ask_ipaddress_choice") {
+                            "設定されたIPアドレス"
                         } else {
                             "選択された回答"
                         };

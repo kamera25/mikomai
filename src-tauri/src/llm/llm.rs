@@ -217,7 +217,8 @@ impl LlamaState {
                             } else {
                                 let is_ask_user_choice = tool_label.contains("ask_user_choice");
                                 let is_ask_interface_choice = tool_label.contains("ask_interface_choice");
-                                let is_any_choice = is_ask_user_choice || is_ask_interface_choice;
+                                let is_ask_ipaddress_choice = tool_label.contains("ask_ipaddress_choice");
+                                let is_any_choice = is_ask_user_choice || is_ask_interface_choice || is_ask_ipaddress_choice;
 
                                 let (active_route, route_subsequent_task) = if is_any_choice {
                                     (Route::Builder, None)
@@ -245,6 +246,8 @@ impl LlamaState {
                                     Some(format!("ユーザーが「{}」を選択しました。この回答要件を含めてCisco Configを設定・生成してください。", output))
                                 } else if is_ask_interface_choice {
                                     Some(format!("ユーザーがインターフェースとして「{}」を選択・入力しました。この情報を反映して設定を生成または変更してください。", output))
+                                } else if is_ask_ipaddress_choice {
+                                    Some(format!("ユーザーがIPアドレス（およびサブネット）として「{}」を指定・確定しました。この情報を反映して設定を生成または変更してください。", output))
                                 } else {
                                     None
                                 };

@@ -380,6 +380,25 @@ define_tool!(AskInterfaceChoiceTool, "ask_interface_choice", |app, args| {
     }
 });
 
+define_tool!(AskIpAddressChoiceTool, "ask_ipaddress_choice", |app, args| {
+    let id = get_str_arg(&args, &["task_id"]);
+    let title = get_str_arg(&args, &["title"]).unwrap_or_default();
+    let message = get_str_arg(&args, &["message"]).unwrap_or_default();
+    let subnet = get_str_arg(&args, &["subnet"]).unwrap_or_default();
+    let ip_address = get_str_arg(&args, &["ip_address", "ipAddress"]);
+
+    match crate::mcp::config_helper::ask_ipaddress_choice(app.clone(), id, title, message, subnet, ip_address).await {
+        Ok(res) => Ok(crate::network::CommandResult {
+            success: true,
+            output: res,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }),
+        Err(e) => Err(e),
+    }
+});
+
 // Tool registry
 pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
     static REGISTRY: OnceLock<HashMap<String, Box<dyn McpTool>>> = OnceLock::new();
@@ -407,6 +426,7 @@ pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
             ConvertCiscoConfigTool,
             AskUserChoiceTool,
             AskInterfaceChoiceTool,
+            AskIpAddressChoiceTool,
         ]
     })
 }
@@ -520,7 +540,7 @@ fn execute_mcp_tool_internal(
         };
 
         // Run execution with timeout (bypass timeout for user choice prompts)
-        let is_choice_tool = tool_id == "ask_user_choice" || tool_id == "ask_interface_choice";
+        let is_choice_tool = tool_id == "ask_user_choice" || tool_id == "ask_interface_choice" || tool_id == "ask_ipaddress_choice";
         let result = if is_choice_tool {
             match execution_future.await {
                 Ok(res) => res,
@@ -587,6 +607,9 @@ fn execute_mcp_tool_internal(
         } else if tool_id == "ask_interface_choice" {
             let q_msg = get_str_arg(&processed_args, &["message"]).unwrap_or_default();
             format!("ask_interface_choice: {}", q_msg)
+        } else if tool_id == "ask_ipaddress_choice" {
+            let q_msg = get_str_arg(&processed_args, &["message"]).unwrap_or_default();
+            format!("ask_ipaddress_choice: {}", q_msg)
         } else {
             tool_label.clone()
         };
@@ -594,13 +617,15 @@ fn execute_mcp_tool_internal(
         // 4.1. Check if all choices are answered and synthesize true query
         let choice_mgr = app.state::<crate::mcp::config_helper::ChoiceManager>();
         let iface_mgr = app.state::<crate::mcp::config_helper::InterfaceChoiceManager>();
+        let ip_mgr = app.state::<crate::mcp::config_helper::IpAddressChoiceManager>();
         let pending_choices = choice_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
         let pending_ifaces = iface_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
+        let pending_ips = ip_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
 
         let mut synthesized_task = None;
-        let is_choice_tool = tool_id == "ask_user_choice" || tool_id == "ask_interface_choice";
+        let is_choice_tool = tool_id == "ask_user_choice" || tool_id == "ask_interface_choice" || tool_id == "ask_ipaddress_choice";
 
-        if is_choice_tool && pending_choices == 0 && pending_ifaces == 0 {
+        if is_choice_tool && pending_choices == 0 && pending_ifaces == 0 && pending_ips == 0 {
             // すべての回答が揃った最後のタイミングで真のユーザーの質問を再生成する
             let mut collected_choices = {
                 let shared_opt = llama_state.shared.lock().await;
@@ -622,6 +647,9 @@ fn execute_mcp_tool_internal(
                         format!("- 「{}」の回答: {}", q_msg, val)
                     } else if label.starts_with("ask_interface_choice:") {
                         let q_msg = label.strip_prefix("ask_interface_choice:").unwrap().trim();
+                        format!("- 「{}」の回答: {}", q_msg, val)
+                    } else if label.starts_with("ask_ipaddress_choice:") {
+                        let q_msg = label.strip_prefix("ask_ipaddress_choice:").unwrap().trim();
                         format!("- 「{}」の回答: {}", q_msg, val)
                     } else {
                         format!("- {}: {}", label, val)
@@ -694,6 +722,7 @@ fn execute_mcp_tool_internal(
         // 6. Check for nested tool calls (nested MCP) for Builder
         let is_builder_context = tool_id == "ask_user_choice"
             || tool_id == "ask_interface_choice"
+            || tool_id == "ask_ipaddress_choice"
             || tool_id == "validate_cisco_config"
             || tool_id == "convert_cisco_config";
 
