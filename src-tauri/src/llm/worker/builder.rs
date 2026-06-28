@@ -114,7 +114,7 @@ impl LlmWorker for BuilderWorker {
             return Ok("PENDING_DECISION".to_string());
         }
 
-        let modified_user_message = if !self.collected_choices.is_empty() {
+        let mut modified_user_message = if !self.collected_choices.is_empty() {
             if let Some(ref original_msg) = user_message {
                 let mut msg = original_msg.clone();
                 msg.push_str("\n\n【ユーザーの追加回答（これまでの選択情報）】");
@@ -146,6 +146,39 @@ impl LlmWorker for BuilderWorker {
         } else {
             user_message.clone()
         };
+
+        let mut prompt = prompt;
+        if let Some(w) = window {
+            let app = w.app_handle();
+            let text_to_check = match (&prompt, &modified_user_message) {
+                (Some(p), _) => p.clone(),
+                (_, Some(um)) => um.clone(),
+                _ => String::new(),
+            };
+            if !text_to_check.is_empty() {
+                if let Ok(connections) = crate::connections::load_connections_raw(app) {
+                    let lower_text = text_to_check.to_lowercase();
+                    let mut matched_conns = Vec::new();
+                    for conn in &connections {
+                        let hostname = conn.hostname.as_str().to_lowercase();
+                        let ip = conn.ip.to_string();
+                        if (!hostname.is_empty() && lower_text.contains(&hostname)) || lower_text.contains(&ip) {
+                            matched_conns.push(conn);
+                        }
+                    }
+                    if matched_conns.len() == 1 {
+                        if let Some(vendor_type) = &matched_conns[0].vendor_type {
+                            let injection = format!("\n\n【対象機器のベンダーID】: {}", vendor_type.as_str());
+                            if let Some(ref mut p) = prompt {
+                                p.push_str(&injection);
+                            } else if let Some(ref mut um) = modified_user_message {
+                                um.push_str(&injection);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         log::info!("BuilderWorker: subsequent_task to be sent: {:?}", subsequent_task);
 

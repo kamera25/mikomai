@@ -1,6 +1,6 @@
 import React from "react";
 import "./ConfigDiffPanel.css";
-import { ConfigFileIcon } from "../Icons";
+import { ConfigFileIcon, CheckIcon, SwitchIcon } from "../Icons";
 import { useUIContext } from "../../contexts/UIContext";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -106,7 +106,29 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
             console.error("Failed to submit commit choice:", e);
           }
           onClose();
-        }}>コミット</button>
+        }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+            <span>コミット</span>
+            <div style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <SwitchIcon size={16} />
+              <CheckIcon
+                size={10}
+                strokeWidth={4}
+                style={{
+                  position: "absolute",
+                  top: "-4px",
+                  right: "-4px",
+                  backgroundColor: "#8becccff",
+                  color: "#ffffff",
+                  borderRadius: "50%",
+                  padding: "1px",
+                  border: "1.5px solid var(--bg-primary, #1e1e1e)",
+                  boxSizing: "content-box"
+                }}
+              />
+            </div>
+          </div>
+        </button>
       </div>
     </div>
   );
