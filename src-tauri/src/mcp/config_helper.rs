@@ -450,7 +450,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_cisco_config() {
         let config = "hostname RouterA\ninterface GigabitEthernet0/1\n ip address 192.168.1.1 255.255.255.0\n".to_string();
-        let result = validate_cisco_config_impl(None, config).await;
+        let result = validate_cisco_config_impl(None, None, config, None).await;
         assert!(result.is_ok(), "Expected success, got: {:?}", result);
         let res = result.unwrap();
         assert!(res.success);
