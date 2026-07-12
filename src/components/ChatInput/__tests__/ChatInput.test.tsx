@@ -79,4 +79,43 @@ describe("ChatInput Component", () => {
       { hostname: "router-new", ip: "10.0.0.5" }
     ]);
   });
+
+  it("closes suggestions when the suggestions list becomes empty", () => {
+    const setFilteredSuggestions = vi.fn();
+    const setShowSuggestions = vi.fn();
+    const { rerender } = render(
+      <ChatInput
+        {...defaultProps}
+        input="@router"
+        cursorPos={7}
+        showSuggestions={true}
+        availableHosts={[{ hostname: "router-1", ip: "10.0.0.1" }]}
+        setFilteredSuggestions={setFilteredSuggestions}
+        setShowSuggestions={setShowSuggestions}
+      />
+    );
+
+    expect(setFilteredSuggestions).toHaveBeenCalledWith([
+      { hostname: "router-1", ip: "10.0.0.1" }
+    ]);
+    expect(setShowSuggestions).not.toHaveBeenCalled();
+
+    setFilteredSuggestions.mockClear();
+    setShowSuggestions.mockClear();
+
+    rerender(
+      <ChatInput
+        {...defaultProps}
+        input="@router"
+        cursorPos={7}
+        showSuggestions={true}
+        availableHosts={[]}
+        setFilteredSuggestions={setFilteredSuggestions}
+        setShowSuggestions={setShowSuggestions}
+      />
+    );
+
+    expect(setFilteredSuggestions).toHaveBeenCalledWith([]);
+    expect(setShowSuggestions).toHaveBeenCalledWith(false);
+  });
 });

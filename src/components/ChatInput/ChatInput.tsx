@@ -97,9 +97,15 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
           });
 
           setFilteredSuggestions(combined);
+          if (combined.length === 0) {
+            setShowSuggestions(false);
+            setSuggestionIndex(0);
+          } else {
+            setSuggestionIndex((prev) => Math.min(prev, combined.length - 1));
+          }
         }
       }
-    }, [availableHosts, recentIPs, showSuggestions, input, cursorPos, t, setFilteredSuggestions]);
+    }, [availableHosts, recentIPs, showSuggestions, input, cursorPos, t, setFilteredSuggestions, setShowSuggestions, setSuggestionIndex]);
 
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const isComp = isComposing.current || e.nativeEvent.isComposing || e.keyCode === 229;
