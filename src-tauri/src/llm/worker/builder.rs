@@ -199,6 +199,17 @@ impl LlmWorker for BuilderWorker {
 
         log::info!("BuilderWorker: subsequent_task to be sent: {:?}", subsequent_task_owned);
 
+        let (prompt, modified_user_message, output, history_block) = crate::llm::llm_manager::apply_token_budget(
+            model,
+            self.context_mut().n_ctx,
+            self.context_mut().base_n_past,
+            self.context_mut().max_new_tokens,
+            prompt,
+            modified_user_message,
+            output,
+            history_block,
+        ).map_err(|e| format!("Failed to apply token budget: {:?}", e))?;
+
         // 1. Generate config text using standard LLM inference
         let worker_prompt = self.build_prompt(
             prompt.clone(),

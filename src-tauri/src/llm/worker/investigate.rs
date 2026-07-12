@@ -138,6 +138,17 @@ impl LlmWorker for InvestigateWorker {
 
         self.ensure_initialized_with_vendor(model, backend, vendor)?;
 
+        let (prompt, user_message, output, history_block) = crate::llm::llm_manager::apply_token_budget(
+            model,
+            self.context_mut().n_ctx,
+            self.context_mut().base_n_past,
+            self.context_mut().max_new_tokens,
+            prompt,
+            user_message,
+            output,
+            history_block,
+        ).map_err(|e| format!("Failed to apply token budget: {:?}", e))?;
+
         let worker_prompt = self.build_prompt(
             prompt,
             user_message,

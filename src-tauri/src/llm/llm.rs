@@ -442,11 +442,28 @@ fn prepare_prompt_tokens_with_limit(
 
     let max_tokens = n_ctx.saturating_sub(max_gen);
     if tokens.len() > max_tokens {
+        log::warn!("Prompt too long ({} tokens). Truncating to {} tokens.", tokens.len(), max_tokens);
+
+        let note_tokens = model.str_to_token("\n※コンテキストの一部が省略されました\n", AddBos::Never).map_err(|e| LlmError::Tokenization(format!("{:?}", e)))?;
+        let note_len = note_tokens.len();
+
         let to_remove = tokens.len() - max_tokens;
         let start_keep = keep_tokens;
 
-        if tokens.len() > start_keep + to_remove {
-            tokens.drain(start_keep..(start_keep + to_remove));
+        if tokens.len() > start_keep + to_remove + note_len {
+            let remaining_space = max_tokens.saturating_sub(start_keep).saturating_sub(note_len);
+            let start_take = tokens.len() - remaining_space;
+            
+            let mut new_tokens = tokens[..start_keep].to_vec();
+            new_tokens.extend_from_slice(&note_tokens);
+            new_tokens.extend_from_slice(&tokens[start_take..]);
+            tokens = new_tokens;
+        } else if max_tokens > note_len {
+            let remaining_space = max_tokens - note_len;
+            let start_take = tokens.len() - remaining_space;
+            let mut new_tokens = note_tokens;
+            new_tokens.extend_from_slice(&tokens[start_take..]);
+            tokens = new_tokens;
         } else {
             tokens.truncate(max_tokens);
         }

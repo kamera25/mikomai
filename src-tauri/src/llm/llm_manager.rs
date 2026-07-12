@@ -202,8 +202,18 @@ pub fn run_inference_with_grammar(
     
     if user_tokens.len() > max_user_tokens {
         log::warn!("Prompt too long ({} tokens). Truncating to {} tokens by removing older history.", user_tokens.len(), max_user_tokens);
-        let drain_len = user_tokens.len() - max_user_tokens;
-        user_tokens.drain(0..drain_len);
+        let note_tokens = agent_ctx.model.str_to_token("\n※コンテキストの一部が省略されました\n", AddBos::Never).unwrap_or_default();
+        let note_len = note_tokens.len();
+        
+        if max_user_tokens > note_len {
+            let keep_len = max_user_tokens - note_len;
+            let start_idx = user_tokens.len() - keep_len;
+            let mut new_user_tokens = note_tokens;
+            new_user_tokens.extend_from_slice(&user_tokens[start_idx..]);
+            user_tokens = new_user_tokens;
+        } else {
+            user_tokens.truncate(max_user_tokens);
+        }
     }
 
     let mut tokens = Vec::new();
@@ -273,5 +283,136 @@ pub fn run_inference_with_grammar(
     }
 
     Ok(result_string)
+}
+
+pub fn truncate_and_annotate_section(
+    model: &LlamaModel,
+    text: &str,
+    max_tokens: usize,
+    section_name: &str,
+) -> Result<(String, usize)> {
+    let tokens = model.str_to_token(text, llama_cpp_2::model::AddBos::Never)
+        .map_err(|e| anyhow::anyhow!("Tokenization failed for {}: {:?}", section_name, e))?;
+    let original_len = tokens.len();
+    if original_len <= max_tokens {
+        return Ok((text.to_string(), original_len));
+    }
+
+    // トランケーションが発生した場合
+    log::warn!("Section '{}' too long ({} tokens). Truncating to limit {} tokens.", section_name, original_len, max_tokens);
+    let note = "\n※コンテキストの一部が省略されました\n";
+    let note_tokens = model.str_to_token(note, llama_cpp_2::model::AddBos::Never)
+        .map_err(|e| anyhow::anyhow!("Tokenization failed for note in {}: {:?}", section_name, e))?;
+    let note_len = note_tokens.len();
+
+    if max_tokens <= note_len {
+        return Ok((note.to_string(), note_len));
+    }
+
+    let keep_len = max_tokens - note_len;
+    // 古い履歴（先頭）を削除するので、末尾側を残す
+    let truncated_tokens = &tokens[original_len - keep_len..];
+    
+    let mut bytes = Vec::new();
+    for &token in truncated_tokens {
+        let mut piece = model.token_to_piece_bytes(token, 16, false, None)
+            .map_err(|e| anyhow::anyhow!("token_to_piece_bytes failed: {:?}", e))?;
+        bytes.append(&mut piece);
+    }
+    let truncated_text = String::from_utf8_lossy(&bytes).to_string();
+    let final_text = format!("{}{}", note, truncated_text);
+    let final_tokens_len = note_len + truncated_tokens.len();
+
+    log::info!("Section '{}': truncated from {} to {} tokens (annotated)", section_name, original_len, final_tokens_len);
+
+    Ok((final_text, final_tokens_len))
+}
+
+pub fn apply_token_budget(
+    model: &LlamaModel,
+    n_ctx: u32,
+    base_n_past: u32,
+    max_new_tokens: u32,
+    prompt: Option<String>,
+    user_message: Option<String>,
+    output: Option<String>,
+    history_block: Option<String>,
+) -> Result<(Option<String>, Option<String>, Option<String>, Option<String>)> {
+    let budget = n_ctx.saturating_sub(base_n_past).saturating_sub(max_new_tokens);
+    // 安全マージンとして300トークンを引く
+    let avail_budget = budget.saturating_sub(300).max(100);
+
+    let max_tool_tokens = (avail_budget as f32 * 0.60) as usize;
+    let max_history_tokens = (avail_budget as f32 * 0.20) as usize;
+    let max_user_tokens = (avail_budget as f32 * 0.20) as usize;
+
+    let mut final_prompt = None;
+    let mut final_user_message = None;
+    let mut final_output = None;
+    let mut final_history_block = None;
+
+    if let Some(p) = prompt {
+        if p.starts_with("【ユーザー入力】") && p.contains("<memory>") {
+            if let Some(memory_pos) = p.find("<memory>") {
+                let user_part = p[..memory_pos].trim().to_string();
+                let memory_part = p[memory_pos..].trim().to_string();
+                
+                let (truncated_user, user_tokens) = truncate_and_annotate_section(model, &user_part, max_user_tokens, "User Input (Initial)")?;
+                let (truncated_mem, mem_tokens) = truncate_and_annotate_section(model, &memory_part, max_history_tokens, "Memory/History (Initial)")?;
+                
+                final_prompt = Some(format!("{}\n\n{}", truncated_user, truncated_mem));
+                
+                log::info!(
+                    "Prompt Token Budget (Initial Parsing): System={} tokens, User Input limit={} (actual={}) tokens, Memory/History limit={} (actual={}) tokens",
+                    base_n_past, max_user_tokens, user_tokens, max_history_tokens, mem_tokens
+                );
+            } else {
+                let (truncated, prompt_tokens) = truncate_and_annotate_section(model, &p, avail_budget as usize, "Prompt (Initial Unparsed)")?;
+                final_prompt = Some(truncated);
+                log::info!(
+                    "Prompt Token Budget (Initial Unparsed): System={} tokens, Total Available Limit={} (actual={}) tokens",
+                    base_n_past, avail_budget, prompt_tokens
+                );
+            }
+        } else {
+            let (truncated, prompt_tokens) = truncate_and_annotate_section(model, &p, avail_budget as usize, "Prompt (Initial Unparsed)")?;
+            final_prompt = Some(truncated);
+            log::info!(
+                "Prompt Token Budget (Initial Unparsed): System={} tokens, Total Available Limit={} (actual={}) tokens",
+                base_n_past, avail_budget, prompt_tokens
+            );
+        }
+    }
+
+    let mut user_tokens = 0;
+    let mut tool_tokens = 0;
+    let mut mem_tokens = 0;
+
+    if let Some(user_msg) = user_message {
+        let (truncated, tokens_count) = truncate_and_annotate_section(model, &user_msg, max_user_tokens, "User Input")?;
+        final_user_message = Some(truncated);
+        user_tokens = tokens_count;
+    }
+
+    if let Some(out) = output {
+        let (truncated, tokens_count) = truncate_and_annotate_section(model, &out, max_tool_tokens, "Tool Output")?;
+        final_output = Some(truncated);
+        tool_tokens = tokens_count;
+    }
+
+    if let Some(hist) = history_block {
+        let (truncated, tokens_count) = truncate_and_annotate_section(model, &hist, max_history_tokens, "Memory/History")?;
+        final_history_block = Some(truncated);
+        mem_tokens = tokens_count;
+    }
+
+    if final_user_message.is_some() || final_output.is_some() || final_history_block.is_some() {
+        log::info!(
+            "Prompt Token Budget: System={} tokens, Tool Output limit={} (actual={}) tokens, Memory/History limit={} (actual={}) tokens, User Input limit={} (actual={}) tokens",
+            base_n_past, max_tool_tokens, tool_tokens, max_history_tokens, mem_tokens, max_user_tokens, user_tokens
+        );
+    }
+
+    Ok((final_prompt, final_user_message, final_output, final_history_block))
 }
 
