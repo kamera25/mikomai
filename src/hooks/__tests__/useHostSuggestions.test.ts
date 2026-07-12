@@ -26,7 +26,10 @@ describe("useHostSuggestions", () => {
   it("should fetch hosts on mount", async () => {
     vi.mocked(tauriApi.invoke).mockImplementation(async (cmd) => {
       if (cmd === "load_connections") {
-        return [{ hostname: "router-1", ip: "10.0.0.1" }];
+        return [
+          { hostname: "router-1", ip: "10.0.0.1" },
+          { hostname: "console-router", ip: "" }
+        ];
       }
       if (cmd === "get_mcp_hosts") {
         return [{ hostname: "switch-1", ip: "10.0.0.2" }];
@@ -41,6 +44,7 @@ describe("useHostSuggestions", () => {
     });
 
     expect(result.current.availableHosts).toContainEqual({ hostname: "router-1", ip: "10.0.0.1" });
+    expect(result.current.availableHosts).toContainEqual({ hostname: "console-router", ip: "Console" });
     expect(result.current.availableHosts).toContainEqual({ hostname: "switch-1", ip: "10.0.0.2" });
   });
 

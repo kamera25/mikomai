@@ -17,6 +17,7 @@ describe("ChatInput Component", () => {
     handleSend: vi.fn(),
     handleLoadModel: vi.fn(),
     setIsSettingsOpen: vi.fn(),
+    cursorPos: 0,
     setCursorPos: vi.fn(),
     availableHosts: [],
     recentIPs: [],
@@ -41,5 +42,41 @@ describe("ChatInput Component", () => {
     const button = screen.getByRole("button");
     fireEvent.click(button);
     expect(handleSend).toHaveBeenCalled();
+  });
+
+  it("updates filtered suggestions when availableHosts changes while suggestions are shown", () => {
+    const setFilteredSuggestions = vi.fn();
+    const { rerender } = render(
+      <ChatInput
+        {...defaultProps}
+        input="@"
+        cursorPos={1}
+        showSuggestions={true}
+        availableHosts={[]}
+        setFilteredSuggestions={setFilteredSuggestions}
+      />
+    );
+
+    expect(setFilteredSuggestions).toHaveBeenCalledWith([
+      { hostname: "localhost", ip: "このコンピュータ" }
+    ]);
+
+    setFilteredSuggestions.mockClear();
+
+    rerender(
+      <ChatInput
+        {...defaultProps}
+        input="@"
+        cursorPos={1}
+        showSuggestions={true}
+        availableHosts={[{ hostname: "router-new", ip: "10.0.0.5" }]}
+        setFilteredSuggestions={setFilteredSuggestions}
+      />
+    );
+
+    expect(setFilteredSuggestions).toHaveBeenCalledWith([
+      { hostname: "localhost", ip: "このコンピュータ" },
+      { hostname: "router-new", ip: "10.0.0.5" }
+    ]);
   });
 });

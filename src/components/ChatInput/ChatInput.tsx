@@ -1,4 +1,4 @@
-import React, { forwardRef, useRef } from "react";
+import React, { forwardRef, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { SuggestionsList } from "./SuggestionsList";
 import { RefreshIcon, GearIcon, SendIcon } from "../Icons";
@@ -18,6 +18,7 @@ interface ChatInputProps {
   handleSend: () => void;
   handleLoadModel: () => void;
   setIsSettingsOpen: (value: boolean) => void;
+  cursorPos: number;
   setCursorPos: (value: number) => void;
   availableHosts: { hostname: string; ip: string }[];
   recentIPs: string[];
@@ -40,6 +41,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
       handleSend,
       handleLoadModel,
       setIsSettingsOpen,
+      cursorPos,
       setCursorPos,
       availableHosts,
       recentIPs,
@@ -50,6 +52,54 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
     const { t } = useTranslation();
     const isComposing = useRef(false);
     const suggestionListRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      if (!showSuggestions) return;
+
+      const textBeforeCursor = input.slice(0, cursorPos);
+      const atIndex = textBeforeCursor.lastIndexOf("@");
+
+      if (atIndex !== -1) {
+        const query = textBeforeCursor.slice(atIndex + 1);
+        if (!query.includes(" ")) {
+          const queryLower = query.toLowerCase();
+          const combined: { hostname: string; ip: string }[] = [];
+          const seenIPs = new Set<string>();
+
+          // localhost
+          if ("localhost".includes(queryLower) || t("chat_input.localhost").includes(query)) {
+            combined.push({ hostname: "localhost", ip: t("chat_input.localhost") });
+            seenIPs.add("127.0.0.1");
+            seenIPs.add("localhost");
+          }
+
+          // Available hosts
+          availableHosts.forEach((h) => {
+            if (h.hostname !== "localhost") {
+              if (h.hostname.toLowerCase().includes(queryLower) || h.ip.includes(query)) {
+                combined.push(h);
+              }
+            }
+            seenIPs.add(h.ip);
+          });
+
+          // Recent IPs
+          recentIPs.forEach((ip) => {
+            if (
+              ip.toLowerCase().includes(queryLower) ||
+              t("chat_input.past_ips").includes(query)
+            ) {
+              if (!seenIPs.has(ip)) {
+                combined.push({ hostname: ip, ip: t("chat_input.past_ips") });
+                seenIPs.add(ip);
+              }
+            }
+          });
+
+          setFilteredSuggestions(combined);
+        }
+      }
+    }, [availableHosts, recentIPs, showSuggestions, input, cursorPos, t, setFilteredSuggestions]);
 
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const isComp = isComposing.current || e.nativeEvent.isComposing || e.keyCode === 229;

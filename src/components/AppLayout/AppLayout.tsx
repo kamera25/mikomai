@@ -113,6 +113,7 @@ export function AppLayout() {
     setFilteredSuggestions,
     suggestionIndex,
     setSuggestionIndex,
+    cursorPos,
     setCursorPos,
     fetchHosts,
     updateRecentHosts,
@@ -757,6 +758,7 @@ export function AppLayout() {
                     handleSend={handleSend}
                     handleLoadModel={handleLoadModel}
                     setIsSettingsOpen={(open) => uiDispatch({ type: "SET_SETTINGS_OPEN", payload: open })}
+                    cursorPos={cursorPos}
                     setCursorPos={setCursorPos}
                     availableHosts={availableHosts}
                     recentIPs={recentIPs}

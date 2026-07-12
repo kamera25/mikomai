@@ -48,12 +48,12 @@ export function useHostSuggestions({
       const hostMap = new Map<string, string>();
       if (connections) {
         connections.forEach((c) => {
-          if (c.hostname && c.ip) hostMap.set(c.hostname, c.ip);
+          if (c.hostname) hostMap.set(c.hostname, c.ip || "Console");
         });
       }
       if (mcpHosts) {
         mcpHosts.forEach((h) => {
-          if (h.hostname && h.ip) hostMap.set(h.hostname, h.ip);
+          if (h.hostname) hostMap.set(h.hostname, h.ip || "Console");
         });
       }
 
