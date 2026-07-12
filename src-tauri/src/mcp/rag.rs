@@ -4,7 +4,7 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 use std::sync::{Arc, Mutex};
 use fastembed::{TextEmbedding, EmbeddingModel, InitOptions};
 use futures::StreamExt;
-use arrow_array::{RecordBatch, StringArray, LargeStringArray, Array};
+use arrow_array::{RecordBatch, StringArray, LargeStringArray, Float32Array, Array};
 use tauri::Manager;
 use serde::{Serialize, Deserialize};
 
@@ -200,6 +200,8 @@ pub async fn query_nw_db(
         let path_col = batch.column_by_name("path")
             .ok_or("Column 'path' not found in results")?;
 
+        let dist_col = batch.column_by_name("_distance");
+
         let (text_large, text_small) = (
             text_col.as_any().downcast_ref::<LargeStringArray>(),
             text_col.as_any().downcast_ref::<StringArray>(),
@@ -210,7 +212,17 @@ pub async fn query_nw_db(
             path_col.as_any().downcast_ref::<StringArray>(),
         );
 
+        let dist_array = dist_col.and_then(|col| col.as_any().downcast_ref::<Float32Array>());
+
         for i in 0..batch.num_rows() {
+            let distance = dist_array.map(|arr| arr.value(i)).unwrap_or(0.0);
+            
+            // L2 distance threshold (e.g. 0.6). If distance is larger than 0.6, the result is considered irrelevant.
+            if distance > 0.6 {
+                log::info!("Skipping search result due to low similarity (distance: {})", distance);
+                continue;
+            }
+
             let text = if let Some(arr) = text_large {
                 arr.value(i)
             } else if let Some(arr) = text_small {
@@ -227,7 +239,8 @@ pub async fn query_nw_db(
                 return Err(format!("Failed to downcast path column. Actual type: {:?}", path_col.data_type()));
             };
 
-            context.push_str(&format!("\n--- 検索結果 {} (ソース: {}) ---\n{}\n", count, path, text));
+            let score = (1.0 - distance).max(0.0);
+            context.push_str(&format!("\n--- 検索結果 {} (ソース: {}, 類似度スコア: {:.2}) ---\n{}\n", count, path, score, text));
             count += 1;
         }
     }

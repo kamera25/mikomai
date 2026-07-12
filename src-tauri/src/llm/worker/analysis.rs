@@ -7,7 +7,7 @@ use crate::llm::llm::SYSTEM_PROMPT;
 
 const ANALYSIS_WORKER_PROMPT: &str = include_str!("../prompts/analysis_worker.txt");
 
-const MAX_NEW_TOKENS: u32 = 256;
+const MAX_NEW_TOKENS: u32 = 2048;
 const N_CTX: u32 = 8740;
 
 pub struct AnalysisWorker {

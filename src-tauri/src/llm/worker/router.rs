@@ -16,6 +16,7 @@ const N_CTX: u32 = 2048;
 pub struct RouteResult {
     pub routes: Vec<Route>,
     pub subsequent_task: Option<String>,
+    pub confidence: f32,
 }
 
 pub struct Router {
@@ -41,9 +42,10 @@ impl Router {
             "properties": {
                 "first_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "PLOTTER", "BUILDER"] },
                 "subsequent_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "PLOTTER", "BUILDER", "NONE"] },
-                "subsequent_task": { "type": "string" }
+                "subsequent_task": { "type": "string" },
+                "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
             },
-            "required": ["first_route", "subsequent_route", "subsequent_task"]
+            "required": ["first_route", "subsequent_route", "subsequent_task", "confidence"]
         }"#;
 
         let grammar_str = llama_cpp_2::json_schema_to_grammar(schema)
@@ -70,6 +72,7 @@ struct RouterJsonResponse {
     first_route: String,
     subsequent_route: String,
     subsequent_task: String,
+    confidence: f32,
 }
 
 fn clean_json_str(output: &str) -> &str {
@@ -103,6 +106,7 @@ fn to_route_result(parsed: RouterJsonResponse) -> RouteResult {
     RouteResult {
         routes,
         subsequent_task,
+        confidence: parsed.confidence,
     }
 }
 
@@ -128,6 +132,7 @@ fn fallback_parse_route_output(output: &str) -> RouteResult {
     RouteResult {
         routes: vec![Route::None],
         subsequent_task: None,
+        confidence: 0.0,
     }
 }
 
@@ -140,11 +145,13 @@ mod tests {
         let json_input = r#"{
             "first_route": "KNOWLEDGE",
             "subsequent_route": "ANALYSIS",
-            "subsequent_task": "Check network connectivity"
+            "subsequent_task": "Check network connectivity",
+            "confidence": 0.9
         }"#;
         let res = parse_route_output(json_input);
         assert_eq!(res.routes, vec![Route::Knowledge, Route::Analysis]);
         assert_eq!(res.subsequent_task, Some("Check network connectivity".to_string()));
+        assert!((res.confidence - 0.9).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -153,12 +160,14 @@ mod tests {
         {
             "first_route": "INVESTIGATE",
             "subsequent_route": "NONE",
-            "subsequent_task": "NONE"
+            "subsequent_task": "NONE",
+            "confidence": 0.8
         }
         ```"#;
         let res = parse_route_output(markdown_input);
         assert_eq!(res.routes, vec![Route::Investigate]);
         assert_eq!(res.subsequent_task, None);
+        assert!((res.confidence - 0.8).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -168,10 +177,12 @@ mod tests {
             'first_route': 'ANALYSIS',
             'subsequent_route': 'INVESTIGATE',
             'subsequent_task': 'Troubleshoot OSPF',
+            'confidence': 0.7,
         "#;
         let res = parse_route_output(fallback_input);
         assert_eq!(res.routes, vec![Route::Analysis, Route::Investigate]);
         assert_eq!(res.subsequent_task, Some("Troubleshoot OSPF".to_string()));
+        assert!((res.confidence - 0.7).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -180,6 +191,7 @@ mod tests {
         let res = parse_route_output(invalid_input);
         assert_eq!(res.routes, vec![Route::None]);
         assert_eq!(res.subsequent_task, None);
+        assert!((res.confidence - 0.0).abs() < f32::EPSILON);
     }
 
     #[test]

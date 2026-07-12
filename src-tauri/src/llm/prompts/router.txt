@@ -51,12 +51,14 @@ You must respond ONLY with a JSON object containing the following keys. Do not i
 {
   "first_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS" or "PLOTTER" or "BUILDER",
   "subsequent_route": "INVESTIGATE" or "KNOWLEDGE" or "ANALYSIS" or "PLOTTER" or "BUILDER" or "NONE",
-  "subsequent_task": "Describe the task in Japanese" or "NONE"
+  "subsequent_task": "Describe the task in Japanese" or "NONE",
+  "confidence": a number between 0.0 and 1.0 (indicating how confident you are about the classification. For clear requests, use 0.8-1.0. For ambiguous or vague requests like "It is slow", use a low confidence under 0.5)
 }
 
 Example:
 {
   "first_route": "BUILDER",
   "subsequent_route": "NONE",
-  "subsequent_task": "Cisco Configを作成し、構文チェックとJuniperへの変換を実行する。"
+  "subsequent_task": "Cisco Configを作成し、構文チェックとJuniperへの変換を実行する。",
+  "confidence": 0.95
 }

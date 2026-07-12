@@ -165,6 +165,13 @@ impl LlamaState {
                             };
                             log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
 
+                            if route_result.confidence < 0.5 {
+                                let ask_msg = "ご質問の意図を確認させてください。\n\n```json\n{\n  \"tool_name\": \"ask_user_choice\",\n  \"params\": {\n    \"title\": \"ご質問の意図の確認\",\n    \"message\": \"ご質問の意図を確認させてください。以下のどれに該当しますか？\",\n    \"options\": [\n      \"1. ネットワーク機器の調査 (INVESTIGATE)\",\n      \"2. 技術知識の解説 (KNOWLEDGE)\",\n      \"3. Config作成 (BUILDER)\"\n    ]\n  }\n}\n```";
+                                let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI (アシスタント)".to_string()));
+                                let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(ask_msg.to_string()));
+                                return Ok(ask_msg.to_string());
+                            }
+
                             let active_route = route_result.routes[0];
                             let worker_res = if let Some(worker_mutex) = get_worker_for_route(&shared_model, active_route) {
                                 let mut worker = worker_mutex.lock().unwrap();
@@ -232,13 +239,20 @@ impl LlamaState {
                                             settings.repetition_penalty,
                                         ).map_err(|e| LlmError::Routing(format!("{:?}", e)))?
                                     };
-                                    log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
-
-                                    let route = if route_result.routes.len() > 1 {
-                                        route_result.routes[1]
-                                    } else {
-                                        return Ok("実行が完了しました。".to_string());
-                                    };
+                                     log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
+ 
+                                     if route_result.confidence < 0.5 {
+                                         let ask_msg = "ご質問の意図を確認させてください。\n\n```json\n{\n  \"tool_name\": \"ask_user_choice\",\n  \"params\": {\n    \"title\": \"ご質問の意図の確認\",\n    \"message\": \"ご質問の意図を確認させてください。以下のどれに該当しますか？\",\n    \"options\": [\n      \"1. ネットワーク機器の調査 (INVESTIGATE)\",\n      \"2. 技術知識の解説 (KNOWLEDGE)\",\n      \"3. Config作成 (BUILDER)\"\n    ]\n  }\n}\n```";
+                                         let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI (アシスタント)".to_string()));
+                                         let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(ask_msg.to_string()));
+                                         return Ok(ask_msg.to_string());
+                                     }
+ 
+                                     let route = if route_result.routes.len() > 1 {
+                                         route_result.routes[1]
+                                     } else {
+                                         return Ok("実行が完了しました。".to_string());
+                                     };
                                     (route, route_result.subsequent_task)
                                 };
 
