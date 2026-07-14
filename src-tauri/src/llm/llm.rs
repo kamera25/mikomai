@@ -173,6 +173,11 @@ impl LlamaState {
                             }
 
                             let active_route = route_result.routes[0];
+                            let final_prompt = if active_route == Route::Builder {
+                                replace_interface_abbreviations(&prompt)
+                            } else {
+                                prompt
+                            };
                             let worker_res = if let Some(worker_mutex) = get_worker_for_route(&shared_model, active_route) {
                                 let mut worker = worker_mutex.lock().unwrap();
                                 let agent_name = worker.agent_name();
@@ -180,7 +185,7 @@ impl LlamaState {
                                 worker.ask(
                                     &model,
                                     &backend,
-                                    Some(prompt),
+                                    Some(final_prompt),
                                     None,
                                     None,
                                     None,
@@ -293,7 +298,12 @@ impl LlamaState {
                                     route_subsequent_task.as_deref()
                                 };
 
-                                let worker_res = if let Some(worker_mutex) = get_worker_for_route(&shared_model, active_route) {
+                                 let user_message = if active_route == Route::Builder {
+                                     replace_interface_abbreviations(&user_message)
+                                 } else {
+                                     user_message
+                                 };
+                                 let worker_res = if let Some(worker_mutex) = get_worker_for_route(&shared_model, active_route) {
                                     let mut worker = worker_mutex.lock().unwrap();
                                     let agent_name = worker.agent_name();
                                     let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
@@ -677,4 +687,51 @@ pub async fn ask_llm_background(
     let inference_result = rx.await.map_err(|e| TauriError::from(LlmError::Worker(format!("Failed to receive inference result: {}", e))))??;
     Ok(inference_result)
 }
+
+pub fn replace_interface_abbreviations(input: &str) -> String {
+    use regex::{Regex, Captures};
+    use std::sync::OnceLock;
+
+    static FA_REGEX: OnceLock<Regex> = OnceLock::new();
+    static GI_REGEX: OnceLock<Regex> = OnceLock::new();
+    static TE_REGEX: OnceLock<Regex> = OnceLock::new();
+
+    let fa = FA_REGEX.get_or_init(|| Regex::new(r"(?i)(?:^|([^a-zA-Z]))fa\s*(\d)").unwrap());
+    let gi = GI_REGEX.get_or_init(|| Regex::new(r"(?i)(?:^|([^a-zA-Z]))gi\s*(\d)").unwrap());
+    let te = TE_REGEX.get_or_init(|| Regex::new(r"(?i)(?:^|([^a-zA-Z]))te\s*(\d)").unwrap());
+
+    let res = fa.replace_all(input, |caps: &Captures| {
+        let prefix = caps.get(1).map_or("", |m| m.as_str());
+        let num = &caps[2];
+        format!("{}fastethernet{}", prefix, num)
+    });
+    let res = gi.replace_all(&res, |caps: &Captures| {
+        let prefix = caps.get(1).map_or("", |m| m.as_str());
+        let num = &caps[2];
+        format!("{}gigabitethernet{}", prefix, num)
+    });
+    let res = te.replace_all(&res, |caps: &Captures| {
+        let prefix = caps.get(1).map_or("", |m| m.as_str());
+        let num = &caps[2];
+        format!("{}tengigabitethernet{}", prefix, num)
+    });
+
+    res.into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_replace_interface_abbreviations() {
+        assert_eq!(replace_interface_abbreviations("Fa0/1"), "fastethernet0/1");
+        assert_eq!(replace_interface_abbreviations("gi 1/0/2"), "gigabitethernet1/0/2");
+        assert_eq!(replace_interface_abbreviations("Te2/1"), "tengigabitethernet2/1");
+        assert_eq!(replace_interface_abbreviations("Interface Fa0/1をアクセスに"), "Interface fastethernet0/1をアクセスに");
+        assert_eq!(replace_interface_abbreviations("Sofa0/1"), "Sofa0/1");
+        assert_eq!(replace_interface_abbreviations("FA1"), "fastethernet1");
+    }
+}
+
 
