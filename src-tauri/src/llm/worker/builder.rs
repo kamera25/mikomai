@@ -369,8 +369,34 @@ impl LlmWorker for BuilderWorker {
 }
 
 fn extract_config_block(text: &str) -> Option<String> {
-    if let Some(start_idx) = text.find("```") {
-        let rest = &text[start_idx + 3..];
+    // 1. Remove <thought>...</thought> blocks
+    let mut cleaned = String::new();
+    let mut current_idx = 0;
+    while let Some(start_thought) = text[current_idx..].find("<thought>") {
+        let abs_start = current_idx + start_thought;
+        cleaned.push_str(&text[current_idx..abs_start]);
+        if let Some(end_thought) = text[abs_start..].find("</thought>") {
+            current_idx = abs_start + end_thought + "</thought>".len();
+        } else {
+            current_idx = text.len();
+            break;
+        }
+    }
+    if current_idx < text.len() {
+        cleaned.push_str(&text[current_idx..]);
+    }
+
+    // 2. Perform extraction on the cleaned text
+    let target_text = if cleaned.is_empty() && text.contains("<thought>") {
+        ""
+    } else if cleaned.is_empty() {
+        text
+    } else {
+        &cleaned
+    };
+
+    if let Some(start_idx) = target_text.find("```") {
+        let rest = &target_text[start_idx + 3..];
         let content_start = if let Some(newline_idx) = rest.find('\n') {
             let lang = rest[..newline_idx].trim();
             if lang == "cisco" || lang == "ios" || lang == "config" || lang.is_empty() {
@@ -382,15 +408,66 @@ fn extract_config_block(text: &str) -> Option<String> {
             start_idx + 3
         };
         
-        let remaining_text = &text[content_start..];
+        let remaining_text = &target_text[content_start..];
         if let Some(end_idx) = remaining_text.find("```") {
             return Some(remaining_text[..end_idx].trim().to_string());
         }
     }
     
-    if text.contains("interface") || text.contains("hostname") || text.contains("vlan ") {
-        return Some(text.trim().to_string());
+    if target_text.contains("interface") || target_text.contains("hostname") || target_text.contains("vlan ") {
+        return Some(target_text.trim().to_string());
     }
     
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_config_block_with_thought() {
+        let response = r#"<thought>
+We should use the template:
+```fitelnet
+interface GigaEthernet {{interface_num}}.{{subinterface_num}}
+ vlan-id {{vlan_id}}
+ exit
+```
+</thought>
+```fitelnet
+interface GigaEthernet 1.1
+ vlan-id 20
+ exit
+```"#;
+        let config = extract_config_block(response);
+        assert_eq!(
+            config,
+            Some("fitelnet\ninterface GigaEthernet 1.1\n vlan-id 20\n exit".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_config_block_no_thought() {
+        let response = r#"```fitelnet
+interface GigaEthernet 1.1
+ vlan-id 20
+ exit
+```"#;
+        let config = extract_config_block(response);
+        assert_eq!(
+            config,
+            Some("fitelnet\ninterface GigaEthernet 1.1\n vlan-id 20\n exit".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_config_block_raw_text() {
+        let response = "interface GigaEthernet 1.1\n vlan-id 20\n exit";
+        let config = extract_config_block(response);
+        assert_eq!(
+            config,
+            Some("interface GigaEthernet 1.1\n vlan-id 20\n exit".to_string())
+        );
+    }
 }

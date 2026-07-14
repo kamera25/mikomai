@@ -786,11 +786,36 @@ pub fn execute_mcp_tools_flow(
         };
         let _ = window.emit("chat-event", ChatEvent::McpAnalysisStarted(analysis_started_payload));
 
+        let is_builder_route = {
+            let shared_opt = llama_state.shared.lock().await;
+            if let Some(shared) = &*shared_opt {
+                let mut router_lock = shared.router.lock().unwrap();
+                let model = shared.model.clone();
+                let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+                if let Ok(route_result) = router_lock.route(&model, &user_message, settings.repetition_penalty) {
+                    !route_result.routes.is_empty() && route_result.routes[0] == Route::Builder
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+
+        let is_builder_context = is_builder_route || execution_info.iter().any(|(tool_id, _, _)| {
+            *tool_id == "ask_user_choice"
+                || *tool_id == "ask_interface_choice"
+                || *tool_id == "ask_ipaddress_choice"
+                || *tool_id == "validate_cisco_config"
+                || *tool_id == "convert_cisco_config"
+        });
+
         let analyze_payload = crate::llm::llm::AnalyzePayload {
             user_message: user_message.clone(),
             tool_label: combined_tool_label.clone(),
             output: combined_output,
             is_rag: has_rag,
+            is_builder: Some(is_builder_context),
             history_block: Some(history_block),
             subsequent_task: synthesized_task,
         };
@@ -842,30 +867,6 @@ pub fn execute_mcp_tools_flow(
         }
 
         // 6. Check for nested tool calls (nested MCP)
-        let is_builder_route = {
-            let shared_opt = llama_state.shared.lock().await;
-            if let Some(shared) = &*shared_opt {
-                let mut router_lock = shared.router.lock().unwrap();
-                let model = shared.model.clone();
-                let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-                if let Ok(route_result) = router_lock.route(&model, &user_message, settings.repetition_penalty) {
-                    !route_result.routes.is_empty() && route_result.routes[0] == Route::Builder
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        };
-
-        let is_builder_context = is_builder_route || execution_info.iter().any(|(tool_id, _, _)| {
-            *tool_id == "ask_user_choice"
-                || *tool_id == "ask_interface_choice"
-                || *tool_id == "ask_ipaddress_choice"
-                || *tool_id == "validate_cisco_config"
-                || *tool_id == "convert_cisco_config"
-        });
-
         if is_builder_context && depth < 5 {
             let json_blocks = extract_json_blocks(&response_str);
             let mut nested_tool_calls = Vec::new();

@@ -82,6 +82,7 @@ pub enum InferenceRequest {
         tool_label: String,
         output: String,
         is_rag: bool,
+        is_builder: bool,
         history_block: Option<String>,
         subsequent_task: Option<String>,
         respond_to: tokio::sync::oneshot::Sender<Result<String, LlmError>>,
@@ -197,30 +198,50 @@ impl LlamaState {
                         })();
                         let _ = respond_to.send(res);
                     }
-                    InferenceRequest::Analyze { window, user_message, tool_label, output, is_rag, history_block, subsequent_task, respond_to } => {
+                    InferenceRequest::Analyze { window, user_message, tool_label, output, is_rag, is_builder, history_block, subsequent_task, respond_to } => {
                         let res = (|| -> Result<String, LlmError> {
                             let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
                             let model = shared_model.model.clone();
                             let backend = shared_model.backend.clone();
 
                             if is_rag {
-                                let mut worker = shared_model.rag.lock().unwrap();
-                                let agent_name = worker.agent_name();
-                                let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
+                                if is_builder {
+                                    let mut worker = shared_model.builder.lock().unwrap();
+                                    let agent_name = worker.agent_name();
+                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
 
-                                worker.ask(
-                                    &model,
-                                    &backend,
-                                    None,
-                                    Some(user_message),
-                                    Some(tool_label),
-                                    Some(output),
-                                    history_block,
-                                    None,
-                                    Some(&window),
-                                    settings.temperature,
-                                    settings.repetition_penalty,
-                                ).map_err(LlmError::Worker)
+                                    worker.ask(
+                                        &model,
+                                        &backend,
+                                        None,
+                                        Some(user_message),
+                                        Some(tool_label),
+                                        Some(output),
+                                        history_block,
+                                        None,
+                                        Some(&window),
+                                        settings.temperature,
+                                        settings.repetition_penalty,
+                                    ).map_err(LlmError::Worker)
+                                } else {
+                                    let mut worker = shared_model.rag.lock().unwrap();
+                                    let agent_name = worker.agent_name();
+                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
+
+                                    worker.ask(
+                                        &model,
+                                        &backend,
+                                        None,
+                                        Some(user_message),
+                                        Some(tool_label),
+                                        Some(output),
+                                        history_block,
+                                        None,
+                                        Some(&window),
+                                        settings.temperature,
+                                        settings.repetition_penalty,
+                                    ).map_err(LlmError::Worker)
+                                }
                             } else {
                                 let is_ask_user_choice = tool_label.contains("ask_user_choice");
                                 let is_ask_interface_choice = tool_label.contains("ask_interface_choice");
@@ -518,6 +539,7 @@ pub struct AnalyzePayload {
     pub tool_label: String,
     pub output: String,
     pub is_rag: bool,
+    pub is_builder: Option<bool>,
     pub history_block: Option<String>,
     pub subsequent_task: Option<String>,
 }
@@ -583,11 +605,13 @@ pub async fn analyze_tool_output(
         tool_label,
         output,
         is_rag,
+        is_builder,
         history_block,
         subsequent_task,
     } = payload;
 
     let user_message_log = user_message.clone();
+    let is_builder_val = is_builder.unwrap_or(false);
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     llama_state.inference_tx.send(InferenceRequest::Analyze {
@@ -596,6 +620,7 @@ pub async fn analyze_tool_output(
         tool_label,
         output,
         is_rag,
+        is_builder: is_builder_val,
         history_block,
         subsequent_task,
         respond_to: tx,
