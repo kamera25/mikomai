@@ -8,10 +8,11 @@ import "./Chat.css";
 interface ChatProps {
   messages: Message[];
   formatMessageTime: (isoString?: string) => string;
+  sendMessage?: (text?: string) => Promise<void>;
 }
 
 export const Chat = forwardRef<HTMLDivElement, ChatProps>(
-  ({ messages, formatMessageTime }, ref) => {
+  ({ messages, formatMessageTime, sendMessage }, ref) => {
     const { t } = useTranslation();
     const prevMessagesLength = useRef(messages.length);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -95,6 +96,7 @@ export const Chat = forwardRef<HTMLDivElement, ChatProps>(
                 key={msg.task_id || idx}
                 msg={msg}
                 formatMessageTime={formatMessageTime}
+                sendMessage={sendMessage}
               />
             ))
           )}

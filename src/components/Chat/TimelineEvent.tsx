@@ -8,13 +8,16 @@ import { Terminal } from "../Terminal";
 import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon, SpeechIcon, RobotIcon } from "../Icons";
 import { Message } from "../../types";
 import { invoke } from "@tauri-apps/api/core";
+import { useChatContext } from "../../contexts/ChatContext";
+
 
 interface TimelineEventProps {
   msg: Message;
   formatMessageTime: (isoString?: string) => string;
+  sendMessage?: (text?: string) => Promise<void>;
 }
 
-export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) => {
+export const TimelineEvent = ({ msg, formatMessageTime, sendMessage }: TimelineEventProps) => {
   const { t } = useTranslation();
   const isNwDb = msg.tool_id === "query_nw_db" || msg.tool_id === "network_query_nw_db";
   const isChoice = msg.tool_id === "ask_user_choice" || msg.tool_id === "ask_interface_choice" || msg.tool_id === "ask_ipaddress_choice";
@@ -22,6 +25,13 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
+
+  const handleDeviceRetrievalClick = () => {
+    if (sendMessage) {
+      sendMessage("実機から情報を取得してください");
+    }
+  };
+
 
   const handleCopy = async (text: string) => {
     try {
@@ -360,6 +370,13 @@ export const TimelineEvent = ({ msg, formatMessageTime }: TimelineEventProps) =>
               >
                 {remainingContent}
               </ReactMarkdown>
+            </div>
+          )}
+          {msg.role === "ai" && (remainingContent || msg.content).includes("追加の検索キーワードを指示するか、実機から情報を取得しますか？") && (
+            <div className="suggestion-bubble-container">
+              <button className="suggestion-bubble-btn" onClick={handleDeviceRetrievalClick}>
+                <span>実機から情報を取得する</span>
+              </button>
             </div>
           )}
           {msg.role === "user" && msg.status === "Pending" && (

@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Chat } from "../Chat";
 import { Message } from "../../../types";
+
 
 describe("Chat Component", () => {
   const formatMessageTime = (_isoString?: string) => "12:00";

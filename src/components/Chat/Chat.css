@@ -754,3 +754,40 @@
   }
 }
 
+/* Suggestion Balloon Button */
+.suggestion-bubble-container {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin-top: 12px;
+  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.suggestion-bubble-btn {
+  background: var(--bg-secondary);
+  border: 1.5px solid var(--accent-color);
+  color: var(--accent-color);
+  padding: 8px 18px;
+  border-radius: 18px 18px 2px 18px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 8px rgba(59, 130, 246, 0.1);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.suggestion-bubble-btn:hover {
+  background: var(--accent-color);
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px var(--accent-glow), 0 0 12px rgba(59, 130, 246, 0.3);
+}
+
+.suggestion-bubble-btn:active {
+  transform: translateY(-1px);
+}
+
+

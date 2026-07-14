@@ -438,10 +438,10 @@ export function AppLayout() {
     }
   };
 
-  const handleSend = async () => {
-    if (!chatState.input.trim()) return;
+  const sendMessage = async (text?: string) => {
+    const messageText = text !== undefined ? text : chatState.input.trim();
+    if (!messageText) return;
 
-    const userMessage = chatState.input.trim();
     const timestamp = new Date().toISOString();
     const taskId = `task_user_${Date.now()}`;
     const sessionId = chatState.activeSessionId;
@@ -449,8 +449,8 @@ export function AppLayout() {
     const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
     const mentionRegex = /@([a-zA-Z0-9.-]+)/g;
 
-    const foundIPs = userMessage.match(ipRegex) || [];
-    const foundMentions = Array.from(userMessage.matchAll(mentionRegex)).map((m) => m[1]);
+    const foundIPs = messageText.match(ipRegex) || [];
+    const foundMentions = Array.from(messageText.matchAll(mentionRegex)).map((m) => m[1]);
 
     const allFound = [...new Set([...foundMentions, ...foundIPs])];
 
@@ -458,7 +458,9 @@ export function AppLayout() {
       updateRecentHosts(allFound);
     }
 
-    setInput("");
+    if (text === undefined) {
+      setInput("");
+    }
 
     const isPending = isExecutingRef.current;
 
@@ -466,7 +468,7 @@ export function AppLayout() {
       ...prev,
       {
         role: "user",
-        content: userMessage,
+        content: messageText,
         timestamp,
         event_type: "UserInput",
         task_id: taskId,
@@ -476,15 +478,17 @@ export function AppLayout() {
 
     if (isPending) {
       queueRef.current.push({
-        content: userMessage,
+        content: messageText,
         timestamp,
         task_id: taskId,
         sessionId,
       });
     } else {
-      executeMessage(userMessage);
+      executeMessage(messageText);
     }
   };
+
+  const handleSend = () => sendMessage();
 
   const scrollToMessage = (taskId: string) => {
     const element = document.getElementById(taskId);
@@ -627,6 +631,7 @@ export function AppLayout() {
                   ref={messagesEndRef}
                   messages={chatState.messages}
                   formatMessageTime={formatMessageTime}
+                  sendMessage={sendMessage}
                 />
 
                 <div className="input-area-wrapper" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
