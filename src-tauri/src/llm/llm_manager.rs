@@ -52,6 +52,7 @@ pub struct AgentContext {
     pub id: i32,
     pub n_ctx: u32,
     pub max_new_tokens: u32,
+    pub response_prefix: Option<String>,
 }
 
 // SAFETY: AgentContext is only accessed through std::sync::Mutex in SharedWorkers,
@@ -117,6 +118,7 @@ impl AgentContext {
             id,
             n_ctx,
             max_new_tokens,
+            response_prefix: None,
         })
     }
 }
@@ -186,7 +188,14 @@ pub fn run_inference_with_grammar(
     grammar_sampler: Option<LlamaSampler>,
 ) -> Result<String> {
     let prefix_tokens = agent_ctx.model.str_to_token("<|turn>user\n", AddBos::Never).unwrap_or_default();
-    let suffix_tokens = agent_ctx.model.str_to_token("<turn|>\n<|turn>model\n", AddBos::Never).unwrap_or_default();
+    let mut suffix_tokens = agent_ctx.model.str_to_token("<turn|>\n<|turn>model\n", AddBos::Never).unwrap_or_default();
+
+    let response_prefix_str = agent_ctx.response_prefix.clone();
+    if let Some(ref prefix_str) = response_prefix_str {
+        let prefix_tokens_extra = agent_ctx.model.str_to_token(prefix_str, AddBos::Never).unwrap_or_default();
+        suffix_tokens.extend(prefix_tokens_extra);
+    }
+
     let mut user_tokens = agent_ctx.model.str_to_token(prompt, AddBos::Never)?;
 
     if user_tokens.is_empty() {
@@ -238,6 +247,12 @@ pub fn run_inference_with_grammar(
     guard.ctx.decode(&mut batch)?;
 
     let mut result_string = String::new();
+    if let Some(ref prefix_str) = response_prefix_str {
+        if let Some(w) = window {
+            let _ = w.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(prefix_str.clone()));
+        }
+        result_string.push_str(prefix_str);
+    }
     let mut n_cur = current_pos;
 
     let mut samplers = Vec::new();

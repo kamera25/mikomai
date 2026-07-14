@@ -6,14 +6,23 @@ use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
 use tauri::{Emitter, Manager};
 
-const BUILDER_WORKER_PROMPT: &str = include_str!("../prompts/builder_worker.txt");
+const BUILDER_INITIAL_PROMPT: &str = include_str!("../prompts/builder_initial.txt");
+const BUILDER_CONTINUE_PROMPT: &str = include_str!("../prompts/builder_continue.txt");
 
 const MAX_NEW_TOKENS: u32 = 2048;
 const N_CTX: u32 = 8192;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuilderPhase {
+    Initial,
+    Continue,
+}
+
 pub struct BuilderWorker {
     pub ctx: Option<AgentContext>,
     pub collected_choices: Vec<(String, String)>,
+    pub phase: BuilderPhase,
+    pub rag_context: Option<String>,
 }
 
 impl BuilderWorker {
@@ -22,14 +31,25 @@ impl BuilderWorker {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Builder (構築者)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
-                BUILDER_WORKER_PROMPT
+                BUILDER_INITIAL_PROMPT
             );
-            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 7, MAX_NEW_TOKENS, N_CTX)
+            let mut ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 7, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Builder context: {:?}", e))?;
+            ctx.response_prefix = Some("<thought>\n".to_string());
             
-            Ok(Self { ctx: Some(ctx), collected_choices: Vec::new() })
+            Ok(Self {
+                ctx: Some(ctx),
+                collected_choices: Vec::new(),
+                phase: BuilderPhase::Initial,
+                rag_context: None,
+            })
         } else {
-            Ok(Self { ctx: None, collected_choices: Vec::new() })
+            Ok(Self {
+                ctx: None,
+                collected_choices: Vec::new(),
+                phase: BuilderPhase::Initial,
+                rag_context: None,
+            })
         }
     }
 }
@@ -49,13 +69,18 @@ impl LlmWorker for BuilderWorker {
         backend: &Arc<LlamaBackend>,
     ) -> Result<(), String> {
         if self.ctx.is_none() {
+            let prompt_text = match self.phase {
+                BuilderPhase::Initial => BUILDER_INITIAL_PROMPT,
+                BuilderPhase::Continue => BUILDER_CONTINUE_PROMPT,
+            };
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Builder (構築者)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
-                BUILDER_WORKER_PROMPT
+                prompt_text
             );
-            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 7, MAX_NEW_TOKENS, N_CTX)
+            let mut ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 7, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Builder context: {:?}", e))?;
+            ctx.response_prefix = Some("<thought>\n".to_string());
             
             self.ctx = Some(ctx);
         }
@@ -80,17 +105,28 @@ impl LlmWorker for BuilderWorker {
         temperature: f32,
         repetition_penalty: f32,
     ) -> Result<String, String> {
-        self.ensure_initialized(model, backend)?;
-
         if prompt.is_some() {
             self.collected_choices.clear();
+            self.rag_context = None;
+            if self.phase != BuilderPhase::Initial {
+                self.phase = BuilderPhase::Initial;
+                self.ctx = None; // Force context regeneration
+            }
         }
 
         if let (Some(label), Some(out)) = (&tool_label, &output) {
             if label.contains("ask_user_choice") || label.contains("ask_interface_choice") || label.contains("ask_ipaddress_choice") {
                 self.collected_choices.push((label.clone(), out.clone()));
+            } else if label.contains("query_nw_db") || label.contains("query_rag") || label.contains("NWDB検索") {
+                self.rag_context = Some(out.clone());
+            }
+            if self.phase != BuilderPhase::Continue {
+                self.phase = BuilderPhase::Continue;
+                self.ctx = None; // Force context regeneration
             }
         }
+
+        self.ensure_initialized(model, backend)?;
 
         // 未回答の質問があるかチェック
         let has_pending_choices = if let Some(w) = window {
@@ -146,6 +182,15 @@ impl LlmWorker for BuilderWorker {
         } else {
             user_message.clone()
         };
+
+        if let Some(ref rag_ctx) = self.rag_context {
+            if let Some(ref mut msg) = modified_user_message {
+                msg.push_str("\n\n【技術文書データベース(NW-DB)からの検索結果】\n");
+                msg.push_str(rag_ctx);
+            } else {
+                modified_user_message = Some(format!("【技術文書データベース(NW-DB)からの検索結果】\n{}", rag_ctx));
+            }
+        }
 
         let mut prompt = prompt;
         let mut subsequent_task_owned = subsequent_task.map(|s| s.to_string());

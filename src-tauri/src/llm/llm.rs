@@ -74,7 +74,7 @@ pub enum InferenceRequest {
         window: tauri::Window,
         prompt: String,
         original_query: String,
-        respond_to: tokio::sync::oneshot::Sender<Result<String, LlmError>>,
+        respond_to: tokio::sync::oneshot::Sender<Result<(String, Route), LlmError>>,
     },
     Analyze {
         window: tauri::Window,
@@ -137,12 +137,11 @@ impl LlamaState {
                 let shared_model: Arc<SharedModel> = match shared_model_opt {
                     Some(s) => s,
                     None => {
-                        let err = Err(LlmError::ModelNotLoaded);
                         match req {
-                            InferenceRequest::Initial { respond_to, .. } => { let _ = respond_to.send(err); },
-                            InferenceRequest::Analyze { respond_to, .. } => { let _ = respond_to.send(err); },
-                            InferenceRequest::Background { respond_to, .. } => { let _ = respond_to.send(err); },
-                            InferenceRequest::Internal { respond_to, .. } => { let _ = respond_to.send(err); },
+                            InferenceRequest::Initial { respond_to, .. } => { let _ = respond_to.send(Err(LlmError::ModelNotLoaded)); },
+                            InferenceRequest::Analyze { respond_to, .. } => { let _ = respond_to.send(Err(LlmError::ModelNotLoaded)); },
+                            InferenceRequest::Background { respond_to, .. } => { let _ = respond_to.send(Err(LlmError::ModelNotLoaded)); },
+                            InferenceRequest::Internal { respond_to, .. } => { let _ = respond_to.send(Err(LlmError::ModelNotLoaded)); },
                         }
                         continue;
                     }
@@ -150,7 +149,7 @@ impl LlamaState {
 
                 match req {
                     InferenceRequest::Initial { window, prompt, original_query, respond_to } => {
-                        let res = (|| -> Result<String, LlmError> {
+                        let res = (|| -> Result<(String, Route), LlmError> {
                             let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
                             let model = shared_model.model.clone();
                             let backend = shared_model.backend.clone();
@@ -170,7 +169,7 @@ impl LlamaState {
                                 let ask_msg = "ご質問の意図を確認させてください。\n\n```json\n{\n  \"tool_name\": \"ask_user_choice\",\n  \"params\": {\n    \"title\": \"ご質問の意図の確認\",\n    \"message\": \"ご質問の意図を確認させてください。以下のどれに該当しますか？\",\n    \"options\": [\n      \"1. ネットワーク機器の調査 (INVESTIGATE)\",\n      \"2. 技術知識の解説 (KNOWLEDGE)\",\n      \"3. Config作成 (BUILDER)\"\n    ]\n  }\n}\n```";
                                 let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI (アシスタント)".to_string()));
                                 let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(ask_msg.to_string()));
-                                return Ok(ask_msg.to_string());
+                                return Ok((ask_msg.to_string(), Route::None));
                             }
 
                             let active_route = route_result.routes[0];
@@ -194,7 +193,7 @@ impl LlamaState {
                             } else {
                                 Ok("実行が完了しました。".to_string())
                             };
-                            worker_res
+                            worker_res.map(|s| (s, active_route))
                         })();
                         let _ = respond_to.send(res);
                     }
@@ -544,13 +543,12 @@ pub struct AnalyzePayload {
     pub subsequent_task: Option<String>,
 }
 
-#[tauri::command]
-pub async fn ask_llm_initial(
+pub async fn ask_llm_initial_internal(
     window: tauri::Window,
-    payload: AskInitialPayload,
-    llama_state: tauri::State<'_, LlamaState>,
-) -> Result<String, TauriError> {
-    let AskInitialPayload { prompt } = payload;
+    prompt: String,
+    llama_state: &LlamaState,
+) -> Result<(String, Route), LlmError> {
+    let AskInitialPayload { prompt: _ } = AskInitialPayload { prompt: prompt.clone() };
     let original_query = if prompt.starts_with("【ユーザー入力】\n") {
         prompt.strip_prefix("【ユーザー入力】\n")
             .unwrap()
@@ -570,14 +568,15 @@ pub async fn ask_llm_initial(
             });
             let response_str = format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap());
             let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()));
-            return Ok(response_str);
+            return Ok((response_str, Route::None));
         }
     }
 
     log::info!("Received original query: '{}'", original_query);
 
     if crate::llm::greeting::is_greeting(&original_query) {
-        return Ok(crate::llm::greeting::stream_self_introduction(&window).await);
+        let resp = crate::llm::greeting::stream_self_introduction(&window).await;
+        return Ok((resp, Route::None));
     }
 
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -586,12 +585,25 @@ pub async fn ask_llm_initial(
         prompt: prompt.clone(),
         original_query,
         respond_to: tx,
-    }).await.map_err(|e| TauriError::from(LlmError::Worker(format!("Failed to send inference request: {}", e))))?;
+    }).await.map_err(|e| LlmError::Worker(format!("Failed to send inference request: {}", e)))?;
 
-    let inference_result = rx.await.map_err(|e| TauriError::from(LlmError::Worker(format!("Failed to receive inference result: {}", e))))??;
+    let inference_result = rx.await.map_err(|e| LlmError::Worker(format!("Failed to receive inference result: {}", e)))??;
 
-    log::info!("LLM Initial Prompt: {:?}\nResponse: {}", prompt, inference_result);
+    log::info!("LLM Initial Prompt: {:?}\nResponse: {:?}", prompt, inference_result);
     Ok(inference_result)
+}
+
+#[tauri::command]
+pub async fn ask_llm_initial(
+    window: tauri::Window,
+    payload: AskInitialPayload,
+    llama_state: tauri::State<'_, LlamaState>,
+) -> Result<String, TauriError> {
+    let AskInitialPayload { prompt } = payload;
+    let (response, _route) = ask_llm_initial_internal(window, prompt, &*llama_state)
+        .await
+        .map_err(TauriError::from)?;
+    Ok(response)
 }
 
 #[tauri::command]

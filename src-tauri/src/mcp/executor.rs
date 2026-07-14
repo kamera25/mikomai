@@ -594,6 +594,7 @@ pub fn execute_mcp_tools_flow(
     history_limit: usize,
     mcp_timeout: u64,
     depth: usize,
+    is_builder_caller: bool,
 ) -> futures::future::BoxFuture<'static, Result<String, String>> {
     Box::pin(async move {
         use crate::llm::worker::Route;
@@ -725,19 +726,10 @@ pub fn execute_mcp_tools_flow(
                     }
                 }).collect::<Vec<String>>().join("\n");
 
-                let synth_system_prompt = "あなたは優秀なネットワーク要件定義アナリストです。\n元のユーザーの曖昧な質問と、その後に対話によって得られた具体的な回答パラメータを組み合わせて、1つの明確で詳細な「ネットワーク設定要望」の文章（日本語）を再構成してください。\n解説や前置きは一切出力せず、再構成された要望の文章のみを直接出力してください。";
-                let synth_prompt = format!("元のユーザーの質問:\n{}\n\n得られた回答リスト:\n{}", user_message, answers_block);
-                
-                log::info!("Synthesizing true user query from choices (async)...");
-                if let Ok(synthesized_query) = crate::llm::llm::ask_llm_internal(
-                    &synth_prompt,
-                    synth_system_prompt,
-                    &app,
-                    &llama_state,
-                ).await {
-                    log::info!("Synthesized Query: {}", synthesized_query);
-                    synthesized_task = Some(synthesized_query);
-                }
+                // LLM推論を排除しテンプレートベースで要件を再合成する
+                let synthesized_query = format!("{}。追加の確定条件：\n{}", user_message, answers_block);
+                log::info!("Synthesized task (template): {}", synthesized_query);
+                synthesized_task = Some(synthesized_query);
             }
         }
 
@@ -786,23 +778,7 @@ pub fn execute_mcp_tools_flow(
         };
         let _ = window.emit("chat-event", ChatEvent::McpAnalysisStarted(analysis_started_payload));
 
-        let is_builder_route = {
-            let shared_opt = llama_state.shared.lock().await;
-            if let Some(shared) = &*shared_opt {
-                let mut router_lock = shared.router.lock().unwrap();
-                let model = shared.model.clone();
-                let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-                if let Ok(route_result) = router_lock.route(&model, &user_message, settings.repetition_penalty) {
-                    !route_result.routes.is_empty() && route_result.routes[0] == Route::Builder
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        };
-
-        let is_builder_context = is_builder_route || execution_info.iter().any(|(tool_id, _, _)| {
+        let is_builder_context = is_builder_caller || execution_info.iter().any(|(tool_id, _, _)| {
             *tool_id == "ask_user_choice"
                 || *tool_id == "ask_interface_choice"
                 || *tool_id == "ask_ipaddress_choice"
@@ -898,6 +874,7 @@ pub fn execute_mcp_tools_flow(
                     history_limit,
                     mcp_timeout,
                     depth + 1,
+                    is_builder_context,
                 ).await;
                 return nested_response;
             }
@@ -918,6 +895,12 @@ pub async fn execute_mcp_tool(
         tool: payload.tool_id.clone(),
         args: payload.args.clone(),
     }];
+    let is_builder_caller = payload.tool_id == "ask_user_choice"
+        || payload.tool_id == "ask_interface_choice"
+        || payload.tool_id == "ask_ipaddress_choice"
+        || payload.tool_id == "validate_cisco_config"
+        || payload.tool_id == "convert_cisco_config";
+
     execute_mcp_tools_flow(
         app,
         window,
@@ -928,6 +911,7 @@ pub async fn execute_mcp_tool(
         payload.history_limit,
         payload.mcp_timeout,
         0,
+        is_builder_caller,
     ).await
 }
 
@@ -1007,12 +991,8 @@ pub async fn handle_mcp_message(
     let history_block = get_history_block_rust(&summaries, history_limit);
     let prompt_with_context = format!("【ユーザー入力】\n{}{}", user_message, history_block);
 
-    // 3. Call ask_llm_initial
-    let payload_initial = crate::llm::llm::AskInitialPayload {
-        prompt: prompt_with_context,
-    };
-    
-    let response = match crate::llm::llm::ask_llm_initial(window.clone(), payload_initial, llama_state.clone()).await {
+    // 3. Call ask_llm_initial_internal to get the route along with response
+    let (response, route) = match crate::llm::llm::ask_llm_initial_internal(window.clone(), prompt_with_context, &*llama_state).await {
         Ok(res) => res,
         Err(e) => {
             return Err(e.to_string());
@@ -1045,6 +1025,7 @@ pub async fn handle_mcp_message(
     }
 
     if !tool_calls.is_empty() {
+        let is_builder_caller = route == crate::llm::worker::Route::Builder;
         let _ = execute_mcp_tools_flow(
             app.clone(),
             window.clone(),
@@ -1055,6 +1036,7 @@ pub async fn handle_mcp_message(
             history_limit,
             mcp_timeout,
             0,
+            is_builder_caller,
         ).await;
     } else {
         // No tools called: perform summarizeAndSave for the initial response.
