@@ -12,13 +12,25 @@ DB_PATH = os.environ.get("MIKOMAI_DB_PATH", "./data/knowledge.lance")
 TABLE_NAME = "documents"
 
 MODEL_NAME = "intfloat/multilingual-e5-large-instruct"
+MODEL_CACHE_PATH = os.environ.get(
+    "MIKOMAI_MODEL_CACHE_PATH",
+    os.path.expanduser("~/Library/Application Support/com.mikomai.agent/model_cache")
+)
 
 def main():
     print(f"Initializing LanceDB at {DB_PATH}...")
     db = lancedb.connect(DB_PATH)
     
-    print(f"Loading embedding model: {MODEL_NAME}...")
-    model = SentenceTransformer(MODEL_NAME)
+    model_dir = os.path.join(MODEL_CACHE_PATH, MODEL_NAME.replace("/", "_"))
+    if os.path.exists(model_dir):
+        print(f"Loading embedding model from local cache: {model_dir}...")
+        model = SentenceTransformer(model_dir)
+    else:
+        print(f"Downloading and loading embedding model: {MODEL_NAME}...")
+        model = SentenceTransformer(MODEL_NAME)
+        print(f"Saving embedding model to local cache: {model_dir}...")
+        os.makedirs(model_dir, exist_ok=True)
+        model.save(model_dir)
     
     data = []
     

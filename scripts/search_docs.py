@@ -9,6 +9,10 @@ from sentence_transformers import SentenceTransformer
 DB_PATH = os.environ.get("MIKOMAI_DB_PATH", os.path.expanduser("~/Library/Application Support/com.mikomai.agent/lancedb"))
 TABLE_NAME = "documents"
 MODEL_NAME = "intfloat/multilingual-e5-large-instruct"
+MODEL_CACHE_PATH = os.environ.get(
+    "MIKOMAI_MODEL_CACHE_PATH",
+    os.path.expanduser("~/Library/Application Support/com.mikomai.agent/model_cache")
+)
 
 def main():
     parser = argparse.ArgumentParser(description="Search LanceDB documents")
@@ -24,7 +28,13 @@ def main():
         table = db.open_table(TABLE_NAME)
         
         import numpy as np
-        model = SentenceTransformer(MODEL_NAME)
+        model_dir = os.path.join(MODEL_CACHE_PATH, MODEL_NAME.replace("/", "_"))
+        if os.path.exists(model_dir):
+            model = SentenceTransformer(model_dir)
+        else:
+            model = SentenceTransformer(MODEL_NAME)
+            os.makedirs(model_dir, exist_ok=True)
+            model.save(model_dir)
         # E5 models require "query: " prefix for searches
         instructional_query = f"query: {query}"
         query_vector = model.encode(instructional_query).astype(np.float16)
