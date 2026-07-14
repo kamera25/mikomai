@@ -281,7 +281,7 @@ pub fn run_inference_with_grammar(
             break;
         }
 
-        let mut token_bytes = agent_ctx.model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
+        let mut token_bytes = agent_ctx.model.token_to_piece_bytes(new_token_id, 256, false, None).unwrap_or(vec![]);
         bytes_accumulator.append(&mut token_bytes);
 
         process_token_bytes(&mut bytes_accumulator, &mut result_string, window);
@@ -330,7 +330,7 @@ pub fn truncate_and_annotate_section(
     
     let mut bytes = Vec::new();
     for &token in truncated_tokens {
-        let mut piece = model.token_to_piece_bytes(token, 16, false, None)
+        let mut piece = model.token_to_piece_bytes(token, 256, false, None)
             .map_err(|e| anyhow::anyhow!("token_to_piece_bytes failed: {:?}", e))?;
         bytes.append(&mut piece);
     }

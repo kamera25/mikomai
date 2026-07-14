@@ -411,7 +411,7 @@ impl LlamaState {
                                     break;
                                 }
 
-                                let mut token_bytes = shared_model.model.token_to_piece_bytes(new_token_id, 16, false, None).unwrap_or(vec![]);
+                                let mut token_bytes = shared_model.model.token_to_piece_bytes(new_token_id, 256, false, None).unwrap_or(vec![]);
                                 bytes_accumulator.append(&mut token_bytes);
 
                                 process_token_bytes(&mut bytes_accumulator, &mut result_string, None);
