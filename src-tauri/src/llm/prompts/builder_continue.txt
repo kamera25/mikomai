@@ -64,13 +64,13 @@ You are a Builder (Continuation Phase). You specialize in generating network con
      }
      ```
 
-4. `query_rag` (エイリアス: `query_nw_db`): NW技術文書データベースを検索します。
+4. `query_rag` (エイリアス: `query_nw_db`): NW技術文書データベースを検索します（クエリは日本語のキーワードベースで指定）。
    - JSONフォーマット:
      ```json
      {
        "tool_name": "query_rag",
        "params": {
-         "query": "[Context: メーカー名] 検索クエリ"
+         "query": "[Context: メーカー名] 日本語の検索クエリ"
        }
      }
      ```

@@ -166,7 +166,7 @@ pub async fn query_nw_db(
     let db = state.get_db(&app).await?;
     let model = state.get_model()?;
 
-    // E5 models require "query: " prefix for searches
+    // E5 format for query
     let instructional_query = format!("query: {}", processed_query);
     let embeddings = model.embed(vec![instructional_query], None)
         .map_err(|e| format!("Embedding error: {}", e))?;
@@ -178,6 +178,7 @@ pub async fn query_nw_db(
     let mut vector_query = table.query()
         .nearest_to(query_vector)
         .map_err(|e| format!("Vector search error: {}", e))?
+        .distance_type(lancedb::DistanceType::Cosine)
         .limit(3);
     
     let final_filter = brand_filter.or(filter);
@@ -271,5 +272,49 @@ mod tests {
         let state = RagState::new();
         assert!(state.db.lock().unwrap().is_none());
         assert!(state.model.lock().unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_query_nw_db_similarity_score() {
+        // AppHandle target testing if DB exists
+        let app_data_dir = dirs::home_dir().unwrap().join("Library/Application Support/com.mikomai.agent");
+        let db_path = app_data_dir.join("lancedb");
+
+        if !db_path.exists() {
+            println!("DB path does not exist, skipping test");
+            return;
+        }
+
+        let state = RagState::new();
+        let conn = connect(db_path.to_str().unwrap()).execute().await.unwrap();
+        *state.db.lock().unwrap() = Some(conn);
+
+        // Pre-load fastembed model
+        let model = state.get_model().unwrap();
+
+        // Perform query
+        let query = "show interface status".to_string();
+        let instructional_query = format!("query: {}", query);
+        let embeddings = model.embed(vec![instructional_query], None).unwrap();
+        let query_vector = embeddings.first().unwrap().clone();
+
+        let db = state.db.lock().unwrap().clone().unwrap();
+        let table = db.open_table("documents").execute().await.unwrap();
+        let vector_query = table.query()
+            .nearest_to(query_vector)
+            .unwrap()
+            .distance_type(lancedb::DistanceType::Cosine)
+            .limit(3);
+
+        let mut stream = vector_query.execute().await.unwrap();
+        if let Some(Ok(batch)) = stream.next().await {
+            let dist_col = batch.column_by_name("_distance").unwrap();
+            let dist_array = dist_col.as_any().downcast_ref::<Float32Array>().unwrap();
+            let first_distance = dist_array.value(0);
+            let score = 1.0 - first_distance;
+            println!("Query: '{}', First match distance: {}, Similarity Score: {}", query, first_distance, score);
+            // Verify similarity score is reasonably high (> 0.70)
+            assert!(score > 0.70, "Similarity score {} is too low for direct match query!", score);
+        }
     }
 }

@@ -35,8 +35,9 @@ def main():
             model = SentenceTransformer(MODEL_NAME)
             os.makedirs(model_dir, exist_ok=True)
             model.save(model_dir)
-        # E5 models require "query: " prefix for searches
-        instructional_query = f"query: {query}"
+        # E5 instruct format for query
+        task_description = "ネットワーク機器の操作マニュアルから、関連する設定コマンドや手順を検索します。"
+        instructional_query = f"Instruct: {task_description}\nQuery: {query}"
         query_vector = model.encode(instructional_query).astype(np.float16)
         
         search_builder = table.search(query_vector)

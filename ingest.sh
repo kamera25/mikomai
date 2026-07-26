@@ -20,7 +20,7 @@ source venv/bin/activate
 # Install dependencies
 echo "Installing/Updating dependencies..."
 pip install --upgrade pip
-pip install lancedb pyarrow sentence-transformers python-frontmatter pandas numpy pylance
+pip install lancedb pyarrow fastembed python-frontmatter pandas numpy pylance
 
 # Determine App Data Directory (macOS default for Tauri)
 # Identifier: com.mikomai.agent
