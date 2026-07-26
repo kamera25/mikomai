@@ -4,7 +4,7 @@ use llama_cpp_2::model::LlamaModel;
 use crate::llm::llm_manager::SharedModel;
 use crate::llm::llm::{LlamaState, ModelState, LlmError};
 use crate::llm::worker::{
-    Router, InvestigateWorker, KnowledgeWorker, AnalysisWorker, RagWorker, SummarizationWorker, PlotterWorker, BuilderWorker
+    LlmWorker, Router, InvestigateWorker, KnowledgeWorker, AnalysisWorker, RagWorker, SummarizationWorker, PlotterWorker, BuilderWorker
 };
 use tauri::Emitter;
 use crate::error::TauriError;
@@ -27,7 +27,11 @@ pub async fn load_model(
     let backend = state.backend.clone();
     let path_clone = path.clone();
     let model_res = tokio::task::spawn_blocking(move || {
-        let mut model_params = std::pin::pin!(LlamaModelParams::default());
+        let n_gpu_layers = std::env::var("MIKOMAI_N_GPU_LAYERS")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(99);
+        let mut model_params = std::pin::pin!(LlamaModelParams::default().with_n_gpu_layers(n_gpu_layers));
         model_params.as_mut().add_cpu_buft_override(c".*vision.*");
         LlamaModel::load_from_file(&*backend, &path_clone, &model_params)
     }).await.map_err(|e| LlmError::SpawnBlocking(e.to_string()))?;
@@ -48,76 +52,36 @@ pub async fn load_model(
     
     let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
 
+    // Phase 1: Initialize Router and SummarizationWorker, create fast shell instances for other workers
     let router_model = model_arc.clone();
     let router_backend = state.backend.clone();
     let router_task = tokio::task::spawn_blocking(move || {
         Router::new(&router_model, &router_backend).map_err(|e| LlmError::Routing(format!("{:?}", e)))
     });
 
-    let investigate_model = model_arc.clone();
-    let investigate_backend = state.backend.clone();
-    let investigate_task = tokio::task::spawn_blocking(move || {
-        InvestigateWorker::new(&investigate_model, &investigate_backend, settings.preload_investigate).map_err(LlmError::Worker)
-    });
-
-    let knowledge_model = model_arc.clone();
-    let knowledge_backend = state.backend.clone();
-    let knowledge_task = tokio::task::spawn_blocking(move || {
-        KnowledgeWorker::new(&knowledge_model, &knowledge_backend, settings.preload_knowledge).map_err(LlmError::Worker)
-    });
-
-    let analysis_model = model_arc.clone();
-    let analysis_backend = state.backend.clone();
-    let analysis_task = tokio::task::spawn_blocking(move || {
-        AnalysisWorker::new(&analysis_model, &analysis_backend, settings.preload_analysis).map_err(LlmError::Worker)
-    });
-
-    let rag_model = model_arc.clone();
-    let rag_backend = state.backend.clone();
-    let rag_task = tokio::task::spawn_blocking(move || {
-        RagWorker::new(&rag_model, &rag_backend, settings.preload_rag).map_err(LlmError::Worker)
-    });
-
     let summarization_model = model_arc.clone();
     let summarization_backend = state.backend.clone();
     let summarization_task = tokio::task::spawn_blocking(move || {
-        SummarizationWorker::new(&summarization_model, &summarization_backend).map_err(LlmError::Worker)
+        SummarizationWorker::new(&summarization_model, &summarization_backend, true).map_err(LlmError::Worker)
     });
 
-    let plotter_model = model_arc.clone();
-    let plotter_backend = state.backend.clone();
-    let plotter_task = tokio::task::spawn_blocking(move || {
-        PlotterWorker::new(&plotter_model, &plotter_backend, settings.preload_plotter).map_err(LlmError::Worker)
-    });
+    // Create fast uninitialized shell instances (preload: false)
+    let investigate = InvestigateWorker::new(&model_arc, &state.backend, false).map_err(LlmError::Worker)?;
+    let knowledge = KnowledgeWorker::new(&model_arc, &state.backend, false).map_err(LlmError::Worker)?;
+    let analysis = AnalysisWorker::new(&model_arc, &state.backend, false).map_err(LlmError::Worker)?;
+    let rag = RagWorker::new(&model_arc, &state.backend, false).map_err(LlmError::Worker)?;
+    let plotter = PlotterWorker::new(&model_arc, &state.backend, false).map_err(LlmError::Worker)?;
+    let builder = BuilderWorker::new(&model_arc, &state.backend, false).map_err(LlmError::Worker)?;
 
-    let builder_model = model_arc.clone();
-    let builder_backend = state.backend.clone();
-    let builder_task = tokio::task::spawn_blocking(move || {
-        BuilderWorker::new(&builder_model, &builder_backend, true).map_err(LlmError::Worker)
-    });
-
-    let (router_res, investigate_res, knowledge_res, analysis_res, rag_res, summarization_res, plotter_res, builder_res) = tokio::try_join!(
+    let (router_res, summarization_res) = tokio::try_join!(
         router_task,
-        investigate_task,
-        knowledge_task,
-        analysis_task,
-        rag_task,
-        summarization_task,
-        plotter_task,
-        builder_task
+        summarization_task
     ).map_err(|e| LlmError::SpawnBlocking(e.to_string()))?;
 
     let router = router_res?;
-    let investigate = investigate_res?;
-    let knowledge = knowledge_res?;
-    let analysis = analysis_res?;
-    let rag = rag_res?;
     let summarization = summarization_res?;
-    let plotter = plotter_res?;
-    let builder = builder_res?;
     
-    let mut shared_lock = state.shared.lock().await;
-    *shared_lock = Some(Arc::new(SharedModel {
+    let shared_model = Arc::new(SharedModel {
         workers: Some(crate::llm::llm_manager::SharedWorkers {
             router: std::sync::Mutex::new(router),
             investigate: std::sync::Mutex::new(investigate),
@@ -128,15 +92,56 @@ pub async fn load_model(
             plotter: std::sync::Mutex::new(plotter),
             builder: std::sync::Mutex::new(builder),
         }),
-        model: model_arc,
+        model: model_arc.clone(),
         backend: state.backend.clone(),
-    }));
+    });
+
+    let mut shared_lock = state.shared.lock().await;
+    *shared_lock = Some(shared_model.clone());
     
+    // Unlock UI immediately
     {
         let mut status_lock = state.status.lock().await;
         *status_lock = ModelState::Loaded;
         let _ = app.emit("model-status-changed", &*status_lock);
     }
+
+    // Phase 2: Asynchronously warm up preloaded workers in the background
+    let model_bg = model_arc.clone();
+    let backend_bg = state.backend.clone();
+    let shared_bg = shared_model.clone();
+    tokio::task::spawn_blocking(move || {
+        if settings.preload_investigate {
+            if let Ok(mut w) = shared_bg.investigate.lock() {
+                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+            }
+        }
+        if settings.preload_knowledge {
+            if let Ok(mut w) = shared_bg.knowledge.lock() {
+                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+            }
+        }
+        if settings.preload_analysis {
+            if let Ok(mut w) = shared_bg.analysis.lock() {
+                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+            }
+        }
+        if settings.preload_rag {
+            if let Ok(mut w) = shared_bg.rag.lock() {
+                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+            }
+        }
+        if settings.preload_plotter {
+            if let Ok(mut w) = shared_bg.plotter.lock() {
+                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+            }
+        }
+        if settings.preload_builder {
+            if let Ok(mut w) = shared_bg.builder.lock() {
+                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+            }
+        }
+    });
     
     Ok("Model loaded successfully".to_string())
 }

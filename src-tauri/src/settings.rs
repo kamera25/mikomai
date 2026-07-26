@@ -5,8 +5,8 @@ use tauri::Manager;
 use crate::error::TauriError;
 use validator::Validate;
 
-fn default_true() -> bool {
-    true
+fn default_false() -> bool {
+    false
 }
 
 
@@ -48,16 +48,20 @@ pub struct AppSettings {
     #[serde(default)]
     #[validate(range(min = 110, max = 1000000))]
     pub console_baud_rate: Option<u32>,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub preload_investigate: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub preload_knowledge: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub preload_analysis: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub preload_rag: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub preload_plotter: bool,
+    #[serde(default = "default_false")]
+    pub preload_builder: bool,
+    #[serde(default = "default_false")]
+    pub preload_summarization: bool,
     #[serde(default = "default_cache_expiry")]
     #[validate(range(min = 1, max = 1440))]
     pub cache_expiry_minutes: Option<u64>,
@@ -85,11 +89,13 @@ impl Default for AppSettings {
             ip_version: Some("auto".to_string()),
             console_port: None,
             console_baud_rate: Some(9600),
-            preload_investigate: true,
-            preload_knowledge: true,
-            preload_analysis: true,
-            preload_rag: true,
-            preload_plotter: true,
+            preload_investigate: false,
+            preload_knowledge: false,
+            preload_analysis: false,
+            preload_rag: false,
+            preload_plotter: false,
+            preload_builder: false,
+            preload_summarization: false,
             cache_expiry_minutes: Some(10),
             n_ctx: 4096,
             max_gen: 2048,
@@ -171,11 +177,13 @@ mod tests {
         assert_eq!(settings.ip_version, Some("auto".to_string()));
         assert!(settings.console_port.is_none());
         assert_eq!(settings.console_baud_rate, Some(9600));
-        assert!(settings.preload_investigate);
-        assert!(settings.preload_knowledge);
-        assert!(settings.preload_analysis);
-        assert!(settings.preload_rag);
-        assert!(settings.preload_plotter);
+        assert!(!settings.preload_investigate);
+        assert!(!settings.preload_knowledge);
+        assert!(!settings.preload_analysis);
+        assert!(!settings.preload_rag);
+        assert!(!settings.preload_plotter);
+        assert!(!settings.preload_builder);
+        assert!(!settings.preload_summarization);
         assert_eq!(settings.cache_expiry_minutes, Some(10));
         assert_eq!(settings.prompt_keep_tokens, 500);
     }
@@ -198,6 +206,8 @@ mod tests {
             preload_analysis: false,
             preload_rag: true,
             preload_plotter: true,
+            preload_builder: false,
+            preload_summarization: false,
             cache_expiry_minutes: Some(15),
             n_ctx: 4096,
             max_gen: 2048,

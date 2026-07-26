@@ -25,10 +25,13 @@ export function useSettings() {
   const [ipVersion, setIpVersion] = useState<string>(DEFAULT_IP_VERSION);
   const [consolePort, setConsolePort] = useState<string | null>(null);
   const [consoleBaudRate, setConsoleBaudRate] = useState<number>(9600);
-  const [preloadInvestigate, setPreloadInvestigate] = useState<boolean>(true);
-  const [preloadKnowledge, setPreloadKnowledge] = useState<boolean>(true);
-  const [preloadAnalysis, setPreloadAnalysis] = useState<boolean>(true);
-  const [preloadRag, setPreloadRag] = useState<boolean>(true);
+  const [preloadInvestigate, setPreloadInvestigate] = useState<boolean>(false);
+  const [preloadKnowledge, setPreloadKnowledge] = useState<boolean>(false);
+  const [preloadAnalysis, setPreloadAnalysis] = useState<boolean>(false);
+  const [preloadRag, setPreloadRag] = useState<boolean>(false);
+  const [preloadPlotter, setPreloadPlotter] = useState<boolean>(false);
+  const [preloadBuilder, setPreloadBuilder] = useState<boolean>(false);
+  const [preloadSummarization, setPreloadSummarization] = useState<boolean>(false);
   const [recentIPs, setRecentIPs] = useState<string[]>([]);
 
   // Load settings from backend
@@ -56,6 +59,10 @@ export function useSettings() {
             setPreloadKnowledge(settings.preloadKnowledge);
           if (settings.preloadAnalysis !== undefined) setPreloadAnalysis(settings.preloadAnalysis);
           if (settings.preloadRag !== undefined) setPreloadRag(settings.preloadRag);
+          if (settings.preloadPlotter !== undefined) setPreloadPlotter(settings.preloadPlotter);
+          if (settings.preloadBuilder !== undefined) setPreloadBuilder(settings.preloadBuilder);
+          if (settings.preloadSummarization !== undefined)
+            setPreloadSummarization(settings.preloadSummarization);
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -91,6 +98,14 @@ export function useSettings() {
       preloadAnalysis:
         overrides.preloadAnalysis !== undefined ? overrides.preloadAnalysis : preloadAnalysis,
       preloadRag: overrides.preloadRag !== undefined ? overrides.preloadRag : preloadRag,
+      preloadPlotter:
+        overrides.preloadPlotter !== undefined ? overrides.preloadPlotter : preloadPlotter,
+      preloadBuilder:
+        overrides.preloadBuilder !== undefined ? overrides.preloadBuilder : preloadBuilder,
+      preloadSummarization:
+        overrides.preloadSummarization !== undefined
+          ? overrides.preloadSummarization
+          : preloadSummarization,
     };
     try {
       await invoke("save_settings", { settings: payload });
@@ -128,6 +143,12 @@ export function useSettings() {
     setPreloadAnalysis,
     preloadRag,
     setPreloadRag,
+    preloadPlotter,
+    setPreloadPlotter,
+    preloadBuilder,
+    setPreloadBuilder,
+    preloadSummarization,
+    setPreloadSummarization,
     recentIPs,
     setRecentIPs,
     saveAllSettings,

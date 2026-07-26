@@ -209,4 +209,7 @@ export interface SystemSettings {
   preloadKnowledge?: boolean;
   preloadAnalysis?: boolean;
   preloadRag?: boolean;
+  preloadPlotter?: boolean;
+  preloadBuilder?: boolean;
+  preloadSummarization?: boolean;
 }

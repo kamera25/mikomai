@@ -10,15 +10,18 @@ const MAX_NEW_TOKENS: u32 = 256;
 const N_CTX: u32 = 8192;
 
 pub struct SummarizationWorker {
-    pub ctx: AgentContext,
+    pub ctx: Option<AgentContext>,
 }
 
 impl SummarizationWorker {
-    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>) -> Result<Self, String> {
-        let ctx = AgentContext::new(model.clone(), backend.clone(), SUMMARIZATION_PROMPT, 5, MAX_NEW_TOKENS, N_CTX)
-            .map_err(|e| format!("Failed to create Summarization context: {:?}", e))?;
-        
-        Ok(Self { ctx })
+    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>, preload: bool) -> Result<Self, String> {
+        if preload {
+            let ctx = AgentContext::new(model.clone(), backend.clone(), SUMMARIZATION_PROMPT, 5, MAX_NEW_TOKENS, N_CTX)
+                .map_err(|e| format!("Failed to create Summarization context: {:?}", e))?;
+            Ok(Self { ctx: Some(ctx) })
+        } else {
+            Ok(Self { ctx: None })
+        }
     }
 }
 
@@ -28,14 +31,19 @@ impl LlmWorker for SummarizationWorker {
     }
 
     fn context_mut(&mut self) -> &mut AgentContext {
-        &mut self.ctx
+        self.ctx.as_mut().expect("Summarization context not initialized")
     }
 
     fn ensure_initialized(
         &mut self,
-        _model: &Arc<LlamaModel>,
-        _backend: &Arc<LlamaBackend>,
+        model: &Arc<LlamaModel>,
+        backend: &Arc<LlamaBackend>,
     ) -> Result<(), String> {
+        if self.ctx.is_none() {
+            let ctx = AgentContext::new(model.clone(), backend.clone(), SUMMARIZATION_PROMPT, 5, MAX_NEW_TOKENS, N_CTX)
+                .map_err(|e| format!("Failed to create Summarization context: {:?}", e))?;
+            self.ctx = Some(ctx);
+        }
         Ok(())
     }
 

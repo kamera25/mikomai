@@ -43,6 +43,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
     setPreloadAnalysis,
     preloadRag,
     setPreloadRag,
+    preloadPlotter,
+    setPreloadPlotter,
+    preloadBuilder,
+    setPreloadBuilder,
+    preloadSummarization,
+    setPreloadSummarization,
     saveAllSettings,
   } = useSettingsContext();
 
@@ -119,6 +125,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
   const handlePreloadRagChange = (val: boolean) => {
     setPreloadRag(val);
     saveAllSettings({ preloadRag: val });
+  };
+
+  const handlePreloadBuilderChange = (val: boolean) => {
+    setPreloadBuilder(val);
+    saveAllSettings({ preloadBuilder: val });
+  };
+
+  const handlePreloadPlotterChange = (val: boolean) => {
+    setPreloadPlotter(val);
+    saveAllSettings({ preloadPlotter: val });
+  };
+
+  const handlePreloadSummarizationChange = (val: boolean) => {
+    setPreloadSummarization(val);
+    saveAllSettings({ preloadSummarization: val });
   };
 
   useEffect(() => {
@@ -446,6 +467,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                     onChange={(e) => handlePreloadRagChange(e.target.checked)}
                   />
                   {t("settings.worker_rag")}
+                </label>
+                <label className="preload-label">
+                  <input
+                    type="checkbox"
+                    checked={preloadBuilder}
+                    onChange={(e) => handlePreloadBuilderChange(e.target.checked)}
+                  />
+                  {t("settings.worker_builder")}
+                </label>
+                <label className="preload-label">
+                  <input
+                    type="checkbox"
+                    checked={preloadPlotter}
+                    onChange={(e) => handlePreloadPlotterChange(e.target.checked)}
+                  />
+                  {t("settings.worker_plotter")}
                 </label>
               </div>
             </div>
