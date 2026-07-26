@@ -374,6 +374,8 @@ impl LlamaState {
                             let mut ctx_params = LlamaContextParams::default();
                             ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(n_ctx as u32));
                             ctx_params = ctx_params.with_n_batch(n_ctx as u32);
+                            ctx_params = ctx_params.with_type_k(llama_cpp_2::context::params::KvCacheType::Q4_0);
+                            ctx_params = ctx_params.with_type_v(llama_cpp_2::context::params::KvCacheType::Q4_0);
                             ctx_params = ctx_params.with_flash_attention_policy(1);
 
                             let mut ctx = shared_model.model.new_context(&shared_model.backend, ctx_params)
