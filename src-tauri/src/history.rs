@@ -120,6 +120,75 @@ pub enum HistoryError {
     Json(#[from] serde_json::Error),
 }
 
+pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool {
+    let mut modified = false;
+    for item in items.iter_mut() {
+        match item {
+            HistoryItem::Session(ref mut session) => {
+                for msg in session.messages.iter_mut() {
+                    match msg {
+                        Message::ToolExecution {
+                            ref mut status,
+                            ref mut is_tool_loading,
+                            ref mut summary_text,
+                            ref mut raw_data,
+                            ref action_name,
+                            ..
+                        } => {
+                            if status == "Running" || is_tool_loading == &Some(true) {
+                                *status = "Failed".to_string();
+                                *is_tool_loading = Some(false);
+                                *summary_text = format!("{} 失敗", action_name);
+                                if raw_data.is_none() || raw_data.as_deref().unwrap_or("").trim().is_empty() {
+                                    *raw_data = Some("アプリケーションが終了したため、MCPの実行が失敗しました。".to_string());
+                                }
+                                modified = true;
+                            }
+                        }
+                        Message::AgentResponse {
+                            ref mut is_tool_loading,
+                            ..
+                        }
+                        | Message::UserInput {
+                            ref mut is_tool_loading,
+                            ..
+                        }
+                        | Message::SystemMessage {
+                            ref mut is_tool_loading,
+                            ..
+                        } => {
+                            if is_tool_loading == &Some(true) {
+                                *is_tool_loading = Some(false);
+                                modified = true;
+                            }
+                        }
+                    }
+                }
+            }
+            HistoryItem::Folder(ref mut folder) => {
+                if sanitize_history_items(&mut folder.items) {
+                    modified = true;
+                }
+            }
+        }
+    }
+    modified
+}
+
+pub fn cleanup_running_history_on_exit(app: &tauri::AppHandle) -> Result<(), TauriError> {
+    let path = get_history_path(app);
+    if !path.exists() {
+        return Ok(());
+    }
+    let data = fs::read_to_string(&path)?;
+    let mut history: Vec<HistoryItem> = serde_json::from_str(&data)?;
+    if sanitize_history_items(&mut history) {
+        let data = serde_json::to_string_pretty(&history)?;
+        fs::write(path, data)?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn load_history(app: tauri::AppHandle) -> Result<Vec<HistoryItem>, TauriError> {
     let path = get_history_path(&app);
@@ -127,7 +196,10 @@ pub fn load_history(app: tauri::AppHandle) -> Result<Vec<HistoryItem>, TauriErro
         return Ok(vec![]);
     }
     let data = fs::read_to_string(path)?;
-    let history: Vec<HistoryItem> = serde_json::from_str(&data)?;
+    let mut history: Vec<HistoryItem> = serde_json::from_str(&data)?;
+    if sanitize_history_items(&mut history) {
+        let _ = save_history(app, history.clone());
+    }
     Ok(history)
 }
 
@@ -206,6 +278,58 @@ mod tests {
         let serialized = serde_json::to_string(&summary).unwrap();
         assert!(serialized.contains(r#""timestamp":"2023-10-27T10:00:00Z""#));
         assert!(serialized.contains(r#""content":"Test summary""#));
+    }
+
+    #[test]
+    fn test_sanitize_history_items_running_mcp() {
+        let mut history = vec![HistoryItem::Session(ChatSession {
+            id: "session-1".to_string(),
+            title: "Test Session".to_string(),
+            messages: vec![Message::ToolExecution {
+                role: "ai".to_string(),
+                content: "".to_string(),
+                timestamp: None,
+                is_tool_loading: Some(true),
+                is_hidden: None,
+                task_id: Some("task-123".to_string()),
+                status: "Running".to_string(),
+                action_name: "ask_interface_choice".to_string(),
+                tool_id: "ask_interface_choice".to_string(),
+                summary_text: "ask_interface_choice を実行中...".to_string(),
+                raw_data: None,
+                args: None,
+                saved_path: None,
+                is_cached: None,
+                cache_time: None,
+            }],
+            recent_ips: None,
+        })];
+
+        let modified = sanitize_history_items(&mut history);
+        assert!(modified);
+
+        if let HistoryItem::Session(session) = &history[0] {
+            if let Message::ToolExecution {
+                status,
+                is_tool_loading,
+                summary_text,
+                raw_data,
+                ..
+            } = &session.messages[0]
+            {
+                assert_eq!(status, "Failed");
+                assert_eq!(*is_tool_loading, Some(false));
+                assert_eq!(summary_text, "ask_interface_choice 失敗");
+                assert_eq!(
+                    raw_data.as_deref(),
+                    Some("アプリケーションが終了したため、MCPの実行が失敗しました。")
+                );
+            } else {
+                panic!("Expected ToolExecution message");
+            }
+        } else {
+            panic!("Expected Session item");
+        }
     }
 }
 

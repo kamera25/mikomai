@@ -544,7 +544,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
 
         <footer className="settings-footer">
           <div className="settings-footer-content">
-            <button className="btn btn-primary" onClick={onClose}>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                saveAllSettings({});
+                onClose();
+              }}
+            >
               {t("settings.btn_save_exit")}
             </button>
           </div>

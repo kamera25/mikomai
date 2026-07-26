@@ -72,6 +72,25 @@ export function useSettings() {
   }, []);
 
   const saveAllSettings = async (overrides: Partial<SystemSettings>) => {
+    if (overrides.historyLimit !== undefined) setHistoryLimit(overrides.historyLimit);
+    if (overrides.temperature !== undefined) setTemperature(overrides.temperature);
+    if (overrides.repetitionPenalty !== undefined) setRepetitionPenalty(overrides.repetitionPenalty);
+    if (overrides.modelPath !== undefined) setModelPath(overrides.modelPath);
+    if (overrides.recentIps !== undefined) setRecentIPs(overrides.recentIps);
+    if (overrides.mcpTimeout !== undefined) setMcpTimeout(overrides.mcpTimeout);
+    if (overrides.cacheExpiryMinutes !== undefined) setCacheExpiryMinutes(overrides.cacheExpiryMinutes);
+    if (overrides.dbPath !== undefined) setDbPath(overrides.dbPath);
+    if (overrides.ipVersion !== undefined) setIpVersion(overrides.ipVersion);
+    if (overrides.consolePort !== undefined) setConsolePort(overrides.consolePort);
+    if (overrides.consoleBaudRate !== undefined) setConsoleBaudRate(overrides.consoleBaudRate);
+    if (overrides.preloadInvestigate !== undefined) setPreloadInvestigate(overrides.preloadInvestigate);
+    if (overrides.preloadKnowledge !== undefined) setPreloadKnowledge(overrides.preloadKnowledge);
+    if (overrides.preloadAnalysis !== undefined) setPreloadAnalysis(overrides.preloadAnalysis);
+    if (overrides.preloadRag !== undefined) setPreloadRag(overrides.preloadRag);
+    if (overrides.preloadPlotter !== undefined) setPreloadPlotter(overrides.preloadPlotter);
+    if (overrides.preloadBuilder !== undefined) setPreloadBuilder(overrides.preloadBuilder);
+    if (overrides.preloadSummarization !== undefined) setPreloadSummarization(overrides.preloadSummarization);
+
     const payload = {
       historyLimit: overrides.historyLimit !== undefined ? overrides.historyLimit : historyLimit,
       temperature: overrides.temperature !== undefined ? overrides.temperature : temperature,

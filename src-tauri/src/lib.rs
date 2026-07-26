@@ -98,6 +98,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
+                let _ = history::cleanup_running_history_on_exit(app_handle);
                 let state = app_handle.state::<llm::LlamaState>();
                 let status = state.status.blocking_lock();
                 if let llm::ModelState::Loading = *status {
