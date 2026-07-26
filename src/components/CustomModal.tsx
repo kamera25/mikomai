@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import "./CustomModal.css";
+import { TrashIcon, EditIcon, CrossIcon } from "./Icons";
 
 interface CustomModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export const CustomModal: React.FC<CustomModalProps> = ({
 
   const displayConfirmLabel = confirmLabel || t("common.confirm");
   const displayCancelLabel = cancelLabel || t("common.cancel");
+  const isDanger = type === "confirm";
 
   useEffect(() => {
     if (isOpen) {
@@ -65,6 +67,23 @@ export const CustomModal: React.FC<CustomModalProps> = ({
     onConfirm(type === "prompt" ? inputValue : undefined);
   };
 
+  const renderModalIcon = () => {
+    if (type === "confirm") {
+      return (
+        <div className="custom-modal-icon-badge danger">
+          <TrashIcon size={20} />
+        </div>
+      );
+    } else if (type === "prompt") {
+      return (
+        <div className="custom-modal-icon-badge primary">
+          <EditIcon size={20} />
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div
       className="custom-modal-overlay"
@@ -83,9 +102,12 @@ export const CustomModal: React.FC<CustomModalProps> = ({
         role="presentation"
       >
         <div className="custom-modal-header">
-          <h3 className="custom-modal-title">{title}</h3>
+          <div className="custom-modal-title-wrapper">
+            {renderModalIcon()}
+            <h3 className="custom-modal-title">{title}</h3>
+          </div>
           <button className="custom-modal-close" onClick={onCancel} aria-label="Close">
-            &times;
+            <CrossIcon size={16} />
           </button>
         </div>
         <form onSubmit={handleSubmit}>
@@ -102,32 +124,12 @@ export const CustomModal: React.FC<CustomModalProps> = ({
               />
             )}
             {type === "select" && (
-              <div className="custom-modal-select-options" style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "16px" }}>
+              <div className="custom-modal-select-options">
                 {options.map((opt, idx) => (
                   <button
                     key={idx}
                     type="button"
-                    className="custom-modal-btn option-btn"
-                    style={{
-                      width: "100%",
-                      padding: "12px 16px",
-                      background: "var(--bg-secondary)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "6px",
-                      color: "var(--text-primary)",
-                      textAlign: "left",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                      transition: "all 0.2s ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "var(--bg-tertiary)";
-                      e.currentTarget.style.borderColor = "var(--primary)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "var(--bg-secondary)";
-                      e.currentTarget.style.borderColor = "var(--border)";
-                    }}
+                    className="custom-modal-option-btn"
                     onClick={() => onConfirm(opt)}
                   >
                     {opt}
@@ -143,9 +145,10 @@ export const CustomModal: React.FC<CustomModalProps> = ({
             {type !== "select" && (
               <button
                 type="submit"
-                className={`custom-modal-btn confirm ${type === "confirm" ? "danger" : "primary"}`}
+                className={`custom-modal-btn confirm ${isDanger ? "danger" : "primary"}`}
                 disabled={type === "prompt" && !inputValue.trim()}
               >
+                {isDanger && <TrashIcon size={15} style={{ marginRight: 6 }} />}
                 {displayConfirmLabel}
               </button>
             )}
