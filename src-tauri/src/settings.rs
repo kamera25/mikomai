@@ -29,7 +29,7 @@ fn default_max_gen() -> usize {
 #[derive(Serialize, Deserialize, Clone, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
-    #[validate(range(min = 1, max = 100))]
+    #[validate(range(min = 0, max = 100))]
     pub history_limit: usize,
     #[validate(range(min = 0.0, max = 2.0))]
     pub temperature: f32,
@@ -63,7 +63,7 @@ pub struct AppSettings {
     #[serde(default = "default_false")]
     pub preload_summarization: bool,
     #[serde(default = "default_cache_expiry")]
-    #[validate(range(min = 1, max = 1440))]
+    #[validate(range(min = 0, max = 1440))]
     pub cache_expiry_minutes: Option<u64>,
     #[serde(default = "default_n_ctx")]
     #[validate(range(min = 512, max = 32768))]
@@ -228,5 +228,34 @@ mod tests {
         assert!(serialized.contains(r#""preloadInvestigate":false"#));
         assert!(serialized.contains(r#""cacheExpiryMinutes":15"#));
         assert!(serialized.contains(r#""promptKeepTokens":500"#));
+    }
+
+    #[test]
+    fn test_app_settings_zero_validation() {
+        let settings = AppSettings {
+            history_limit: 0,
+            temperature: 0.0,
+            repetition_penalty: 1.1,
+            model_path: None,
+            recent_ips: Vec::new(),
+            mcp_timeout: Some(30),
+            db_path: None,
+            ip_version: Some("auto".to_string()),
+            console_port: None,
+            console_baud_rate: Some(9600),
+            preload_investigate: false,
+            preload_knowledge: false,
+            preload_analysis: false,
+            preload_rag: false,
+            preload_plotter: false,
+            preload_builder: false,
+            preload_summarization: false,
+            cache_expiry_minutes: Some(0),
+            n_ctx: 4096,
+            max_gen: 2048,
+            prompt_keep_tokens: 500,
+        };
+
+        assert!(settings.validate().is_ok());
     }
 }

@@ -72,6 +72,25 @@ export function useSettings() {
   }, []);
 
   const saveAllSettings = async (overrides: Partial<SystemSettings>) => {
+    const updatedHistoryLimit = overrides.historyLimit !== undefined ? overrides.historyLimit : historyLimit;
+    const updatedTemperature = overrides.temperature !== undefined ? overrides.temperature : temperature;
+    const updatedRepetitionPenalty = overrides.repetitionPenalty !== undefined ? overrides.repetitionPenalty : repetitionPenalty;
+    const updatedModelPath = overrides.modelPath !== undefined ? overrides.modelPath : modelPath;
+    const updatedRecentIps = overrides.recentIps !== undefined ? overrides.recentIps : recentIPs;
+    const updatedMcpTimeout = overrides.mcpTimeout !== undefined ? overrides.mcpTimeout : mcpTimeout;
+    const updatedCacheExpiryMinutes = overrides.cacheExpiryMinutes !== undefined ? overrides.cacheExpiryMinutes : cacheExpiryMinutes;
+    const updatedDbPath = overrides.dbPath !== undefined ? overrides.dbPath : dbPath;
+    const updatedIpVersion = overrides.ipVersion !== undefined ? overrides.ipVersion : ipVersion;
+    const updatedConsolePort = overrides.consolePort !== undefined ? overrides.consolePort : consolePort;
+    const updatedConsoleBaudRate = overrides.consoleBaudRate !== undefined ? overrides.consoleBaudRate : consoleBaudRate;
+    const updatedPreloadInvestigate = overrides.preloadInvestigate !== undefined ? overrides.preloadInvestigate : preloadInvestigate;
+    const updatedPreloadKnowledge = overrides.preloadKnowledge !== undefined ? overrides.preloadKnowledge : preloadKnowledge;
+    const updatedPreloadAnalysis = overrides.preloadAnalysis !== undefined ? overrides.preloadAnalysis : preloadAnalysis;
+    const updatedPreloadRag = overrides.preloadRag !== undefined ? overrides.preloadRag : preloadRag;
+    const updatedPreloadPlotter = overrides.preloadPlotter !== undefined ? overrides.preloadPlotter : preloadPlotter;
+    const updatedPreloadBuilder = overrides.preloadBuilder !== undefined ? overrides.preloadBuilder : preloadBuilder;
+    const updatedPreloadSummarization = overrides.preloadSummarization !== undefined ? overrides.preloadSummarization : preloadSummarization;
+
     if (overrides.historyLimit !== undefined) setHistoryLimit(overrides.historyLimit);
     if (overrides.temperature !== undefined) setTemperature(overrides.temperature);
     if (overrides.repetitionPenalty !== undefined) setRepetitionPenalty(overrides.repetitionPenalty);
@@ -92,39 +111,24 @@ export function useSettings() {
     if (overrides.preloadSummarization !== undefined) setPreloadSummarization(overrides.preloadSummarization);
 
     const payload = {
-      historyLimit: overrides.historyLimit !== undefined ? overrides.historyLimit : historyLimit,
-      temperature: overrides.temperature !== undefined ? overrides.temperature : temperature,
-      repetitionPenalty:
-        overrides.repetitionPenalty !== undefined ? overrides.repetitionPenalty : repetitionPenalty,
-      modelPath: overrides.modelPath !== undefined ? overrides.modelPath : modelPath,
-      recentIps: overrides.recentIps !== undefined ? overrides.recentIps : recentIPs,
-      mcpTimeout: overrides.mcpTimeout !== undefined ? overrides.mcpTimeout : mcpTimeout,
-      cacheExpiryMinutes:
-        overrides.cacheExpiryMinutes !== undefined
-          ? overrides.cacheExpiryMinutes
-          : cacheExpiryMinutes,
-      dbPath: overrides.dbPath !== undefined ? overrides.dbPath : dbPath,
-      ipVersion: overrides.ipVersion !== undefined ? overrides.ipVersion : ipVersion,
-      consolePort: overrides.consolePort !== undefined ? overrides.consolePort : consolePort,
-      consoleBaudRate:
-        overrides.consoleBaudRate !== undefined ? overrides.consoleBaudRate : consoleBaudRate,
-      preloadInvestigate:
-        overrides.preloadInvestigate !== undefined
-          ? overrides.preloadInvestigate
-          : preloadInvestigate,
-      preloadKnowledge:
-        overrides.preloadKnowledge !== undefined ? overrides.preloadKnowledge : preloadKnowledge,
-      preloadAnalysis:
-        overrides.preloadAnalysis !== undefined ? overrides.preloadAnalysis : preloadAnalysis,
-      preloadRag: overrides.preloadRag !== undefined ? overrides.preloadRag : preloadRag,
-      preloadPlotter:
-        overrides.preloadPlotter !== undefined ? overrides.preloadPlotter : preloadPlotter,
-      preloadBuilder:
-        overrides.preloadBuilder !== undefined ? overrides.preloadBuilder : preloadBuilder,
-      preloadSummarization:
-        overrides.preloadSummarization !== undefined
-          ? overrides.preloadSummarization
-          : preloadSummarization,
+      historyLimit: updatedHistoryLimit,
+      temperature: updatedTemperature,
+      repetitionPenalty: updatedRepetitionPenalty,
+      modelPath: updatedModelPath,
+      recentIps: updatedRecentIps,
+      mcpTimeout: updatedMcpTimeout,
+      cacheExpiryMinutes: updatedCacheExpiryMinutes,
+      dbPath: updatedDbPath,
+      ipVersion: updatedIpVersion,
+      consolePort: updatedConsolePort,
+      consoleBaudRate: updatedConsoleBaudRate,
+      preloadInvestigate: updatedPreloadInvestigate,
+      preloadKnowledge: updatedPreloadKnowledge,
+      preloadAnalysis: updatedPreloadAnalysis,
+      preloadRag: updatedPreloadRag,
+      preloadPlotter: updatedPreloadPlotter,
+      preloadBuilder: updatedPreloadBuilder,
+      preloadSummarization: updatedPreloadSummarization,
     };
     try {
       await invoke("save_settings", { settings: payload });
