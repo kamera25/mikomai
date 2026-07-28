@@ -997,13 +997,14 @@ pub async fn handle_mcp_message(
             if att.mime_type == "text" {
                 final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
             } else if att.mime_type == "image" || att.mime_type.starts_with("image/") {
-                let analysis = crate::llm::vision::process_image_attachment(
+                let analysis = crate::llm::vision::analyze_image_attachment(
                     &att.name,
                     &att.mime_type,
                     &att.content,
                     settings.vision_enabled,
                     settings.mmproj_path.as_deref(),
-                );
+                    &*llama_state,
+                ).await;
                 final_user_message.push_str(&format!("\n\n{}", analysis.extracted_context));
             }
         }

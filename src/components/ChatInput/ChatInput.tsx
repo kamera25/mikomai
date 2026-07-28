@@ -54,11 +54,12 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
     ref
   ) => {
     const { t } = useTranslation();
-    const { visionEnabled } = useSettingsContext();
-    const visionEnabledRef = useRef(visionEnabled);
+    const { visionEnabled, mmprojPath } = useSettingsContext();
+    const isVisionReady = visionEnabled && Boolean(mmprojPath && mmprojPath.trim());
+    const isVisionReadyRef = useRef(isVisionReady);
     useEffect(() => {
-      visionEnabledRef.current = visionEnabled;
-    }, [visionEnabled]);
+      isVisionReadyRef.current = isVisionReady;
+    }, [isVisionReady]);
 
     const isComposing = useRef(false);
     const suggestionListRef = useRef<HTMLDivElement>(null);
@@ -85,7 +86,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
         const isText = file.type.startsWith("text/") || 
                        /\.(txt|md|json|csv|log|yaml|yml)$/i.test(file.name);
         
-        if (isImage && !visionEnabledRef.current) {
+        if (isImage && !isVisionReadyRef.current) {
           hasImageRejected = true;
           return;
         }
@@ -136,7 +137,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
         e.preventDefault();
         if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
           const hasImage = Array.from(e.dataTransfer.files).some(isImageFile);
-          if (hasImage && !visionEnabledRef.current) {
+          if (hasImage && !isVisionReadyRef.current) {
             setShowVisionWarning(true);
           }
         }
@@ -158,7 +159,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
         if (!paths || paths.length === 0) return;
 
         const hasImage = paths.some(isImagePath);
-        if (hasImage && !visionEnabledRef.current) {
+        if (hasImage && !isVisionReadyRef.current) {
           setShowVisionWarning(true);
         }
 
@@ -166,12 +167,12 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
           const newAtts = await invoke<Attachment[]>("read_files_as_attachments", { paths });
           if (newAtts && newAtts.length > 0) {
             const hasImageAtt = newAtts.some((a) => a.type === "image");
-            if (hasImageAtt && !visionEnabledRef.current) {
+            if (hasImageAtt && !isVisionReadyRef.current) {
               setShowVisionWarning(true);
             }
 
             const validAtts = newAtts.filter((a) => {
-              if (a.type === "image" && !visionEnabledRef.current) return false;
+              if (a.type === "image" && !isVisionReadyRef.current) return false;
               return true;
             });
 

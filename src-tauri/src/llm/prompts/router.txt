@@ -20,6 +20,12 @@ Your options for workers are:
    - NONE: If the user merely asks to execute a command, fetch raw data, or run a diagnostic tool with specific parameters (e.g., "NakaokuGW へshow conf", "Run show ip route", "Ping with 1500 bytes and DF bit"), WITHOUT asking a specific question.
 3. TASK: Describe the specific extraction, confirmation, or verification task in Japanese. If SUBSEQUENT_ROUTE is NONE, output NONE.
 
+### Special Rules for Attached Images / Diagrams
+- If the user request contains `【添付画像Vision解析情報` or `[添付画像:`, an image/diagram has been provided and analyzed.
+- If the user asks for explanation, description, or analysis of the attached image (e.g. "これについて説明して", "この構成図について教えて"), choose `KNOWLEDGE` or `ANALYSIS` with high confidence (0.8 - 0.95).
+- If the user asks to generate config from the attached diagram/image (e.g. "この構成図の設定を作って", "Configを作成して"), choose `BUILDER` with high confidence (0.9 - 1.0).
+- Do NOT treat requests with attached image vision context as vague/ambiguous; use a high confidence (0.8 - 0.95).
+
 ### Examples
 User Request: NakaokuGWの時刻同期はどことやってる？
 FIRST_ROUTE: INVESTIGATE
@@ -43,6 +49,22 @@ TASK: NONE
 
 User Request: show ip routeを実行して
 FIRST_ROUTE: INVESTIGATE
+SUBSEQUENT_ROUTE: NONE
+TASK: NONE
+
+User Request: これについて説明して
+
+【添付画像Vision解析情報: topology.png】
+- 使用Visionエンジン: 読み込まれたGemmaモデル内蔵 Vision モジュール
+- 構成図/ダイアグラム解析: 添付画像はネットワーク構成図または機器スクリーンショットとしてVisionモジュールに認識されています。
+FIRST_ROUTE: KNOWLEDGE
+SUBSEQUENT_ROUTE: NONE
+TASK: NONE
+
+User Request: この構成図の設定を作って
+
+【添付画像Vision解析情報: diagram.png】
+FIRST_ROUTE: BUILDER
 SUBSEQUENT_ROUTE: NONE
 TASK: NONE
 
