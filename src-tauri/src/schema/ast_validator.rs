@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use serde::Deserialize;
 use serde_yaml::Value;
 use std::collections::HashMap;

@@ -42,6 +42,7 @@ pub fn run() {
         .manage(mcp::config_helper::IpAddressChoiceManager::new())
         .invoke_handler(tauri::generate_handler![
             llm::download_model,
+            llm::check_model_exists,
             llm::open_model_dir,
             llm::load_model,
             llm::ask_llm_initial,

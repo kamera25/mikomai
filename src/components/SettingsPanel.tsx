@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,34 @@ interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+export interface ModelPreset {
+  id: string;
+  labelKey: string;
+  repo: string;
+  filename: string;
+}
+
+export const PRESET_MODELS: ModelPreset[] = [
+  {
+    id: "gemma-4-e4b-ud",
+    labelKey: "settings.opt_preset_gemma_4_e4b",
+    repo: "unsloth/gemma-4-E4B-it-GGUF",
+    filename: "gemma-4-E4B-it-UD-Q4_K_XL.gguf",
+  },
+  {
+    id: "gemma-4-12b-ud",
+    labelKey: "settings.opt_preset_gemma_4_12b",
+    repo: "unsloth/gemma-4-12b-it-GGUF",
+    filename: "gemma-4-12b-it-UD-Q4_K_XL.gguf",
+  },
+  {
+    id: "gemma-4-e2b-ud",
+    labelKey: "settings.opt_preset_gemma_4_e2b",
+    repo: "unsloth/gemma-4-E2B-it-GGUF",
+    filename: "gemma-4-E2B-it-UD-Q4_K_XL.gguf",
+  },
+];
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
@@ -54,7 +82,61 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
 
   const [repoPath, setRepoPath] = useState("unsloth/gemma-4-E4B-it-GGUF");
   const [modelFilename, setModelFilename] = useState("gemma-4-E4B-it-UD-Q4_K_XL.gguf");
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("gemma-4-e4b-ud");
   const [availablePorts, setAvailablePorts] = useState<string[]>([]);
+  const [downloadedPresets, setDownloadedPresets] = useState<Record<string, boolean>>({});
+  const [isCurrentModelDownloaded, setIsCurrentModelDownloaded] = useState<boolean>(false);
+
+  const checkModelStatuses = useCallback(async () => {
+    try {
+      const statusMap: Record<string, boolean> = {};
+      for (const preset of PRESET_MODELS) {
+        const exists = await invoke<boolean>("check_model_exists", {
+          repo: preset.repo,
+          filename: preset.filename,
+        });
+        statusMap[preset.id] = exists;
+      }
+      setDownloadedPresets(statusMap);
+
+      const currentExists = await invoke<boolean>("check_model_exists", {
+        repo: repoPath,
+        filename: modelFilename,
+      });
+      setIsCurrentModelDownloaded(currentExists);
+    } catch (e) {
+      console.error("Failed to check model status:", e);
+    }
+  }, [repoPath, modelFilename]);
+
+  useEffect(() => {
+    if (isOpen) {
+      checkModelStatuses();
+    }
+  }, [isOpen, repoPath, modelFilename, checkModelStatuses]);
+
+  const handlePresetSelect = (presetId: string) => {
+    setSelectedPresetId(presetId);
+    if (presetId !== "custom") {
+      const preset = PRESET_MODELS.find((p) => p.id === presetId);
+      if (preset) {
+        setRepoPath(preset.repo);
+        setModelFilename(preset.filename);
+      }
+    }
+  };
+
+  const handleRepoPathChange = (val: string) => {
+    setRepoPath(val);
+    const match = PRESET_MODELS.find((p) => p.repo === val && p.filename === modelFilename);
+    setSelectedPresetId(match ? match.id : "custom");
+  };
+
+  const handleModelFilenameChange = (val: string) => {
+    setModelFilename(val);
+    const match = PRESET_MODELS.find((p) => p.repo === repoPath && p.filename === val);
+    setSelectedPresetId(match ? match.id : "custom");
+  };
 
   // Update handlers
   const handleHistoryLimitChange = (val: number) => {
@@ -191,6 +273,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
       });
 
       setDownloadStatus(`Success: ${loadResult}`);
+      await checkModelStatuses();
     } catch (e: unknown) {
       setDownloadStatus(`Error: ${getErrorMessage(e)}`);
     } finally {
@@ -413,22 +496,63 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
           <section className="settings-group">
             <h3>{t("settings.sub_llm")}</h3>
             <div className="form-control">
-              <label>{t("settings.label_hf_repo")}</label>
+              <label htmlFor="model-preset-select">{t("settings.label_model_preset")}</label>
+              <select
+                id="model-preset-select"
+                value={selectedPresetId}
+                onChange={(e) => handlePresetSelect(e.target.value)}
+              >
+                {PRESET_MODELS.map((preset) => {
+                  const isDownloaded = downloadedPresets[preset.id];
+                  const statusTag = isDownloaded
+                    ? ` (${t("settings.status_downloaded")})`
+                    : ` (${t("settings.status_not_downloaded")})`;
+                  return (
+                    <option key={preset.id} value={preset.id}>
+                      {t(preset.labelKey) + statusTag}
+                    </option>
+                  );
+                })}
+                <option value="custom">{t("settings.opt_custom")}</option>
+              </select>
+            </div>
+            <div className="form-control">
+              <label htmlFor="hf-repo-input">{t("settings.label_hf_repo")}</label>
               <input
+                id="hf-repo-input"
                 type="text"
                 value={repoPath}
-                onChange={(e) => setRepoPath(e.target.value)}
-                placeholder="bartowski/google_gemma-4-E2B-it-GGUF"
+                onChange={(e) => handleRepoPathChange(e.target.value)}
+                placeholder="unsloth/gemma-4-E4B-it-GGUF"
+                disabled={selectedPresetId !== "custom"}
               />
             </div>
             <div className="form-control">
-              <label>{t("settings.label_gguf_file")}</label>
+              <label htmlFor="gguf-file-input">{t("settings.label_gguf_file")}</label>
               <input
+                id="gguf-file-input"
                 type="text"
                 value={modelFilename}
-                onChange={(e) => setModelFilename(e.target.value)}
-                placeholder="google_gemma-4-E2B-it-Q4_K_M.gguf"
+                onChange={(e) => handleModelFilenameChange(e.target.value)}
+                placeholder="gemma-4-E4B-it-UD-Q4_K_XL.gguf"
+                disabled={selectedPresetId !== "custom"}
               />
+            </div>
+            <div className="form-control">
+              <div className="model-status-indicator">
+                <span className="model-status-label">{t("settings.status_model_presence")}: </span>
+                <span
+                  className="model-status-value"
+                  style={{
+                    fontWeight: "600",
+                    color: isCurrentModelDownloaded ? "#16a34a" : "#64748b",
+                  }}
+                >
+                  {isCurrentModelDownloaded
+                    ? `✓ ${t("settings.status_downloaded")}`
+                    : t("settings.status_not_downloaded")}
+                </span>
+              </div>
             </div>
             <div className="form-control">
               <label>{t("settings.label_kv_preload")}</label>
@@ -483,6 +607,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                     onChange={(e) => handlePreloadPlotterChange(e.target.checked)}
                   />
                   {t("settings.worker_plotter")}
+                </label>
+                <label className="preload-label">
+                  <input
+                    type="checkbox"
+                    checked={preloadSummarization}
+                    onChange={(e) => handlePreloadSummarizationChange(e.target.checked)}
+                  />
+                  {t("settings.worker_summarization")}
                 </label>
               </div>
             </div>

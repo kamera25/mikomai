@@ -12,6 +12,27 @@ pub async fn download_model(app: tauri::AppHandle, repo: String, filename: Strin
     Ok(res)
 }
 
+#[tauri::command]
+pub fn check_model_exists(app: tauri::AppHandle, repo: String, filename: String) -> Result<bool, TauriError> {
+    if repo.contains("..") || filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return Ok(false);
+    }
+    let home = match app.path().home_dir() {
+        Ok(h) => h,
+        Err(_) => return Ok(false),
+    };
+    let target_dir = std::env::var("HF_HUB_CACHE")
+        .map(PathBuf::from)
+        .or_else(|_| {
+            std::env::var("HF_HOME")
+                .map(|h| PathBuf::from(h).join("hub"))
+        })
+        .unwrap_or_else(|_| home.join(".cache").join("huggingface").join("hub"));
+
+    let dest_path = target_dir.join(&repo).join(&filename);
+    Ok(dest_path.exists())
+}
+
 async fn download_model_inner(app: tauri::AppHandle, repo: String, filename: String) -> Result<String, LlmError> {
     tracing::info!("Starting model download: {}/{}", repo, filename);
     

@@ -75,6 +75,9 @@ describe("SettingsPanel", () => {
       if (cmd === "network_list_serial_ports") {
         return Promise.resolve(["COM1", "COM2"]);
       }
+      if (cmd === "check_model_exists") {
+        return Promise.resolve(false);
+      }
       return Promise.reject(new Error("Unknown command"));
     });
   });
@@ -155,6 +158,9 @@ describe("SettingsPanel", () => {
       if (cmd === "network_list_serial_ports") {
         return Promise.resolve(["COM1", "COM2"]);
       }
+      if (cmd === "check_model_exists") {
+        return Promise.resolve(false);
+      }
       return Promise.reject(new Error("Unknown command"));
     });
 
@@ -188,6 +194,9 @@ describe("SettingsPanel", () => {
       if (cmd === "network_list_serial_ports") {
         return Promise.resolve(["COM1", "COM2"]);
       }
+      if (cmd === "check_model_exists") {
+        return Promise.resolve(false);
+      }
       return Promise.reject(new Error("Unknown command"));
     });
 
@@ -218,8 +227,30 @@ describe("SettingsPanel", () => {
     });
   });
 
-  it("handles input changes for repoPath, modelFilename, and dbPath", () => {
+  it("disables repoPath and modelFilename inputs when preset is selected and enables when custom is selected", () => {
     render(<SettingsPanel {...defaultProps} />);
+
+    const repoInput = screen.getByDisplayValue("unsloth/gemma-4-E4B-it-GGUF");
+    const filenameInput = screen.getByDisplayValue("gemma-4-E4B-it-UD-Q4_K_XL.gguf");
+    const presetSelect = screen.getByLabelText("モデル選択 (プリセット)");
+
+    // Inputs should be disabled when preset is selected
+    expect(repoInput).toBeDisabled();
+    expect(filenameInput).toBeDisabled();
+
+    // Select custom
+    fireEvent.change(presetSelect, { target: { value: "custom" } });
+
+    // Inputs should now be enabled
+    expect(repoInput).not.toBeDisabled();
+    expect(filenameInput).not.toBeDisabled();
+  });
+
+  it("handles input changes for repoPath, modelFilename, and dbPath when custom is selected", () => {
+    render(<SettingsPanel {...defaultProps} />);
+
+    const presetSelect = screen.getByLabelText("モデル選択 (プリセット)");
+    fireEvent.change(presetSelect, { target: { value: "custom" } });
 
     // repoPath input
     const repoInput = screen.getByDisplayValue("unsloth/gemma-4-E4B-it-GGUF");
@@ -272,5 +303,28 @@ describe("SettingsPanel", () => {
     const saveButton = screen.getByText("保存して終了");
     fireEvent.click(saveButton);
     expect(defaultProps.onClose).toHaveBeenCalled();
+  });
+
+  it("displays model download status correctly", async () => {
+    vi.mocked(tauriApi.invoke).mockImplementation((cmd, args) => {
+      if (cmd === "check_model_exists") {
+        const a = args as { repo: string; filename: string };
+        if (a.repo === "unsloth/gemma-4-E4B-it-GGUF") {
+          return Promise.resolve(true);
+        }
+        return Promise.resolve(false);
+      }
+      if (cmd === "network_list_serial_ports") {
+        return Promise.resolve(["COM1", "COM2"]);
+      }
+      return Promise.reject(new Error("Unknown command"));
+    });
+
+    render(<SettingsPanel {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("ダウンロード状態:")).toBeInTheDocument();
+      expect(screen.getByText("✓ ダウンロード済み")).toBeInTheDocument();
+    });
   });
 });
