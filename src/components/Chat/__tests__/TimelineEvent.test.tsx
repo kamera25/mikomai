@@ -42,6 +42,7 @@ describe("TimelineEvent Component", () => {
       role: "ai",
       content: "NW-DBには指定されたメーカー・機器（F220）に該当する情報が見つかりません。追加の検索キーワードを指示するか、実機から情報を取得しますか？",
       timestamp: new Date().toISOString(),
+      event_type: "AgentResponse",
     };
 
     const mockSendMessage = vi.fn();

@@ -21,6 +21,7 @@ import { useHostSuggestions } from "../../hooks/useHostSuggestions";
 import { CustomModal } from "../CustomModal";
 import { SidebarIcon, ServerIcon, DiffIcon } from "../Icons";
 import { ConfigDiffPanel } from "../ConfigDiffPanel/ConfigDiffPanel";
+import { Attachment } from "../../types";
 
 export function AppLayout() {
   const { t } = useTranslation();
@@ -90,6 +91,7 @@ export function AppLayout() {
     timestamp: string;
     task_id: string;
     sessionId: string;
+    attachments?: Attachment[];
   }[]>([]);
 
   const handleStartRenameHeader = () => {
@@ -418,10 +420,10 @@ export function AppLayout() {
     }
   };
 
-  const executeMessage = async (userMessage: string) => {
+  const executeMessage = async (userMessage: string, attachments?: Attachment[]) => {
     isExecutingRef.current = true;
     try {
-      await handleMcpResponse(userMessage);
+      await handleMcpResponse(userMessage, attachments);
     } catch (e) {
       console.error("Failed to handle MCP response:", e);
     } finally {
@@ -431,16 +433,16 @@ export function AppLayout() {
           type: "SET_MESSAGE_STATUS",
           payload: { sessionId: next.sessionId, taskId: next.task_id, status: undefined },
         });
-        executeMessage(next.content);
+        executeMessage(next.content, next.attachments);
       } else {
         isExecutingRef.current = false;
       }
     }
   };
 
-  const sendMessage = async (text?: string) => {
+  const sendMessage = async (text?: string, attachments?: Attachment[]) => {
     const messageText = text !== undefined ? text : chatState.input.trim();
-    if (!messageText) return;
+    if (!messageText && (!attachments || attachments.length === 0)) return;
 
     const timestamp = new Date().toISOString();
     const taskId = `task_user_${Date.now()}`;
@@ -473,6 +475,7 @@ export function AppLayout() {
         event_type: "UserInput",
         task_id: taskId,
         status: isPending ? "Pending" : undefined,
+        attachments,
       },
     ]);
 
@@ -482,13 +485,14 @@ export function AppLayout() {
         timestamp,
         task_id: taskId,
         sessionId,
+        attachments,
       });
     } else {
-      executeMessage(messageText);
+      executeMessage(messageText, attachments);
     }
   };
 
-  const handleSend = () => sendMessage();
+  const handleSend = (text?: string, attachments?: Attachment[]) => sendMessage(text, attachments);
 
   const scrollToMessage = (taskId: string) => {
     const element = document.getElementById(taskId);

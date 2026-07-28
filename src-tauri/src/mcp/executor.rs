@@ -978,6 +978,7 @@ pub async fn handle_mcp_message(
         recent_ips,
         history_limit,
         mcp_timeout,
+        attachments,
     } = payload;
 
     // 1. Generate thinkingTaskId and emit mcp-initial-started
@@ -989,7 +990,17 @@ pub async fn handle_mcp_message(
 
     // 2. Build history block and prompt
     let history_block = get_history_block_rust(&summaries, history_limit);
-    let prompt_with_context = format!("【ユーザー入力】\n{}{}", user_message, history_block);
+    let mut final_user_message = user_message.clone();
+    if let Some(att_list) = &attachments {
+        for att in att_list {
+            if att.mime_type == "text" {
+                final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
+            } else if att.mime_type == "image" {
+                final_user_message.push_str(&format!("\n\n[添付画像: {}]", att.name));
+            }
+        }
+    }
+    let prompt_with_context = format!("【ユーザー入力】\n{}{}", final_user_message, history_block);
 
     // 3. Call ask_llm_initial_internal to get the route along with response
     let (response, route) = match crate::llm::llm::ask_llm_initial_internal(window.clone(), prompt_with_context, &*llama_state).await {

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { UseMcpProps } from "./useMcp/types";
 import { useMcpListeners } from "./useMcp/useMcpListeners";
+import { Attachment } from "../types";
 
 export function useMcp({
   setMessages,
@@ -14,7 +15,7 @@ export function useMcp({
   // Setup Tauri event listeners using sub-hook
   useMcpListeners({ setMessages, setSummaries, updateRecentHosts });
 
-  const handleMcpResponse = async (userMessage: string) => {
+  const handleMcpResponse = async (userMessage: string, attachments?: Attachment[]) => {
     try {
       await invoke("handle_mcp_message", {
         payload: {
@@ -23,6 +24,7 @@ export function useMcp({
           recentIps: recentIPs || [],
           historyLimit,
           mcpTimeout,
+          attachments,
         },
       });
     } catch (e: unknown) {

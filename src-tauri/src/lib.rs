@@ -68,6 +68,7 @@ pub fn run() {
             history::save_history,
             history::load_summaries,
             history::save_summary,
+            history::read_files_as_attachments,
             connections::load_connections,
             connections::get_mcp_hosts,
             connections::save_connections,

@@ -5,10 +5,9 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Terminal } from "../Terminal";
-import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon, SpeechIcon, RobotIcon } from "../Icons";
+import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon, SpeechIcon, RobotIcon, FileTextIcon } from "../Icons";
 import { Message } from "../../types";
 import { invoke } from "@tauri-apps/api/core";
-import { useChatContext } from "../../contexts/ChatContext";
 
 
 interface TimelineEventProps {
@@ -370,6 +369,41 @@ export const TimelineEvent = ({ msg, formatMessageTime, sendMessage }: TimelineE
               >
                 {remainingContent}
               </ReactMarkdown>
+            </div>
+          )}
+          {msg.role === "user" && msg.event_type === "UserInput" && msg.attachments && msg.attachments.length > 0 && (
+            <div className="message-attachments-container">
+              {msg.attachments.map((att, idx) => {
+                if (att.type === "image") {
+                  return (
+                    <div key={idx} className="message-attachment-image-wrapper">
+                      <img
+                        src={att.content}
+                        alt={att.name}
+                        className="message-attachment-image"
+                        onClick={() => {
+                          const w = window.open();
+                          w?.document.write(`<img src="${att.content}" style="max-width:100%; max-height:100%; display:block; margin:auto;" />`);
+                        }}
+                        title="クリックして拡大"
+                      />
+                      <span className="message-attachment-name">{att.name}</span>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div key={idx} className="message-attachment-text-wrapper">
+                      <div className="message-attachment-text-header">
+                        <FileTextIcon size={14} />
+                        <span className="message-attachment-name">{att.name}</span>
+                      </div>
+                      <div className="message-attachment-text-body">
+                        <pre>{att.content}</pre>
+                      </div>
+                    </div>
+                  );
+                }
+              })}
             </div>
           )}
           {msg.role === "ai" && (remainingContent || msg.content).includes("追加の検索キーワードを指示するか、実機から情報を取得しますか？") && (

@@ -9,6 +9,7 @@ pub struct ChatRequest {
     pub recent_ips: Vec<String>,
     pub history_limit: usize,
     pub mcp_timeout: u64,
+    pub attachments: Option<Vec<crate::history::Attachment>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

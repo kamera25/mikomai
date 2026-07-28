@@ -1,3 +1,9 @@
+export interface Attachment {
+  name: string;
+  type: "text" | "image";
+  content: string; // text content or base64 data URL
+}
+
 export interface BaseMessage {
   role: "user" | "ai";
   content: string;
@@ -11,6 +17,7 @@ export interface UserMessage extends BaseMessage {
   role: "user";
   event_type: "UserInput";
   status?: "Pending";
+  attachments?: Attachment[];
   action_name?: undefined;
   tool_id?: undefined;
   summary_text?: undefined;

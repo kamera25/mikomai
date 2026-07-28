@@ -4,6 +4,14 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Attachment {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub mime_type: String, // "text" | "image"
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "event_type")]
 pub enum Message {
     UserInput {
@@ -19,6 +27,8 @@ pub enum Message {
         task_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         status: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attachments: Option<Vec<Attachment>>,
     },
     ToolExecution {
         role: String,
@@ -225,6 +235,7 @@ mod tests {
             is_hidden: None,
             task_id: None,
             status: None,
+            attachments: None,
         };
         let serialized = serde_json::to_string(&msg).unwrap();
         assert!(serialized.contains(r#""role":"user""#));
@@ -245,6 +256,7 @@ mod tests {
                 is_hidden: None,
                 task_id: None,
                 status: None,
+                attachments: None,
             }],
             recent_ips: None,
         };
@@ -367,4 +379,64 @@ pub fn save_summary(app: tauri::AppHandle, summary: SummaryItem) -> Result<(), T
     let data = serde_json::to_string_pretty(&summaries)?;
     fs::write(path, data)?;
     Ok(())
+}
+
+use base64::{Engine as _, engine::general_purpose};
+
+#[tauri::command]
+pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, TauriError> {
+    let mut result = Vec::new();
+    for path_str in paths {
+        let path = std::path::Path::new(&path_str);
+        if !path.exists() || !path.is_file() {
+            continue;
+        }
+
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file")
+            .to_string();
+
+        let extension = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        let is_image = matches!(
+            extension.as_str(),
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg"
+        );
+
+        if is_image {
+            if let Ok(bytes) = fs::read(&path) {
+                let mime = match extension.as_str() {
+                    "png" => "image/png",
+                    "jpg" | "jpeg" => "image/jpeg",
+                    "gif" => "image/gif",
+                    "webp" => "image/webp",
+                    "bmp" => "image/bmp",
+                    "svg" => "image/svg+xml",
+                    _ => "image/png",
+                };
+                let b64 = general_purpose::STANDARD.encode(&bytes);
+                let data_url = format!("data:{};base64,{}", mime, b64);
+                result.push(Attachment {
+                    name: file_name,
+                    mime_type: "image".to_string(),
+                    content: data_url,
+                });
+            }
+        } else {
+            if let Ok(text) = fs::read_to_string(&path) {
+                result.push(Attachment {
+                    name: file_name,
+                    mime_type: "text".to_string(),
+                    content: text,
+                });
+            }
+        }
+    }
+    Ok(result)
 }
