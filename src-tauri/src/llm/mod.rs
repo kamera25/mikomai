@@ -5,9 +5,10 @@ pub mod loader;
 pub mod greeting;
 pub mod worker;
 pub mod shortcut;
-
+pub mod vision;
 
 pub use llm::*;
 pub use download::*;
 pub use loader::*;
+pub use vision::*;
 

@@ -74,6 +74,10 @@ pub struct AppSettings {
     #[serde(default = "default_prompt_keep_tokens")]
     #[validate(range(min = 0, max = 4096))]
     pub prompt_keep_tokens: usize,
+    #[serde(default = "default_false")]
+    pub vision_enabled: bool,
+    #[serde(default)]
+    pub mmproj_path: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -100,6 +104,8 @@ impl Default for AppSettings {
             n_ctx: 4096,
             max_gen: 2048,
             prompt_keep_tokens: 500,
+            vision_enabled: false,
+            mmproj_path: None,
         }
     }
 }
@@ -212,6 +218,8 @@ mod tests {
             n_ctx: 4096,
             max_gen: 2048,
             prompt_keep_tokens: 500,
+            vision_enabled: true,
+            mmproj_path: Some("/path/to/mmproj.gguf".to_string()),
         };
 
         let serialized = serde_json::to_string(&settings).unwrap();
@@ -228,6 +236,7 @@ mod tests {
         assert!(serialized.contains(r#""preloadInvestigate":false"#));
         assert!(serialized.contains(r#""cacheExpiryMinutes":15"#));
         assert!(serialized.contains(r#""promptKeepTokens":500"#));
+        assert!(serialized.contains(r#""visionEnabled":true"#));
     }
 
     #[test]
@@ -254,6 +263,8 @@ mod tests {
             n_ctx: 4096,
             max_gen: 2048,
             prompt_keep_tokens: 500,
+            vision_enabled: false,
+            mmproj_path: None,
         };
 
         assert!(settings.validate().is_ok());

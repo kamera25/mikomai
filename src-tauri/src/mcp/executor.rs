@@ -989,6 +989,7 @@ pub async fn handle_mcp_message(
     }));
 
     // 2. Build history block and prompt
+    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
     let history_block = get_history_block_rust(&summaries, history_limit);
     let mut final_user_message = user_message.clone();
     if let Some(att_list) = &attachments {
@@ -996,7 +997,14 @@ pub async fn handle_mcp_message(
             if att.mime_type == "text" {
                 final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
             } else if att.mime_type == "image" {
-                final_user_message.push_str(&format!("\n\n[添付画像: {}]", att.name));
+                let analysis = crate::llm::vision::process_image_attachment(
+                    &att.name,
+                    &att.mime_type,
+                    &att.content,
+                    settings.vision_enabled,
+                    settings.mmproj_path.as_deref(),
+                );
+                final_user_message.push_str(&format!("\n\n{}", analysis.extracted_context));
             }
         }
     }

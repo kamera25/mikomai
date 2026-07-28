@@ -32,6 +32,8 @@ export function useSettings() {
   const [preloadPlotter, setPreloadPlotter] = useState<boolean>(false);
   const [preloadBuilder, setPreloadBuilder] = useState<boolean>(false);
   const [preloadSummarization, setPreloadSummarization] = useState<boolean>(false);
+  const [visionEnabled, setVisionEnabled] = useState<boolean>(false);
+  const [mmprojPath, setMmprojPath] = useState<string | null>(null);
   const [recentIPs, setRecentIPs] = useState<string[]>([]);
 
   // Load settings from backend
@@ -63,6 +65,8 @@ export function useSettings() {
           if (settings.preloadBuilder !== undefined) setPreloadBuilder(settings.preloadBuilder);
           if (settings.preloadSummarization !== undefined)
             setPreloadSummarization(settings.preloadSummarization);
+          if (settings.visionEnabled !== undefined) setVisionEnabled(settings.visionEnabled);
+          if (settings.mmprojPath !== undefined) setMmprojPath(settings.mmprojPath);
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -90,6 +94,8 @@ export function useSettings() {
     const updatedPreloadPlotter = overrides.preloadPlotter !== undefined ? overrides.preloadPlotter : preloadPlotter;
     const updatedPreloadBuilder = overrides.preloadBuilder !== undefined ? overrides.preloadBuilder : preloadBuilder;
     const updatedPreloadSummarization = overrides.preloadSummarization !== undefined ? overrides.preloadSummarization : preloadSummarization;
+    const updatedVisionEnabled = overrides.visionEnabled !== undefined ? overrides.visionEnabled : visionEnabled;
+    const updatedMmprojPath = overrides.mmprojPath !== undefined ? overrides.mmprojPath : mmprojPath;
 
     if (overrides.historyLimit !== undefined) setHistoryLimit(overrides.historyLimit);
     if (overrides.temperature !== undefined) setTemperature(overrides.temperature);
@@ -109,6 +115,8 @@ export function useSettings() {
     if (overrides.preloadPlotter !== undefined) setPreloadPlotter(overrides.preloadPlotter);
     if (overrides.preloadBuilder !== undefined) setPreloadBuilder(overrides.preloadBuilder);
     if (overrides.preloadSummarization !== undefined) setPreloadSummarization(overrides.preloadSummarization);
+    if (overrides.visionEnabled !== undefined) setVisionEnabled(overrides.visionEnabled);
+    if (overrides.mmprojPath !== undefined) setMmprojPath(overrides.mmprojPath);
 
     const payload = {
       historyLimit: updatedHistoryLimit,
@@ -129,6 +137,8 @@ export function useSettings() {
       preloadPlotter: updatedPreloadPlotter,
       preloadBuilder: updatedPreloadBuilder,
       preloadSummarization: updatedPreloadSummarization,
+      visionEnabled: updatedVisionEnabled,
+      mmprojPath: updatedMmprojPath,
     };
     try {
       await invoke("save_settings", { settings: payload });
@@ -172,6 +182,10 @@ export function useSettings() {
     setPreloadBuilder,
     preloadSummarization,
     setPreloadSummarization,
+    visionEnabled,
+    setVisionEnabled,
+    mmprojPath,
+    setMmprojPath,
     recentIPs,
     setRecentIPs,
     saveAllSettings,

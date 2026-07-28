@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { SuggestionsList } from "./SuggestionsList";
 import { RefreshIcon, GearIcon, SendIcon, PaperclipIcon, CrossIcon, FileTextIcon } from "../Icons";
 import { Attachment } from "../../types";
+import { useSettingsContext } from "../../contexts/SettingsContext";
 import "./ChatInput.css";
 
 interface ChatInputProps {
@@ -53,19 +54,42 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
     ref
   ) => {
     const { t } = useTranslation();
+    const { visionEnabled } = useSettingsContext();
+    const visionEnabledRef = useRef(visionEnabled);
+    useEffect(() => {
+      visionEnabledRef.current = visionEnabled;
+    }, [visionEnabled]);
+
     const isComposing = useRef(false);
     const suggestionListRef = useRef<HTMLDivElement>(null);
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [isDragging, setIsDragging] = useState(false);
+    const [showVisionWarning, setShowVisionWarning] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const isImageFile = (file: File): boolean => {
+      if (file.type && file.type.startsWith("image/")) return true;
+      return /\.(png|jpg|jpeg|gif|webp|bmp|svg|heic|heif|tiff)$/i.test(file.name);
+    };
+
+    const isImagePath = (filePath: string): boolean => {
+      return /\.(png|jpg|jpeg|gif|webp|bmp|svg|heic|heif|tiff)$/i.test(filePath);
+    };
 
     const handleFileAttach = (files: FileList | null) => {
       if (!files) return;
+      let hasImageRejected = false;
+
       Array.from(files).forEach((file) => {
-        const isImage = file.type.startsWith("image/");
+        const isImage = isImageFile(file);
         const isText = file.type.startsWith("text/") || 
                        /\.(txt|md|json|csv|log|yaml|yml)$/i.test(file.name);
         
+        if (isImage && !visionEnabledRef.current) {
+          hasImageRejected = true;
+          return;
+        }
+
         if (!isImage && !isText) {
           return;
         }
@@ -94,6 +118,10 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
           reader.readAsText(file);
         }
       });
+
+      if (hasImageRejected) {
+        setShowVisionWarning(true);
+      }
     };
 
     const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -104,42 +132,81 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
     };
 
     useEffect(() => {
-      const preventDefault = (e: DragEvent) => {
+      const handleWindowDrop = (e: DragEvent) => {
+        e.preventDefault();
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          const hasImage = Array.from(e.dataTransfer.files).some(isImageFile);
+          if (hasImage && !visionEnabledRef.current) {
+            setShowVisionWarning(true);
+          }
+        }
+      };
+
+      const handleWindowDragOver = (e: DragEvent) => {
         e.preventDefault();
       };
-      window.addEventListener("dragover", preventDefault);
-      window.addEventListener("drop", preventDefault);
+
+      window.addEventListener("dragover", handleWindowDragOver);
+      window.addEventListener("drop", handleWindowDrop);
 
       let unlistenDrop: (() => void) | undefined;
       let unlistenOver: (() => void) | undefined;
       let unlistenLeave: (() => void) | undefined;
+      let unlistenFileDrop: (() => void) | undefined;
+
+      const processDroppedPaths = async (paths: string[]) => {
+        if (!paths || paths.length === 0) return;
+
+        const hasImage = paths.some(isImagePath);
+        if (hasImage && !visionEnabledRef.current) {
+          setShowVisionWarning(true);
+        }
+
+        try {
+          const newAtts = await invoke<Attachment[]>("read_files_as_attachments", { paths });
+          if (newAtts && newAtts.length > 0) {
+            const hasImageAtt = newAtts.some((a) => a.type === "image");
+            if (hasImageAtt && !visionEnabledRef.current) {
+              setShowVisionWarning(true);
+            }
+
+            const validAtts = newAtts.filter((a) => {
+              if (a.type === "image" && !visionEnabledRef.current) return false;
+              return true;
+            });
+
+            if (validAtts.length > 0) {
+              setAttachments((prev) => {
+                const existingNames = new Set(prev.map((a) => a.name));
+                const filtered = validAtts.filter((a) => !existingNames.has(a.name));
+                return [...prev, ...filtered];
+              });
+            }
+          }
+        } catch (err) {
+          console.error("Failed to read dropped files as attachments:", err);
+        }
+      };
 
       const setupTauriDnd = async () => {
         try {
-          unlistenOver = await listen("tauri://drag-over", () => {
-            setIsDragging(true);
-          });
-          unlistenLeave = await listen("tauri://drag-leave", () => {
-            setIsDragging(false);
-          });
-          unlistenDrop = await listen<{ paths: string[] } | any>("tauri://drag-drop", async (event) => {
+          unlistenOver = await listen("tauri://drag-over", () => setIsDragging(true));
+          unlistenLeave = await listen("tauri://drag-leave", () => setIsDragging(false));
+          unlistenDrop = await listen<any>("tauri://drag-drop", async (event) => {
             setIsDragging(false);
             const payload = event.payload;
-            const paths: string[] = payload?.paths || (Array.isArray(payload) ? payload : []);
-            if (paths && paths.length > 0) {
-              try {
-                const newAtts = await invoke<Attachment[]>("read_files_as_attachments", { paths });
-                if (newAtts && newAtts.length > 0) {
-                  setAttachments((prev) => {
-                    const existingNames = new Set(prev.map((a) => a.name));
-                    const filtered = newAtts.filter((a) => !existingNames.has(a.name));
-                    return [...prev, ...filtered];
-                  });
-                }
-              } catch (err) {
-                console.error("Failed to read dropped files as attachments:", err);
-              }
-            }
+            const paths: string[] = Array.isArray(payload)
+              ? payload
+              : payload?.paths || payload?.payload?.paths || [];
+            await processDroppedPaths(paths);
+          });
+          unlistenFileDrop = await listen<any>("tauri://file-drop", async (event) => {
+            setIsDragging(false);
+            const payload = event.payload;
+            const paths: string[] = Array.isArray(payload)
+              ? payload
+              : payload?.paths || payload?.payload?.paths || [];
+            await processDroppedPaths(paths);
           });
         } catch (e) {
           console.warn("Tauri drag-drop listener setup failed or non-Tauri environment:", e);
@@ -149,11 +216,12 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
       setupTauriDnd();
 
       return () => {
-        window.removeEventListener("dragover", preventDefault);
-        window.removeEventListener("drop", preventDefault);
+        window.removeEventListener("dragover", handleWindowDragOver);
+        window.removeEventListener("drop", handleWindowDrop);
         if (unlistenDrop) unlistenDrop();
         if (unlistenOver) unlistenOver();
         if (unlistenLeave) unlistenLeave();
+        if (unlistenFileDrop) unlistenFileDrop();
       };
     }, []);
 
@@ -185,8 +253,13 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(false);
-      if (e.dataTransfer && e.dataTransfer.files.length > 0) {
-        handleFileAttach(e.dataTransfer.files);
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        const hasImage = Array.from(files).some(isImageFile);
+        if (hasImage && !visionEnabledRef.current) {
+          setShowVisionWarning(true);
+        }
+        handleFileAttach(files);
       }
     };
 
@@ -398,6 +471,39 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {showVisionWarning && (
+            <div className="vision-warning-popup">
+              <div className="vision-warning-icon">⚠️</div>
+              <div className="vision-warning-content">
+                <div className="vision-warning-title">
+                  {t("chat_input.vision_disabled_warning_title")}
+                </div>
+                <div className="vision-warning-desc">
+                  {t("chat_input.vision_disabled_warning_desc")}
+                </div>
+              </div>
+              <div className="vision-warning-actions">
+                <button
+                  type="button"
+                  className="vision-warning-settings-btn"
+                  onClick={() => {
+                    setShowVisionWarning(false);
+                    setIsSettingsOpen(true);
+                  }}
+                >
+                  <GearIcon size={12} />
+                  {t("chat_input.btn_open_settings")}
+                </button>
+                <button
+                  type="button"
+                  className="vision-warning-close-btn"
+                  onClick={() => setShowVisionWarning(false)}
+                >
+                  <CrossIcon size={12} />
+                </button>
+              </div>
+            </div>
+          )}
           <SuggestionsList
             showSuggestions={showSuggestions}
             filteredSuggestions={filteredSuggestions}
@@ -436,7 +542,11 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
               ref={fileInputRef}
               style={{ display: "none" }}
               multiple
-              accept="image/*,text/*,.txt,.md,.json,.csv,.log,.yaml,.yml"
+              accept={
+                visionEnabled
+                  ? "image/*,text/*,.txt,.md,.json,.csv,.log,.yaml,.yml"
+                  : "text/*,.txt,.md,.json,.csv,.log,.yaml,.yml"
+              }
               onChange={(e) => handleFileAttach(e.target.files)}
             />
             <button
@@ -444,7 +554,11 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
               className="attach-button"
               onClick={() => fileInputRef.current?.click()}
               disabled={modelStatus !== "Loaded"}
-              title="ファイルを添付 (画像・テキスト)"
+              title={
+                visionEnabled
+                  ? "ファイルを添付 (画像・テキスト)"
+                  : "ファイルを添付 (テキストのみ / Vision機能無効)"
+              }
             >
               <PaperclipIcon size={16} />
             </button>

@@ -77,6 +77,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
     setPreloadBuilder,
     preloadSummarization,
     setPreloadSummarization,
+    visionEnabled,
+    setVisionEnabled,
+    mmprojPath,
+    setMmprojPath,
     saveAllSettings,
   } = useSettingsContext();
 
@@ -222,6 +226,30 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
   const handlePreloadSummarizationChange = (val: boolean) => {
     setPreloadSummarization(val);
     saveAllSettings({ preloadSummarization: val });
+  };
+
+  const handleVisionEnabledChange = (val: boolean) => {
+    setVisionEnabled(val);
+    saveAllSettings({ visionEnabled: val });
+  };
+
+  const handleMmprojPathChange = (val: string) => {
+    setMmprojPath(val);
+    saveAllSettings({ mmprojPath: val });
+  };
+
+  const handleSelectMmprojFile = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "GGUF Model", extensions: ["gguf"] }],
+      });
+      if (selected && typeof selected === "string") {
+        handleMmprojPathChange(selected);
+      }
+    } catch (err) {
+      console.error("Failed to select mmproj file:", err);
+    }
   };
 
   useEffect(() => {
@@ -645,6 +673,40 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
                   {downloadStatus}
                 </div>
               )}
+            </div>
+          </section>
+
+          <section className="settings-group">
+            <h3>{t("settings.label_vision")}</h3>
+            <div className="form-control">
+              <label className="preload-label">
+                <input
+                  type="checkbox"
+                  checked={visionEnabled}
+                  onChange={(e) => handleVisionEnabledChange(e.target.checked)}
+                />
+                {t("settings.label_vision_enabled")}
+              </label>
+              <p className="help-text form-help-text">
+                {t("settings.desc_vision_enabled")}
+              </p>
+            </div>
+            <div className="form-control">
+              <label>{t("settings.label_mmproj_path")}</label>
+              <p className="help-text form-help-text margin-bottom">
+                {t("settings.desc_mmproj_path")}
+              </p>
+              <div className="input-with-button">
+                <input
+                  type="text"
+                  placeholder={t("settings.placeholder_mmproj_path")}
+                  value={mmprojPath || ""}
+                  onChange={(e) => handleMmprojPathChange(e.target.value)}
+                />
+                <button className="btn btn-secondary" onClick={handleSelectMmprojFile}>
+                  {t("settings.btn_browse")}
+                </button>
+              </div>
             </div>
           </section>
 

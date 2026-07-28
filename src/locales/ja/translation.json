@@ -55,7 +55,10 @@
     "status_loading_model": "AIモデルを読み込み中です。しばらくお待ちください...",
     "status_failed_model": "AIモデルの読み込みに失敗しました。設定を確認してください。",
     "btn_load_model": "モデルの読み込み",
-    "btn_settings": "設定"
+    "btn_settings": "設定",
+    "vision_disabled_warning_title": "Vision 機能が無効化されています",
+    "vision_disabled_warning_desc": "画像を解析・読み込むには設定からVision機能を有効にしてください。",
+    "btn_open_settings": "設定を開く"
   },
   "connection_panel": {
     "header_edit": "接続の編集",
@@ -209,7 +212,13 @@
     "opt_multilingual_e5": "MultilingualE5Large (ローカル)",
     "btn_save_exit": "保存して終了",
     "status_start_download": "モデルのダウンロードを開始します（時間がかかる場合があります）",
-    "title_select_db_dir": "データベースディレクトリを選択"
+    "title_select_db_dir": "データベースディレクトリを選択",
+    "label_vision": "マルチモーダル (Vision) 解析設定",
+    "label_vision_enabled": "Vision 機能を有効化",
+    "desc_vision_enabled": "添付された構成図、ダイアグラム、CLI画面の画像をVisionモジュールで構造化解析します。",
+    "label_mmproj_path": "Vision プロジェクターファイル (任意)",
+    "desc_mmproj_path": "原則として、読み込まれたGemmaモデル自身のVision機能を自動利用します（設定不要）。カスタムプロジェクターを使用する場合のみ指定してください。",
+    "placeholder_mmproj_path": "原則不要（Gemma自身のVisionを利用します）"
   },
   "sidebar": {
     "menu_title": "メニュー",

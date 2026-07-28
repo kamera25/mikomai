@@ -55,7 +55,10 @@
     "status_loading_model": "Loading AI model. Please wait...",
     "status_failed_model": "Failed to load AI model. Please check the settings.",
     "btn_load_model": "Load Model",
-    "btn_settings": "Settings"
+    "btn_settings": "Settings",
+    "vision_disabled_warning_title": "Vision processing is disabled",
+    "vision_disabled_warning_desc": "To load and analyze images, please enable Vision processing in settings.",
+    "btn_open_settings": "Open Settings"
   },
   "connection_panel": {
     "header_edit": "Edit Connection",
@@ -209,7 +212,13 @@
     "opt_multilingual_e5": "MultilingualE5Large (Local)",
     "btn_save_exit": "Save & Exit",
     "status_start_download": "Starting model download (may take some time)",
-    "title_select_db_dir": "Select Database Directory"
+    "title_select_db_dir": "Select Database Directory",
+    "label_vision": "Multimodal (Vision) Settings",
+    "label_vision_enabled": "Enable Vision Processing",
+    "desc_vision_enabled": "Parse attached network diagrams, topologies, and CLI screenshots using Vision module.",
+    "label_mmproj_path": "Vision Projector File (Optional)",
+    "desc_mmproj_path": "By default, the built-in Vision module of the loaded Gemma model is automatically used (no configuration needed). Only specify a path if using a custom projector.",
+    "placeholder_mmproj_path": "Not required (uses Gemma's built-in Vision)"
   },
   "sidebar": {
     "menu_title": "Menu",

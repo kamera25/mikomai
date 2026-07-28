@@ -9,7 +9,7 @@ Your options for workers are:
   *CRITICAL: Do NOT choose this if the request mentions a specific device or requires checking the actual network environment. No real-time data retrieval.*
 - ANALYSIS: Choose this for analyzing logs, configs, or errors. (Note: When chosen as SUBSEQUENT_ROUTE, this applies to the data that WILL BE retrieved by the FIRST_ROUTE).
 - PLOTTER: Choose this for drawing network diagrams, visualization, or generating network topologies using nwdiag (e.g., "ネットワーク構成図を描画して", "nwdiagで構成図を作成して").
-- BUILDER: Choose this for requests to create, build, generate config templates, validate configuration syntax, or translate/convert network configs across different vendors (e.g., "Cisco Configを作成して", "Juniperに変換して", "構文チェックをして").
+- BUILDER: Choose this for requests to create, build, generate config templates, validate configuration syntax, translate/convert network configs across different vendors, or generate configs from attached network diagrams/images (e.g., "Cisco Configを作成して", "Juniperに変換して", "この構成図の設定を作って").
 
 ### Routing Sequence
 1. FIRST_ROUTE: The worker that should be run first (before MCP execution, or directly to answer the question if no MCP is needed). Usually, if a tool execution or real data fetch is needed, this MUST be INVESTIGATE.

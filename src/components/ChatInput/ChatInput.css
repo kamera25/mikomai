@@ -390,3 +390,104 @@
   color: var(--text-muted);
   cursor: not-allowed;
 }
+
+/* Vision Disabled Warning Toast Popup */
+.vision-warning-popup {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: #e6e7ec;
+  border: 1px solid #f59e0b;
+  border-left: 5px solid #f59e0b;
+  border-radius: 10px;
+  padding: 12px 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(245, 158, 11, 0.25);
+  z-index: 99999;
+  animation: visionPopupSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  max-width: 95%;
+}
+
+@keyframes visionPopupSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.vision-warning-icon {
+  font-size: 1.2rem;
+  color: #ca8a04;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.vision-warning-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vision-warning-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary, #ffffff);
+}
+
+.vision-warning-desc {
+  font-size: 0.78rem;
+  color: var(--text-secondary, #a0aec0);
+}
+
+.vision-warning-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+}
+
+.vision-warning-settings-btn {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #a27910;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s ease;
+}
+
+.vision-warning-settings-btn:hover {
+  background-color: rgba(245, 158, 11, 0.25);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #ffffff;
+}
+
+.vision-warning-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #718096);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: color 0.2s ease;
+}
+
+.vision-warning-close-btn:hover {
+  color: var(--text-primary, #ffffff);
+}

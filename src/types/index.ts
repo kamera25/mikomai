@@ -219,4 +219,6 @@ export interface SystemSettings {
   preloadPlotter?: boolean;
   preloadBuilder?: boolean;
   preloadSummarization?: boolean;
+  visionEnabled?: boolean;
+  mmprojPath?: string | null;
 }
