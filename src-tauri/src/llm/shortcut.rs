@@ -162,19 +162,7 @@ pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String, f64)>
         ));
     }
     
-    // 6. IP Info
-    let re_ip = Regex::new(r"(?i-u)\bip\b").expect("Invalid ip regex");
-    if re_ip.is_match(&lower_input) || lower_input.contains("ネットワーク情報") {
-        let confidence = if has_question_keywords(input) { 0.4 } else { 1.0 };
-        return Some((
-            "network_get_ip_info".to_string(),
-            serde_json::json!({}),
-            "IP情報を取得します。".to_string(),
-            confidence
-        ));
-    }
-    
-    // 7. Serial Ports
+    // 6. Serial Ports
     if lower_input.contains("console") || lower_input.contains("コンソール") || lower_input.contains("シリアル") {
         if lower_input.contains("list") || lower_input.contains("一覧") || lower_input.contains("ポート") || lower_input.contains("リスト") {
             let confidence = if has_question_keywords(input) { 0.4 } else { 1.0 };
@@ -187,7 +175,7 @@ pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String, f64)>
         }
     }
     
-    // 8. nwdiag shortcut
+    // 7. nwdiag shortcut
     let lower_trimmed = input.trim();
     if lower_trimmed.contains('{') {
         let re_nwdiag = regex::Regex::new(r"(?i)nwdiag\s*\{").unwrap();
@@ -264,16 +252,6 @@ mod tests {
         assert_eq!(res.0, "self_network_route");
         assert!(res.3 >= 0.8);
 
-        // IP Info
-        let res = detect_shortcut_tool("このPC of IPアドレス、ネットワーク情報を教えて").unwrap(); // "このPC of IPアドレス" に "IP" が含まれる
-        assert_eq!(res.0, "network_get_ip_info");
-        assert!(res.3 >= 0.8);
-
-        // IP Info low confidence fallback
-        let res_ip_q = detect_shortcut_tool("IPアドレスとは何ですか？").unwrap();
-        assert_eq!(res_ip_q.0, "network_get_ip_info");
-        assert!(res_ip_q.3 < 0.8);
-
         // Serial Ports
         let res = detect_shortcut_tool("コンソールポート一覧").unwrap();
         assert_eq!(res.0, "network_list_serial_ports");
@@ -287,10 +265,5 @@ mod tests {
 
         // None
         assert!(detect_shortcut_tool("普通の質問: NTPって何？").is_none());
-        
-        // Word boundaries check: script, recipe, stripe should not trigger IP info
-        assert!(detect_shortcut_tool("run the script").is_none());
-        assert!(detect_shortcut_tool("show recipe details").is_none());
-        assert!(detect_shortcut_tool("stripe test").is_none());
     }
 }
