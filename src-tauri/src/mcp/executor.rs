@@ -996,7 +996,7 @@ pub async fn handle_mcp_message(
         for att in att_list {
             if att.mime_type == "text" {
                 final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
-            } else if att.mime_type == "image" {
+            } else if att.mime_type == "image" || att.mime_type.starts_with("image/") {
                 let analysis = crate::llm::vision::process_image_attachment(
                     &att.name,
                     &att.mime_type,
@@ -1048,7 +1048,7 @@ pub async fn handle_mcp_message(
         let _ = execute_mcp_tools_flow(
             app.clone(),
             window.clone(),
-            user_message.clone(),
+            final_user_message.clone(),
             tool_calls,
             summaries.clone(),
             recent_ips.clone(),
@@ -1062,7 +1062,7 @@ pub async fn handle_mcp_message(
         let app_c = app.clone();
         let window_c = window.clone();
         let thinking_task_id_c = thinking_task_id.clone();
-        let user_message_c = user_message.clone();
+        let user_message_c = final_user_message.clone();
         let response_c = response.clone();
 
         tokio::spawn(async move {

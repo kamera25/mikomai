@@ -19,6 +19,8 @@ const mockSetPreloadInvestigate = vi.fn();
 const mockSetPreloadKnowledge = vi.fn();
 const mockSetPreloadAnalysis = vi.fn();
 const mockSetPreloadRag = vi.fn();
+const mockSetMmprojPath = vi.fn();
+const mockSetVisionEnabled = vi.fn();
 
 vi.mock("../../contexts/SettingsContext", () => ({
   useSettingsContext: () => ({
@@ -50,6 +52,10 @@ vi.mock("../../contexts/SettingsContext", () => ({
     setPreloadAnalysis: mockSetPreloadAnalysis,
     preloadRag: true,
     setPreloadRag: mockSetPreloadRag,
+    visionEnabled: false,
+    setVisionEnabled: mockSetVisionEnabled,
+    mmprojPath: "",
+    setMmprojPath: mockSetMmprojPath,
     saveAllSettings: mockSaveAllSettings,
   }),
 }));
@@ -168,13 +174,18 @@ describe("SettingsPanel", () => {
     const button = screen.getByText("モデルをダウンロードして読み込む");
     fireEvent.click(button);
 
-    expect(tauriApi.invoke).toHaveBeenCalledWith("download_model", {
-      repo: "unsloth/gemma-4-E4B-it-GGUF",
-      filename: "gemma-4-E4B-it-UD-Q4_K_XL.gguf",
-    });
-
     await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith("download_model", {
+        repo: "unsloth/gemma-4-E4B-it-GGUF",
+        filename: "gemma-4-E4B-it-UD-Q4_K_XL.gguf",
+      });
+      expect(tauriApi.invoke).toHaveBeenCalledWith("download_model", {
+        repo: "unsloth/gemma-4-E4B-it-GGUF",
+        filename: "mmproj-F16.gguf",
+      });
       expect(mockSetModelPath).toHaveBeenCalledWith("/fake/download/path.gguf");
+      expect(mockSetMmprojPath).toHaveBeenCalledWith("/fake/download/path.gguf");
+      expect(mockSetVisionEnabled).toHaveBeenCalledWith(true);
     });
 
     expect(tauriApi.invoke).toHaveBeenCalledWith("load_model", {
@@ -182,7 +193,9 @@ describe("SettingsPanel", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Success: Model loaded successfully")).toBeInTheDocument();
+      expect(
+        screen.getByText("成功: Model loaded successfully (Visionプロジェクター設定完了)")
+      ).toBeInTheDocument();
     });
   });
 
@@ -205,7 +218,7 @@ describe("SettingsPanel", () => {
     fireEvent.click(button);
 
     await waitFor(() => {
-      expect(screen.getByText("Error: Network error")).toBeInTheDocument();
+      expect(screen.getByText("エラー: Network error")).toBeInTheDocument();
     });
   });
 
@@ -213,7 +226,7 @@ describe("SettingsPanel", () => {
     vi.mocked(tauriDialog.open).mockResolvedValue("/selected/db/path");
 
     render(<SettingsPanel {...defaultProps} />);
-    const button = screen.getByText("参照");
+    const button = screen.getAllByText("参照")[1];
     fireEvent.click(button);
 
     expect(tauriDialog.open).toHaveBeenCalledWith({
@@ -272,7 +285,7 @@ describe("SettingsPanel", () => {
     vi.mocked(tauriDialog.open).mockResolvedValue(null);
 
     render(<SettingsPanel {...defaultProps} />);
-    const button = screen.getByText("参照");
+    const button = screen.getAllByText("参照")[1];
     fireEvent.click(button);
 
     // wait briefly to ensure the promise resolves
@@ -287,7 +300,7 @@ describe("SettingsPanel", () => {
     vi.mocked(tauriDialog.open).mockRejectedValue(new Error("Dialog failed"));
 
     render(<SettingsPanel {...defaultProps} />);
-    const button = screen.getByText("参照");
+    const button = screen.getAllByText("参照")[1];
     fireEvent.click(button);
 
     await waitFor(() => {

@@ -17,6 +17,7 @@ export interface ModelPreset {
   labelKey: string;
   repo: string;
   filename: string;
+  mmprojFilename?: string;
 }
 
 export const PRESET_MODELS: ModelPreset[] = [
@@ -25,18 +26,21 @@ export const PRESET_MODELS: ModelPreset[] = [
     labelKey: "settings.opt_preset_gemma_4_e4b",
     repo: "unsloth/gemma-4-E4B-it-GGUF",
     filename: "gemma-4-E4B-it-UD-Q4_K_XL.gguf",
+    mmprojFilename: "mmproj-F16.gguf",
   },
   {
     id: "gemma-4-12b-ud",
     labelKey: "settings.opt_preset_gemma_4_12b",
     repo: "unsloth/gemma-4-12b-it-GGUF",
     filename: "gemma-4-12b-it-UD-Q4_K_XL.gguf",
+    mmprojFilename: "mmproj-F16.gguf",
   },
   {
     id: "gemma-4-e2b-ud",
     labelKey: "settings.opt_preset_gemma_4_e2b",
     repo: "unsloth/gemma-4-E2B-it-GGUF",
     filename: "gemma-4-E2B-it-UD-Q4_K_XL.gguf",
+    mmprojFilename: "mmproj-F16.gguf",
   },
 ];
 
@@ -294,16 +298,51 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
       });
 
       handleModelPathChange(downloadedPath);
-      setDownloadStatus(`Model downloaded to: ${downloadedPath}. Loading into memory...`);
+
+      // Download mmproj (vision projector) file together with Gemma model
+      const preset = PRESET_MODELS.find((p) => p.repo === repoPath && p.filename === modelFilename);
+      const mmprojFilenameToUse = preset?.mmprojFilename || "mmproj-F16.gguf";
+
+      setDownloadStatus(`Visionプロジェクター (${mmprojFilenameToUse}) をダウンロード中...`);
+
+      let downloadedMmprojPath: string | null = null;
+      try {
+        downloadedMmprojPath = await invoke<string>("download_model", {
+          repo: repoPath,
+          filename: mmprojFilenameToUse,
+        });
+      } catch (firstErr) {
+        if (mmprojFilenameToUse !== "mmproj.gguf") {
+          try {
+            downloadedMmprojPath = await invoke<string>("download_model", {
+              repo: repoPath,
+              filename: "mmproj.gguf",
+            });
+          } catch (fallbackErr) {
+            console.warn("Failed to download mmproj model (fallback):", fallbackErr);
+          }
+        } else {
+          console.warn("Failed to download mmproj model:", firstErr);
+        }
+      }
+
+      if (downloadedMmprojPath) {
+        handleMmprojPathChange(downloadedMmprojPath);
+        handleVisionEnabledChange(true);
+      }
+
+      setDownloadStatus(`モデル準備完了: ${downloadedPath}. メモリへロード中...`);
 
       const loadResult = await invoke<string>("load_model", {
         path: downloadedPath,
       });
 
-      setDownloadStatus(`Success: ${loadResult}`);
+      setDownloadStatus(
+        `成功: ${loadResult}${downloadedMmprojPath ? " (Visionプロジェクター設定完了)" : ""}`
+      );
       await checkModelStatuses();
     } catch (e: unknown) {
-      setDownloadStatus(`Error: ${getErrorMessage(e)}`);
+      setDownloadStatus(`エラー: ${getErrorMessage(e)}`);
     } finally {
       setIsLoading(false);
     }
