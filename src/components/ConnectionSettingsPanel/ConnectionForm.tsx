@@ -180,7 +180,8 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
         </header>
         <div className="connection-form-content">
           <div className="form-section">
-            <h3>{t("connection_panel.tab_basic")}</h3>
+            <h3>{t("connection_panel.tab_common")}</h3>
+            <div className="form-sub-header">{t("connection_panel.group_basic")}</div>
             <div className="form-grid">
               <div className="form-group">
                 <label>{t("connection_panel.hostname_label")}</label>
@@ -246,7 +247,38 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
                   )}
                 />
               </div>
+            </div>
 
+            <div className="form-sub-header" style={{ marginTop: "20px" }}>
+              {t("connection_panel.group_auth")}
+            </div>
+            <div className="form-grid">
+              <div className="form-group">
+                <label>{t("connection_panel.username_label")}</label>
+                <input type="text" {...register("username")} />
+              </div>
+              <div className="form-group">
+                <label>{t("connection_panel.password_label")}</label>
+                <input
+                  type="password"
+                  {...register("password")}
+                  placeholder={editingConnection?.hasPassword ? "••••••••" : ""}
+                />
+              </div>
+              <div className="form-group full-width">
+                <label>{t("connection_panel.enable_password_label")}</label>
+                <input
+                  type="password"
+                  {...register("enablePassword")}
+                  placeholder={editingConnection?.hasEnablePassword ? "••••••••" : ""}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="form-section">
+            <h3>{t("connection_panel.tab_endpoint")}</h3>
+            <div className="form-grid">
               {connectionType !== "Console" ? (
                 <>
                   <div className="form-group full-width">
@@ -268,7 +300,7 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
                     />
                     {errors.ip && <span className="error-message">{errors.ip.message}</span>}
                   </div>
-                  <div className="form-group">
+                  <div className="form-group full-width">
                     <label>{t("connection_panel.port_label")}</label>
                     <input
                       type="text"
@@ -280,26 +312,6 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
                       placeholder={
                         connectionType === "SSH" ? "22" : connectionType === "Telnet" ? "23" : ""
                       }
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>{t("connection_panel.username_label")}</label>
-                    <input type="text" {...register("username")} />
-                  </div>
-                  <div className="form-group">
-                    <label>{t("connection_panel.password_label")}</label>
-                    <input
-                      type="password"
-                      {...register("password")}
-                      placeholder={editingConnection?.hasPassword ? "••••••••" : ""}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>{t("connection_panel.enable_password_label")}</label>
-                    <input
-                      type="password"
-                      {...register("enablePassword")}
-                      placeholder={editingConnection?.hasEnablePassword ? "••••••••" : ""}
                     />
                   </div>
                 </>

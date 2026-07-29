@@ -107,4 +107,23 @@ describe("ConnectionSettingsPanel", () => {
       );
     });
   });
+
+  it("renders username, password, and enable password input fields when Console type is selected", async () => {
+    render(<ConnectionSettingsPanel {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith("get_mcp_hosts");
+    });
+
+    const addBtn = screen.getByText("ホスト追加");
+    fireEvent.click(addBtn);
+
+    // Change type to Console
+    const typeSelect = screen.getByDisplayValue("SSH");
+    fireEvent.change(typeSelect, { target: { value: "Console" } });
+
+    expect(screen.getByText(/ユーザ名|ユーザーID|Username/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/パスワード|Password/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/特権パスワード|Enable Password/i)).toBeInTheDocument();
+  });
 });
