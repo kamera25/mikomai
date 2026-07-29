@@ -195,6 +195,17 @@ impl LlmWorker for BuilderWorker {
         }
 
         let mut prompt = prompt;
+        if let Some(ref mut p) = prompt {
+            if !p.contains(crate::llm::llm::BUILDER_DIFF_CONFIG_PROMPT) {
+                *p = crate::llm::llm::prepare_builder_prompt(p);
+            }
+        }
+        if let Some(ref mut msg) = modified_user_message {
+            if !msg.contains(crate::llm::llm::BUILDER_DIFF_CONFIG_PROMPT) {
+                *msg = crate::llm::llm::prepare_builder_prompt(msg);
+            }
+        }
+
         let mut subsequent_task_owned = subsequent_task.map(|s| s.to_string());
         let mut matched_device: Option<(String, String)> = None;
         if let Some(w) = window {

@@ -373,6 +373,17 @@ pub async fn ask_llm_background(
     Ok(inference_result)
 }
 
+pub const BUILDER_DIFF_CONFIG_PROMPT: &str = "ユーザーから提供される設定情報は「差分（部分設定）」であることが前提です。たとえホスト名の変更のみであっても不完全とみなさず、提供されたパラメータだけを対象機器のコマンドに変換してください。ユーザーからの明示的な指示がない限り、不足していると思われる他の設定項目（インターフェースや経路など）を推測して補完したり、そのためにRAGを検索したりすることは厳禁です。";
+
+pub fn prepare_builder_prompt(input: &str) -> String {
+    let text = replace_interface_abbreviations(input);
+    if text.contains(BUILDER_DIFF_CONFIG_PROMPT) {
+        text
+    } else {
+        format!("{}\n\n{}", BUILDER_DIFF_CONFIG_PROMPT, text)
+    }
+}
+
 pub fn replace_interface_abbreviations(input: &str) -> String {
     use regex::{Regex, Captures};
     use std::sync::OnceLock;
@@ -417,6 +428,18 @@ mod tests {
         assert_eq!(replace_interface_abbreviations("Sofa0/1"), "Sofa0/1");
         assert_eq!(replace_interface_abbreviations("FA1"), "fastethernet1");
     }
+
+    #[test]
+    fn test_prepare_builder_prompt() {
+        let input = "Fa0/1 を設定する";
+        let res = prepare_builder_prompt(input);
+        assert!(res.starts_with(BUILDER_DIFF_CONFIG_PROMPT));
+        assert!(res.contains("fastethernet0/1 を設定する"));
+
+        let res_twice = prepare_builder_prompt(&res);
+        assert_eq!(res, res_twice);
+    }
 }
+
 
 

@@ -7,7 +7,7 @@ use tauri::Emitter;
 use tauri::Manager;
 
 use crate::llm::llm::{
-    is_cancelled, prepare_prompt_tokens_with_limit, process_token_bytes,
+    is_cancelled, prepare_builder_prompt, prepare_prompt_tokens_with_limit, process_token_bytes,
     replace_interface_abbreviations, LlmError,
 };
 use crate::llm::llm_manager::SharedModel;
@@ -178,7 +178,7 @@ fn handle_initial(
 
     let active_route = route_result.routes[0];
     let final_prompt = if active_route == Route::Builder {
-        replace_interface_abbreviations(&prompt)
+        prepare_builder_prompt(&prompt)
     } else {
         prompt
     };
