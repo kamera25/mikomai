@@ -82,29 +82,37 @@ def main():
         }
 
     try:
+        host_desc = args.console_port if args.console_port else args.host
+        print(f"INFO: Connecting to device {host_desc} ({args.device_type})...", flush=True)
         net_connect = ConnectHandler(**device)
+        print("INFO: Connected successfully to device.", flush=True)
         
         if args.action == "show":
             if not args.command:
-                print("Error: command is required for 'show' action", file=sys.stderr)
+                print("Error: command is required for 'show' action", file=sys.stderr, flush=True)
                 sys.exit(1)
+            print(f"INFO: Executing show command: {args.command}", flush=True)
             output = net_connect.send_command(args.command)
-            print(output)
+            print(output, flush=True)
             
         elif args.action == "config":
             if not args.commands:
-                print("Error: commands is required for 'config' action", file=sys.stderr)
+                print("Error: commands is required for 'config' action", file=sys.stderr, flush=True)
                 sys.exit(1)
             commands_list = json.loads(args.commands) if isinstance(args.commands, str) else args.commands
+            print(f"INFO: Sending configuration commands ({len(commands_list)} lines) via Netmiko...", flush=True)
             output = net_connect.send_config_set(commands_list)
-            print(output)
+            print(output, flush=True)
+            print("INFO: Configuration deployment completed successfully.", flush=True)
             
         net_connect.disconnect()
+        print("INFO: Disconnected from device.", flush=True)
         sys.exit(0)
         
     except Exception as e:
-        print(f"Netmiko Error: {str(e)}", file=sys.stderr)
+        print(f"Netmiko Error: {str(e)}", file=sys.stderr, flush=True)
         sys.exit(1)
 
 if __name__ == "__main__":
     main()
+

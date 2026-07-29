@@ -57,6 +57,102 @@ struct ConvertResponse {
     error: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DiffLine {
+    pub r#type: String, // "normal", "insert", "delete"
+    pub old_line: Option<usize>,
+    pub new_line: Option<usize>,
+    pub content: String,
+}
+
+pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usize, usize) {
+    let old_lines: Vec<&str> = old_text.lines().collect();
+    let new_lines: Vec<&str> = new_text.lines().collect();
+
+    let n = old_lines.len();
+    let m = new_lines.len();
+
+    let mut dp = vec![vec![0usize; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            if old_lines[i] == new_lines[j] {
+                dp[i][j] = dp[i + 1][j + 1] + 1;
+            } else {
+                dp[i][j] = dp[i + 1][j].max(dp[i][j + 1]);
+            }
+        }
+    }
+
+    let mut diff_lines = Vec::new();
+    let mut i = 0;
+    let mut j = 0;
+    let mut old_line_num = 1;
+    let mut new_line_num = 1;
+    let mut additions = 0;
+    let mut deletions = 0;
+
+    while i < n && j < m {
+        if old_lines[i] == new_lines[j] {
+            diff_lines.push(DiffLine {
+                r#type: "normal".to_string(),
+                old_line: Some(old_line_num),
+                new_line: Some(new_line_num),
+                content: old_lines[i].to_string(),
+            });
+            i += 1;
+            j += 1;
+            old_line_num += 1;
+            new_line_num += 1;
+        } else if dp[i + 1][j] >= dp[i][j + 1] {
+            diff_lines.push(DiffLine {
+                r#type: "delete".to_string(),
+                old_line: Some(old_line_num),
+                new_line: None,
+                content: old_lines[i].to_string(),
+            });
+            i += 1;
+            old_line_num += 1;
+            deletions += 1;
+        } else {
+            diff_lines.push(DiffLine {
+                r#type: "insert".to_string(),
+                old_line: None,
+                new_line: Some(new_line_num),
+                content: new_lines[j].to_string(),
+            });
+            j += 1;
+            new_line_num += 1;
+            additions += 1;
+        }
+    }
+
+    while i < n {
+        diff_lines.push(DiffLine {
+            r#type: "delete".to_string(),
+            old_line: Some(old_line_num),
+            new_line: None,
+            content: old_lines[i].to_string(),
+        });
+        i += 1;
+        old_line_num += 1;
+        deletions += 1;
+    }
+
+    while j < m {
+        diff_lines.push(DiffLine {
+            r#type: "insert".to_string(),
+            old_line: None,
+            new_line: Some(new_line_num),
+            content: new_lines[j].to_string(),
+        });
+        j += 1;
+        new_line_num += 1;
+        additions += 1;
+    }
+
+    (diff_lines, additions, deletions)
+}
+
 fn run_config_helper(payload: serde_json::Value) -> Result<String, String> {
     let mut current_dir = std::env::current_dir()
         .map_err(|e| format!("Failed to get current directory: {}", e))?;
@@ -203,9 +299,187 @@ pub async fn validate_cisco_config_impl(
             match rx.await {
                 Ok(c) => {
                     if c == "commit" {
+                        let target_name = hostname.clone().or_else(|| ip.clone());
+                        let device_name = match target_name {
+                            Some(name) => name,
+                            None => {
+                                if let Ok(conns) = crate::connections::load_connections_raw(&app_handle) {
+                                    if let Some(conn) = conns.first() {
+                                        conn.hostname.as_str().to_string()
+                                    } else {
+                                        "unknown".to_string()
+                                    }
+                                } else {
+                                    "unknown".to_string()
+                                }
+                            }
+                        };
+
+                        // Step 1: Notify status and fetch pre-deployment config
+                        let _ = app_handle.emit("commit-status", serde_json::json!({
+                            "id": id,
+                            "phase": "fetching_before",
+                            "message": "現状のConfigを取得中..."
+                        }));
+
+                        let dev_config_res = crate::mcp::fetch::fetch_base::resolve_device_config(&app_handle, &device_name).await;
+                        let dev_config = match dev_config_res {
+                            Ok(cfg) => cfg,
+                            Err(e) => {
+                                let err_msg = format!("対象機器 ({}) の接続設定取得に失敗しました: {}", device_name, e);
+                                let _ = app_handle.emit("commit-status", serde_json::json!({
+                                    "id": id,
+                                    "phase": "failed",
+                                    "message": err_msg.clone()
+                                }));
+                                return Ok(CommandResult {
+                                    success: false,
+                                    output: format!("{}\n\n**Status**: ❌ コミット失敗: {}", md, err_msg),
+                                    saved_path: None,
+                                    is_cached: None,
+                                    cache_time: None,
+                                });
+                            }
+                        };
+
+                        let wrapper = crate::network::SidecarNetmikoWrapper::new(&app_handle);
+                        let templates = crate::mcp::fetch::fetch_base::load_templates(&app_handle);
+                        let fetch_cmd = crate::mcp::fetch::fetch_base::get_template_for_dtype(&templates, &dev_config.device_type)
+                            .map(|t| t.fetch_config.as_str())
+                            .unwrap_or("show running-config");
+
+                        let before_config = match wrapper.execute_show(&dev_config, fetch_cmd).await {
+                            Ok(cfg) => cfg,
+                            Err(e) => {
+                                let err_msg = format!("現状のConfig取得に失敗しました: {}", e);
+                                let _ = app_handle.emit("commit-status", serde_json::json!({
+                                    "id": id,
+                                    "phase": "failed",
+                                    "message": err_msg.clone()
+                                }));
+                                return Ok(CommandResult {
+                                    success: false,
+                                    output: format!("{}\n\n**Status**: ❌ コミット失敗: {}", md, err_msg),
+                                    saved_path: None,
+                                    is_cached: None,
+                                    cache_time: None,
+                                });
+                            }
+                        };
+
+                        // Step 2: Launch netmiko and stream configuration commands
+                        let _ = app_handle.emit("commit-status", serde_json::json!({
+                            "id": id,
+                            "phase": "deploying",
+                            "message": "Netmikoを起動し、Configを投入中..."
+                        }));
+
+                        let commands: Vec<String> = config
+                            .lines()
+                            .map(|l| l.trim().to_string())
+                            .filter(|l| !l.is_empty())
+                            .collect();
+
+                        use crate::network::NetworkInterface;
+                        let deploy_res = wrapper.execute_config(&dev_config, commands).await;
+                        let deploy_output = match deploy_res {
+                            Ok(out) => out,
+                            Err(e) => {
+                                let err_msg = format!("Config投入中にエラーが発生しました: {}", e);
+                                let _ = app_handle.emit("commit-status", serde_json::json!({
+                                    "id": id,
+                                    "phase": "failed",
+                                    "message": err_msg.clone()
+                                }));
+                                return Ok(CommandResult {
+                                    success: false,
+                                    output: format!("{}\n\n**Status**: ❌ コミット失敗: {}", md, err_msg),
+                                    saved_path: None,
+                                    is_cached: None,
+                                    cache_time: None,
+                                });
+                            }
+                        };
+
+                        // Step 3: Fetch post-deployment config and verify Diff
+                        let _ = app_handle.emit("commit-status", serde_json::json!({
+                            "id": id,
+                            "phase": "verifying",
+                            "message": "投入完了。投入後のConfigを取得しDiff検証中..."
+                        }));
+
+                        let after_config = match wrapper.execute_show(&dev_config, fetch_cmd).await {
+                            Ok(cfg) => cfg,
+                            Err(e) => {
+                                let err_msg = format!("投入後のConfig取得に失敗しました: {}", e);
+                                let _ = app_handle.emit("commit-status", serde_json::json!({
+                                    "id": id,
+                                    "phase": "failed",
+                                    "message": err_msg.clone()
+                                }));
+                                return Ok(CommandResult {
+                                    success: false,
+                                    output: format!("{}\n\n**投入ログ (Netmiko)**:\n```text\n{}\n```\n\n**Status**: ⚠️ Config投入は実行されましたが、投入後の検証に失敗しました: {}", md, deploy_output, err_msg),
+                                    saved_path: None,
+                                    is_cached: None,
+                                    cache_time: None,
+                                });
+                            }
+                        };
+
+                        let (diff_lines, additions, deletions) = compute_line_diff(&before_config, &after_config);
+                        let diff_applied = additions > 0 || deletions > 0;
+
+                        // Emit diff result to frontend right pane
+                        let _ = app_handle.emit("commit-diff-result", serde_json::json!({
+                            "id": id,
+                            "fileName": "running-config",
+                            "additions": additions,
+                            "deletions": deletions,
+                            "diffLines": diff_lines,
+                            "diffApplied": diff_applied,
+                            "deployOutput": deploy_output,
+                            "status": if diff_applied { "success" } else { "warning" },
+                            "message": if diff_applied {
+                                format!("Config投入完了。差分が正常に確認されました (+{} 行, -{} 行)", additions, deletions)
+                            } else {
+                                "Config投入完了。投入前後のConfigに差分がありませんでした (既に適用済みの可能性があります)".to_string()
+                            }
+                        }));
+
+                        let _ = app_handle.emit("commit-status", serde_json::json!({
+                            "id": id,
+                            "phase": "success",
+                            "message": "投入およびDiff検証が完了しました"
+                        }));
+
+                        // Step 4: Return result to user
+                        let status_str = if diff_applied {
+                            format!("🚀 Configの投入およびDiff検証が成功しました (+{} 行, -{} 行)", additions, deletions)
+                        } else {
+                            "⚠️ Configの投入は完了しましたが、投入前後のConfigに差分は検出されませんでした。".to_string()
+                        };
+
+                        let mut final_md = format!("{}\n\n### 🚀 Config 投入結果\n- **対象機器**: `{}` ({})\n- **ステータス**: {}\n\n", md, device_name, dev_config.host, status_str);
+                        final_md.push_str("#### 投入ログ (Netmiko):\n```text\n");
+                        final_md.push_str(&deploy_output);
+                        final_md.push_str("\n```\n");
+
+                        if diff_applied {
+                            final_md.push_str("\n#### 適用された差分 (Diff):\n```diff\n");
+                            for d in &diff_lines {
+                                if d.r#type == "insert" {
+                                    final_md.push_str(&format!("+ {}\n", d.content));
+                                } else if d.r#type == "delete" {
+                                    final_md.push_str(&format!("- {}\n", d.content));
+                                }
+                            }
+                            final_md.push_str("```\n");
+                        }
+
                         Ok(CommandResult {
                             success: true,
-                            output: format!("{}\n\n**Status**: 🚀 Configuration successfully committed/deployed by user.", md),
+                            output: final_md,
                             saved_path: None,
                             is_cached: None,
                             cache_time: None,
@@ -241,6 +515,7 @@ pub async fn validate_cisco_config_impl(
         })
     }
 }
+
 
 #[tauri::command]
 pub async fn validate_cisco_config(app: tauri::AppHandle, config: String) -> Result<CommandResult, String> {
@@ -481,4 +756,16 @@ mod tests {
         assert!(res.success);
         assert!(res.output.contains("set system host-name RouterA"));
     }
+
+    #[test]
+    fn test_compute_line_diff() {
+        let old_text = "hostname RouterA\ninterface GigabitEthernet0/1\n shutdown\n";
+        let new_text = "hostname RouterA\ninterface GigabitEthernet0/1\n no shutdown\n ip address 10.0.0.1 255.255.255.0\n";
+        let (lines, additions, deletions) = compute_line_diff(old_text, new_text);
+        assert!(additions >= 2);
+        assert!(deletions >= 1);
+        assert!(lines.iter().any(|l| l.r#type == "insert" && l.content.contains("no shutdown")));
+        assert!(lines.iter().any(|l| l.r#type == "delete" && l.content.contains("shutdown")));
+    }
 }
+

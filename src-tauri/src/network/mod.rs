@@ -95,12 +95,24 @@ impl SidecarNetmikoWrapper {
         while let Some(event) = rx.recv().await {
             match event {
                 tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
-                    stdout.push_str(&String::from_utf8_lossy(&line));
+                    let text = String::from_utf8_lossy(&line).to_string();
+                    stdout.push_str(&text);
                     stdout.push('\n');
+                    use tauri::Emitter;
+                    let _ = self.app.emit("commit-log", serde_json::json!({
+                        "line": text,
+                        "stream": "stdout"
+                    }));
                 }
                 tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
-                    stderr.push_str(&String::from_utf8_lossy(&line));
+                    let text = String::from_utf8_lossy(&line).to_string();
+                    stderr.push_str(&text);
                     stderr.push('\n');
+                    use tauri::Emitter;
+                    let _ = self.app.emit("commit-log", serde_json::json!({
+                        "line": text,
+                        "stream": "stderr"
+                    }));
                 }
                 tauri_plugin_shell::process::CommandEvent::Error(err) => {
                     return Err(NetworkError::SidecarError(err.to_string()));
