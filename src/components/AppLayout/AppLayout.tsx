@@ -420,8 +420,39 @@ export function AppLayout() {
     }
   };
 
+  const [isGenerating, setIsGenerating] = useState(false);
+  const isCurrentlyGenerating = isGenerating || chatState.messages.some((m) => m.status === "Running" || m.isToolLoading);
+
+  const handleStop = async () => {
+    try {
+      await invoke("stop_llm");
+    } catch (err) {
+      console.error("Failed to stop LLM:", err);
+    }
+    queueRef.current = [];
+    isExecutingRef.current = false;
+    setIsGenerating(false);
+
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.status === "Running" || msg.isToolLoading) {
+          return {
+            ...msg,
+            isToolLoading: false,
+            status: "Failed",
+            summary_text: msg.summary_text
+              ? `${msg.summary_text} (${t("chat.stopped")})`
+              : t("chat.stopped"),
+          };
+        }
+        return msg;
+      })
+    );
+  };
+
   const executeMessage = async (userMessage: string, attachments?: Attachment[]) => {
     isExecutingRef.current = true;
+    setIsGenerating(true);
     try {
       await handleMcpResponse(userMessage, attachments);
     } catch (e) {
@@ -436,6 +467,7 @@ export function AppLayout() {
         executeMessage(next.content, next.attachments);
       } else {
         isExecutingRef.current = false;
+        setIsGenerating(false);
       }
     }
   };
@@ -765,6 +797,8 @@ export function AppLayout() {
                     setSuggestionIndex={setSuggestionIndex}
                     handleSelectSuggestion={handleSelectSuggestion}
                     handleSend={handleSend}
+                    handleStop={handleStop}
+                    isGenerating={isCurrentlyGenerating}
                     handleLoadModel={handleLoadModel}
                     setIsSettingsOpen={(open) => uiDispatch({ type: "SET_SETTINGS_OPEN", payload: open })}
                     cursorPos={cursorPos}

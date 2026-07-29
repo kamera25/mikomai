@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { SuggestionsList } from "./SuggestionsList";
-import { RefreshIcon, GearIcon, SendIcon, PaperclipIcon, CrossIcon, FileTextIcon } from "../Icons";
+import { RefreshIcon, GearIcon, SendIcon, StopIcon, PaperclipIcon, CrossIcon, FileTextIcon } from "../Icons";
 import { Attachment } from "../../types";
 import { useSettingsContext } from "../../contexts/SettingsContext";
 import "./ChatInput.css";
@@ -20,6 +20,8 @@ interface ChatInputProps {
   setSuggestionIndex: React.Dispatch<React.SetStateAction<number>>;
   handleSelectSuggestion: (host: { hostname: string; ip: string }) => void;
   handleSend: (text?: string, attachments?: Attachment[]) => void;
+  handleStop?: () => void;
+  isGenerating?: boolean;
   handleLoadModel: () => void;
   setIsSettingsOpen: (value: boolean) => void;
   cursorPos: number;
@@ -43,6 +45,8 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
       setSuggestionIndex,
       handleSelectSuggestion,
       handleSend,
+      handleStop,
+      isGenerating = false,
       handleLoadModel,
       setIsSettingsOpen,
       cursorPos,
@@ -583,13 +587,26 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
               }}
               onKeyDown={handleInputKeyDown}
             />
-            <button
-              className="send-button"
-              onClick={onSend}
-              disabled={modelStatus !== "Loaded" || (!input.trim() && attachments.length === 0)}
-            >
-              <SendIcon size={16} />
-            </button>
+            {isGenerating ? (
+              <button
+                type="button"
+                className="send-button stop-button"
+                onClick={handleStop}
+                title={t("chat_input.btn_stop")}
+              >
+                <StopIcon size={16} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="send-button"
+                onClick={onSend}
+                disabled={modelStatus !== "Loaded" || (!input.trim() && attachments.length === 0)}
+                title={t("chat_input.btn_send")}
+              >
+                <SendIcon size={16} />
+              </button>
+            )}
           </div>
         </div>
       </div>

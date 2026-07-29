@@ -12,6 +12,28 @@ use crate::llm::llm_manager::SharedModel;
 use std::sync::Arc;
 use crate::llm::worker::{LlmWorker, Route};
 use crate::error::TauriError;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static CANCEL_LLM: AtomicBool = AtomicBool::new(false);
+
+pub fn cancel() {
+    CANCEL_LLM.store(true, Ordering::SeqCst);
+}
+
+pub fn reset_cancel() {
+    CANCEL_LLM.store(false, Ordering::SeqCst);
+}
+
+pub fn is_cancelled() -> bool {
+    CANCEL_LLM.load(Ordering::SeqCst)
+}
+
+#[tauri::command]
+pub fn stop_llm() {
+    log::info!("stop_llm command invoked by user");
+    cancel();
+}
+
 
 
 #[derive(serde::Serialize)]
@@ -407,6 +429,10 @@ impl LlamaState {
                             let mut bytes_accumulator = Vec::new();
 
                             for _ in 0..n_len {
+                                if is_cancelled() {
+                                    log::info!("LLM internal loop cancelled");
+                                    break;
+                                }
                                 let new_token_id = sampler.sample(&mut ctx, batch.n_tokens() - 1);
 
                                 if new_token_id == shared_model.model.token_eos() || Some(new_token_id) == turn_end_token {

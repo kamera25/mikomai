@@ -972,6 +972,8 @@ pub async fn handle_mcp_message(
     llama_state: State<'_, crate::llm::llm::LlamaState>,
     payload: ChatRequest,
 ) -> Result<(), String> {
+    crate::llm::llm::reset_cancel();
+
     let ChatRequest {
         user_message,
         summaries,
@@ -980,6 +982,10 @@ pub async fn handle_mcp_message(
         mcp_timeout,
         attachments,
     } = payload;
+
+    if crate::llm::llm::is_cancelled() {
+        return Ok(());
+    }
 
     // 1. Generate thinkingTaskId and emit mcp-initial-started
     let thinking_task_id = format!("task_think_{}", chrono::Utc::now().timestamp_millis());
@@ -1011,6 +1017,10 @@ pub async fn handle_mcp_message(
     }
     let prompt_with_context = format!("【ユーザー入力】\n{}{}", final_user_message, history_block);
 
+    if crate::llm::llm::is_cancelled() {
+        return Ok(());
+    }
+
     // 3. Call ask_llm_initial_internal to get the route along with response
     let (response, route) = match crate::llm::llm::ask_llm_initial_internal(window.clone(), prompt_with_context, &*llama_state).await {
         Ok(res) => res,
@@ -1018,6 +1028,10 @@ pub async fn handle_mcp_message(
             return Err(e.to_string());
         }
     };
+
+    if crate::llm::llm::is_cancelled() {
+        return Ok(());
+    }
 
     let _ = window.emit("chat-event", ChatEvent::McpInitialFinished(InitialFinishedPayload {
         task_id: thinking_task_id.clone(),

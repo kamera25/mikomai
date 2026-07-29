@@ -44,7 +44,8 @@
     "tool_error": "{{toolLabel}} error",
     "agent_processing": "{{agentName}} is processing...",
     "agent_analyzing": "{{agentName}} is analyzing...",
-    "pending": "Pending..."
+    "pending": "Pending...",
+    "stopped": "Response stopped"
   },
   "chat_input": {
     "placeholder": "Ask mikomai...",
@@ -56,6 +57,8 @@
     "status_failed_model": "Failed to load AI model. Please check the settings.",
     "btn_load_model": "Load Model",
     "btn_settings": "Settings",
+    "btn_send": "Send",
+    "btn_stop": "Stop Response",
     "vision_disabled_warning_title": "Vision processing is disabled",
     "vision_disabled_warning_desc": "To load and analyze images, please enable Vision processing in settings.",
     "btn_open_settings": "Open Settings"

@@ -273,6 +273,15 @@
   transform: translateY(1px);
 }
 
+.send-button.stop-button {
+  background-color: var(--danger-color, #ef4444);
+}
+
+.send-button.stop-button:hover:not(:disabled) {
+  background-color: var(--danger-hover, #dc2626);
+  transform: translateY(-1px);
+}
+
 .send-button svg {
   width: 18px;
   height: 18px;

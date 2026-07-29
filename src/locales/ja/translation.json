@@ -44,7 +44,8 @@
     "tool_error": "{{toolLabel}} エラー",
     "agent_processing": "{{agentName}} が処理中...",
     "agent_analyzing": "{{agentName}} が分析中...",
-    "pending": "保留中..."
+    "pending": "保留中...",
+    "stopped": "応答が停止されました"
   },
   "chat_input": {
     "placeholder": "mikomaiに質問する...",
@@ -56,6 +57,8 @@
     "status_failed_model": "AIモデルの読み込みに失敗しました。設定を確認してください。",
     "btn_load_model": "モデルの読み込み",
     "btn_settings": "設定",
+    "btn_send": "送信",
+    "btn_stop": "応答を停止",
     "vision_disabled_warning_title": "Vision 機能が無効化されています",
     "vision_disabled_warning_desc": "画像を解析・読み込むには設定からVision機能を有効にしてください。",
     "btn_open_settings": "設定を開く"

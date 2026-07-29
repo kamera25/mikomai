@@ -1,6 +1,23 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
 import { ChatInput } from "../ChatInput";
+import { SettingsProvider } from "../../../contexts/SettingsContext";
+
+vi.mock("../../../hooks/useSettings", () => ({
+  useSettings: () => ({
+    visionEnabled: false,
+    mmprojPath: null,
+  }),
+}));
+
+const render = (ui: React.ReactElement) => {
+  const result = rtlRender(<SettingsProvider>{ui}</SettingsProvider>);
+  return {
+    ...result,
+    rerender: (newUi: React.ReactElement) =>
+      result.rerender(<SettingsProvider>{newUi}</SettingsProvider>),
+  };
+};
 
 describe("ChatInput Component", () => {
   const defaultProps = {
@@ -15,6 +32,8 @@ describe("ChatInput Component", () => {
     setSuggestionIndex: vi.fn(),
     handleSelectSuggestion: vi.fn(),
     handleSend: vi.fn(),
+    handleStop: vi.fn(),
+    isGenerating: false,
     handleLoadModel: vi.fn(),
     setIsSettingsOpen: vi.fn(),
     cursorPos: 0,
@@ -39,9 +58,18 @@ describe("ChatInput Component", () => {
   it("calls handleSend when send button is clicked", () => {
     const handleSend = vi.fn();
     render(<ChatInput {...defaultProps} input="hello" handleSend={handleSend} />);
-    const button = screen.getByRole("button");
+    const button = screen.getByTitle("送信");
     fireEvent.click(button);
     expect(handleSend).toHaveBeenCalled();
+  });
+
+  it("renders stop button when isGenerating is true and calls handleStop on click", () => {
+    const handleStop = vi.fn();
+    render(<ChatInput {...defaultProps} isGenerating={true} handleStop={handleStop} />);
+    const stopButton = screen.getByTitle("応答を停止");
+    expect(stopButton).toBeInTheDocument();
+    fireEvent.click(stopButton);
+    expect(handleStop).toHaveBeenCalled();
   });
 
   it("updates filtered suggestions when availableHosts changes while suggestions are shown", () => {

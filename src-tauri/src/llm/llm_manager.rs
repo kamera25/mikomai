@@ -275,6 +275,10 @@ pub fn run_inference_with_grammar(
     let mut bytes_accumulator = Vec::new();
 
     for _ in 0..n_len {
+        if crate::llm::llm::is_cancelled() {
+            log::info!("LLM generation loop cancelled by user");
+            break;
+        }
         let new_token_id = sampler.sample(&mut guard.ctx, batch.n_tokens() - 1);
 
         if new_token_id == agent_ctx.model.token_eos() || Some(new_token_id) == turn_end_token {
