@@ -700,7 +700,7 @@ pub fn execute_mcp_tools_flow(
                 if let Some(shared) = &*shared_opt {
                     let mut builder = shared.builder.lock().unwrap();
                     for (tool_id, custom_label, result) in &execution_info {
-                        if *tool_id == "ask_user_choice" || *tool_id == "ask_interface_choice" || *tool_id == "ask_ipaddress_choice" {
+                        if (*tool_id == "ask_user_choice" || *tool_id == "ask_interface_choice" || *tool_id == "ask_ipaddress_choice") && result.output.trim() != "cancelled" {
                             builder.collected_choices.push((custom_label.clone(), result.output.clone()));
                         }
                     }

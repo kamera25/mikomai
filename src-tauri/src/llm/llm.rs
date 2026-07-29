@@ -274,6 +274,13 @@ impl LlamaState {
                                 let is_ask_ipaddress_choice = tool_label.contains("ask_ipaddress_choice");
                                 let is_any_choice = is_ask_user_choice || is_ask_interface_choice || is_ask_ipaddress_choice;
 
+                                if is_any_choice && (output.trim() == "cancelled" || output.lines().any(|l| l.trim() == "cancelled") || output.trim().ends_with("cancelled")) {
+                                    log::info!("Choice prompt cancelled by user (tool_label: {}), stopping subsequent sequence.", tool_label);
+                                    let cancel_msg = "応答が停止されました。";
+                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(cancel_msg.to_string()));
+                                    return Ok(cancel_msg.to_string());
+                                }
+
                                 let (active_route, route_subsequent_task) = if is_any_choice {
                                     (Route::Builder, None)
                                 } else {

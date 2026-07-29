@@ -116,7 +116,9 @@ impl LlmWorker for BuilderWorker {
 
         if let (Some(label), Some(out)) = (&tool_label, &output) {
             if label.contains("ask_user_choice") || label.contains("ask_interface_choice") || label.contains("ask_ipaddress_choice") {
-                self.collected_choices.push((label.clone(), out.clone()));
+                if out.trim() != "cancelled" && !out.lines().any(|l| l.trim() == "cancelled") {
+                    self.collected_choices.push((label.clone(), out.clone()));
+                }
             } else if label.contains("query_nw_db") || label.contains("query_rag") || label.contains("NWDB検索") {
                 self.rag_context = Some(out.clone());
             }
