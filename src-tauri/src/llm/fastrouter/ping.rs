@@ -95,7 +95,12 @@ pub fn parse_ping_command_with_config(input: &str, config: &ShortcutRulesConfig)
         }
     }
 
-    if lower_input.contains("df") || lower_input.contains("フラグメント禁止") || lower_input.contains("断片化禁止") {
+    if lower_input.contains("df") 
+    || lower_input.contains("フラグメント禁止") 
+    || lower_input.contains("断片化禁止") 
+    || lower_input.contains("フラグメントなし") 
+    || lower_input.contains("フラグメント無し") 
+    {
         args.insert("df".to_string(), Value::Bool(true));
     }
 
