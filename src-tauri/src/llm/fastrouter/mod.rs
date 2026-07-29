@@ -56,6 +56,8 @@ pub struct FastRouteConfig {
     pub serial_ports: ShortcutRule,
     #[serde(default)]
     pub nwdiag: NwdiagRegexConfig,
+    #[serde(default)]
+    pub greeting: ShortcutRule,
     #[serde(default = "default_question_keywords")]
     pub question_keywords: Vec<String>,
 }
@@ -112,6 +114,31 @@ pub(crate) fn calculate_host_confidence(input: &str, host: &str, config: &Shortc
     }
 }
 
+fn detect_greeting_shortcut(
+    input: &str,
+    lower_input: &str,
+    config: &ShortcutRulesConfig,
+) -> Option<(String, Value, String, f64)> {
+    let rule = &config.fastroute.greeting;
+    if rule.patterns.is_empty() {
+        return None;
+    }
+    let trimmed = input.trim();
+    for pattern in &rule.patterns {
+        if let Ok(re) = Regex::new(pattern) {
+            if re.is_match(trimmed) || re.is_match(lower_input) {
+                return Some((
+                    rule.action.clone(),
+                    serde_json::json!({}),
+                    rule.message.trim().to_string(),
+                    1.0,
+                ));
+            }
+        }
+    }
+    None
+}
+
 fn detect_simple_shortcut(
     input: &str,
     lower_input: &str,
@@ -142,17 +169,22 @@ pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String, f64)>
     let lower_input = input.to_lowercase();
     let reg = &config.fastroute;
 
-    // 1. Ping
+    // 1. Greeting
+    if let Some(res) = detect_greeting_shortcut(input, &lower_input, &config) {
+        return Some(res);
+    }
+
+    // 2. Ping
     if let Some(res) = detect_ping_shortcut(input, &config) {
         return Some(res);
     }
 
-    // 2. Traceroute
+    // 3. Traceroute
     if let Some(res) = detect_traceroute_shortcut(input, &lower_input, &config) {
         return Some(res);
     }
 
-    // 3. Simple shortcuts (Host List, ARP, Route, Serial Ports)
+    // 4. Simple shortcuts (Host List, ARP, Route, Serial Ports)
     let simple_rules = [
         &reg.host_list,
         &reg.arp,
@@ -165,7 +197,7 @@ pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String, f64)>
         }
     }
 
-    // 4. nwdiag shortcut
+    // 5. nwdiag shortcut
     if let Some(res) = detect_nwdiag_shortcut(input, &config) {
         return Some(res);
     }
@@ -194,6 +226,17 @@ mod tests {
     #[test]
     fn test_detect_shortcut_tool() {
         let config = ShortcutRulesConfig::load();
+
+        // Greeting
+        let res = detect_shortcut_tool("こんにちは").unwrap();
+        assert_eq!(res.0, "static_reply");
+        assert!(res.2.contains("MIKOMAI"));
+        assert_eq!(res.3, 1.0);
+
+        let res_intro = detect_shortcut_tool("自己紹介してください").unwrap();
+        assert_eq!(res_intro.0, "static_reply");
+        assert!(res_intro.2.contains("MIKOMAI"));
+        assert_eq!(res_intro.3, 1.0);
 
         // Ping
         let res = detect_shortcut_tool("ping google.com").unwrap();

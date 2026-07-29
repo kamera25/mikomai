@@ -59,6 +59,25 @@ fastroute:
     message: "ネットワーク図(nwdiag)を生成します。"
     pattern: '(?i)nwdiag\s*\{'
 
+  greeting:
+    action: "static_reply"
+    message: |
+      こんにちは！私は「MIKOMAI (Managed Infrastructure Knowledge Operator ML Agent Interface)」です。
+      ネットワークインフラの診断、運用、トラブルシューティングを最高精度で支援するプロフェッショナルAIアシスタントです。
+
+      以下のような操作や調査をお手伝いできます：
+      - **ネットワーク機器のステータス確認** (例: `show ip int brief` など)
+      - **疎通確認・調査** (PingやTracerouteの実行)
+      - **ホスト一覧やARPテーブルの取得**
+      - **ネットワーク技術データベース (NW-DB) の検索と解説** (Cisco機器の設定手順など)
+      - **ログの分析とトラブルシューティング**
+
+      何かお手伝いできることはありますか？お気軽に話しかけてください！
+    patterns:
+      - '(?i)^(こんにちは|こんにちわ|はじめまして|おはよう|おはようございます|こんばんは|お疲れ様です|おつかれさま|お疲れ様|ハロー|はろー|hello|hi|hey)$'
+      - '(?i).*(自己紹介|じこしょうかい|who are you|あなたは|お名前|なまえ|名前|何ができますか|なにができますか).*'
+
+
   question_keywords:
     - "とは"
     - "何"

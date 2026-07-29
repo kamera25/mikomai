@@ -610,11 +610,15 @@ pub async fn ask_llm_initial_internal(
     if !has_image_attachment {
         if let Some((tool_name, params, message, confidence)) = crate::llm::fastrouter::detect_shortcut_tool(&original_query) {
             if confidence >= 0.8 {
-                let tool_call = serde_json::json!({
-                    "tool_name": tool_name,
-                    "params": params
-                });
-                let response_str = format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap());
+                let response_str = if tool_name == "static_reply" || tool_name.is_empty() {
+                    message
+                } else {
+                    let tool_call = serde_json::json!({
+                        "tool_name": tool_name,
+                        "params": params
+                    });
+                    format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap())
+                };
                 let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()));
                 return Ok((response_str, Route::None));
             }
@@ -623,10 +627,6 @@ pub async fn ask_llm_initial_internal(
 
     log::info!("Received original query (has_image={}): '{}'", has_image_attachment, original_query);
 
-    if crate::llm::greeting::is_greeting(&original_query) {
-        let resp = crate::llm::greeting::stream_self_introduction(&window).await;
-        return Ok((resp, Route::None));
-    }
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     llama_state.inference_tx.send(InferenceRequest::Initial {
