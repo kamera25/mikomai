@@ -83,6 +83,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
     setPreloadSummarization,
     visionEnabled,
     setVisionEnabled,
+    autoDryRun,
+    setAutoDryRun,
     mmprojPath,
     setMmprojPath,
     saveAllSettings,
@@ -235,6 +237,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
   const handleVisionEnabledChange = (val: boolean) => {
     setVisionEnabled(val);
     saveAllSettings({ visionEnabled: val });
+  };
+
+  const handleAutoDryRunChange = (val: boolean) => {
+    setAutoDryRun(val);
+    saveAllSettings({ autoDryRun: val });
   };
 
   const handleMmprojPathChange = (val: string) => {
@@ -496,6 +503,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
               </select>
               <p className="help-text form-help-text">
                 {t("settings.desc_ip_version")}
+              </p>
+            </div>
+            <div className="form-control">
+              <label htmlFor="auto-dry-run-checkbox" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                <input
+                  id="auto-dry-run-checkbox"
+                  type="checkbox"
+                  checked={autoDryRun}
+                  onChange={(e) => handleAutoDryRunChange(e.target.checked)}
+                />
+                {t("settings.label_auto_dry_run")}
+              </label>
+              <p className="help-text form-help-text">
+                {t("settings.desc_auto_dry_run")}
               </p>
             </div>
             <div className="form-control">

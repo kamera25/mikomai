@@ -15,11 +15,12 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
   const { state: uiState } = useUIContext();
   const proposedDiffData = uiState.configDiffData;
 
-  const [phase, setPhase] = useState<"idle" | "fetching_before" | "deploying" | "verifying" | "success" | "failed">("idle");
+  const [phase, setPhase] = useState<"idle" | "fetching_before" | "dry_running" | "deploying" | "verifying" | "success" | "failed">("idle");
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [commitLogs, setCommitLogs] = useState<string[]>([]);
   const [verifiedDiffData, setVerifiedDiffData] = useState<ConfigDiffData | null>(null);
   const [activeTab, setActiveTab] = useState<"diff" | "logs">("diff");
+  const [forceCommitReq, setForceCommitReq] = useState<{ forceId: string; errors: any[]; message: string } | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   // Reset state when id changes or panel opens
@@ -29,6 +30,7 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
     setCommitLogs([]);
     setVerifiedDiffData(null);
     setActiveTab("diff");
+    setForceCommitReq(null);
   }, [id, proposedDiffData]);
 
   // Listen to Tauri events from Rust backend
@@ -44,7 +46,7 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
         setStatusMessage(message);
         setCommitLogs((prev) => [...prev, `[STATUS] ${message}`]);
       }
-      if (newPhase === "deploying" || newPhase === "fetching_before") {
+      if (newPhase === "deploying" || newPhase === "fetching_before" || newPhase === "dry_running") {
         setActiveTab("logs");
       }
     });
@@ -54,6 +56,13 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
       if (line !== undefined && line !== null) {
         setCommitLogs((prev) => [...prev, line]);
       }
+    });
+
+    const unlistenForceCommit = listen<any>("request-force-commit", (event) => {
+      const { id: eventId, forceId, errors, message } = event.payload;
+      if (id && eventId && eventId !== id) return;
+      setForceCommitReq({ forceId, errors: errors || [], message });
+      setActiveTab("logs");
     });
 
     const unlistenDiffResult = listen<any>("commit-diff-result", (event) => {
@@ -84,6 +93,7 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
     return () => {
       unlistenStatus.then((fn) => fn());
       unlistenLog.then((fn) => fn());
+      unlistenForceCommit.then((fn) => fn());
       unlistenDiffResult.then((fn) => fn());
     };
   }, [isOpen, id]);
@@ -106,6 +116,17 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
       console.error("Failed to submit commit choice:", e);
       setPhase("failed");
       setStatusMessage(`コミット起動エラー: ${e}`);
+    }
+  };
+
+  const handleForceCommitChoice = async (choice: "commit_force" | "cancel") => {
+    if (!forceCommitReq) return;
+    const targetForceId = forceCommitReq.forceId;
+    setForceCommitReq(null);
+    try {
+      await invoke("submit_user_choice", { id: targetForceId, choice });
+    } catch (e) {
+      console.error("Failed to submit force commit choice:", e);
     }
   };
 
@@ -135,6 +156,8 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
     switch (phase) {
       case "fetching_before":
         return <span className="diff-phase-badge info">🔄 現状Config取得中...</span>;
+      case "dry_running":
+        return <span className="diff-phase-badge warning">🧪 自動Dry-run検証中...</span>;
       case "deploying":
         return <span className="diff-phase-badge warning">🚀 Netmiko投入中...</span>;
       case "verifying":
@@ -180,6 +203,64 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
             投入ログ ({commitLogs.length})
           </button>
         </div>
+
+        {forceCommitReq && (
+          <div
+            style={{
+              margin: "12px 16px",
+              padding: "12px",
+              backgroundColor: "rgba(239, 68, 68, 0.15)",
+              border: "1px solid #ef4444",
+              borderRadius: "6px",
+              color: "#f87171",
+            }}
+          >
+            <div style={{ fontWeight: "bold", marginBottom: "6px" }}>
+              ⚠️ Dry-run検証でエラーが検出されました
+            </div>
+            <div style={{ fontSize: "0.85rem", marginBottom: "8px" }}>
+              {forceCommitReq.message}
+            </div>
+            <ul style={{ fontSize: "0.8rem", paddingLeft: "20px", margin: "0 0 10px 0" }}>
+              {forceCommitReq.errors.map((err, idx) => (
+                <li key={idx}>
+                  <strong>{err.line}</strong>: {err.error}
+                </li>
+              ))}
+            </ul>
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => handleForceCommitChoice("cancel")}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "0.85rem",
+                  borderRadius: "4px",
+                  border: "1px solid #6b7280",
+                  backgroundColor: "transparent",
+                  color: "#d1d5db",
+                  cursor: "pointer",
+                }}
+              >
+                キャンセル (中断)
+              </button>
+              <button
+                onClick={() => handleForceCommitChoice("commit_force")}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "0.85rem",
+                  borderRadius: "4px",
+                  border: "none",
+                  backgroundColor: "#ef4444",
+                  color: "#ffffff",
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                }}
+              >
+                エラーを無視して強制投入
+              </button>
+            </div>
+          </div>
+        )}
 
         {activeTab === "diff" && diffData && (
           <>

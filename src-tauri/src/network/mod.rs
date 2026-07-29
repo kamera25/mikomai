@@ -60,6 +60,20 @@ pub struct CommandResult {
     pub cache_time: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DryRunLineResult {
+    pub line: String,
+    pub ok: bool,
+    pub output: String,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DryRunResult {
+    pub success: bool,
+    pub results: Vec<DryRunLineResult>,
+}
+
 // Abstract trait for network operations
 pub trait NetworkInterface {
     async fn execute_show(&self, device: &NetmikoDeviceConfig, command: &str) -> Result<String, NetworkError>;
@@ -71,13 +85,122 @@ pub struct SidecarNetmikoWrapper {
     app: AppHandle,
 }
 
+fn find_python_with_netmiko(current_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let candidates = [
+        std::path::PathBuf::from("/opt/homebrew/bin/python3"),
+        std::path::PathBuf::from("/usr/local/bin/python3"),
+        std::path::PathBuf::from("/usr/bin/python3"),
+        current_dir.join("venv").join("bin").join("python"),
+    ];
+
+    for candidate in &candidates {
+        if candidate.exists() {
+            let status = std::process::Command::new(candidate)
+                .arg("-c")
+                .arg("import netmiko")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+
+            if let Ok(st) = status {
+                if st.success() {
+                    return Some(candidate.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
 impl SidecarNetmikoWrapper {
     pub fn new(app: &AppHandle) -> Self {
         Self { app: app.clone() }
     }
 
+    pub async fn execute_dry_run(&self, device: &NetmikoDeviceConfig, commands: Vec<String>) -> Result<DryRunResult, NetworkError> {
+        let mut payload = serde_json::json!({
+            "action": "dry_run",
+            "username": device.username,
+            "password": device.password.clone().unwrap_or_default(),
+            "secret": device.enable_password.clone().unwrap_or_default(),
+            "device_type": device.device_type,
+            "commands": commands,
+            "console_port": device.console_port,
+            "console_baud_rate": device.console_baud_rate,
+        });
+        if device.console_port.is_none() {
+            payload["host"] = serde_json::json!(device.host);
+        }
+        let output_str = self.run_sidecar(payload).await?;
+        let json_line = output_str.lines()
+            .find(|l| l.trim().starts_with('{') && l.contains("\"results\""))
+            .ok_or_else(|| NetworkError::SidecarError("Failed to find dry-run JSON in output".to_string()))?;
+        
+        let res: DryRunResult = serde_json::from_str(json_line)?;
+        Ok(res)
+    }
+
     async fn run_sidecar(&self, payload: serde_json::Value) -> Result<String, NetworkError> {
         let payload_str = serde_json::to_string(&payload)?;
+
+        let mut current_dir = std::env::current_dir().unwrap_or_default();
+        if current_dir.ends_with("src-tauri") {
+            current_dir.pop();
+        }
+
+        let wrapper_path = current_dir.join("src-tauri").join("python").join("netmiko_wrapper.py");
+        let python_path = find_python_with_netmiko(&current_dir);
+
+        if let Some(py_bin) = python_path {
+            if wrapper_path.exists() {
+                let mut child = std::process::Command::new(&py_bin)
+                    .arg(&wrapper_path)
+                    .arg("--stdin")
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .map_err(|e| NetworkError::SidecarSpawn(format!("Failed to spawn python wrapper: {}", e)))?;
+
+                if let Some(mut stdin) = child.stdin.take() {
+                    use std::io::Write;
+                    let _ = stdin.write_all(format!("{}\n", payload_str).as_bytes());
+                }
+
+                let output = child.wait_with_output()
+                    .map_err(|e| NetworkError::SidecarError(format!("Failed to wait on python wrapper: {}", e)))?;
+
+                let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
+
+                use tauri::Emitter;
+                if !stdout_text.is_empty() {
+                    for line in stdout_text.lines() {
+                        let _ = self.app.emit("commit-log", serde_json::json!({
+                            "line": line,
+                            "stream": "stdout"
+                        }));
+                    }
+                }
+                if !stderr_text.is_empty() {
+                    for line in stderr_text.lines() {
+                        let _ = self.app.emit("commit-log", serde_json::json!({
+                            "line": line,
+                            "stream": "stderr"
+                        }));
+                    }
+                }
+
+                if output.status.success() {
+                    return Ok(stdout_text);
+                } else {
+                    return Err(NetworkError::SidecarFailed(
+                        output.status.code().unwrap_or(-1),
+                        stderr_text.trim().to_string(),
+                    ));
+                }
+            }
+        }
 
         let (mut rx, mut child) = self.app.shell()
             .sidecar("netmiko_wrapper")

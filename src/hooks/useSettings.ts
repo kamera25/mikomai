@@ -33,6 +33,7 @@ export function useSettings() {
   const [preloadBuilder, setPreloadBuilder] = useState<boolean>(false);
   const [preloadSummarization, setPreloadSummarization] = useState<boolean>(false);
   const [visionEnabled, setVisionEnabled] = useState<boolean>(false);
+  const [autoDryRun, setAutoDryRun] = useState<boolean>(false);
   const [mmprojPath, setMmprojPath] = useState<string | null>(null);
   const [recentIPs, setRecentIPs] = useState<string[]>([]);
 
@@ -66,6 +67,7 @@ export function useSettings() {
           if (settings.preloadSummarization !== undefined)
             setPreloadSummarization(settings.preloadSummarization);
           if (settings.visionEnabled !== undefined) setVisionEnabled(settings.visionEnabled);
+          if (settings.autoDryRun !== undefined) setAutoDryRun(settings.autoDryRun);
           if (settings.mmprojPath !== undefined) setMmprojPath(settings.mmprojPath);
         }
       } catch (e) {
@@ -95,6 +97,7 @@ export function useSettings() {
     const updatedPreloadBuilder = overrides.preloadBuilder !== undefined ? overrides.preloadBuilder : preloadBuilder;
     const updatedPreloadSummarization = overrides.preloadSummarization !== undefined ? overrides.preloadSummarization : preloadSummarization;
     const updatedVisionEnabled = overrides.visionEnabled !== undefined ? overrides.visionEnabled : visionEnabled;
+    const updatedAutoDryRun = overrides.autoDryRun !== undefined ? overrides.autoDryRun : autoDryRun;
     const updatedMmprojPath = overrides.mmprojPath !== undefined ? overrides.mmprojPath : mmprojPath;
 
     if (overrides.historyLimit !== undefined) setHistoryLimit(overrides.historyLimit);
@@ -116,6 +119,7 @@ export function useSettings() {
     if (overrides.preloadBuilder !== undefined) setPreloadBuilder(overrides.preloadBuilder);
     if (overrides.preloadSummarization !== undefined) setPreloadSummarization(overrides.preloadSummarization);
     if (overrides.visionEnabled !== undefined) setVisionEnabled(overrides.visionEnabled);
+    if (overrides.autoDryRun !== undefined) setAutoDryRun(overrides.autoDryRun);
     if (overrides.mmprojPath !== undefined) setMmprojPath(overrides.mmprojPath);
 
     const payload = {
@@ -138,6 +142,7 @@ export function useSettings() {
       preloadBuilder: updatedPreloadBuilder,
       preloadSummarization: updatedPreloadSummarization,
       visionEnabled: updatedVisionEnabled,
+      autoDryRun: updatedAutoDryRun,
       mmprojPath: updatedMmprojPath,
     };
     try {
@@ -184,6 +189,8 @@ export function useSettings() {
     setPreloadSummarization,
     visionEnabled,
     setVisionEnabled,
+    autoDryRun,
+    setAutoDryRun,
     mmprojPath,
     setMmprojPath,
     recentIPs,

@@ -76,6 +76,8 @@ pub struct AppSettings {
     pub prompt_keep_tokens: usize,
     #[serde(default = "default_false")]
     pub vision_enabled: bool,
+    #[serde(default = "default_false")]
+    pub auto_dry_run: bool,
     #[serde(default)]
     pub mmproj_path: Option<String>,
 }
@@ -105,6 +107,7 @@ impl Default for AppSettings {
             max_gen: 2048,
             prompt_keep_tokens: 500,
             vision_enabled: false,
+            auto_dry_run: false,
             mmproj_path: None,
         }
     }

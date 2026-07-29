@@ -432,6 +432,99 @@ pub async fn validate_cisco_config_impl(
                             .filter(|l| !l.is_empty())
                             .collect();
 
+                        // Step 1.5: Automatic Dry-run check if enabled in settings
+                        let app_settings = crate::settings::load_settings(app_handle.clone()).unwrap_or_default();
+                        if app_settings.auto_dry_run {
+                            let _ = app_handle.emit("commit-status", serde_json::json!({
+                                "id": id,
+                                "phase": "dry_running",
+                                "message": "自動Dry-runを適用中: 1行ずつconfigureモードでTab補完検証を実行中..."
+                            }));
+
+                            let _ = app_handle.emit("commit-log", serde_json::json!({
+                                "line": "[SYSTEM] --- 自動Dry-run (Tab補完検証) 開始 ---"
+                            }));
+
+                            match wrapper.execute_dry_run(&dev_config, commands.clone()).await {
+                                Ok(dry_res) => {
+                                    let errors: Vec<_> = dry_res.results.iter().filter(|r| !r.ok).collect();
+                                    for r in &dry_res.results {
+                                        if r.ok {
+                                            let _ = app_handle.emit("commit-log", serde_json::json!({
+                                                "line": format!("[DRY-RUN OK] {}", r.line)
+                                            }));
+                                        } else {
+                                            let err_detail = r.error.as_deref().unwrap_or("Error detected");
+                                            let _ = app_handle.emit("commit-log", serde_json::json!({
+                                                "line": format!("[DRY-RUN ERROR] 行: '{}' -> 理由: {}", r.line, err_detail)
+                                            }));
+                                        }
+                                    }
+
+                                    if !errors.is_empty() {
+                                        let _ = app_handle.emit("commit-log", serde_json::json!({
+                                            "line": format!("[SYSTEM] ⚠️ Dry-run検証で {} 件のエラーが検出されました。ユーザーに投入確認を要請します。", errors.len())
+                                        }));
+
+                                        let (force_tx, force_rx) = tokio::sync::oneshot::channel();
+                                        let force_id = format!("{}_force", id);
+                                        {
+                                            let mut lock = choice_manager.txs.lock().map_err(|_| "Mutex lock poisoned".to_string())?;
+                                            lock.insert(force_id.clone(), force_tx);
+                                        }
+
+                                        let error_items: Vec<serde_json::Value> = errors.iter().map(|e| serde_json::json!({
+                                            "line": e.line,
+                                            "error": e.error
+                                        })).collect();
+
+                                        let _ = app_handle.emit("request-force-commit", serde_json::json!({
+                                            "id": id,
+                                            "forceId": force_id,
+                                            "errors": error_items,
+                                            "message": format!("Dry-run検証で {} 件のエラーが発生しました。強制的に投入を継続しますか？", errors.len())
+                                        }));
+
+                                        let user_choice = force_rx.await.unwrap_or_else(|_| "cancel".to_string());
+                                        if user_choice != "commit_force" && user_choice != "commit" {
+                                            let err_msg = "Dry-runでエラーが検出されたため、ユーザー選択により投入を中止しました。".to_string();
+                                            let _ = app_handle.emit("commit-status", serde_json::json!({
+                                                "id": id,
+                                                "phase": "failed",
+                                                "message": err_msg.clone()
+                                            }));
+                                            return Ok(CommandResult {
+                                                success: false,
+                                                output: format!("{}\n\n**Status**: ❌ コミットキャンセル: {}", md, err_msg),
+                                                saved_path: None,
+                                                is_cached: None,
+                                                cache_time: None,
+                                            });
+                                        }
+                                        let _ = app_handle.emit("commit-log", serde_json::json!({
+                                            "line": "[SYSTEM] ユーザー承認により強制投入を開始します。"
+                                        }));
+                                    } else {
+                                        let _ = app_handle.emit("commit-log", serde_json::json!({
+                                            "line": "[SYSTEM] ✅ 自動Dry-run全行成功。エラーなしで本番投入へ進みます。"
+                                        }));
+                                    }
+                                }
+                                Err(e) => {
+                                    let _ = app_handle.emit("commit-log", serde_json::json!({
+                                        "line": format!("[SYSTEM ⚠️] Dry-run実行スキップ (エラー: {})", e)
+                                    }));
+                                }
+                            }
+                        }
+
+                        // Step 2: Launch netmiko and stream configuration commands
+                        let _ = app_handle.emit("commit-status", serde_json::json!({
+                            "id": id,
+                            "phase": "deploying",
+                            "message": "Netmikoを起動し、Configを投入中..."
+                        }));
+
                         use crate::network::NetworkInterface;
                         let deploy_res = wrapper.execute_config(&dev_config, commands).await;
                         let deploy_output = match deploy_res {

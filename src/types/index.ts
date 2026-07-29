@@ -220,5 +220,6 @@ export interface SystemSettings {
   preloadBuilder?: boolean;
   preloadSummarization?: boolean;
   visionEnabled?: boolean;
+  autoDryRun?: boolean;
   mmprojPath?: string | null;
 }

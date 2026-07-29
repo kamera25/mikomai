@@ -73,7 +73,7 @@ def send_command_wait_for_prompt(net_connect, command, read_timeout=120.0):
 def main():
     parser = argparse.ArgumentParser(description="Netmiko Wrapper for Tauri App")
     parser.add_argument("--stdin", action="store_true", help="Read arguments as JSON from stdin")
-    parser.add_argument("--action", required=False, choices=["show", "config"])
+    parser.add_argument("--action", required=False, choices=["show", "config", "dry_run"])
     parser.add_argument("--host", required=False)
     parser.add_argument("--username", required=False)
     parser.add_argument("--password", required=False, default="")
@@ -181,6 +181,62 @@ def main():
             output = net_connect.send_config_set(commands_list, read_timeout=90.0, delay_factor=2.0)
             print(output, flush=True)
             print("INFO: Configuration deployment completed successfully.", file=sys.stderr, flush=True)
+
+        elif args.action == "dry_run":
+            if not args.commands:
+                print("Error: commands is required for 'dry_run' action", file=sys.stderr, flush=True)
+                sys.exit(1)
+            commands_list = json.loads(args.commands) if isinstance(args.commands, str) else args.commands
+            print(f"INFO: Entering configure mode for Dry-run validation ({len(commands_list)} lines)...", file=sys.stderr, flush=True)
+
+            try:
+                if hasattr(net_connect, "check_enable_mode") and not net_connect.check_enable_mode():
+                    print("INFO: Entering privileged mode (enable)...", file=sys.stderr, flush=True)
+                    net_connect.enable()
+                    print("INFO: Entered privileged mode successfully.", file=sys.stderr, flush=True)
+            except Exception as enable_err:
+                print(f"INFO: Privilege mode transition note: {str(enable_err)}", file=sys.stderr, flush=True)
+
+            try:
+                net_connect.config_mode()
+            except Exception as conf_err:
+                print(f"INFO: Config mode entry note: {str(conf_err)}", file=sys.stderr, flush=True)
+
+            error_keywords = ["error", "% invalid", "% ambiguous", "% syntax error", "unrecognized", "incomplete command"]
+            results = []
+
+            for cmd in commands_list:
+                print(f"INFO: Dry-run verifying line: {cmd}", file=sys.stderr, flush=True)
+                out = ""
+                try:
+                    out = net_connect.send_command_timing(
+                        f"{cmd}\t",
+                        read_timeout=10.0,
+                        delay_factor=1.5
+                    )
+                except Exception as e:
+                    out = str(e)
+
+                lower_out = out.lower()
+                has_err = any(kw in lower_out for kw in error_keywords)
+
+                if has_err:
+                    err_msg = out.strip() or "Command produced error on Tab completion"
+                    results.append({"line": cmd, "ok": False, "output": out, "error": err_msg})
+                else:
+                    results.append({"line": cmd, "ok": True, "output": out, "error": None})
+
+                if hasattr(net_connect, "clear_buffer"):
+                    net_connect.clear_buffer()
+
+            try:
+                net_connect.exit_config_mode()
+            except Exception:
+                pass
+
+            has_errors = any(not r["ok"] for r in results)
+            print(json.dumps({"success": not has_errors, "results": results}), flush=True)
+            print("INFO: Dry-run validation completed.", file=sys.stderr, flush=True)
             
         net_connect.disconnect()
         print("INFO: Disconnected from device.", file=sys.stderr, flush=True)
