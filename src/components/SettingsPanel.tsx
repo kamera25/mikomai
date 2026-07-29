@@ -276,7 +276,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
               }
             }
           }
-          setAvailablePorts(ports);
+          const filteredPorts = ports.filter(
+            (p) => p.toLowerCase().includes("serial") && p.includes("cu.")
+          );
+          setAvailablePorts(filteredPorts);
         }
       } catch (e) {
         console.error("Failed to fetch serial ports for settings:", e);

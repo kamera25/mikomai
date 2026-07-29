@@ -1,0 +1,125 @@
+# ==============================================================================
+# Netmiko ベンダー別 設定適用 (Apply) および 設定保存 (Save) コマンド定義ファイル
+# ==============================================================================
+# このファイルは、Netmikoのベンダー名（device_type）ごとに
+# 設定投入完了後の「設定適用コマンド (apply_command)」と「設定保存コマンド (save_command)」を分離して定義します。
+
+# デフォルトフォールバック設定 (未定義のベンダーや判定不可時のデフォルト)
+fallback:
+  device_type: "cisco_ios"
+  apply_command: ""
+  save_command: "write memory"
+  description: "全ベンダー共通のデフォルト適用・保存コマンド"
+
+# Netmiko ベンダー名 (device_type) ごとのコマンド定義
+vendors:
+  # --- Furukawa Electric (FITELnet) ---
+  furukawa_fitelnet:
+    apply_command: "commit"
+    save_command: "save moff"
+    description: "古河電工 FITELnet ルータ (commitで適用, saveで不揮発メモリ保存)"
+
+  # --- Cisco Systems ---
+  cisco_ios:
+    apply_command: ""
+    save_command: "write memory"
+    description: "Cisco IOS / IOS-XE (即時適用, write memoryで保存)"
+    aliases:
+      - "cisco_xe"
+      - "cisco_ios_serial"
+
+  cisco_nxos:
+    apply_command: ""
+    save_command: "copy running-config startup-config"
+    description: "Cisco NX-OS (即時適用, copy run startで保存)"
+    aliases:
+      - "cisco_nxos_serial"
+
+  cisco_xr:
+    apply_command: "commit"
+    save_command: ""
+    description: "Cisco IOS-XR (commitで適用)"
+
+  cisco_asa:
+    apply_command: ""
+    save_command: "write memory"
+    description: "Cisco ASA (即時適用, write memoryで保存)"
+
+  # --- Juniper Networks ---
+  juniper_junos:
+    apply_command: "commit"
+    save_command: ""
+    description: "Juniper JunOS (commitで適用・保存)"
+    aliases:
+      - "juniper"
+
+  # --- Arista Networks ---
+  arista_eos:
+    apply_command: ""
+    save_command: "write memory"
+    description: "Arista EOS (即時適用, write memoryで保存)"
+
+  # --- Yamaha ---
+  yamaha:
+    apply_command: ""
+    save_command: "save"
+    description: "Yamaha RTX / NVR ルータ (即時適用, saveで保存)"
+
+  # --- Fortinet ---
+  fortinet:
+    apply_command: "end"
+    save_command: ""
+    description: "Fortinet FortiGate (endで適用)"
+
+  # --- Palo Alto Networks ---
+  paloalto_panos:
+    apply_command: "commit"
+    save_command: ""
+    description: "Palo Alto PAN-OS (commitで適用・保存)"
+
+  # --- VyOS ---
+  vyos:
+    apply_command: "commit"
+    save_command: "save"
+    description: "VyOS 仮想ルータ (commitで適用, saveで保存)"
+
+  # --- HP / Aruba / H3C ---
+  hp_comware:
+    apply_command: ""
+    save_command: "save force"
+    description: "HP Comware / H3C (即時適用, save forceで保存)"
+
+  hp_procurve:
+    apply_command: ""
+    save_command: "write memory"
+    description: "HP ProCurve / Aruba (即時適用, write memoryで保存)"
+
+  # --- Huawei ---
+  huawei:
+    apply_command: ""
+    save_command: "save"
+    description: "Huawei VRP (即時適用, saveで保存)"
+
+  # --- MikroTik ---
+  mikrotik_routeros:
+    apply_command: ""
+    save_command: ""
+    description: "MikroTik RouterOS (自動適用・保存)"
+
+  # --- Nokia / Alcatel-Lucent ---
+  alcatel_sros:
+    apply_command: ""
+    save_command: "admin save"
+    description: "Nokia / Alcatel-Lucent SR-OS (admin saveで保存)"
+
+  # --- Extreme Networks ---
+  extreme_exos:
+    apply_command: ""
+    save_command: "save configuration"
+    description: "Extreme EXOS スイッチ (save configurationで保存)"
+
+  # --- Dell Technologies ---
+  dell_os10:
+    apply_command: ""
+    save_command: "write memory"
+    description: "Dell SmartFabric OS10 (write memoryで保存)"

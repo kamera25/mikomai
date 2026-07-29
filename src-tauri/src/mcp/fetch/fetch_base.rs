@@ -114,7 +114,11 @@ pub trait McpCommandFetcher {
         };
 
         
-        let command = self.get_command_from_template(template);
+        let command = if self.get_log_prefix() == "config" {
+            super::command_template::get_show_running_config_command(&target_device.device_type)
+        } else {
+            self.get_command_from_template(template)
+        };
         if let Some(ref port) = target_device.console_port {
             log::info!("Fetching {} for registered device '{}' via console port '{}' using command '{}'", self.get_log_prefix(), device_name, port, command);
         } else {

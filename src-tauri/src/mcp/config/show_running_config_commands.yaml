@@ -1,0 +1,106 @@
+# ==============================================================================
+# Netmiko ベンダー別 show running-config コマンド定義ファイル
+# ==============================================================================
+# このファイルは、Netmikoのベンダー名（device_type）ごとの
+# コンフィグ取得（show running-config等のバリエーション）コマンドをまとめて定義します。
+
+# デフォルトフォールバック設定 (未定義のベンダーや判定不可時のデフォルト)
+fallback:
+  device_type: "cisco_ios"
+  command: "show running-config"
+  description: "全ベンダー共通のデフォルトフォールバックコマンド"
+
+# Netmiko ベンダー名 (device_type) ごとのコマンド定義
+vendors:
+  # --- Cisco Systems ---
+  cisco_ios:
+    command: "show running-config"
+    description: "Cisco IOS / IOS-XE デバイス"
+    aliases:
+      - "cisco_xe"
+      - "cisco_ios_serial"
+
+  cisco_nxos:
+    command: "show running-config"
+    description: "Cisco NX-OS スイッチ"
+    aliases:
+      - "cisco_nxos_serial"
+
+  cisco_xr:
+    command: "show running-config"
+    description: "Cisco IOS-XR ルータ"
+
+  cisco_asa:
+    command: "show running-config"
+    description: "Cisco ASA セキュリティアプライアンス"
+
+  # --- Juniper Networks ---
+  juniper_junos:
+    command: "show configuration"
+    description: "Juniper JunOS ルータ / スイッチ"
+    aliases:
+      - "juniper"
+
+  # --- Arista Networks ---
+  arista_eos:
+    command: "show running-config"
+    description: "Arista EOS スイッチ"
+
+  # --- Yamaha ---
+  yamaha:
+    command: "show config"
+    description: "Yamaha RTX / NVR ルータ"
+
+  # --- Furukawa Electric ---
+  furukawa_fitelnet:
+    command: "show running.cfg"
+    description: "古河電工 FITELnet ルータ"
+
+  # --- Fortinet ---
+  fortinet:
+    command: "show full-configuration"
+    description: "Fortinet FortiGate UTM / Firewall"
+
+  # --- Palo Alto Networks ---
+  paloalto_panos:
+    command: "show config running"
+    description: "Palo Alto PAN-OS 次世代ファイアウォール"
+
+  # --- VyOS ---
+  vyos:
+    command: "show configuration"
+    description: "VyOS 仮想ルータ"
+
+  # --- HP / Aruba / H3C ---
+  hp_comware:
+    command: "display current-configuration"
+    description: "HP Comware / H3C スイッチ"
+
+  hp_procurve:
+    command: "show running-config"
+    description: "HP ProCurve / Aruba スイッチ"
+
+  # --- Huawei ---
+  huawei:
+    command: "display current-configuration"
+    description: "Huawei VRP ルータ / スイッチ"
+
+  # --- MikroTik ---
+  mikrotik_routeros:
+    command: "/export"
+    description: "MikroTik RouterOS"
+
+  # --- Nokia / Alcatel-Lucent ---
+  alcatel_sros:
+    command: "admin display-config"
+    description: "Nokia / Alcatel-Lucent SR-OS"
+
+  # --- Extreme Networks ---
+  extreme_exos:
+    command: "show configuration"
+    description: "Extreme EXOS スイッチ"
+
+  # --- Dell Technologies ---
+  dell_os10:
+    command: "show running-configuration"
+    description: "Dell SmartFabric OS10"

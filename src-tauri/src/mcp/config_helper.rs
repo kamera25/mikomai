@@ -65,9 +65,63 @@ pub struct DiffLine {
     pub content: String,
 }
 
+pub fn normalize_config_for_diff(config: &str) -> String {
+    let ignorable_keywords = [
+        "info:",
+        "building configuration",
+        "current configuration",
+        "nvram config last updated",
+        "! last edit",
+        "! last refresh",
+        "! last save",
+        "! time:",
+        "! current time:",
+        "! last modified",
+    ];
+
+    let lines: Vec<&str> = config
+        .lines()
+        .map(|l| l.trim_end())
+        .filter(|line| {
+            let trimmed = line.trim();
+            let lower = trimmed.to_lowercase();
+
+            for kw in &ignorable_keywords {
+                if lower.starts_with(kw) || lower.contains(kw) {
+                    return false;
+                }
+            }
+
+            if lower.starts_with("show running") || lower.starts_with("show config") || lower.starts_with("show run") {
+                return false;
+            }
+
+            true
+        })
+        .collect();
+
+    let mut start = 0;
+    while start < lines.len() && lines[start].trim().is_empty() {
+        start += 1;
+    }
+
+    let mut end = lines.len();
+    while end > start && lines[end - 1].trim().is_empty() {
+        end -= 1;
+    }
+
+    if start >= end {
+        String::new()
+    } else {
+        lines[start..end].join("\n")
+    }
+}
+
 pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usize, usize) {
-    let old_lines: Vec<&str> = old_text.lines().collect();
-    let new_lines: Vec<&str> = new_text.lines().collect();
+    let norm_old = normalize_config_for_diff(old_text);
+    let norm_new = normalize_config_for_diff(new_text);
+    let old_lines: Vec<&str> = norm_old.lines().collect();
+    let new_lines: Vec<&str> = norm_new.lines().collect();
 
     let n = old_lines.len();
     let m = new_lines.len();
@@ -343,10 +397,8 @@ pub async fn validate_cisco_config_impl(
                         };
 
                         let wrapper = crate::network::SidecarNetmikoWrapper::new(&app_handle);
-                        let templates = crate::mcp::fetch::fetch_base::load_templates(&app_handle);
-                        let fetch_cmd = crate::mcp::fetch::fetch_base::get_template_for_dtype(&templates, &dev_config.device_type)
-                            .map(|t| t.fetch_config.as_str())
-                            .unwrap_or("show running-config");
+                        let fetch_cmd_string = crate::mcp::fetch::command_template::get_show_running_config_command(&dev_config.device_type);
+                        let fetch_cmd = fetch_cmd_string.as_str();
 
                         let before_config = match wrapper.execute_show(&dev_config, fetch_cmd).await {
                             Ok(cfg) => cfg,
@@ -400,6 +452,34 @@ pub async fn validate_cisco_config_impl(
                                 });
                             }
                         };
+
+                        // Step 2.5: Execute post-deployment apply command (e.g. commit) and save command (e.g. save side / write memory / save)
+                        let apply_save = crate::mcp::fetch::command_template::get_apply_and_save_config_commands(&dev_config.device_type);
+                        let mut deploy_output = deploy_output;
+
+                        if !apply_save.apply_command.trim().is_empty() {
+                            let _ = app_handle.emit("commit-status", serde_json::json!({
+                                "id": id,
+                                "phase": "deploying",
+                                "message": format!("設定適用コマンド ({}) を実行中...", apply_save.apply_command)
+                            }));
+                            if let Ok(apply_out) = wrapper.execute_show(&dev_config, &apply_save.apply_command).await {
+                                deploy_output.push_str("\n");
+                                deploy_output.push_str(&apply_out);
+                            }
+                        }
+
+                        if !apply_save.save_command.trim().is_empty() {
+                            let _ = app_handle.emit("commit-status", serde_json::json!({
+                                "id": id,
+                                "phase": "deploying",
+                                "message": format!("設定保存コマンド ({}) を実行中...", apply_save.save_command)
+                            }));
+                            if let Ok(save_out) = wrapper.execute_show(&dev_config, &apply_save.save_command).await {
+                                deploy_output.push_str("\n");
+                                deploy_output.push_str(&save_out);
+                            }
+                        }
 
                         // Step 3: Fetch post-deployment config and verify Diff
                         let _ = app_handle.emit("commit-status", serde_json::json!({
@@ -766,6 +846,28 @@ mod tests {
         assert!(deletions >= 1);
         assert!(lines.iter().any(|l| l.r#type == "insert" && l.content.contains("no shutdown")));
         assert!(lines.iter().any(|l| l.r#type == "delete" && l.content.contains("shutdown")));
+    }
+
+    #[test]
+    fn test_normalize_config_for_diff() {
+        let raw_config = "\
+INFO: Connecting to device...
+INFO: Connected successfully.
+! LAST EDIT 18:56:59 2025/09/12 by operator
+! LAST REFRESH 18:57:14 2025/09/12 by operator
+hostname F220-Mi
+INFO: Disconnected.
+";
+        let normalized = normalize_config_for_diff(raw_config);
+        assert_eq!(normalized, "hostname F220-Mi");
+
+        let old_with_timestamp = "INFO: Executing show...\n! LAST EDIT 18:56:59 2025/09/12\nhostname F220-Mi";
+        let new_with_timestamp = "INFO: Executing show...\n! LAST EDIT 19:02:33 2025/09/12\nhostname F220-Mikomai2";
+        let (lines, additions, deletions) = compute_line_diff(old_with_timestamp, new_with_timestamp);
+        assert_eq!(additions, 1);
+        assert_eq!(deletions, 1);
+        assert!(lines.iter().any(|l| l.r#type == "insert" && l.content == "hostname F220-Mikomai2"));
+        assert!(lines.iter().any(|l| l.r#type == "delete" && l.content == "hostname F220-Mi"));
     }
 }
 
