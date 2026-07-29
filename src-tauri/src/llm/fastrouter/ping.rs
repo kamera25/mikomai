@@ -13,8 +13,8 @@ fn default_ping_message() -> String {
 
 fn default_ping_patterns() -> Vec<String> {
     vec![
-        r"([a-zA-Z0-9.:-]+)\s*(?:に|へ)?\s*(?:ping|ピン|ピング)".to_string(),
-        r"(?:ping|ピン|ピング)\s+([a-zA-Z0-9.:-]+)".to_string(),
+        r"(?i)([a-zA-Z0-9.:-]+?)\s*(?:に|へ|で|を)?\s*(?:ping|ピン|ピング)".to_string(),
+        r"(?i)(?:ping|ピン|ピング)\s*(?::|=|：)?\s*([a-zA-Z0-9.:-]+)".to_string(),
     ]
 }
 

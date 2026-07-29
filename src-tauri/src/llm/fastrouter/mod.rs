@@ -242,6 +242,22 @@ mod tests {
         let res = detect_shortcut_tool("ping google.com").unwrap();
         assert_eq!(res.0, "self_network_ping");
 
+        let res_fqdn_no_space = detect_shortcut_tool("dns.googleへPing").unwrap();
+        assert_eq!(res_fqdn_no_space.0, "self_network_ping");
+        assert_eq!(res_fqdn_no_space.1["host"], "dns.google");
+
+        let res_fqdn_direct_ping = detect_shortcut_tool("dns.googlePing").unwrap();
+        assert_eq!(res_fqdn_direct_ping.0, "self_network_ping");
+        assert_eq!(res_fqdn_direct_ping.1["host"], "dns.google");
+
+        let res_fqdn_de_ping = detect_shortcut_tool("dns.googleでping").unwrap();
+        assert_eq!(res_fqdn_de_ping.0, "self_network_ping");
+        assert_eq!(res_fqdn_de_ping.1["host"], "dns.google");
+
+        let res_ping_colon = detect_shortcut_tool("ping:dns.google").unwrap();
+        assert_eq!(res_ping_colon.0, "self_network_ping");
+        assert_eq!(res_ping_colon.1["host"], "dns.google");
+
         // Ping question fallback
         let res_ping_q = detect_ping_shortcut("ping google.comとは何？", &config).unwrap();
         assert_eq!(res_ping_q.0, "self_network_ping");
@@ -252,6 +268,10 @@ mod tests {
         assert_eq!(res.0, "self_network_traceroute");
         assert_eq!(res.1["host"], "1.1.1.1");
         assert!(res.3 >= 0.8);
+
+        let res_trace_no_space = detect_shortcut_tool("dns.googleへtraceroute").unwrap();
+        assert_eq!(res_trace_no_space.0, "self_network_traceroute");
+        assert_eq!(res_trace_no_space.1["host"], "dns.google");
 
         // Host List
         let res = detect_shortcut_tool("接続先一覧を確認したい").unwrap();

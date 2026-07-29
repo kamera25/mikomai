@@ -12,19 +12,19 @@ fastroute:
     action: "self_network_ping"
     message: "Pingを実行します。"
     patterns:
-      - '([a-zA-Z0-9.:-]+)\s*(?:に|へ)?\s*(?:ping|ピン|ピング)'
-      - '(?:ping|ピン|ピング)\s+([a-zA-Z0-9.:-]+)'
-    size_pattern: '(?:size|サイズ)\s*(\d+)'
+      - '(?i)([a-zA-Z0-9.:-]+?)\s*(?:に|へ|で|を)?\s*(?:ping|ピン|ピング)'
+      - '(?i)(?:ping|ピン|ピング)\s*(?::|=|：)?\s*([a-zA-Z0-9.:-]+)'
+    size_pattern: '(?i)(?:size|サイズ)\s*(\d+)'
     count_patterns:
-      - '(?:count|回数|回)\s*(\d+)'
+      - '(?i)(?:count|回数|回)\s*(\d+)'
       - '(\d+)\s*回(?:実行)?'
 
   traceroute:
     action: "self_network_traceroute"
     message: "Tracerouteを実行します。"
     patterns:
-      - '([a-zA-Z0-9.:-]+)\s*(?:に|へ)?\s*(?:trace(?:route)?|トレース|トレースルート)'
-      - '(?:trace(?:route)?|トレース|トレースルート)\s+([a-zA-Z0-9.:-]+)'
+      - '(?i)([a-zA-Z0-9.:-]+?)\s*(?:に|へ|で|を)?\s*(?:trace(?:route)?|トレース|トレースルート)'
+      - '(?i)(?:trace(?:route)?|トレース|トレースルート)\s*(?::|=|：)?\s*([a-zA-Z0-9.:-]+)'
 
   host_list:
     action: "network_get_hosts"
