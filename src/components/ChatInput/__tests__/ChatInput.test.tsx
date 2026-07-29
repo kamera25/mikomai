@@ -55,12 +55,14 @@ describe("ChatInput Component", () => {
     ).toBeInTheDocument();
   });
 
-  it("calls handleSend when send button is clicked", () => {
+  it("calls handleSend and clears input when send button is clicked", () => {
     const handleSend = vi.fn();
-    render(<ChatInput {...defaultProps} input="hello" handleSend={handleSend} />);
+    const setInput = vi.fn();
+    render(<ChatInput {...defaultProps} input="hello" handleSend={handleSend} setInput={setInput} />);
     const button = screen.getByTitle("送信");
     fireEvent.click(button);
-    expect(handleSend).toHaveBeenCalled();
+    expect(handleSend).toHaveBeenCalledWith("hello", []);
+    expect(setInput).toHaveBeenCalledWith("");
   });
 
   it("renders stop button when isGenerating is true and calls handleStop on click", () => {

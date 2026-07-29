@@ -271,6 +271,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
     const onSend = () => {
       if (input.trim() || attachments.length > 0) {
         handleSend(input.trim(), attachments);
+        setInput("");
         setAttachments([]);
       }
     };
