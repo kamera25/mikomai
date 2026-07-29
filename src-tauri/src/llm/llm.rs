@@ -1,16 +1,12 @@
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::model::LlamaModel;
-use llama_cpp_2::context::params::LlamaContextParams;
-use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::AddBos;
-use llama_cpp_2::sampling::LlamaSampler;
 
-use std::num::NonZeroU32;
 use tauri::Emitter;
-use tauri::Manager;
 use crate::llm::llm_manager::SharedModel;
+use crate::llm::request::{InferenceRequest, InferenceRequestHandler};
 use std::sync::Arc;
-use crate::llm::worker::{LlmWorker, Route};
+use crate::llm::worker::Route;
 use crate::error::TauriError;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -91,37 +87,6 @@ impl serde::Serialize for LlmError {
     }
 }
 
-pub enum InferenceRequest {
-    Initial {
-        window: tauri::Window,
-        prompt: String,
-        original_query: String,
-        respond_to: tokio::sync::oneshot::Sender<Result<(String, Route), LlmError>>,
-    },
-    Analyze {
-        window: tauri::Window,
-        user_message: String,
-        tool_label: String,
-        output: String,
-        is_rag: bool,
-        is_builder: bool,
-        history_block: Option<String>,
-        subsequent_task: Option<String>,
-        respond_to: tokio::sync::oneshot::Sender<Result<String, LlmError>>,
-    },
-    Background {
-        prompt: String,
-        app: tauri::AppHandle,
-        respond_to: tokio::sync::oneshot::Sender<Result<String, LlmError>>,
-    },
-    Internal {
-        prompt: String,
-        system_prompt: String,
-        app: tauri::AppHandle,
-        respond_to: tokio::sync::oneshot::Sender<Result<String, LlmError>>,
-    },
-}
-
 pub struct LlamaState {
     pub shared: Arc<tokio::sync::Mutex<Option<Arc<SharedModel>>>>,
     pub status: tokio::sync::Mutex<ModelState>,
@@ -129,22 +94,11 @@ pub struct LlamaState {
     pub inference_tx: tokio::sync::mpsc::Sender<InferenceRequest>,
 }
 
-fn get_worker_for_route(shared: &SharedModel, route: Route) -> Option<&std::sync::Mutex<dyn LlmWorker>> {
-    match route {
-        Route::Investigate => Some(&shared.investigate),
-        Route::Knowledge => Some(&shared.knowledge),
-        Route::Analysis => Some(&shared.analysis),
-        Route::Plotter => Some(&shared.plotter),
-        Route::Builder => Some(&shared.builder),
-        Route::None => None,
-    }
-}
-
 impl LlamaState {
     pub fn new() -> Result<Self, LlmError> {
         let backend = LlamaBackend::init().map_err(|_| LlmError::BackendInit)?;
         let backend_arc = Arc::new(backend);
-        let shared = Arc::new(tokio::sync::Mutex::new(None));
+        let shared: Arc<tokio::sync::Mutex<Option<Arc<SharedModel>>>> = Arc::new(tokio::sync::Mutex::new(None));
         let status = tokio::sync::Mutex::new(ModelState::NotLoaded);
         
         let (tx, mut rx) = tokio::sync::mpsc::channel::<InferenceRequest>(100);
@@ -152,321 +106,13 @@ impl LlamaState {
         let shared_clone = shared.clone();
         std::thread::spawn(move || {
             while let Some(req) = rx.blocking_recv() {
-                let shared_model_opt = {
+                let shared_model_opt: Option<Arc<SharedModel>> = {
                     let lock = shared_clone.blocking_lock();
                     lock.clone()
                 };
-                let shared_model: Arc<SharedModel> = match shared_model_opt {
-                    Some(s) => s,
-                    None => {
-                        match req {
-                            InferenceRequest::Initial { respond_to, .. } => { let _ = respond_to.send(Err(LlmError::ModelNotLoaded)); },
-                            InferenceRequest::Analyze { respond_to, .. } => { let _ = respond_to.send(Err(LlmError::ModelNotLoaded)); },
-                            InferenceRequest::Background { respond_to, .. } => { let _ = respond_to.send(Err(LlmError::ModelNotLoaded)); },
-                            InferenceRequest::Internal { respond_to, .. } => { let _ = respond_to.send(Err(LlmError::ModelNotLoaded)); },
-                        }
-                        continue;
-                    }
-                };
-
-                match req {
-                    InferenceRequest::Initial { window, prompt, original_query, respond_to } => {
-                        let res = (|| -> Result<(String, Route), LlmError> {
-                            let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
-                            let model = shared_model.model.clone();
-                            let backend = shared_model.backend.clone();
-
-                            log::info!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", original_query);
-                            let route_result = {
-                                let mut router_lock = shared_model.router.lock().unwrap();
-                                router_lock.route(
-                                    &model,
-                                    &original_query,
-                                    settings.repetition_penalty,
-                                ).map_err(|e| LlmError::Routing(format!("{:?}", e)))?
-                            };
-                            log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
-
-                            if route_result.confidence < 0.5 {
-                                let ask_msg = "ご質問の意図を確認させてください。\n\n```json\n{\n  \"tool_name\": \"ask_user_choice\",\n  \"params\": {\n    \"title\": \"ご質問の意図の確認\",\n    \"message\": \"ご質問の意図を確認させてください。以下のどれに該当しますか？\",\n    \"options\": [\n      \"1. ネットワーク機器の調査 (INVESTIGATE)\",\n      \"2. 技術知識の解説 (KNOWLEDGE)\",\n      \"3. Config作成 (BUILDER)\"\n    ]\n  }\n}\n```";
-                                let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI (アシスタント)".to_string()));
-                                let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(ask_msg.to_string()));
-                                return Ok((ask_msg.to_string(), Route::None));
-                            }
-
-                            let active_route = route_result.routes[0];
-                            let final_prompt = if active_route == Route::Builder {
-                                replace_interface_abbreviations(&prompt)
-                            } else {
-                                prompt
-                            };
-                            let worker_res = if let Some(worker_mutex) = get_worker_for_route(&shared_model, active_route) {
-                                let mut worker = worker_mutex.lock().unwrap();
-                                let agent_name = worker.agent_name();
-                                let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-                                worker.ask(
-                                    &model,
-                                    &backend,
-                                    Some(final_prompt),
-                                    None,
-                                    None,
-                                    None,
-                                    None,
-                                    route_result.subsequent_task.as_deref(),
-                                    Some(&window),
-                                    settings.temperature,
-                                    settings.repetition_penalty,
-                                ).map_err(LlmError::Worker)
-                            } else {
-                                Ok("実行が完了しました。".to_string())
-                            };
-                            worker_res.map(|s| (s, active_route))
-                        })();
-                        let _ = respond_to.send(res);
-                    }
-                    InferenceRequest::Analyze { window, user_message, tool_label, output, is_rag, is_builder, history_block, subsequent_task, respond_to } => {
-                        let res = (|| -> Result<String, LlmError> {
-                            let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
-                            let model = shared_model.model.clone();
-                            let backend = shared_model.backend.clone();
-
-                            if is_rag {
-                                if is_builder {
-                                    let mut worker = shared_model.builder.lock().unwrap();
-                                    let agent_name = worker.agent_name();
-                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-
-                                    worker.ask(
-                                        &model,
-                                        &backend,
-                                        None,
-                                        Some(user_message),
-                                        Some(tool_label),
-                                        Some(output),
-                                        history_block,
-                                        None,
-                                        Some(&window),
-                                        settings.temperature,
-                                        settings.repetition_penalty,
-                                    ).map_err(LlmError::Worker)
-                                } else {
-                                    let mut worker = shared_model.rag.lock().unwrap();
-                                    let agent_name = worker.agent_name();
-                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-
-                                    worker.ask(
-                                        &model,
-                                        &backend,
-                                        None,
-                                        Some(user_message),
-                                        Some(tool_label),
-                                        Some(output),
-                                        history_block,
-                                        None,
-                                        Some(&window),
-                                        settings.temperature,
-                                        settings.repetition_penalty,
-                                    ).map_err(LlmError::Worker)
-                                }
-                            } else {
-                                let is_ask_user_choice = tool_label.contains("ask_user_choice");
-                                let is_ask_interface_choice = tool_label.contains("ask_interface_choice");
-                                let is_ask_ipaddress_choice = tool_label.contains("ask_ipaddress_choice");
-                                let is_any_choice = is_ask_user_choice || is_ask_interface_choice || is_ask_ipaddress_choice;
-
-                                if is_any_choice && (output.trim() == "cancelled" || output.lines().any(|l| l.trim() == "cancelled") || output.trim().ends_with("cancelled")) {
-                                    log::info!("Choice prompt cancelled by user (tool_label: {}), stopping subsequent sequence.", tool_label);
-                                    let cancel_msg = "応答が停止されました。";
-                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(cancel_msg.to_string()));
-                                    return Ok(cancel_msg.to_string());
-                                }
-
-                                let (active_route, route_subsequent_task) = if is_any_choice {
-                                    (Route::Builder, None)
-                                } else {
-                                    log::info!("--- ROUTER INPUT QUERY ---\n{}\n-------------------------", user_message);
-                                    let route_result = {
-                                        let mut router_lock = shared_model.router.lock().unwrap();
-                                        router_lock.route(
-                                            &model,
-                                            &user_message,
-                                            settings.repetition_penalty,
-                                        ).map_err(|e| LlmError::Routing(format!("{:?}", e)))?
-                                    };
-                                     log::info!("--- ROUTER OUTPUT ---\n{:?}\n-------------------------", route_result);
- 
-                                     if route_result.confidence < 0.5 {
-                                         let ask_msg = "ご質問の意図を確認させてください。\n\n```json\n{\n  \"tool_name\": \"ask_user_choice\",\n  \"params\": {\n    \"title\": \"ご質問の意図の確認\",\n    \"message\": \"ご質問の意図を確認させてください。以下のどれに該当しますか？\",\n    \"options\": [\n      \"1. ネットワーク機器の調査 (INVESTIGATE)\",\n      \"2. 技術知識の解説 (KNOWLEDGE)\",\n      \"3. Config作成 (BUILDER)\"\n    ]\n  }\n}\n```";
-                                         let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI (アシスタント)".to_string()));
-                                         let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(ask_msg.to_string()));
-                                         return Ok(ask_msg.to_string());
-                                     }
- 
-                                     let route = if route_result.routes.len() > 1 {
-                                         route_result.routes[1]
-                                     } else {
-                                         return Ok("実行が完了しました。".to_string());
-                                     };
-                                    (route, route_result.subsequent_task)
-                                };
-
-                                let custom_subsequent_task = if is_ask_user_choice {
-                                    Some(format!("ユーザーが「{}」を選択しました。この回答要件を含めてCisco Configを設定・生成してください。", output))
-                                } else if is_ask_interface_choice {
-                                    Some(format!("ユーザーがインターフェースとして「{}」を選択・入力しました。この情報を反映して設定を生成または変更してください。", output))
-                                } else if is_ask_ipaddress_choice {
-                                    Some(format!("ユーザーがIPアドレス（およびサブネット）として「{}」を指定・確定しました。この情報を反映して設定を生成または変更してください。", output))
-                                } else {
-                                    None
-                                };
-                                let subsequent_task_ref = if let Some(ref s) = subsequent_task {
-                                    Some(s.as_str())
-                                } else if is_any_choice {
-                                    custom_subsequent_task.as_deref()
-                                } else {
-                                    route_subsequent_task.as_deref()
-                                };
-
-                                 let user_message = if active_route == Route::Builder {
-                                     replace_interface_abbreviations(&user_message)
-                                 } else {
-                                     user_message
-                                 };
-                                 let worker_res = if let Some(worker_mutex) = get_worker_for_route(&shared_model, active_route) {
-                                    let mut worker = worker_mutex.lock().unwrap();
-                                    let agent_name = worker.agent_name();
-                                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()));
-                                    worker.ask(
-                                        &model,
-                                        &backend,
-                                        None,
-                                        Some(user_message),
-                                        Some(tool_label),
-                                        Some(output),
-                                        history_block,
-                                        subsequent_task_ref,
-                                        Some(&window),
-                                        settings.temperature,
-                                        settings.repetition_penalty,
-                                    ).map_err(LlmError::Worker)
-                                } else {
-                                    Ok("実行が完了しました。".to_string())
-                                };
-                                worker_res
-                            }
-                        })();
-                        let _ = respond_to.send(res);
-                    }
-                    InferenceRequest::Background { prompt, app, respond_to } => {
-                        let res = (|| -> Result<String, LlmError> {
-                            let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-                            let model = shared_model.model.clone();
-                            let backend = shared_model.backend.clone();
-                            let mut worker = shared_model.summarization.lock().unwrap();
-
-                            log::info!("LLM Background Prompt: {}", prompt);
-                            let res = worker.ask(
-                                &model,
-                                &backend,
-                                Some(prompt),
-                                None,
-                                None,
-                                None,
-                                None,
-                                None,
-                                None,
-                                settings.temperature,
-                                settings.repetition_penalty,
-                            ).map_err(LlmError::Worker);
-                            match &res {
-                                Ok(out) => log::info!("LLM Background Response: {}", out),
-                                Err(e) => log::error!("LLM Background Error: {}", e),
-                            }
-                            res
-                        })();
-                        let _ = respond_to.send(res);
-                    }
-                    InferenceRequest::Internal { prompt, system_prompt, app, respond_to } => {
-                        let res = (|| -> Result<String, LlmError> {
-                            let formatted_prompt = format!(
-                                "<|turn>system\n{}<turn|>\n<|turn>user\n{}<turn|>\n<|turn>model\n",
-                                system_prompt,
-                                prompt
-                            );
-
-                            log::info!("--- INTERNAL LLM PROMPT ---\n{}\n-------------------------", formatted_prompt);
-
-                            let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
-                            let n_ctx = settings.n_ctx;
-                            let max_gen = settings.max_gen;
-
-                            let mut ctx_params = LlamaContextParams::default();
-                            ctx_params = ctx_params.with_n_ctx(NonZeroU32::new(n_ctx as u32));
-                            ctx_params = ctx_params.with_n_batch(n_ctx as u32);
-                            ctx_params = ctx_params.with_type_k(llama_cpp_2::context::params::KvCacheType::Q4_0);
-                            ctx_params = ctx_params.with_type_v(llama_cpp_2::context::params::KvCacheType::Q4_0);
-                            ctx_params = ctx_params.with_flash_attention_policy(1);
-
-                            let mut ctx = shared_model.model.new_context(&shared_model.backend, ctx_params)
-                                .map_err(|e| LlmError::ContextCreation(format!("{:?}", e)))?;
-
-                            let tokens = prepare_prompt_tokens_with_limit(&shared_model.model, &formatted_prompt, n_ctx, max_gen, settings.prompt_keep_tokens)?;
-
-                            let mut batch = LlamaBatch::new(n_ctx, 1);
-                            let last_index = tokens.len() - 1;
-                            for (i, token) in tokens.into_iter().enumerate() {
-                                let is_last = i == last_index;
-                                batch.add(token, i as i32, &[0], is_last).map_err(|e| LlmError::BatchAdd(format!("{:?}", e)))?;
-                            }
-
-                            ctx.decode(&mut batch).map_err(|e| LlmError::Decode(format!("{:?}", e)))?;
-
-                            let mut result_string = String::new();
-                            let mut n_cur = batch.n_tokens();
-                            let mut sampler = LlamaSampler::chain_simple([
-                                LlamaSampler::penalties(64, settings.repetition_penalty, 0.0, 0.0),
-                                LlamaSampler::greedy(),
-                            ]);
-
-                            let turn_end_tokens = shared_model.model.str_to_token("<turn|>", AddBos::Never).unwrap_or_default();
-                            let turn_end_token = turn_end_tokens.first().copied();
-
-                            let n_len = max_gen;
-
-                            let mut bytes_accumulator = Vec::new();
-
-                            for _ in 0..n_len {
-                                if is_cancelled() {
-                                    log::info!("LLM internal loop cancelled");
-                                    break;
-                                }
-                                let new_token_id = sampler.sample(&mut ctx, batch.n_tokens() - 1);
-
-                                if new_token_id == shared_model.model.token_eos() || Some(new_token_id) == turn_end_token {
-                                    break;
-                                }
-
-                                let mut token_bytes = shared_model.model.token_to_piece_bytes(new_token_id, 256, false, None).unwrap_or(vec![]);
-                                bytes_accumulator.append(&mut token_bytes);
-
-                                process_token_bytes(&mut bytes_accumulator, &mut result_string, None);
-
-                                batch.clear();
-                                batch.add(new_token_id, n_cur, &[0], true).map_err(|e| LlmError::BatchAdd(format!("{:?}", e)))?;
-                                n_cur += 1;
-
-                                ctx.decode(&mut batch).map_err(|e| LlmError::Decode(format!("{:?}", e)))?;
-                            }
-
-                            if !bytes_accumulator.is_empty() {
-                                result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
-                            }
-
-                            log::info!("--- INTERNAL LLM RESPONSE ---\n{}\n-------------------------", result_string);
-                            Ok(result_string)
-                        })();
-                        let _ = respond_to.send(res);
-                    }
+                match shared_model_opt {
+                    Some(shared_model) => req.handle(&shared_model),
+                    None => req.reject(LlmError::ModelNotLoaded),
                 }
             }
         });
@@ -496,7 +142,7 @@ pub async fn get_model_status(state: tauri::State<'_, LlamaState>) -> Result<Mod
 
 pub const SYSTEM_PROMPT: &str = include_str!("system_prompt.txt");
 
-fn prepare_prompt_tokens_with_limit(
+pub(crate) fn prepare_prompt_tokens_with_limit(
     model: &LlamaModel,
     prompt: &str,
     n_ctx: usize,
@@ -537,7 +183,7 @@ fn prepare_prompt_tokens_with_limit(
 }
 
 
-fn process_token_bytes(
+pub(crate) fn process_token_bytes(
     bytes_accumulator: &mut Vec<u8>,
     result_string: &mut String,
     window: Option<&tauri::Window>,
