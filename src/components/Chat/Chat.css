@@ -535,6 +535,39 @@
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
   margin-top: 8px;
+  color: #e5e7eb;
+}
+
+.cisco-validation-card h1,
+.cisco-validation-card h2,
+.cisco-validation-card h3,
+.cisco-validation-card h4,
+.cisco-validation-card h5,
+.cisco-validation-card h6 {
+  color: #f3f4f6 !important;
+  margin-top: 12px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.cisco-validation-card p,
+.cisco-validation-card li,
+.cisco-validation-card span,
+.cisco-validation-card div {
+  color: #e5e7eb;
+  line-height: 1.6;
+}
+
+.cisco-validation-card strong,
+.cisco-validation-card b {
+  color: #ffffff !important;
+}
+
+.cisco-validation-card ul,
+.cisco-validation-card ol {
+  padding-left: 20px;
+  margin-top: 6px;
+  margin-bottom: 8px;
 }
 
 .cisco-validation-card.running {
