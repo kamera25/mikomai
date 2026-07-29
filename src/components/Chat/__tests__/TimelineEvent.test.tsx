@@ -83,4 +83,35 @@ describe("TimelineEvent Component", () => {
     expect(screen.getByText("画像の読み取り中…")).toBeInTheDocument();
     expect(container.querySelector(".status-spinner-small")).toBeInTheDocument();
   });
+
+  it("opens image modal when attached image is clicked", () => {
+    const msg: Message = {
+      role: "user",
+      event_type: "UserInput",
+      content: "この画像について解説して",
+      timestamp: new Date().toISOString(),
+      attachments: [
+        {
+          name: "osprz2a.png",
+          type: "image",
+          content: "data:image/png;base64,testdata",
+        },
+      ],
+    };
+
+    render(<TimelineEvent msg={msg} formatMessageTime={formatMessageTime} />);
+    const attachedImg = screen.getByAltText("osprz2a.png");
+    expect(attachedImg).toBeInTheDocument();
+
+    // Click on image
+    fireEvent.click(attachedImg);
+
+    // Modal overlay should be rendered
+    expect(screen.getByTestId("image-modal-overlay")).toBeInTheDocument();
+
+    // Close modal
+    const closeBtn = screen.getByTestId("image-modal-close-btn");
+    fireEvent.click(closeBtn);
+    expect(screen.queryByTestId("image-modal-overlay")).not.toBeInTheDocument();
+  });
 });

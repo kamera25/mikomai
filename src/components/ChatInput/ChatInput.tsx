@@ -6,6 +6,7 @@ import { SuggestionsList } from "./SuggestionsList";
 import { RefreshIcon, GearIcon, SendIcon, StopIcon, PaperclipIcon, CrossIcon, FileTextIcon } from "../Icons";
 import { Attachment } from "../../types";
 import { useSettingsContext } from "../../contexts/SettingsContext";
+import { ImageModal } from "../ImageModal/ImageModal";
 import "./ChatInput.css";
 
 interface ChatInputProps {
@@ -68,6 +69,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
     const isComposing = useRef(false);
     const suggestionListRef = useRef<HTMLDivElement>(null);
     const [attachments, setAttachments] = useState<Attachment[]>([]);
+    const [selectedImage, setSelectedImage] = useState<{ src: string; alt?: string } | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [showVisionWarning, setShowVisionWarning] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -522,7 +524,14 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
               {attachments.map((att, idx) => (
                 <div key={idx} className="attachment-preview-item">
                   {att.type === "image" ? (
-                    <img src={att.content} alt={att.name} className="attachment-thumb" />
+                    <img
+                      src={att.content}
+                      alt={att.name}
+                      className="attachment-thumb"
+                      onClick={() => setSelectedImage({ src: att.content, alt: att.name })}
+                      style={{ cursor: "pointer" }}
+                      title="クリックして拡大"
+                    />
                   ) : (
                     <div className="attachment-text-file">
                       <FileTextIcon size={16} />
@@ -610,6 +619,13 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
             )}
           </div>
         </div>
+        {selectedImage && (
+          <ImageModal
+            src={selectedImage.src}
+            alt={selectedImage.alt}
+            onClose={() => setSelectedImage(null)}
+          />
+        )}
       </div>
     );
   }

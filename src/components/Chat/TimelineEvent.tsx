@@ -8,6 +8,7 @@ import { Terminal } from "../Terminal";
 import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon, SpeechIcon, RobotIcon, FileTextIcon } from "../Icons";
 import { Message } from "../../types";
 import { invoke } from "@tauri-apps/api/core";
+import { ImageModal } from "../ImageModal/ImageModal";
 
 
 interface TimelineEventProps {
@@ -24,6 +25,7 @@ export const TimelineEvent = ({ msg, formatMessageTime, sendMessage }: TimelineE
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{ src: string; alt?: string } | null>(null);
 
   const handleDeviceRetrievalClick = () => {
     if (sendMessage) {
@@ -376,6 +378,17 @@ export const TimelineEvent = ({ msg, formatMessageTime, sendMessage }: TimelineE
                         return <Terminal content={codeText} />;
                       }
                       return <pre>{children}</pre>;
+                    },
+                    img({ src, alt }) {
+                      return (
+                        <img
+                          src={src}
+                          alt={alt}
+                          style={{ cursor: "pointer", maxWidth: "100%" }}
+                          onClick={() => src && setSelectedImage({ src, alt })}
+                          title="クリックして拡大"
+                        />
+                      );
                     }
                   }}
                 >
@@ -394,11 +407,9 @@ export const TimelineEvent = ({ msg, formatMessageTime, sendMessage }: TimelineE
                         src={att.content}
                         alt={att.name}
                         className="message-attachment-image"
-                        onClick={() => {
-                          const w = window.open();
-                          w?.document.write(`<img src="${att.content}" style="max-width:100%; max-height:100%; display:block; margin:auto;" />`);
-                        }}
+                        onClick={() => setSelectedImage({ src: att.content, alt: att.name })}
                         title="クリックして拡大"
+                        style={{ cursor: "pointer" }}
                       />
                       <span className="message-attachment-name">{att.name}</span>
                     </div>
@@ -449,6 +460,13 @@ export const TimelineEvent = ({ msg, formatMessageTime, sendMessage }: TimelineE
           )}
         </div>
       </div>
+      {selectedImage && (
+        <ImageModal
+          src={selectedImage.src}
+          alt={selectedImage.alt}
+          onClose={() => setSelectedImage(null)}
+        />
+      )}
     </div>
   );
 };
