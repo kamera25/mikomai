@@ -1,0 +1,71 @@
+# deny_rules: 危険コマンドの定義（絶対ブロック）
+deny_rules:
+  patterns:
+    - "reload"
+    - "write erase"
+    - "no router bgp"
+  message: "セキュリティポリシーにより、破壊的コマンドの直接実行は禁止されています。"
+
+# fastroute: ショートカット検出用正規表現パターンおよびアクション定義
+fastroute:
+  ping:
+    action: "self_network_ping"
+    message: "Pingを実行します。"
+    patterns:
+      - '([a-zA-Z0-9.:-]+)\s*(?:に|へ)?\s*(?:ping|ピン|ピング)'
+      - '(?:ping|ピン|ピング)\s+([a-zA-Z0-9.:-]+)'
+    size_pattern: '(?:size|サイズ)\s*(\d+)'
+    count_patterns:
+      - '(?:count|回数|回)\s*(\d+)'
+      - '(\d+)\s*回(?:実行)?'
+
+  traceroute:
+    action: "self_network_traceroute"
+    message: "Tracerouteを実行します。"
+    patterns:
+      - '([a-zA-Z0-9.:-]+)\s*(?:に|へ)?\s*(?:trace(?:route)?|トレース|トレースルート)'
+      - '(?:trace(?:route)?|トレース|トレースルート)\s+([a-zA-Z0-9.:-]+)'
+
+  host_list:
+    action: "network_get_hosts"
+    message: "登録機器の一覧を取得します。"
+    patterns:
+      - '(?:host|ホスト|接続先|ターゲット).*(?:list|一覧|教え|見せ|確認)'
+      - '(?:list|一覧|教え|見せ|確認).*(?:host|ホスト|接続先|ターゲット)'
+
+  arp:
+    action: "self_network_arp"
+    message: "ローカルのARPテーブルを取得します。"
+    patterns:
+      - '(?i)arp.*(ローカル|自機|このpc|local)'
+      - '(?i)(ローカル|自機|このpc|local).*arp'
+
+  route:
+    action: "self_network_route"
+    message: "ローカルのルーティングテーブルを取得します。"
+    patterns:
+      - '(?i)(route|ルーティング).*(ローカル|自機|このpc|local)'
+      - '(?i)(ローカル|自機|このpc|local).*(route|ルーティング)'
+
+  serial_ports:
+    action: "network_list_serial_ports"
+    message: "シリアルポートの一覧を取得します。"
+    patterns:
+      - '(?i)(console|コンソール|シリアル).*(list|一覧|ポート|リスト)'
+      - '(?i)(list|一覧|ポート|リスト).*(console|コンソール|シリアル)'
+
+  nwdiag:
+    action: "self_network_nwdiag"
+    message: "ネットワーク図(nwdiag)を生成します。"
+    pattern: '(?i)nwdiag\s*\{'
+
+  question_keywords:
+    - "とは"
+    - "何"
+    - "？"
+    - "?"
+    - "どう"
+    - "なぜ"
+    - "why"
+    - "what"
+    - "how"

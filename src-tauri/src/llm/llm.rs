@@ -608,7 +608,7 @@ pub async fn ask_llm_initial_internal(
     let has_image_attachment = original_query.contains("【添付画像Vision解析情報") || original_query.contains("[添付画像:");
 
     if !has_image_attachment {
-        if let Some((tool_name, params, message, confidence)) = crate::llm::shortcut::detect_shortcut_tool(&original_query) {
+        if let Some((tool_name, params, message, confidence)) = crate::llm::fastrouter::detect_shortcut_tool(&original_query) {
             if confidence >= 0.8 {
                 let tool_call = serde_json::json!({
                     "tool_name": tool_name,
