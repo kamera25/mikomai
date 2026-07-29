@@ -44,6 +44,8 @@ pub struct AnalysisStartedPayload {
 #[serde(rename_all = "camelCase")]
 pub struct InitialStartedPayload {
     pub task_id: String,
+    #[serde(default)]
+    pub has_image: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

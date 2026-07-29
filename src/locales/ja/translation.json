@@ -34,6 +34,7 @@
     "welcome_message_2": "例えば、マニュアルの取得、スイッチの状態確認、構成変更の提案などご支援いたします。",
     "thinking": "考え中...",
     "analyzing": "分析中...",
+    "reading_image": "画像の読み取り中…",
     "summarizing": "回答要約中...",
     "answer": "回答",
     "routing_table_updated": "ルーティングテーブルを更新しました",

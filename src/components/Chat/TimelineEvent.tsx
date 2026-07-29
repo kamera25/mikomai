@@ -353,22 +353,35 @@ export const TimelineEvent = ({ msg, formatMessageTime, sendMessage }: TimelineE
 
           {(!hasThought || remainingContent !== "") && (
             <div className={`message-bubble markdown-body ${msg.status === "Pending" ? "pending" : ""}`}>
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-                components={{
-                  pre({ children }) {
-                    const codeElement = React.Children.toArray(children)[0];
-                    if (React.isValidElement(codeElement) && codeElement.props) {
-                      const codeText = String((codeElement.props as any).children || "").replace(/\n$/, "");
-                      return <Terminal content={codeText} />;
+              {msg.role === "ai" &&
+              (remainingContent.includes("考え中") ||
+                remainingContent.includes("画像の読み取り") ||
+                remainingContent === t("chat.thinking") ||
+                remainingContent === t("chat.analyzing") ||
+                remainingContent === t("chat.reading_image") ||
+                (msg.isToolLoading && (remainingContent === "" || remainingContent === t("chat.thinking") || remainingContent === t("chat.reading_image")))) ? (
+                <div className="thinking-indicator">
+                  <div className="status-spinner-small"></div>
+                  <span>{remainingContent || t("chat.thinking")}</span>
+                </div>
+              ) : (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{
+                    pre({ children }) {
+                      const codeElement = React.Children.toArray(children)[0];
+                      if (React.isValidElement(codeElement) && codeElement.props) {
+                        const codeText = String((codeElement.props as any).children || "").replace(/\n$/, "");
+                        return <Terminal content={codeText} />;
+                      }
+                      return <pre>{children}</pre>;
                     }
-                    return <pre>{children}</pre>;
-                  }
-                }}
-              >
-                {remainingContent}
-              </ReactMarkdown>
+                  }}
+                >
+                  {remainingContent}
+                </ReactMarkdown>
+              )}
             </div>
           )}
           {msg.role === "user" && msg.event_type === "UserInput" && msg.attachments && msg.attachments.length > 0 && (

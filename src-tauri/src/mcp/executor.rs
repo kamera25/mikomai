@@ -990,8 +990,13 @@ pub async fn handle_mcp_message(
     // 1. Generate thinkingTaskId and emit mcp-initial-started
     let thinking_task_id = format!("task_think_{}", chrono::Utc::now().timestamp_millis());
     
+    let has_image = attachments.as_ref().map_or(false, |atts| {
+        atts.iter().any(|att| att.mime_type == "image" || att.mime_type.starts_with("image/"))
+    });
+
     let _ = window.emit("chat-event", ChatEvent::McpInitialStarted(InitialStartedPayload {
         task_id: thinking_task_id.clone(),
+        has_image,
     }));
 
     // 2. Build history block and prompt

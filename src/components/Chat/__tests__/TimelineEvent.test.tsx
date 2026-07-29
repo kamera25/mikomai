@@ -55,4 +55,32 @@ describe("TimelineEvent Component", () => {
     fireEvent.click(balloonButton);
     expect(mockSendMessage).toHaveBeenCalledWith("実機から情報を取得してください");
   });
+
+  it("renders loading spinner circle when content is thinking", () => {
+    const msg: Message = {
+      role: "ai",
+      content: "考え中...",
+      timestamp: new Date().toISOString(),
+      event_type: "AgentResponse",
+      isToolLoading: true,
+    };
+
+    const { container } = render(<TimelineEvent msg={msg} formatMessageTime={formatMessageTime} />);
+    expect(screen.getByText("考え中...")).toBeInTheDocument();
+    expect(container.querySelector(".status-spinner-small")).toBeInTheDocument();
+  });
+
+  it("renders loading spinner circle when content is reading image", () => {
+    const msg: Message = {
+      role: "ai",
+      content: "画像の読み取り中…",
+      timestamp: new Date().toISOString(),
+      event_type: "AgentResponse",
+      isToolLoading: true,
+    };
+
+    const { container } = render(<TimelineEvent msg={msg} formatMessageTime={formatMessageTime} />);
+    expect(screen.getByText("画像の読み取り中…")).toBeInTheDocument();
+    expect(container.querySelector(".status-spinner-small")).toBeInTheDocument();
+  });
 });

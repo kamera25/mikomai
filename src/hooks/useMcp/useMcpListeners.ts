@@ -229,18 +229,22 @@ export function useMcpListeners({
             }
 
             case "mcpInitialStarted": {
-              const { taskId } = chatEvent.payload;
+              const { taskId, hasImage } = chatEvent.payload;
               activeInitialTaskIdRef.current = taskId;
               activeInitialContentRef.current = "";
+
+              const initialText = hasImage
+                ? i18n.t("chat.reading_image")
+                : i18n.t("chat.thinking");
 
               setMessagesRef.current((prev) => [
                 ...prev,
                 {
                   role: "ai",
-                  content: i18n.t("chat.thinking"),
+                  content: initialText,
                   timestamp: new Date().toISOString(),
                   isToolLoading: true,
-                  isHidden: true,
+                  isHidden: false,
                   task_id: taskId,
                   event_type: "AgentResponse",
                 },

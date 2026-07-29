@@ -34,6 +34,7 @@
     "welcome_message_2": "For example, I can assist you with retrieving manuals, checking switch statuses, and proposing configuration changes.",
     "thinking": "Thinking...",
     "analyzing": "Analyzing...",
+    "reading_image": "Reading image...",
     "summarizing": "Summarizing answer...",
     "answer": "Answer",
     "routing_table_updated": "Updated the routing table",
