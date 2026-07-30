@@ -134,3 +134,20 @@
   font-size: 0.8rem;
   color: var(--success);
 }
+
+/* Resize Handles */
+.resize-handle {
+  width: 6px;
+  position: relative;
+  z-index: 20;
+  cursor: col-resize;
+  flex-shrink: 0;
+  margin: 0 -3px;
+  transition: background-color 0.2s ease;
+  user-select: none;
+}
+
+.resize-handle:hover,
+.resize-handle.active {
+  background-color: var(--primary, #3b82f6);
+}

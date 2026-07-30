@@ -17,6 +17,8 @@ interface SidebarProps {
   formatDate?: (dateString: string) => string;
   renameSession: (sessionId: string, newTitle: string) => void;
   deleteSession: (sessionId: string) => void;
+  style?: React.CSSProperties;
+  isResizing?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -30,6 +32,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTimelineItemClick,
   renameSession,
   deleteSession,
+  style,
+  isResizing,
 }) => {
   const { t } = useTranslation();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -251,7 +255,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className={`sidebar ${isSidebarOpen ? "" : "collapsed"}`}>
+    <aside
+      className={`sidebar ${isSidebarOpen ? "" : "collapsed"} ${isResizing ? "resizing" : ""}`}
+      style={isSidebarOpen && style?.width !== undefined ? style : undefined}
+    >
       <div className="sidebar-header">
         <h2>{t("sidebar.history_title")}</h2>
         <div className="header-actions">

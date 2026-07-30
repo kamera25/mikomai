@@ -65,6 +65,49 @@ export function AppLayout() {
   const [totalQuestionsCount, setTotalQuestionsCount] = useState(0);
   const [diffCommitId, setDiffCommitId] = useState<string | null>(null);
 
+  // Pane width state and resizing state
+  const [sidebarWidth, setSidebarWidth] = useState<number>(280);
+  const [diffWidth, setDiffWidth] = useState<number>(450);
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+
+  const handleLeftMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingLeft(true);
+  };
+
+  const handleRightMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingRight(true);
+  };
+
+  useEffect(() => {
+    if (!isResizingLeft && !isResizingRight) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingLeft) {
+        // Left sidebar starts right after activity bar (60px width)
+        const newWidth = Math.max(160, Math.min(600, e.clientX - 60));
+        setSidebarWidth(newWidth);
+      } else if (isResizingRight) {
+        const newWidth = Math.max(280, Math.min(window.innerWidth * 0.7, window.innerWidth - e.clientX));
+        setDiffWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeft(false);
+      setIsResizingRight(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingLeft, isResizingRight]);
+
   const {
     state: chatState,
     dispatch: chatDispatch,
@@ -566,7 +609,15 @@ export function AppLayout() {
           switchSession={switchSession}
           renameSession={renameSession}
           deleteSession={deleteSession}
+          style={{ width: sidebarWidth }}
+          isResizing={isResizingLeft}
         />
+        {uiState.isSidebarOpen && (
+          <div
+            className={`resize-handle ${isResizingLeft ? "active" : ""}`}
+            onMouseDown={handleLeftMouseDown}
+          />
+        )}
 
         <div className="main-viewport">
           {uiState.isSettingsOpen ? (
@@ -809,9 +860,17 @@ export function AppLayout() {
                   />
                 </div>
               </main>
+              {uiState.isConfigDiffOpen && (
+                <div
+                  className={`resize-handle ${isResizingRight ? "active" : ""}`}
+                  onMouseDown={handleRightMouseDown}
+                />
+              )}
               <ConfigDiffPanel
                 id={diffCommitId}
                 isOpen={uiState.isConfigDiffOpen}
+                style={{ width: diffWidth, maxWidth: "none", minWidth: "none" }}
+                isResizing={isResizingRight}
                 onClose={() => {
                   uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false });
                   if (diffCommitId) {

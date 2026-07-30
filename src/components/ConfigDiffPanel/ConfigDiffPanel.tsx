@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./ConfigDiffPanel.css";
-import { ConfigFileIcon, CheckIcon, SwitchIcon } from "../Icons";
+import { ConfigFileIcon, CheckIcon, SwitchIcon, RefreshIcon, FlaskIcon, RocketIcon, SearchIcon, AlertCircleIcon } from "../Icons";
 import { useUIContext, ConfigDiffData } from "../../contexts/UIContext";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -9,9 +9,11 @@ interface ConfigDiffPanelProps {
   id: string | null;
   isOpen: boolean;
   onClose: () => void;
+  style?: React.CSSProperties;
+  isResizing?: boolean;
 }
 
-export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, onClose }) => {
+export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, onClose, style, isResizing }) => {
   const { state: uiState } = useUIContext();
   const proposedDiffData = uiState.configDiffData;
 
@@ -155,24 +157,27 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
   const renderStatusBadge = () => {
     switch (phase) {
       case "fetching_before":
-        return <span className="diff-phase-badge info">🔄 現状Config取得中...</span>;
+        return <span className="diff-phase-badge info"><RefreshIcon size={14} className="spinning" /> 現状Config取得中...</span>;
       case "dry_running":
-        return <span className="diff-phase-badge warning">🧪 自動Dry-run検証中...</span>;
+        return <span className="diff-phase-badge warning"><FlaskIcon size={14} /> 自動Dry-run検証中...</span>;
       case "deploying":
-        return <span className="diff-phase-badge warning">🚀 Netmiko投入中...</span>;
+        return <span className="diff-phase-badge warning"><RocketIcon size={14} /> Netmiko投入中...</span>;
       case "verifying":
-        return <span className="diff-phase-badge info">🔍 Diff検証中...</span>;
+        return <span className="diff-phase-badge info"><SearchIcon size={14} /> Diff検証中...</span>;
       case "success":
-        return <span className="diff-phase-badge success">✅ 投入&Diff検証完了</span>;
+        return <span className="diff-phase-badge success"><CheckIcon size={14} /> 投入&Diff検証完了</span>;
       case "failed":
-        return <span className="diff-phase-badge error">❌ エラー発生</span>;
+        return <span className="diff-phase-badge error"><AlertCircleIcon size={14} /> エラー発生</span>;
       default:
         return null;
     }
   };
 
   return (
-    <div className={`config-diff-panel ${isOpen ? "open" : "collapsed"}`}>
+    <div
+      className={`config-diff-panel ${isOpen ? "open" : "collapsed"} ${isResizing ? "resizing" : ""}`}
+      style={isOpen && style?.width !== undefined ? style : undefined}
+    >
       <div className="diff-header">
         <div className="diff-header-left">
           <span className="diff-title">{verifiedDiffData ? "反映後の検証差分" : "変更箇所"}</span>

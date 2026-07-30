@@ -11,6 +11,11 @@
     opacity 0.3s ease;
   overflow: hidden;
   white-space: nowrap;
+  position: relative;
+}
+
+.sidebar.resizing {
+  transition: none !important;
 }
 
 .sidebar.collapsed {
