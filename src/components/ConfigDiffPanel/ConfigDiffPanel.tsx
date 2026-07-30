@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./ConfigDiffPanel.css";
-import { ConfigFileIcon, CheckIcon, SwitchIcon, RefreshIcon, FlaskIcon, RocketIcon, SearchIcon, AlertCircleIcon } from "../Icons";
+import { ConfigFileIcon, CheckIcon, SwitchIcon, RefreshIcon, FlaskIcon, RocketIcon, SearchIcon, AlertCircleIcon, ChevronIcon } from "../Icons";
 import { useUIContext, ConfigDiffData } from "../../contexts/UIContext";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -17,6 +17,25 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
   const { state: uiState } = useUIContext();
   const proposedDiffData = uiState.configDiffData;
 
+  // Define Phase Steps for GitHub Actions style grouped logging
+  type StepPhaseKey = "fetching_before" | "dry_running" | "deploying" | "verifying";
+
+  interface LogStep {
+    key: StepPhaseKey;
+    title: string;
+    status: "pending" | "running" | "success" | "failed";
+    startTime?: number;
+    endTime?: number;
+    logs: string[];
+  }
+
+  const STEP_DEFINITIONS: { key: StepPhaseKey; title: string }[] = [
+    { key: "fetching_before", title: "現状のConfig取得" },
+    { key: "dry_running", title: "自動Dry-run (Tab補完検証)" },
+    { key: "deploying", title: "Config投入 & 適用" },
+    { key: "verifying", title: "投入後Config取得 & Diff検証" },
+  ];
+
   const [phase, setPhase] = useState<"idle" | "fetching_before" | "dry_running" | "deploying" | "verifying" | "success" | "failed">("idle");
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [commitLogs, setCommitLogs] = useState<string[]>([]);
@@ -24,6 +43,24 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
   const [activeTab, setActiveTab] = useState<"diff" | "logs">("diff");
   const [forceCommitReq, setForceCommitReq] = useState<{ forceId: string; errors: any[]; message: string } | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+
+  const [steps, setSteps] = useState<LogStep[]>([]);
+  const [collapsedSteps, setCollapsedSteps] = useState<Record<string, boolean>>({});
+  const [currentTime, setCurrentTime] = useState<number>(Date.now());
+
+  // Timer tick for active step duration
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Toggle collapsing individual steps
+  const toggleStepCollapse = (stepKey: string) => {
+    setCollapsedSteps((prev) => ({
+      ...prev,
+      [stepKey]: !prev[stepKey],
+    }));
+  };
 
   // Reset state when id changes or panel opens
   useEffect(() => {
@@ -33,6 +70,8 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
     setVerifiedDiffData(null);
     setActiveTab("diff");
     setForceCommitReq(null);
+    setSteps([]);
+    setCollapsedSteps({});
   }, [id, proposedDiffData]);
 
   // Listen to Tauri events from Rust backend
@@ -43,7 +82,49 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
       const { id: eventId, phase: newPhase, message } = event.payload;
       if (id && eventId && eventId !== id) return;
 
-      if (newPhase) setPhase(newPhase);
+      if (newPhase) {
+        setPhase(newPhase);
+
+        if (["fetching_before", "dry_running", "deploying", "verifying"].includes(newPhase)) {
+          setSteps((prev) => {
+            const now = Date.now();
+            const exists = prev.some((s) => s.key === newPhase);
+            let updated = prev.map((s) => {
+              if (s.status === "running") {
+                return { ...s, status: "success" as const, endTime: now };
+              }
+              return s;
+            });
+
+            if (!exists) {
+              const def = STEP_DEFINITIONS.find((d) => d.key === newPhase);
+              updated.push({
+                key: newPhase as StepPhaseKey,
+                title: def ? def.title : newPhase,
+                status: "running",
+                startTime: now,
+                logs: message ? [`[STATUS] ${message}`] : [],
+              });
+            } else {
+              updated = updated.map((s) =>
+                s.key === newPhase
+                  ? { ...s, status: "running", startTime: s.startTime || now, endTime: undefined }
+                  : s
+              );
+            }
+            return updated;
+          });
+        } else if (newPhase === "success" || newPhase === "failed") {
+          setSteps((prev) =>
+            prev.map((s) =>
+              s.status === "running"
+                ? { ...s, status: newPhase === "success" ? "success" : "failed", endTime: Date.now() }
+                : s
+            )
+          );
+        }
+      }
+
       if (message) {
         setStatusMessage(message);
         setCommitLogs((prev) => [...prev, `[STATUS] ${message}`]);
@@ -57,6 +138,20 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
       const { line } = event.payload;
       if (line !== undefined && line !== null) {
         setCommitLogs((prev) => [...prev, line]);
+        setSteps((prev) => {
+          if (prev.length === 0) return prev;
+          const lastIdx = prev.length - 1;
+          const updated = [...prev];
+          const currentStep = updated[lastIdx];
+          const isErrorLine = line.includes("Error") || line.includes("FAILED") || line.startsWith("[DRY-RUN ERROR]");
+
+          updated[lastIdx] = {
+            ...currentStep,
+            status: isErrorLine ? "failed" : currentStep.status,
+            logs: [...currentStep.logs, line],
+          };
+          return updated;
+        });
       }
     });
 
@@ -329,8 +424,64 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
         {activeTab === "logs" && (
           <div className="diff-logs-wrapper">
             <div className="diff-logs-content">
-              {commitLogs.length === 0 ? (
+              {steps.length === 0 && commitLogs.length === 0 ? (
                 <div style={{ color: "#6b7280", fontStyle: "italic" }}>投入ログがここにリアルタイム表示されます...</div>
+              ) : steps.length > 0 ? (
+                steps.map((step) => {
+                  const isCollapsed = collapsedSteps[step.key] ?? false;
+                  const elapsedSeconds = step.startTime
+                    ? Math.floor(((step.endTime || currentTime) - step.startTime) / 1000)
+                    : 0;
+
+                  return (
+                    <div key={step.key} className={`log-step-group ${step.status}`}>
+                      <div
+                        className="log-step-header"
+                        onClick={() => toggleStepCollapse(step.key)}
+                      >
+                        <ChevronIcon
+                          size={14}
+                          direction={isCollapsed ? "right" : "down"}
+                          className="log-step-chevron"
+                        />
+                        <div className="log-step-icon">
+                          {step.status === "running" && (
+                            <div className="log-step-spinner" />
+                          )}
+                          {step.status === "success" && (
+                            <CheckIcon size={14} className="log-step-success-icon" />
+                          )}
+                          {step.status === "failed" && (
+                            <AlertCircleIcon size={14} className="log-step-failed-icon" />
+                          )}
+                          {step.status === "pending" && (
+                            <div className="log-step-pending-dot" />
+                          )}
+                        </div>
+                        <span className="log-step-title">{step.title}</span>
+                        <span className="log-step-duration">{elapsedSeconds}s</span>
+                      </div>
+
+                      {!isCollapsed && (
+                        <div className="log-step-body">
+                          {step.logs.map((log, index) => {
+                            let className = "diff-log-line";
+                            if (log.startsWith("[STATUS]")) className = "diff-log-line diff-log-status";
+                            else if (log.startsWith("[SYSTEM]")) className = "diff-log-line diff-log-system";
+                            else if (log.includes("Error") || log.includes("FAILED") || log.startsWith("[DRY-RUN ERROR]")) className = "diff-log-line diff-log-error";
+                            else if (log.startsWith("[DRY-RUN OK]")) className = "diff-log-line diff-log-success";
+
+                            return (
+                              <div key={index} className={className}>
+                                {log}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
                 commitLogs.map((log, index) => {
                   let className = "diff-log-line";
