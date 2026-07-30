@@ -35,6 +35,7 @@ export function useMcpListeners({
     let isCancelled = false;
     let unlistenFn: (() => void) | null = null;
     let unlistenDiffFn: (() => void) | null = null;
+    let unlistenStatusFn: (() => void) | null = null;
 
     const setupListeners = async () => {
       const unlisten = await listen<ChatEvent>(
@@ -311,20 +312,26 @@ export function useMcpListeners({
 
       const unlistenDiff = await listen<any>(
         "request-diff-commit",
-        () => {
+        (event) => {
           if (isCancelled) return;
+          const targetId = event.payload?.id;
           const updateMsg = () => {
             setMessagesRef.current((prev) => {
-              let lastIdx = -1;
-              for (let i = prev.length - 1; i >= 0; i--) {
-                if (prev[i].tool_id === "validate_cisco_config" && prev[i].isToolLoading) {
-                  lastIdx = i;
-                  break;
+              let targetIdx = -1;
+              if (targetId) {
+                targetIdx = prev.findIndex((m) => m.task_id === targetId);
+              }
+              if (targetIdx === -1) {
+                for (let i = prev.length - 1; i >= 0; i--) {
+                  if (prev[i].tool_id === "validate_cisco_config" && prev[i].isToolLoading) {
+                    targetIdx = i;
+                    break;
+                  }
                 }
               }
-              if (lastIdx !== -1) {
+              if (targetIdx !== -1) {
                 return prev.map((msg, idx) =>
-                  idx === lastIdx ? { ...msg, waitingForApproval: true } : msg
+                  idx === targetIdx ? { ...msg, waitingForApproval: true } : msg
                 );
               }
               return prev;
@@ -337,12 +344,42 @@ export function useMcpListeners({
         }
       );
 
+      const unlistenStatus = await listen<any>(
+        "commit-status",
+        (event) => {
+          if (isCancelled) return;
+          const targetId = event.payload?.id;
+          setMessagesRef.current((prev) => {
+            let targetIdx = -1;
+            if (targetId) {
+              targetIdx = prev.findIndex((m) => m.task_id === targetId);
+            }
+            if (targetIdx === -1) {
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].tool_id === "validate_cisco_config" && prev[i].isToolLoading) {
+                  targetIdx = i;
+                  break;
+                }
+              }
+            }
+            if (targetIdx !== -1 && prev[targetIdx].waitingForApproval) {
+              return prev.map((msg, idx) =>
+                idx === targetIdx ? { ...msg, waitingForApproval: false } : msg
+              );
+            }
+            return prev;
+          });
+        }
+      );
+
       if (isCancelled) {
         unlisten();
         unlistenDiff();
+        unlistenStatus();
       } else {
         unlistenFn = unlisten;
         unlistenDiffFn = unlistenDiff;
+        unlistenStatusFn = unlistenStatus;
       }
     };
 
@@ -355,6 +392,9 @@ export function useMcpListeners({
       }
       if (unlistenDiffFn) {
         unlistenDiffFn();
+      }
+      if (unlistenStatusFn) {
+        unlistenStatusFn();
       }
     };
   }, []); // Only register once on mount!
