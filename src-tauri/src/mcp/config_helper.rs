@@ -526,6 +526,7 @@ pub async fn validate_cisco_config_impl(
                         }));
 
                         use crate::network::NetworkInterface;
+                        log::info!("Deploying config commands to device '{}' ({}): {:?}", dev_config.host, dev_config.device_type, commands);
                         let deploy_res = wrapper.execute_config(&dev_config, commands).await;
                         let deploy_output = match deploy_res {
                             Ok(out) => out,
