@@ -21,7 +21,7 @@ interface SidebarProps {
   isResizing?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
+export const Sidebar: React.FC<SidebarProps> = React.memo(({
   isSidebarOpen,
   history,
   activeSessionId,
@@ -273,4 +273,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
     </aside>
   );
-};
+});
+
+Sidebar.displayName = "Sidebar";

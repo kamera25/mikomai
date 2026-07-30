@@ -1,4 +1,4 @@
-import React, { forwardRef, useRef, useEffect, useState } from "react";
+import React, { forwardRef, useRef, useEffect, useState, memo } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -32,9 +32,10 @@ interface ChatInputProps {
   setFilteredSuggestions: (value: { hostname: string; ip: string }[]) => void;
 }
 
-export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
-  (
-    {
+export const ChatInput = memo(
+  forwardRef<HTMLTextAreaElement, ChatInputProps>(
+    (
+      {
       modelStatus,
       modelPath,
       input,
@@ -263,7 +264,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
       const files = e.dataTransfer?.files;
       if (files && files.length > 0) {
         const hasImage = Array.from(files).some(isImageFile);
-        if (hasImage && !visionEnabledRef.current) {
+        if (hasImage && !isVisionReadyRef.current) {
           setShowVisionWarning(true);
         }
         handleFileAttach(files);
@@ -629,6 +630,8 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(
       </div>
     );
   }
+)
 );
 
 ChatInput.displayName = "ChatInput";
+

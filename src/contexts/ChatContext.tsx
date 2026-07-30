@@ -72,6 +72,23 @@ export const findSession = (items: HistoryItem[], id: string): ChatSession | und
   return undefined;
 };
 
+// Helper to update session messages in the history tree
+export const updateSessionMessagesInHistory = (
+  items: HistoryItem[],
+  sessionId: string,
+  messages: Message[]
+): HistoryItem[] => {
+  return items.map((item) => {
+    if (item.id === sessionId && item.type === "session") {
+      return { ...item, messages };
+    }
+    if (item.type === "folder") {
+      return { ...item, items: updateSessionMessagesInHistory(item.items, sessionId, messages) };
+    }
+    return item;
+  });
+};
+
 function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
     case "INIT_HISTORY":
@@ -91,23 +108,9 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ? (action.payload as (prev: Message[]) => Message[])(state.messages)
         : action.payload;
 
-      // Also update history to keep messages in sync
-      const updateSessionMessages = (items: HistoryItem[]): HistoryItem[] => {
-        return items.map((item) => {
-          if (item.id === state.activeSessionId && item.type === "session") {
-            return { ...item, messages: nextMessages };
-          }
-          if (item.type === "folder") {
-            return { ...item, items: updateSessionMessages(item.items) };
-          }
-          return item;
-        });
-      };
-
       return {
         ...state,
         messages: nextMessages,
-        history: updateSessionMessages(state.history),
       };
     }
     case "SET_INPUT":
@@ -227,29 +230,31 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initHistory();
   }, []);
 
-  // Save history whenever it changes
+  // Save history whenever history or active session messages change
   useEffect(() => {
     if (!state.isLoaded) return;
     const save = async () => {
       try {
-        await invoke("save_history", { history: state.history });
+        const historyToSave = updateSessionMessagesInHistory(
+          state.history,
+          state.activeSessionId,
+          state.messages
+        );
+        await invoke("save_history", { history: historyToSave });
       } catch (e) {
         console.error("Failed to save history:", e);
       }
     };
     save();
-  }, [state.history, state.isLoaded]);
+  }, [state.history, state.messages, state.activeSessionId, state.isLoaded]);
 
-  // Sync messages when active session or history changes (e.g. loaded from backend)
+  // Sync messages when active session changes
   useEffect(() => {
     const session = findSession(state.history, state.activeSessionId);
     if (session) {
-      // Compare message array references to avoid infinite loop
-      if (state.messages !== session.messages) {
-        dispatch({ type: "SET_MESSAGES", payload: session.messages });
-      }
+      dispatch({ type: "SET_MESSAGES", payload: session.messages });
     }
-  }, [state.activeSessionId, state.history, state.messages]);
+  }, [state.activeSessionId]);
 
   // Sync recentIPs with the active session's cached recent IPs when session changes
   useEffect(() => {

@@ -1,6 +1,5 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { SettingsPanel } from "../SettingsPanel";
 import { ConnectionSettingsPanel } from "../ConnectionSettingsPanel";
@@ -18,10 +17,14 @@ import { useUIContext } from "../../contexts/UIContext";
 import { useChatContext } from "../../contexts/ChatContext";
 import { useModelContext } from "../../contexts/ModelContext";
 import { useHostSuggestions } from "../../hooks/useHostSuggestions";
+import { useResizablePane } from "../../hooks/useResizablePane";
+import { useQuestionQueue } from "../../hooks/useQuestionQueue";
+import { useConfigDiffEvents } from "../../hooks/useConfigDiffEvents";
+import { QuestionPanel } from "./QuestionPanel";
 import { CustomModal } from "../CustomModal";
 import { SidebarIcon, ServerIcon, DiffIcon } from "../Icons";
 import { ConfigDiffPanel } from "../ConfigDiffPanel/ConfigDiffPanel";
-import { Attachment } from "../../types";
+import { Attachment, Message } from "../../types";
 
 export function AppLayout() {
   const { t } = useTranslation();
@@ -35,78 +38,29 @@ export function AppLayout() {
   } = useSettingsContext();
 
   const { state: uiState, dispatch: uiDispatch } = useUIContext();
-  interface ChoiceConfig {
-    id: string;
-    title: string;
-    message: string;
-    options: string[];
-  }
 
-  interface InterfaceChoiceConfig {
-    id: string;
-    vendor: string;
-    message?: string;
-  }
+  // Custom hooks for extracted concerns
+  const {
+    sidebarWidth,
+    diffWidth,
+    isResizingLeft,
+    isResizingRight,
+    handleLeftMouseDown,
+    handleRightMouseDown,
+  } = useResizablePane();
 
-  interface IpAddressChoiceConfig {
-    id: string;
-    title: string;
-    message: string;
-    subnet: string;
-    defaultIp?: string;
-  }
+  const {
+    questionQueue,
+    totalQuestionsCount,
+    handleSelectChoice,
+    handleCancelChoice,
+    handleSelectInterface,
+    handleCancelInterface,
+    handleSelectIpAddress,
+    handleCancelIpAddress,
+  } = useQuestionQueue();
 
-  type QuestionItem = 
-    | { type: "choice"; data: ChoiceConfig }
-    | { type: "interface"; data: InterfaceChoiceConfig }
-    | { type: "ipaddress"; data: IpAddressChoiceConfig };
-
-  const [questionQueue, setQuestionQueue] = useState<QuestionItem[]>([]);
-  const [totalQuestionsCount, setTotalQuestionsCount] = useState(0);
-  const [diffCommitId, setDiffCommitId] = useState<string | null>(null);
-
-  // Pane width state and resizing state
-  const [sidebarWidth, setSidebarWidth] = useState<number>(280);
-  const [diffWidth, setDiffWidth] = useState<number>(450);
-  const [isResizingLeft, setIsResizingLeft] = useState(false);
-  const [isResizingRight, setIsResizingRight] = useState(false);
-
-  const handleLeftMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizingLeft(true);
-  };
-
-  const handleRightMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizingRight(true);
-  };
-
-  useEffect(() => {
-    if (!isResizingLeft && !isResizingRight) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isResizingLeft) {
-        // Left sidebar starts right after activity bar (60px width)
-        const newWidth = Math.max(160, Math.min(600, e.clientX - 60));
-        setSidebarWidth(newWidth);
-      } else if (isResizingRight) {
-        const newWidth = Math.max(280, Math.min(window.innerWidth * 0.7, window.innerWidth - e.clientX));
-        setDiffWidth(newWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizingLeft(false);
-      setIsResizingRight(false);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isResizingLeft, isResizingRight]);
+  const { diffCommitId, setDiffCommitId } = useConfigDiffEvents();
 
   const {
     state: chatState,
@@ -202,246 +156,7 @@ export function AppLayout() {
     scrollToBottom();
   }, [chatState.messages]);
 
-  // Update ConfigDiffPanel with dynamic conversion diffs
-  useEffect(() => {
-    const unlisten = listen<any>("chat-event", (event) => {
-      const chatEvent = event.payload;
-      if (chatEvent.type === "mcpToolFinished") {
-        const { toolId, success, output, args } = chatEvent.payload;
-        if (success && toolId === "convert_cisco_config") {
-          // Extract the converted config from markdown
-          const regex = /```[a-z]*\n([\s\S]*?)```/;
-          const match = output.match(regex);
-          if (match && match[1]) {
-            const converted = match[1].trim();
-            const vendor = args?.target_vendor || args?.targetVendor || "juniper";
-            const lines = converted.split("\n");
-            const diffLines = lines.map((line: string, idx: number) => ({
-              type: "insert" as const,
-              oldLine: null,
-              newLine: idx + 1,
-              content: line,
-            }));
-            
-            uiDispatch({
-              type: "SET_CONFIG_DIFF_DATA",
-              payload: {
-                fileName: `${vendor}.conf`,
-                additions: lines.length,
-                deletions: 0,
-                diffLines,
-              },
-            });
-            uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: true });
-          }
-        }
-      }
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [uiDispatch]);
-
-  // Listen to request-diff-commit from Rust
-  useEffect(() => {
-    const unlisten = listen<any>("request-diff-commit", (event) => {
-      const { id, config, fileName, hostname, ip } = event.payload;
-      if (id) {
-        setDiffCommitId(id);
-      }
-      if (config) {
-        const lines = config.split("\n");
-        const diffLines = lines.map((line: string, idx: number) => ({
-          type: "insert" as const,
-          oldLine: null,
-          newLine: idx + 1,
-          content: line,
-        }));
-        
-        uiDispatch({
-          type: "SET_CONFIG_DIFF_DATA",
-          payload: {
-            fileName: fileName || "cisco.conf",
-            additions: lines.length,
-            deletions: 0,
-            diffLines,
-            hostname,
-            ip,
-          },
-        });
-        uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: true });
-      }
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [uiDispatch]);
-
-  // Listen to user choice requests from Rust
-  useEffect(() => {
-    const unlisten = listen<any>("request-user-choice", (event) => {
-      const { id, title, message, options } = event.payload;
-      const item: QuestionItem = {
-        type: "choice",
-        data: { id: id || "default", title, message, options }
-      };
-      setQuestionQueue(prev => {
-        const filtered = prev.filter(q => q.data.id !== item.data.id);
-        const next = [...filtered, item];
-        setTotalQuestionsCount(prevTotal => Math.max(prevTotal, next.length));
-        return next;
-      });
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
-
-  // Listen to interface choice requests from Rust
-  useEffect(() => {
-    const unlisten = listen<any>("request-interface-choice", (event) => {
-      const { id, vendor, message } = event.payload;
-      const item: QuestionItem = {
-        type: "interface",
-        data: { id: id || "default", vendor, message }
-      };
-      setQuestionQueue(prev => {
-        const filtered = prev.filter(q => q.data.id !== item.data.id);
-        const next = [...filtered, item];
-        setTotalQuestionsCount(prevTotal => Math.max(prevTotal, next.length));
-        return next;
-      });
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
-
-  // Listen to IP address choice requests from Rust
-  useEffect(() => {
-    const unlisten = listen<any>("request-ipaddress-choice", (event) => {
-      const { id, title, message, subnet, defaultIp } = event.payload;
-      const item: QuestionItem = {
-        type: "ipaddress",
-        data: { id: id || "default", title, message, subnet, defaultIp }
-      };
-      setQuestionQueue(prev => {
-        const filtered = prev.filter(q => q.data.id !== item.data.id);
-        const next = [...filtered, item];
-        setTotalQuestionsCount(prevTotal => Math.max(prevTotal, next.length));
-        return next;
-      });
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
-
-  // Listen to keyboard Escape when choice panels are active
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && questionQueue.length > 0) {
-        const current = questionQueue[0];
-        if (current.type === "interface") {
-          handleCancelInterface(current.data.id);
-        } else if (current.type === "ipaddress") {
-          handleCancelIpAddress(current.data.id);
-        } else {
-          handleCancelChoice(current.data.id);
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [questionQueue]);
-
-  const handleSelectChoice = async (id: string, option: string) => {
-    setQuestionQueue(prev => {
-      const next = prev.filter(q => q.data.id !== id);
-      if (next.length === 0) setTotalQuestionsCount(0);
-      return next;
-    });
-    try {
-      await invoke("submit_user_choice", { id, choice: option });
-    } catch (err) {
-      console.error("Failed to submit user choice:", err);
-    }
-  };
-
-  const handleCancelChoice = async (id: string) => {
-    setQuestionQueue(prev => {
-      const next = prev.filter(q => q.data.id !== id);
-      if (next.length === 0) setTotalQuestionsCount(0);
-      return next;
-    });
-    try {
-      await invoke("submit_user_choice", { id, choice: "cancelled" });
-    } catch (err) {
-      console.error("Failed to cancel user choice:", err);
-    }
-  };
-
-  const handleSelectInterface = async (id: string, option: string) => {
-    setQuestionQueue(prev => {
-      const next = prev.filter(q => q.data.id !== id);
-      if (next.length === 0) setTotalQuestionsCount(0);
-      return next;
-    });
-    try {
-      await invoke("submit_interface_choice", { id, choice: option });
-    } catch (err) {
-      console.error("Failed to submit interface choice:", err);
-    }
-  };
-
-  const handleCancelInterface = async (id: string) => {
-    setQuestionQueue(prev => {
-      const next = prev.filter(q => q.data.id !== id);
-      if (next.length === 0) setTotalQuestionsCount(0);
-      return next;
-    });
-    try {
-      await invoke("submit_interface_choice", { id, choice: "cancelled" });
-    } catch (err) {
-      console.error("Failed to cancel interface choice:", err);
-    }
-  };
-
-  const handleSelectIpAddress = async (id: string, option: string) => {
-    setQuestionQueue(prev => {
-      const next = prev.filter(q => q.data.id !== id);
-      if (next.length === 0) setTotalQuestionsCount(0);
-      return next;
-    });
-    try {
-      await invoke("submit_ipaddress_choice", { id, choice: option });
-    } catch (err) {
-      console.error("Failed to submit IP address choice:", err);
-    }
-  };
-
-  const handleCancelIpAddress = async (id: string) => {
-    setQuestionQueue(prev => {
-      const next = prev.filter(q => q.data.id !== id);
-      if (next.length === 0) setTotalQuestionsCount(0);
-      return next;
-    });
-    try {
-      await invoke("submit_ipaddress_choice", { id, choice: "cancelled" });
-    } catch (err) {
-      console.error("Failed to cancel IP address choice:", err);
-    }
-  };
-
-  const formatMessageTime = (isoString?: string) => {
+  const formatMessageTime = useCallback((isoString?: string) => {
     if (!isoString) return "";
     const date = new Date(isoString);
     const now = new Date();
@@ -461,7 +176,7 @@ export function AppLayout() {
         .replace(/\//g, "/");
       return `${dateStr} ${timeStr}`;
     }
-  };
+  }, []);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const isCurrentlyGenerating = isGenerating || chatState.messages.some((m) => m.status === "Running" || m.isToolLoading);
@@ -486,7 +201,7 @@ export function AppLayout() {
             summary_text: msg.summary_text
               ? `${msg.summary_text} (${t("chat.stopped")})`
               : t("chat.stopped"),
-          };
+          } as Message;
         }
         return msg;
       })
@@ -567,34 +282,59 @@ export function AppLayout() {
     }
   };
 
-  const handleSend = (text?: string, attachments?: Attachment[]) => sendMessage(text, attachments);
+  const handleSend = useCallback((text?: string, attachments?: Attachment[]) => sendMessage(text, attachments), [sendMessage]);
 
-  const scrollToMessage = (taskId: string) => {
+  const scrollToMessage = useCallback((taskId: string) => {
     const element = document.getElementById(taskId);
     if (element) {
       element.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-  };
+  }, []);
+
+  const sidebarStyle = useMemo(() => ({ width: sidebarWidth }), [sidebarWidth]);
+  const diffPanelStyle = useMemo(() => ({ width: diffWidth, maxWidth: "none", minWidth: "none" }), [diffWidth]);
+
+  const handleSetConnectionOpen = useCallback((valueOrFn: React.SetStateAction<boolean>) => {
+    uiDispatch({
+      type: "SET_CONNECTION_OPEN",
+      payload: typeof valueOrFn === "function" ? valueOrFn(uiState.isConnectionOpen) : valueOrFn,
+    });
+  }, [uiState.isConnectionOpen, uiDispatch]);
+
+  const handleSetScheduledTasksOpen = useCallback((valueOrFn: React.SetStateAction<boolean>) => {
+    uiDispatch({
+      type: "SET_SCHEDULED_TASKS_OPEN",
+      payload: typeof valueOrFn === "function" ? valueOrFn(uiState.isScheduledTasksOpen) : valueOrFn,
+    });
+  }, [uiState.isScheduledTasksOpen, uiDispatch]);
+
+  const handleSetSettingsOpen = useCallback((valueOrFn: React.SetStateAction<boolean>) => {
+    uiDispatch({
+      type: "SET_SETTINGS_OPEN",
+      payload: typeof valueOrFn === "function" ? valueOrFn(uiState.isSettingsOpen) : valueOrFn,
+    });
+  }, [uiState.isSettingsOpen, uiDispatch]);
+
+  const handleCloseConfigDiff = useCallback(() => {
+    uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false });
+    if (diffCommitId) {
+      invoke("submit_user_choice", { id: diffCommitId, choice: "cancel" }).catch((err) => {
+        console.error("Failed to cancel user choice on close:", err);
+      });
+      setDiffCommitId(null);
+    }
+  }, [diffCommitId, setDiffCommitId, uiDispatch]);
 
   return (
     <div className="app-container">
       <div className="main-layout">
         <ActivityBar
           isConnectionOpen={uiState.isConnectionOpen}
-          setIsConnectionOpen={(valueOrFn) => {
-            const nextVal = typeof valueOrFn === "function" ? valueOrFn(uiState.isConnectionOpen) : valueOrFn;
-            uiDispatch({ type: "SET_CONNECTION_OPEN", payload: nextVal });
-          }}
+          setIsConnectionOpen={handleSetConnectionOpen}
           isScheduledTasksOpen={uiState.isScheduledTasksOpen}
-          setIsScheduledTasksOpen={(valueOrFn) => {
-            const nextVal = typeof valueOrFn === "function" ? valueOrFn(uiState.isScheduledTasksOpen) : valueOrFn;
-            uiDispatch({ type: "SET_SCHEDULED_TASKS_OPEN", payload: nextVal });
-          }}
+          setIsScheduledTasksOpen={handleSetScheduledTasksOpen}
           isSettingsOpen={uiState.isSettingsOpen}
-          setIsSettingsOpen={(valueOrFn) => {
-            const nextVal = typeof valueOrFn === "function" ? valueOrFn(uiState.isSettingsOpen) : valueOrFn;
-            uiDispatch({ type: "SET_SETTINGS_OPEN", payload: nextVal });
-          }}
+          setIsSettingsOpen={handleSetSettingsOpen}
         />
 
         <Sidebar
@@ -609,7 +349,7 @@ export function AppLayout() {
           switchSession={switchSession}
           renameSession={renameSession}
           deleteSession={deleteSession}
-          style={{ width: sidebarWidth }}
+          style={sidebarStyle}
           isResizing={isResizingLeft}
         />
         {uiState.isSidebarOpen && (
@@ -725,116 +465,16 @@ export function AppLayout() {
                   {chatState.messages.some((m) => m.status === "Running") && (
                     <div className="global-loading-indicator"></div>
                   )}
-                  {questionQueue.length > 0 && (() => {
-                    const currentQuestion = questionQueue[0];
-                    const currentIndex = totalQuestionsCount - questionQueue.length + 1;
-                    const progressPrefix = `【質問 ${currentIndex}/${totalQuestionsCount}】`;
-                    
-                    if (currentQuestion.type === "choice") {
-                      const choice = currentQuestion.data;
-                      return (
-                        <div key={choice.id} className="input-choice-panel" style={{
-                          background: "var(--bg-secondary)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          padding: "12px",
-                          boxShadow: "0 -2px 10px rgba(0,0,0,0.15)",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "10px",
-                          animation: "fadeIn 0.2s ease",
-                        }}>
-                          <div style={{ fontWeight: "600", fontSize: "13px", color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span>{progressPrefix} {choice.message}</span>
-                            <button
-                              onClick={() => handleCancelChoice(choice.id)}
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: "var(--text-secondary)",
-                                cursor: "pointer",
-                                fontSize: "11px",
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"}
-                              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                            >
-                              スキップ (Esc)
-                            </button>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                            {choice.options.map((opt, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => handleSelectChoice(choice.id, opt)}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  width: "100%",
-                                  padding: "10px 14px",
-                                  background: "var(--bg-tertiary)",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: "6px",
-                                  color: "var(--text-primary)",
-                                  textAlign: "left",
-                                  cursor: "pointer",
-                                  fontSize: "13px",
-                                  fontWeight: "500",
-                                  transition: "all 0.15s ease",
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.borderColor = "var(--primary)";
-                                  e.currentTarget.style.background = "var(--bg-hover)";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.borderColor = "var(--border)";
-                                  e.currentTarget.style.background = "var(--bg-tertiary)";
-                                }}
-                              >
-                                <span style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  width: "22px",
-                                  height: "22px",
-                                  borderRadius: "50%",
-                                  background: "var(--bg-secondary)",
-                                  marginRight: "12px",
-                                  fontSize: "11px",
-                                  fontWeight: "bold",
-                                  color: "var(--text-secondary)",
-                                }}>{idx + 1}</span>
-                                {opt}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    } else if (currentQuestion.type === "ipaddress") {
-                      const choice = currentQuestion.data;
-                      return (
-                        <IpAddressChoicePanel
-                          key={choice.id}
-                          choice={choice}
-                          progressPrefix={progressPrefix}
-                          onSelect={handleSelectIpAddress}
-                          onCancel={handleCancelIpAddress}
-                        />
-                      );
-                    } else {
-                      const choice = currentQuestion.data;
-                      return (
-                        <InterfaceChoicePanel
-                          key={choice.id}
-                          choice={choice}
-                          progressPrefix={progressPrefix}
-                          onSelect={handleSelectInterface}
-                          onCancel={handleCancelInterface}
-                        />
-                      );
-                    }
-                  })()}
+                  <QuestionPanel
+                    questionQueue={questionQueue}
+                    totalQuestionsCount={totalQuestionsCount}
+                    handleSelectChoice={handleSelectChoice}
+                    handleCancelChoice={handleCancelChoice}
+                    handleSelectInterface={handleSelectInterface}
+                    handleCancelInterface={handleCancelInterface}
+                    handleSelectIpAddress={handleSelectIpAddress}
+                    handleCancelIpAddress={handleCancelIpAddress}
+                  />
                   <ChatInput
                     ref={textareaRef}
                     modelStatus={modelState.modelStatus}
@@ -851,7 +491,7 @@ export function AppLayout() {
                     handleStop={handleStop}
                     isGenerating={isCurrentlyGenerating}
                     handleLoadModel={handleLoadModel}
-                    setIsSettingsOpen={(open) => uiDispatch({ type: "SET_SETTINGS_OPEN", payload: open })}
+                    setIsSettingsOpen={handleSetSettingsOpen}
                     cursorPos={cursorPos}
                     setCursorPos={setCursorPos}
                     availableHosts={availableHosts}
@@ -869,17 +509,9 @@ export function AppLayout() {
               <ConfigDiffPanel
                 id={diffCommitId}
                 isOpen={uiState.isConfigDiffOpen}
-                style={{ width: diffWidth, maxWidth: "none", minWidth: "none" }}
+                style={diffPanelStyle}
                 isResizing={isResizingRight}
-                onClose={() => {
-                  uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false });
-                  if (diffCommitId) {
-                    invoke("submit_user_choice", { id: diffCommitId, choice: "cancel" }).catch((err) => {
-                      console.error("Failed to cancel user choice on close:", err);
-                    });
-                    setDiffCommitId(null);
-                  }
-                }}
+                onClose={handleCloseConfigDiff}
               />
             </div>
           )}
@@ -890,518 +522,4 @@ export function AppLayout() {
     </div>
   );
 }
-
-interface InterfaceChoicePanelProps {
-  choice: {
-    id: string;
-    vendor: string;
-    message?: string;
-  };
-  progressPrefix: string;
-  onSelect: (id: string, option: string) => void;
-  onCancel: (id: string) => void;
-}
-
-function InterfaceChoicePanel({ choice, progressPrefix, onSelect, onCancel }: InterfaceChoicePanelProps) {
-  const [ciscoType, setCiscoType] = useState("GigabitEthernet");
-  const [ciscoNum, setCiscoNum] = useState("0/1");
-  const [customInterface, setCustomInterface] = useState("");
-
-  const vendor = choice.vendor || "Cisco_IOS";
-  const isCisco = vendor.toLowerCase().includes("cisco") || vendor.toLowerCase().includes("ios");
-  const isYamaha = vendor.toLowerCase().includes("yamaha");
-  const isArista = vendor.toLowerCase().includes("arista");
-
-  return (
-    <div className="input-choice-panel" style={{
-      background: "var(--bg-secondary)",
-      border: "1px solid var(--border)",
-      borderRadius: "8px",
-      padding: "16px",
-      boxShadow: "0 -2px 10px rgba(0,0,0,0.15)",
-      display: "flex",
-      flexDirection: "column",
-      gap: "12px",
-      animation: "fadeIn 0.2s ease",
-    }}>
-      <div style={{ fontWeight: "600", fontSize: "14px", color: "var(--text-primary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span>{progressPrefix} インターフェースの選択 - {vendor}</span>
-        <button
-          onClick={() => onCancel(choice.id)}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "var(--text-secondary)",
-            cursor: "pointer",
-            fontSize: "11px",
-            padding: "2px 6px",
-            borderRadius: "4px",
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"}
-          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-        >
-          キャンセル (Esc)
-        </button>
-      </div>
-
-      {choice.message && (
-        <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "4px", whiteSpace: "pre-wrap" }}>
-          {choice.message}
-        </div>
-      )}
-
-      {/* Cisco_IOS の UI */}
-      {isCisco && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <div style={{ display: "flex", gap: "10px" }}>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
-              <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>種別</label>
-              <select
-                value={ciscoType}
-                onChange={(e) => setCiscoType(e.target.value)}
-                style={{
-                  padding: "8px",
-                  background: "var(--bg-tertiary)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "6px",
-                  color: "var(--text-primary)",
-                }}
-              >
-                <option value="GigabitEthernet">GigabitEthernet</option>
-                <option value="FastEthernet">FastEthernet</option>
-                <option value="TenGigabitEthernet">TenGigabitEthernet</option>
-                <option value="Ethernet">Ethernet</option>
-                <option value="Vlan">Vlan</option>
-                <option value="Loopback">Loopback</option>
-              </select>
-            </div>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
-              <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>番号</label>
-              <input
-                type="text"
-                value={ciscoNum}
-                onChange={(e) => setCiscoNum(e.target.value)}
-                placeholder="例: 0/1, 1/0/1"
-                style={{
-                  padding: "8px",
-                  background: "var(--bg-tertiary)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "6px",
-                  color: "var(--text-primary)",
-                }}
-              />
-            </div>
-          </div>
-          <button
-            className="btn btn-primary"
-            onClick={() => onSelect(choice.id, `${ciscoType}${ciscoNum}`)}
-            style={{
-              width: "100%",
-              padding: "10px",
-              fontWeight: "500",
-            }}
-          >
-            選択を確定 : {ciscoType}{ciscoNum}
-          </button>
-        </div>
-      )}
-
-      {/* Yamaha の UI */}
-      {isYamaha && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {["lan1", "lan2", "lan3", "lan4", "wan1", "wan2"].map((opt) => (
-              <button
-                key={opt}
-                onClick={() => onSelect(choice.id, opt)}
-                style={{
-                  padding: "8px 12px",
-                  background: "var(--bg-tertiary)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "6px",
-                  color: "var(--text-primary)",
-                  cursor: "pointer",
-                  transition: "border-color 0.15s ease",
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.borderColor = "var(--primary)"}
-                onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-          <div style={{ borderTop: "1px solid var(--border)", paddingTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
-            <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>カスタム入力</label>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <input
-                type="text"
-                value={customInterface}
-                onChange={(e) => setCustomInterface(e.target.value)}
-                placeholder="例: lan1.1, tunnel1"
-                style={{
-                  flex: 1,
-                  padding: "8px",
-                  background: "var(--bg-tertiary)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "6px",
-                  color: "var(--text-primary)",
-                }}
-              />
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  if (customInterface.trim()) {
-                    onSelect(choice.id, customInterface.trim());
-                  }
-                }}
-                disabled={!customInterface.trim()}
-                style={{
-                  padding: "8px 16px",
-                  fontWeight: "500",
-                }}
-              >
-                確定
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* その他のベンダー (Cisco, Yamaha 以外) の UI */}
-      {!isCisco && !isYamaha && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {isArista && (
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
-              {["Ethernet1", "Ethernet2", "Ethernet3", "Ethernet4"].map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => onSelect(choice.id, opt)}
-                  style={{
-                    padding: "6px 10px",
-                    background: "var(--bg-tertiary)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "6px",
-                    color: "var(--text-primary)",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                  }}
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>インターフェース名を入力してください</label>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <input
-                type="text"
-                value={customInterface}
-                onChange={(e) => setCustomInterface(e.target.value)}
-                placeholder="例: Ethernet1, ge-0/0/0"
-                style={{
-                  flex: 1,
-                  padding: "8px",
-                  background: "var(--bg-tertiary)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "6px",
-                  color: "var(--text-primary)",
-                }}
-              />
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  if (customInterface.trim()) {
-                    onSelect(choice.id, customInterface.trim());
-                  }
-                }}
-                disabled={!customInterface.trim()}
-                style={{
-                  padding: "8px 16px",
-                  fontWeight: "500",
-                }}
-              >
-                確定
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface IpAddressChoicePanelProps {
-  choice: {
-    id: string;
-    title: string;
-    message: string;
-    subnet: string;
-    defaultIp?: string;
-  };
-  progressPrefix: string;
-  onSelect: (id: string, option: string) => void;
-  onCancel: (id: string) => void;
-}
-
-function ip2long(ip: string): number {
-  const parts = ip.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(isNaN) || parts.some(p => p < 0 || p > 255)) {
-    return -1;
-  }
-  return ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
-}
-
-function isIpInSubnet(ip: string, subnet: string): boolean {
-  const ipLong = ip2long(ip);
-  if (ipLong === -1) return false;
-
-  const parts = subnet.split('/');
-  const subnetIp = parts[0];
-  const subnetIpLong = ip2long(subnetIp);
-  if (subnetIpLong === -1) return false;
-
-  let maskLength = 32;
-  if (parts.length > 1) {
-    const maskStr = parts[1];
-    if (maskStr.includes('.')) {
-      const maskLong = ip2long(maskStr);
-      if (maskLong === -1) return false;
-      return (ipLong & maskLong) === (subnetIpLong & maskLong);
-    } else {
-      maskLength = parseInt(maskStr, 10);
-      if (isNaN(maskLength) || maskLength < 0 || maskLength > 32) return false;
-    }
-  }
-
-  if (maskLength === 0) return true;
-  const mask = maskLength === 32 ? 0xffffffff : ~((1 << (32 - maskLength)) - 1);
-  return (ipLong & mask) === (subnetIpLong & mask);
-}
-
-function validateIpAndSubnet(ip: string, subnetInput: string, requiredSubnet?: string): { isValid: boolean; error?: string } {
-  const ipLong = ip2long(ip);
-  if (ipLong === -1) {
-    return { isValid: false, error: "無効なIPアドレスの形式です (例: 192.168.1.1)" };
-  }
-
-  let isValidMask = false;
-  let maskText = subnetInput.trim();
-  if (maskText.startsWith('/')) {
-    maskText = maskText.substring(1);
-  }
-  
-  if (/^\d+$/.test(maskText)) {
-    const num = parseInt(maskText, 10);
-    if (num >= 0 && num <= 32) {
-      isValidMask = true;
-    }
-  } else {
-    const maskLong = ip2long(maskText);
-    if (maskLong !== -1) {
-      const inv = ~maskLong >>> 0;
-      if (((inv + 1) & inv) === 0) {
-        isValidMask = true;
-      }
-    }
-  }
-
-  if (!isValidMask && maskText !== "") {
-    return { isValid: false, error: "無効なサブネットマスクまたはプレフィックス長です (例: 255.255.255.0 または 24)" };
-  }
-
-  if (requiredSubnet && requiredSubnet.trim() !== "") {
-    if (requiredSubnet.includes('/')) {
-      const parts = requiredSubnet.split('/');
-      const netIp = parts[0];
-      if (ip2long(netIp) !== -1) {
-        if (!isIpInSubnet(ip, requiredSubnet)) {
-          return { isValid: false, error: `IPアドレスは指定されたサブネット範囲 (${requiredSubnet}) 内である必要があります` };
-        }
-      }
-    }
-  }
-
-  return { isValid: true };
-}
-
-function IpAddressChoicePanel({ choice, progressPrefix, onSelect, onCancel }: IpAddressChoicePanelProps) {
-  const initialIp = choice.defaultIp || "";
-  let initialSubnet = "";
-  if (choice.subnet) {
-    if (choice.subnet.includes('/')) {
-      initialSubnet = choice.subnet.split('/')[1];
-    } else {
-      initialSubnet = choice.subnet;
-    }
-  } else {
-    initialSubnet = "24";
-  }
-
-  const [ipAddress, setIpAddress] = useState(initialIp);
-  const [subnetMask, setSubnetMask] = useState(initialSubnet);
-  const [validationError, setValidationError] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (!ipAddress && !subnetMask) {
-      setValidationError(undefined);
-      return;
-    }
-    const result = validateIpAndSubnet(ipAddress, subnetMask, choice.subnet);
-    if (!result.isValid) {
-      setValidationError(result.error);
-    } else {
-      setValidationError(undefined);
-    }
-  }, [ipAddress, subnetMask, choice.subnet]);
-
-  const handleSubmit = () => {
-    const result = validateIpAndSubnet(ipAddress, subnetMask, choice.subnet);
-    if (result.isValid) {
-      let formattedSubnet = subnetMask.trim();
-      if (formattedSubnet.startsWith('/')) {
-        formattedSubnet = formattedSubnet.substring(1);
-      }
-      const isPrefix = /^\d+$/.test(formattedSubnet);
-      
-      let output = "";
-      if (isPrefix) {
-        output = `${ipAddress}/${formattedSubnet}`;
-      } else {
-        output = `${ipAddress} ${formattedSubnet}`;
-      }
-      onSelect(choice.id, output);
-    }
-  };
-
-  const isSubnetCidr = choice.subnet && choice.subnet.includes('/');
-
-  return (
-    <div className="input-choice-panel" style={{
-      background: "var(--bg-secondary)",
-      border: "1px solid var(--border)",
-      borderRadius: "8px",
-      padding: "16px",
-      boxShadow: "0 -2px 10px rgba(0,0,0,0.15)",
-      display: "flex",
-      flexDirection: "column",
-      gap: "12px",
-      animation: "fadeIn 0.2s ease",
-    }}>
-      <div style={{ fontWeight: "600", fontSize: "14px", color: "var(--text-primary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span>{progressPrefix} {choice.title || "IPアドレスの設定"}</span>
-        <button
-          onClick={() => onCancel(choice.id)}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "var(--text-secondary)",
-            cursor: "pointer",
-            fontSize: "11px",
-            padding: "2px 6px",
-            borderRadius: "4px",
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"}
-          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-        >
-          キャンセル (Esc)
-        </button>
-      </div>
-
-      {choice.message && (
-        <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "4px", whiteSpace: "pre-wrap" }}>
-          {choice.message}
-        </div>
-      )}
-
-      {isSubnetCidr && (
-        <div style={{
-          fontSize: "12px",
-          background: "rgba(59, 130, 246, 0.1)",
-          border: "1px solid rgba(59, 130, 246, 0.2)",
-          color: "var(--primary)",
-          padding: "8px 12px",
-          borderRadius: "6px",
-          fontWeight: "500",
-          display: "flex",
-          alignItems: "center",
-          gap: "6px"
-        }}>
-          <span style={{ fontSize: "14px" }}>ℹ️</span>
-          <span>要求サブネット範囲: <strong>{choice.subnet}</strong></span>
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: "10px" }}>
-        <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: "4px" }}>
-          <label style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: "500" }}>IPアドレス</label>
-          <input
-            type="text"
-            value={ipAddress}
-            onChange={(e) => setIpAddress(e.target.value)}
-            placeholder="例: 192.168.1.1"
-            style={{
-              padding: "10px",
-              background: "var(--bg-tertiary)",
-              border: "1px solid var(--border)",
-              borderRadius: "6px",
-              color: "var(--text-primary)",
-              fontSize: "13px",
-            }}
-          />
-        </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
-          <label style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: "500" }}>サブネットマスク / プレフィックス</label>
-          <input
-            type="text"
-            value={subnetMask}
-            onChange={(e) => setSubnetMask(e.target.value)}
-            placeholder="例: 24, 255.255.255.0"
-            style={{
-              padding: "10px",
-              background: "var(--bg-tertiary)",
-              border: "1px solid var(--border)",
-              borderRadius: "6px",
-              color: "var(--text-primary)",
-              fontSize: "13px",
-                }}
-              />
-            </div>
-          </div>
-
-          {validationError && (
-            <div style={{
-              fontSize: "12px",
-              color: "#ef4444",
-              background: "rgba(239, 68, 68, 0.08)",
-              padding: "8px 12px",
-              borderRadius: "6px",
-              border: "1px solid rgba(239, 68, 68, 0.15)",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            }}>
-              <span>⚠️</span>
-              <span>{validationError}</span>
-            </div>
-          )}
-
-          <button
-            className="btn btn-primary"
-            onClick={handleSubmit}
-            disabled={!!validationError || !ipAddress || !subnetMask}
-            style={{
-              width: "100%",
-              padding: "10px",
-              fontWeight: "500",
-              marginTop: "4px",
-              opacity: (validationError || !ipAddress || !subnetMask) ? 0.6 : 1,
-              cursor: (validationError || !ipAddress || !subnetMask) ? "not-allowed" : "pointer"
-            }}
-          >
-            設定を確定
-          </button>
-        </div>
-      );
-    }
 

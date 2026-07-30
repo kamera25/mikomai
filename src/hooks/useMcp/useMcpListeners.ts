@@ -24,6 +24,34 @@ export function useMcpListeners({
   const setSummariesRef = useRef(setSummaries);
   const updateRecentHostsRef = useRef(updateRecentHosts);
 
+  const chunkRafIdRef = useRef<number | null>(null);
+
+  const scheduleChunkUpdate = () => {
+    if (chunkRafIdRef.current !== null) return;
+    chunkRafIdRef.current = requestAnimationFrame(() => {
+      chunkRafIdRef.current = null;
+      const targetTaskId = activeInitialTaskIdRef.current || activeAnalysisTaskIdRef.current;
+      const targetContent = activeInitialTaskIdRef.current
+        ? activeInitialContentRef.current
+        : activeAnalysisContentRef.current;
+
+      if (targetTaskId) {
+        setMessagesRef.current((prev) =>
+          prev.map((msg) =>
+            msg.task_id === targetTaskId
+              ? {
+                  ...msg,
+                  content: targetContent,
+                  isToolLoading: false,
+                  isHidden: false,
+                }
+              : msg
+          )
+        );
+      }
+    });
+  };
+
   // Sync refs on every render
   useEffect(() => {
     setMessagesRef.current = setMessages;
@@ -177,32 +205,10 @@ export function useMcpListeners({
               const chunk = chatEvent.payload;
               if (activeInitialTaskIdRef.current) {
                 activeInitialContentRef.current += chunk;
-                setMessagesRef.current((prev) =>
-                  prev.map((msg) =>
-                    msg.task_id === activeInitialTaskIdRef.current
-                      ? {
-                          ...msg,
-                          content: activeInitialContentRef.current,
-                          isToolLoading: false,
-                          isHidden: false,
-                        }
-                      : msg
-                  )
-                );
+                scheduleChunkUpdate();
               } else if (activeAnalysisTaskIdRef.current) {
                 activeAnalysisContentRef.current += chunk;
-                setMessagesRef.current((prev) =>
-                  prev.map((msg) =>
-                    msg.task_id === activeAnalysisTaskIdRef.current
-                      ? {
-                          ...msg,
-                          content: activeAnalysisContentRef.current,
-                          isToolLoading: false,
-                          isHidden: false,
-                        }
-                      : msg
-                  )
-                );
+                scheduleChunkUpdate();
               }
               break;
             }
@@ -230,7 +236,7 @@ export function useMcpListeners({
             }
 
             case "mcpInitialStarted": {
-              const { taskId, hasImage } = chatEvent.payload;
+              const { taskId, hasImage } = chatEvent.payload as any;
               activeInitialTaskIdRef.current = taskId;
               activeInitialContentRef.current = "";
 
@@ -362,7 +368,7 @@ export function useMcpListeners({
                 }
               }
             }
-            if (targetIdx !== -1 && prev[targetIdx].waitingForApproval) {
+            if (targetIdx !== -1 && (prev[targetIdx] as any).waitingForApproval) {
               return prev.map((msg, idx) =>
                 idx === targetIdx ? { ...msg, waitingForApproval: false } : msg
               );
@@ -387,6 +393,10 @@ export function useMcpListeners({
 
     return () => {
       isCancelled = true;
+      if (chunkRafIdRef.current !== null) {
+        cancelAnimationFrame(chunkRafIdRef.current);
+        chunkRafIdRef.current = null;
+      }
       if (unlistenFn) {
         unlistenFn();
       }

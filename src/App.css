@@ -151,3 +151,15 @@
 .resize-handle.active {
   background-color: var(--primary, #3b82f6);
 }
+
+/* Global Resizing Performance & UX Optimization */
+body.is-resizing {
+  user-select: none !important;
+  cursor: col-resize !important;
+}
+
+body.is-resizing * {
+  transition: none !important;
+  user-select: none !important;
+}
+

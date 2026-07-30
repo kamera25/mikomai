@@ -13,7 +13,7 @@ interface ConfigDiffPanelProps {
   isResizing?: boolean;
 }
 
-export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, onClose, style, isResizing }) => {
+export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = React.memo(({ id, isOpen, onClose, style, isResizing }) => {
   const { state: uiState } = useUIContext();
   const proposedDiffData = uiState.configDiffData;
 
@@ -547,5 +547,8 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = ({ id, isOpen, on
       </div>
     </div>
   );
-};
+});
+
+ConfigDiffPanel.displayName = "ConfigDiffPanel";
+
 

@@ -12,7 +12,7 @@ interface ActivityBarProps {
   isSettingsOpen: boolean;
 }
 
-export const ActivityBar: React.FC<ActivityBarProps> = ({
+export const ActivityBar: React.FC<ActivityBarProps> = React.memo(({
   setIsConnectionOpen,
   isConnectionOpen,
   setIsScheduledTasksOpen,
@@ -111,4 +111,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       </div>
     </nav>
   );
-};
+});
+
+ActivityBar.displayName = "ActivityBar";
+

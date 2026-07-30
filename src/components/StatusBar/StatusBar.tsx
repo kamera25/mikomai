@@ -1,3 +1,4 @@
+import React, { memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./StatusBar.css";
 import { BoxIcon } from "../Icons";
@@ -7,7 +8,7 @@ interface StatusBarProps {
   modelPath?: string | null;
 }
 
-export function StatusBar({ modelStatus, modelPath }: StatusBarProps) {
+export const StatusBar = memo(function StatusBar({ modelStatus, modelPath }: StatusBarProps) {
   const { t } = useTranslation();
 
   const getModelDisplayName = () => {
@@ -32,4 +33,7 @@ export function StatusBar({ modelStatus, modelPath }: StatusBarProps) {
       </div>
     </footer>
   );
-}
+});
+
+StatusBar.displayName = "StatusBar";
+
