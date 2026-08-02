@@ -46,6 +46,14 @@ pub struct NetmikoDeviceConfig {
     #[serde(default, alias = "console_baud_rate")]
     #[validate(range(min = 110, max = 1000000))]
     pub console_baud_rate: Option<u32>,
+    #[serde(default, alias = "auth_method")]
+    pub auth_method: Option<String>,
+    #[serde(default, alias = "private_key_path")]
+    pub private_key_path: Option<String>,
+    #[serde(default)]
+    pub passphrase: Option<String>,
+    #[serde(default, alias = "agent_forwarding")]
+    pub agent_forwarding: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -127,6 +135,10 @@ impl SidecarNetmikoWrapper {
             "commands": commands,
             "console_port": device.console_port,
             "console_baud_rate": device.console_baud_rate,
+            "auth_method": device.auth_method,
+            "key_file": device.private_key_path,
+            "passphrase": device.passphrase,
+            "allow_agent": device.agent_forwarding,
         });
         if device.console_port.is_none() {
             payload["host"] = serde_json::json!(device.host);
@@ -267,6 +279,10 @@ impl NetworkInterface for SidecarNetmikoWrapper {
             "command": command,
             "console_port": device.console_port,
             "console_baud_rate": device.console_baud_rate,
+            "auth_method": device.auth_method,
+            "key_file": device.private_key_path,
+            "passphrase": device.passphrase,
+            "allow_agent": device.agent_forwarding,
         });
         if device.console_port.is_none() {
             payload["host"] = serde_json::json!(device.host);
@@ -284,6 +300,10 @@ impl NetworkInterface for SidecarNetmikoWrapper {
             "commands": commands,
             "console_port": device.console_port,
             "console_baud_rate": device.console_baud_rate,
+            "auth_method": device.auth_method,
+            "key_file": device.private_key_path,
+            "passphrase": device.passphrase,
+            "allow_agent": device.agent_forwarding,
         });
         if device.console_port.is_none() {
             payload["host"] = serde_json::json!(device.host);
@@ -430,6 +450,10 @@ mod tests {
             device_type: "cisco_ios".to_string(),
             console_port: None,
             console_baud_rate: None,
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
         };
         let serialized = serde_json::to_string(&config).unwrap();
         assert!(serialized.contains(r#""host":"10.0.0.1""#));
@@ -459,6 +483,10 @@ mod tests {
             device_type: "cisco_ios".to_string(),
             console_port: None,
             console_baud_rate: Some(9600),
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
         };
         assert!(config.validate().is_err()); // empty host
 

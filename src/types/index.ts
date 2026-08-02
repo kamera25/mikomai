@@ -106,10 +106,17 @@ export interface Connection {
   enablePassword?: string;
   deviceType?: string;
   vendorType?: string;
+  authMethod?: "plain" | "key" | "keyboard" | "pageant";
+  privateKeyPath?: string;
+  passphrase?: string;
+  agentForwarding?: boolean;
+  rememberPassword?: boolean;
   hasPassword?: boolean;
   hasEnablePassword?: boolean;
+  hasPassphrase?: boolean;
   passwordChanged?: boolean;
   enablePasswordChanged?: boolean;
+  passphraseChanged?: boolean;
 }
 
 export interface McpHost {

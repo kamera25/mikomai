@@ -47,6 +47,10 @@ impl ConsoleDeviceConfigBuilder for ConsoleBuilder {
             device_type: device.device_type,
             console_port: port,
             console_baud_rate: settings.console_baud_rate,
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
         })
     }
 }

@@ -2,7 +2,7 @@ import React from "react";
 import { useForm, Controller } from "react-hook-form";
 import Select from "react-select";
 import { useTranslation } from "react-i18next";
-import { message } from "@tauri-apps/plugin-dialog";
+import { message, open } from "@tauri-apps/plugin-dialog";
 import { Connection, McpHost } from "../../types";
 
 const customSelectStyles = {
@@ -78,7 +78,12 @@ interface ConnectionFormProps {
   deviceTypes: string[];
   getDeviceTypeAlias: (deviceType: string) => string;
   onClose: () => void;
-  onSave: (data: any, isPasswordDirty: boolean, isEnablePasswordDirty: boolean) => void;
+  onSave: (
+    data: any,
+    isPasswordDirty: boolean,
+    isEnablePasswordDirty: boolean,
+    isPassphraseDirty: boolean
+  ) => void;
   onDeleteCurrent: () => void;
 }
 
@@ -107,10 +112,10 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
     password: "",
     enablePassword: "",
     passphrase: "",
-    rememberPassword: true,
-    agentForwarding: false,
-    authMethod: "plain",
-    privateKeyPath: "",
+    rememberPassword: editingConnection?.rememberPassword ?? true,
+    agentForwarding: editingConnection?.agentForwarding ?? false,
+    authMethod: editingConnection?.authMethod || "plain",
+    privateKeyPath: editingConnection?.privateKeyPath || "",
     consolePort: "COM1",
     baudRate: 9600,
     deviceType: editingConnection?.deviceType || "cisco_ios",
@@ -163,10 +168,25 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
     }
   };
 
+  const handleSelectKeyFile = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "SSH Key", extensions: ["*", "pem", "pub", "key", "id_rsa", "id_ed25519", "id_ecdsa"] }],
+      });
+      if (selected && typeof selected === "string") {
+        setValue("privateKeyPath", selected, { shouldDirty: true });
+      }
+    } catch (e) {
+      console.error("Failed to select key file:", e);
+    }
+  };
+
   const onSubmit = (data: typeof defaultValues) => {
     const isPasswordDirty = !!dirtyFields.password;
     const isEnablePasswordDirty = !!dirtyFields.enablePassword;
-    onSave(data, isPasswordDirty, isEnablePasswordDirty);
+    const isPassphraseDirty = !!dirtyFields.passphrase;
+    onSave(data, isPasswordDirty, isEnablePasswordDirty, isPassphraseDirty);
   };
 
   return (
@@ -346,7 +366,11 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
               <div className="ssh-auth-grid">
                 <div className="form-group">
                   <label>{t("connection_panel.passphrase_label")}</label>
-                  <input type="password" {...register("passphrase")} />
+                  <input
+                    type="password"
+                    {...register("passphrase")}
+                    placeholder={editingConnection?.hasPassphrase ? "••••••••" : ""}
+                  />
                 </div>
 
                 <div className="ssh-checkbox-group">
@@ -381,7 +405,7 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
                     <div className="auth-method-content">
                       <span className="auth-method-label">{t("connection_panel.auth_key")}</span>
                       <div className="auth-method-details">
-                        <button type="button" className="btn-file-select">
+                        <button type="button" className="btn-file-select" onClick={handleSelectKeyFile}>
                           {t("connection_panel.key_select_btn")}
                         </button>
                         <input

@@ -222,6 +222,7 @@ mod tests {
             max_gen: 2048,
             prompt_keep_tokens: 500,
             vision_enabled: true,
+            auto_dry_run: false,
             mmproj_path: Some("/path/to/mmproj.gguf".to_string()),
         };
 
@@ -267,6 +268,7 @@ mod tests {
             max_gen: 2048,
             prompt_keep_tokens: 500,
             vision_enabled: false,
+            auto_dry_run: false,
             mmproj_path: None,
         };
 

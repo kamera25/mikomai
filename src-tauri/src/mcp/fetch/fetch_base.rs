@@ -14,6 +14,10 @@ pub struct ResolvedDevice {
     pub password: Option<String>,
     pub enable_password: Option<String>,
     pub device_type: String,
+    pub auth_method: Option<String>,
+    pub private_key_path: Option<String>,
+    pub passphrase: Option<String>,
+    pub agent_forwarding: Option<bool>,
 }
 
 pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<ResolvedDevice, String> {
@@ -60,12 +64,30 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
                 }
             });
 
+            let decrypted_passphrase = conn.passphrase.as_ref().and_then(|pp| {
+                if pp.is_empty() {
+                    None
+                } else {
+                    match decrypt(app, pp.as_str()) {
+                        Ok(decrypted) => Some(decrypted),
+                        Err(e) => {
+                            log::error!("Failed to decrypt passphrase for connection {} in find_device: {}", conn.id, e);
+                            None
+                        }
+                    }
+                }
+            });
+
             resolved_device = Some(ResolvedDevice {
                 ip: conn.ip.to_string(),
                 username: user,
                 password: decrypted_password,
                 enable_password: decrypted_enable_password,
                 device_type: dtype,
+                auth_method: conn.auth_method.clone(),
+                private_key_path: conn.private_key_path.clone(),
+                passphrase: decrypted_passphrase,
+                agent_forwarding: conn.agent_forwarding,
             });
         }
     }

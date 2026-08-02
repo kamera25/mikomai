@@ -28,6 +28,10 @@ impl SshDeviceConfigBuilder for SshBuilder {
             device_type: device.device_type,
             console_port: None,
             console_baud_rate: None,
+            auth_method: device.auth_method,
+            private_key_path: device.private_key_path,
+            passphrase: device.passphrase,
+            agent_forwarding: device.agent_forwarding,
         })
     }
 }

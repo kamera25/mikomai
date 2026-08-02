@@ -33,6 +33,10 @@ impl TelnetDeviceConfigBuilder for TelnetBuilder {
             device_type,
             console_port: None,
             console_baud_rate: None,
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
         })
     }
 }

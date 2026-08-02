@@ -100,14 +100,28 @@ pub struct Connection {
     pub device_type: Option<DeviceType>,
     #[serde(default, deserialize_with = "deserialize_empty_as_none")]
     pub vendor_type: Option<VendorType>,
+    #[serde(default)]
+    pub auth_method: Option<String>,
+    #[serde(default)]
+    pub private_key_path: Option<String>,
+    #[serde(default)]
+    pub passphrase: Option<String>,
+    #[serde(default)]
+    pub agent_forwarding: Option<bool>,
+    #[serde(default)]
+    pub remember_password: Option<bool>,
     #[serde(default, skip_serializing)]
     pub has_password: Option<bool>,
     #[serde(default, skip_serializing)]
     pub has_enable_password: Option<bool>,
     #[serde(default, skip_serializing)]
+    pub has_passphrase: Option<bool>,
+    #[serde(default, skip_serializing)]
     pub password_changed: Option<bool>,
     #[serde(default, skip_serializing)]
     pub enable_password_changed: Option<bool>,
+    #[serde(default, skip_serializing)]
+    pub passphrase_changed: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -146,8 +160,10 @@ pub fn load_connections<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<V
     for conn in &mut connections {
         conn.has_password = Some(conn.password.as_ref().map(|p| !p.is_empty()).unwrap_or(false));
         conn.has_enable_password = Some(conn.enable_password.as_ref().map(|ep| !ep.is_empty()).unwrap_or(false));
+        conn.has_passphrase = Some(conn.passphrase.as_ref().map(|p| !p.is_empty()).unwrap_or(false));
         conn.password = None;
         conn.enable_password = None;
+        conn.passphrase = None;
     }
 
     Ok(connections)
@@ -219,6 +235,28 @@ pub fn save_connections(app: tauri::AppHandle, mut connections: Vec<Connection>)
         } else {
             if let Some(oc) = old_conn {
                 conn.enable_password = oc.enable_password.clone();
+            }
+        }
+
+        let passphrase_changed = conn.passphrase_changed.unwrap_or(old_conn.is_none());
+        if passphrase_changed {
+            if let Some(plain_passphrase) = &conn.passphrase {
+                if !plain_passphrase.is_empty() {
+                    match encrypt(&app, plain_passphrase.as_str()) {
+                        Ok(encrypted) => {
+                            conn.passphrase = Some(encrypted);
+                        }
+                        Err(e) => return Err(ConnectionError::PasswordEncryption(conn.id.to_string(), e.to_string()).into()),
+                    }
+                } else {
+                    conn.passphrase = None;
+                }
+            } else {
+                conn.passphrase = None;
+            }
+        } else {
+            if let Some(oc) = old_conn {
+                conn.passphrase = oc.passphrase.clone();
             }
         }
     }
@@ -361,10 +399,17 @@ mod tests {
             enable_password: None,
             device_type: None,
             vendor_type: None,
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
+            remember_password: None,
             has_password: None,
             has_enable_password: None,
+            has_passphrase: None,
             password_changed: None,
             enable_password_changed: None,
+            passphrase_changed: None,
         };
 
         let serialized = serde_json::to_string(&conn).unwrap();

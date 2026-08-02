@@ -57,6 +57,10 @@ impl TargetDevice {
             device_type: self.device_type.clone(),
             console_port: self.console_port.clone(),
             console_baud_rate: self.console_baud_rate,
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
         }
     }
 }

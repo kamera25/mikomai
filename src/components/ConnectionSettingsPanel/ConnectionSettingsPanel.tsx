@@ -133,7 +133,8 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const handleSave = async (
     formData: any,
     isPasswordDirty: boolean,
-    isEnablePasswordDirty: boolean
+    isEnablePasswordDirty: boolean,
+    isPassphraseDirty: boolean
   ) => {
     let updatedConnections = connections;
 
@@ -152,10 +153,16 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               username: formData.username,
               password: formData.password,
               enablePassword: formData.enablePassword,
+              passphrase: formData.passphrase,
+              authMethod: formData.authMethod,
+              privateKeyPath: formData.privateKeyPath,
+              agentForwarding: formData.agentForwarding,
+              rememberPassword: formData.rememberPassword,
               deviceType: formData.deviceType,
               vendorType: formData.vendorType,
               passwordChanged: isPasswordDirty,
               enablePasswordChanged: isEnablePasswordDirty,
+              passphraseChanged: isPassphraseDirty,
             }
           : conn
       );
@@ -174,10 +181,16 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
         username: formData.username,
         password: formData.password,
         enablePassword: formData.enablePassword,
+        passphrase: formData.passphrase,
+        authMethod: formData.authMethod,
+        privateKeyPath: formData.privateKeyPath,
+        agentForwarding: formData.agentForwarding,
+        rememberPassword: formData.rememberPassword,
         deviceType: formData.deviceType,
         vendorType: formData.vendorType,
         passwordChanged: true,
         enablePasswordChanged: true,
+        passphraseChanged: true,
       };
       updatedConnections = [...connections, newConnection];
     }

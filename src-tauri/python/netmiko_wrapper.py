@@ -87,6 +87,10 @@ def main():
     args = parser.parse_args()
     args.console_port = None
     args.console_baud_rate = None
+    args.auth_method = None
+    args.key_file = None
+    args.passphrase = None
+    args.allow_agent = False
 
     if args.stdin or not sys.stdin.isatty():
         try:
@@ -103,6 +107,10 @@ def main():
                 args.command = data.get("command")
                 args.console_port = data.get("console_port")
                 args.console_baud_rate = data.get("console_baud_rate")
+                args.auth_method = data.get("auth_method")
+                args.key_file = data.get("key_file")
+                args.passphrase = data.get("passphrase")
+                args.allow_agent = data.get("allow_agent", False)
                 if "commands" in data:
                     args.commands = json.dumps(data["commands"]) if isinstance(data["commands"], list) else data["commands"]
         except json.JSONDecodeError as e:
@@ -144,6 +152,15 @@ def main():
             "global_delay_factor": 2.0,
             "session_log": None
         }
+        if args.key_file:
+            device["key_file"] = args.key_file
+            device["use_keys"] = True
+        if args.passphrase:
+            device["passphrase"] = args.passphrase
+        if args.allow_agent:
+            device["allow_agent"] = True
+        if args.auth_method == "key":
+            device["use_keys"] = True
 
     try:
         host_desc = args.console_port if args.console_port else args.host

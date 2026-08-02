@@ -38,6 +38,10 @@ mod tests {
             device_type: "cisco_ios".to_string(),
             console_port: None,
             console_baud_rate: None,
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
         };
 
         assert_eq!(config.host, "192.168.1.1");
@@ -59,6 +63,10 @@ mod tests {
             device_type: "cisco_ios".to_string(),
             console_port: Some("/dev/ttyUSB0".to_string()),
             console_baud_rate: Some(9600),
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
         };
 
         assert_eq!(config.username, "admin");
