@@ -459,6 +459,7 @@ export function AppLayout() {
                   messages={chatState.messages}
                   formatMessageTime={formatMessageTime}
                   sendMessage={sendMessage}
+                  isResizing={isResizingLeft || isResizingRight}
                 />
 
                 <div className="input-area-wrapper" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>

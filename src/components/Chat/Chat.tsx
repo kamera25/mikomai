@@ -9,6 +9,7 @@ interface ChatProps {
   messages: Message[];
   formatMessageTime: (isoString?: string) => string;
   sendMessage?: (text?: string) => Promise<void>;
+  isResizing?: boolean;
 }
 
 export const Chat = memo(
@@ -112,7 +113,20 @@ export const Chat = memo(
         </div>
       );
     }
-  )
+  ),
+  (prevProps, nextProps) => {
+    // If currently resizing or starting to resize, prevent re-rendering of Chat component
+    if (nextProps.isResizing) {
+      return true;
+    }
+    // Standard comparison when not resizing
+    return (
+      prevProps.isResizing === nextProps.isResizing &&
+      prevProps.messages === nextProps.messages &&
+      prevProps.formatMessageTime === nextProps.formatMessageTime &&
+      prevProps.sendMessage === nextProps.sendMessage
+    );
+  }
 );
 
 Chat.displayName = "Chat";
