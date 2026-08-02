@@ -173,7 +173,7 @@ pub async fn analyze_image_attachment(
         let mtmd_ctx = llama_cpp_2::mtmd::MtmdContext::init_from_file(&mmproj_path_str, model, &mtmd_params)
             .map_err(|e| format!("Failed to init mtmd context: {:?}", e))?;
 
-        let bitmap = llama_cpp_2::mtmd::MtmdBitmap::from_buffer(&mtmd_ctx, &image_bytes)
+        let bitmap = llama_cpp_2::mtmd::MtmdBitmap::from_buffer(&mtmd_ctx, &image_bytes, false)
             .map_err(|e| format!("Failed to create mtmd bitmap: {:?}", e))?;
 
         let marker = llama_cpp_2::mtmd::mtmd_default_marker();
