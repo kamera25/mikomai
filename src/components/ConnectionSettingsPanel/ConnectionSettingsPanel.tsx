@@ -261,9 +261,6 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
           <div className="header-title-container">
             <h2>{t("connection_panel.header")}</h2>
           </div>
-          <button className="panel-close-btn" onClick={onClose}>
-            &times;
-          </button>
         </header>
 
         <div className="connection-toolbar">

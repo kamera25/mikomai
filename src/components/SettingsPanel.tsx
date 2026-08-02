@@ -381,6 +381,47 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
     }
   };
 
+  const [activeTab, setActiveTab] = useState<string>("chat");
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  const isClickScrollingRef = React.useRef<boolean>(false);
+
+  const handleScroll = useCallback(() => {
+    if (isClickScrollingRef.current) return;
+
+    const categories = ["chat", "llm", "vision", "kb"];
+    const container = bodyRef.current;
+    if (!container) return;
+
+    const containerTop = container.getBoundingClientRect().top;
+
+    let currentActive = categories[0];
+    for (const cat of categories) {
+      const el = document.getElementById(`settings-section-${cat}`);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        // If top of element is near or above the top half of the scroll container
+        if (rect.top - containerTop <= 120) {
+          currentActive = cat;
+        }
+      }
+    }
+    setActiveTab(currentActive);
+  }, []);
+
+  const scrollToCategory = (categoryId: string) => {
+    setActiveTab(categoryId);
+    isClickScrollingRef.current = true;
+    const element = document.getElementById(`settings-section-${categoryId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => {
+        isClickScrollingRef.current = false;
+      }, 600);
+    } else {
+      isClickScrollingRef.current = false;
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -388,18 +429,60 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
       <div className="settings-panel">
         <header className="settings-header">
           <div className="settings-header-content">
-            <div>
+            <div className="settings-header-left">
               <h2>{t("settings.header")}</h2>
-              <p>{t("settings.desc")}</p>
             </div>
-            <button className="close-button" onClick={onClose} title={t("settings.close_title")}>
-              &times;
-            </button>
           </div>
         </header>
 
-        <div className="settings-body">
-          <section className="settings-group">
+        <div className="settings-container">
+          <aside className="settings-sidebar">
+            <nav className="settings-nav">
+              <button
+                className={`settings-nav-item ${activeTab === "chat" ? "active" : ""}`}
+                onClick={() => scrollToCategory("chat")}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span>{t("settings.sub_chat")}</span>
+              </button>
+              <button
+                className={`settings-nav-item ${activeTab === "llm" ? "active" : ""}`}
+                onClick={() => scrollToCategory("llm")}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <span>{t("settings.sub_llm")}</span>
+              </button>
+              <button
+                className={`settings-nav-item ${activeTab === "vision" ? "active" : ""}`}
+                onClick={() => scrollToCategory("vision")}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <span>{t("settings.label_vision")}</span>
+              </button>
+              <button
+                className={`settings-nav-item ${activeTab === "kb" ? "active" : ""}`}
+                onClick={() => scrollToCategory("kb")}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                  <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                  <path d="M21 19c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                </svg>
+                <span>{t("settings.sub_kb")}</span>
+              </button>
+            </nav>
+          </aside>
+
+          <div className="settings-body" ref={bodyRef} onScroll={handleScroll}>
+            <section id="settings-section-chat" className="settings-group">
             <h3>{t("settings.sub_chat")}</h3>
             <div className="form-control">
               <label>{t("settings.label_history")}</label>
@@ -584,7 +667,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
             )}
           </section>
 
-          <section className="settings-group">
+          <section id="settings-section-llm" className="settings-group">
             <h3>{t("settings.sub_llm")}</h3>
             <div className="form-control">
               <label htmlFor="model-preset-select">{t("settings.label_model_preset")}</label>
@@ -739,7 +822,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
             </div>
           </section>
 
-          <section className="settings-group">
+          <section id="settings-section-vision" className="settings-group">
             <h3>{t("settings.label_vision")}</h3>
             <div className="form-control">
               <label className="preload-label">
@@ -773,7 +856,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
             </div>
           </section>
 
-          <section className="settings-group">
+          <section id="settings-section-kb" className="settings-group">
             <h3>{t("settings.sub_kb")}</h3>
             <div className="form-control">
               <label>{t("settings.label_db_dir")}</label>
@@ -797,21 +880,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose })
               </select>
             </div>
           </section>
-        </div>
-
-        <footer className="settings-footer">
-          <div className="settings-footer-content">
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                saveAllSettings({});
-                onClose();
-              }}
-            >
-              {t("settings.btn_save_exit")}
-            </button>
           </div>
-        </footer>
+        </div>
       </div>
     </div>
   );

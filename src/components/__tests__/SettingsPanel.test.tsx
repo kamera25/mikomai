@@ -98,13 +98,6 @@ describe("SettingsPanel", () => {
     expect(screen.queryByText("設定")).not.toBeInTheDocument();
   });
 
-  it("calls onClose when close button is clicked", () => {
-    render(<SettingsPanel {...defaultProps} />);
-    const closeButton = screen.getByTitle("設定を閉じる");
-    fireEvent.click(closeButton);
-    expect(defaultProps.onClose).toHaveBeenCalled();
-  });
-
   it("handles history limit change", () => {
     render(<SettingsPanel {...defaultProps} />);
     const slider = screen.getAllByRole("slider")[0]; // History limit
@@ -311,13 +304,6 @@ describe("SettingsPanel", () => {
     consoleSpy.mockRestore();
   });
 
-  it("handles save and close button click", () => {
-    render(<SettingsPanel {...defaultProps} />);
-    const saveButton = screen.getByText("保存して終了");
-    fireEvent.click(saveButton);
-    expect(defaultProps.onClose).toHaveBeenCalled();
-  });
-
   it("displays model download status correctly", async () => {
     vi.mocked(tauriApi.invoke).mockImplementation((cmd, args) => {
       if (cmd === "check_model_exists") {
@@ -340,4 +326,22 @@ describe("SettingsPanel", () => {
       expect(screen.getByText("✓ ダウンロード済み")).toBeInTheDocument();
     });
   });
+
+  it("handles sidebar quick access navigation", () => {
+    // Mock scrollIntoView since jsdom does not implement it
+    const scrollIntoViewMock = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+    render(<SettingsPanel {...defaultProps} />);
+
+    const llmNavBtn = screen.getAllByText("ローカルLLM (llama.cpp)")[0].closest("button");
+    expect(llmNavBtn).not.toHaveClass("active");
+
+    if (llmNavBtn) {
+      fireEvent.click(llmNavBtn);
+      expect(llmNavBtn).toHaveClass("active");
+      expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    }
+  });
 });
+

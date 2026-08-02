@@ -301,9 +301,6 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
           <div className="header-title-container">
             <h2>{t("scheduled_tasks.header")}</h2>
           </div>
-          <button className="panel-close-btn" onClick={onClose}>
-            &times;
-          </button>
         </header>
 
         <div className="scheduled-toolbar">
