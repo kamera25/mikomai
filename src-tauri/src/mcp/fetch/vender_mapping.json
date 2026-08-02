@@ -16,7 +16,19 @@
     "device_type": "yamaha"
   },
   {
-    "patterns": ["Furukawa", "Fitelnet", "furukawa", "fitelnet"],
+    "patterns": ["Furukawa", "Fitelnet", "furukawa", "fitelnet", "furukawa_fitelnet"],
     "device_type": "furukawa_fitelnet"
+  },
+  {
+    "patterns": ["Fortinet", "Fortigate", "fortinet", "fortigate"],
+    "device_type": "fortinet"
+  },
+  {
+    "patterns": ["A10", "a10"],
+    "device_type": "a10"
+  },
+  {
+    "patterns": ["PaloAlto", "paloalto", "paloalto_panos"],
+    "device_type": "paloalto_panos"
   }
 ]

@@ -136,19 +136,31 @@ pub async fn query_nw_db(
     if let Some(caps) = context_re.captures(&query) {
         let brand_candidate = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         if let Some(matched_brand) = brands::get_brand(brand_candidate) {
-            brand_filter = Some(format!("brand = '{}'", matched_brand));
+            brand_filter = Some(format!("brand = '{0}' OR brand = '{1}'", matched_brand, brand_candidate));
             // Remove the context tag from the query for embedding
             processed_query = context_re.replace_all(&query, "").to_string().trim().to_string();
         }
     }
 
     if brand_filter.is_none() {
-        // Fallback: check if any known brand name is mentioned in the query string
-        for &brand in brands::BRANDS {
-            // Case-insensitive word-boundary search
-            let brand_re = Regex::new(&format!(r"(?i)\b{}\b", brand)).map_err(|e| e.to_string())?;
+        // Fallback: check if any known brand keyword is mentioned in the query string
+        let search_keywords = [
+            ("cisco", "cisco_ios"),
+            ("juniper", "juniper_junos"),
+            ("junos", "juniper_junos"),
+            ("arista", "arista_eos"),
+            ("yamaha", "yamaha"),
+            ("furukawa", "furukawa_fitelnet"),
+            ("fitelnet", "furukawa_fitelnet"),
+            ("fortinet", "fortinet"),
+            ("fortigate", "fortinet"),
+            ("a10", "a10"),
+            ("paloalto", "paloalto_panos"),
+        ];
+        for (keyword, netmiko_id) in search_keywords {
+            let brand_re = Regex::new(&format!(r"(?i)\b{}\b", keyword)).map_err(|e| e.to_string())?;
             if brand_re.is_match(&query) {
-                brand_filter = Some(format!("brand = '{}'", brand));
+                brand_filter = Some(format!("brand = '{0}' OR brand = '{1}'", netmiko_id, keyword));
                 break;
             }
         }
@@ -176,24 +188,66 @@ pub async fn query_nw_db(
     let table = db.open_table("documents").execute().await
         .map_err(|e| format!("Failed to open table: {}", e))?;
 
-    let mut vector_query = table.query()
-        .nearest_to(query_vector)
-        .map_err(|e| format!("Vector search error: {}", e))?
-        .limit(3);
-    
     let final_filter = brand_filter.or(filter);
-    if let Some(filter_str) = final_filter {
-        vector_query = vector_query.only_if(filter_str);
-    }
 
-    let mut stream = vector_query.execute().await
-        .map_err(|e| format!("Search execution error: {}", e))?;
+    // 1. 事前フィルタ（Pre-filtering）の試行
+    let mut batches: Vec<RecordBatch> = Vec::new();
+
+    if let Some(ref filter_str) = final_filter {
+        log::info!("Executing LanceDB Pre-filtering with condition: {}", filter_str);
+        let pre_query = table.query()
+            .nearest_to(query_vector.clone())
+            .map_err(|e| format!("Vector search error: {}", e))?
+            .only_if(filter_str.clone())
+            .limit(3);
+
+        if let Ok(mut stream) = pre_query.execute().await {
+            while let Some(Ok(batch)) = stream.next().await {
+                if batch.num_rows() > 0 {
+                    batches.push(batch);
+                }
+            }
+        }
+
+        // 事前フィルタで結果が得られなかった場合、2. 事後フィルタ（Post-filtering）へフォールバック
+        if batches.is_empty() {
+            log::info!("Pre-filtering returned no results. Falling back to Post-filtering: {}", filter_str);
+            let post_query = table.query()
+                .nearest_to(query_vector.clone())
+                .map_err(|e| format!("Vector search error: {}", e))?
+                .only_if(filter_str.clone())
+                .postfilter()
+                .limit(3);
+
+            if let Ok(mut stream) = post_query.execute().await {
+                while let Some(Ok(batch)) = stream.next().await {
+                    if batch.num_rows() > 0 {
+                        batches.push(batch);
+                    }
+                }
+            }
+        }
+    } else {
+        // フィルタなし通常ベクトル検索
+        let query = table.query()
+            .nearest_to(query_vector)
+            .map_err(|e| format!("Vector search error: {}", e))?
+            .limit(3);
+
+        let mut stream = query.execute().await
+            .map_err(|e| format!("Search execution error: {}", e))?;
+
+        while let Some(Ok(batch)) = stream.next().await {
+            if batch.num_rows() > 0 {
+                batches.push(batch);
+            }
+        }
+    }
 
     let mut context = String::new();
     let mut count = 1;
 
-    while let Some(batch_result) = stream.next().await {
-        let batch: RecordBatch = batch_result.map_err(|e| format!("Error reading search results: {}", e))?;
+    for batch in batches {
         
         let text_col = batch.column_by_name("text")
             .ok_or("Column 'text' not found in results")?;
@@ -218,8 +272,8 @@ pub async fn query_nw_db(
         for i in 0..batch.num_rows() {
             let distance = dist_array.map(|arr| arr.value(i)).unwrap_or(0.0);
             
-            // L2 distance threshold (e.g. 0.6). If distance is larger than 0.6, the result is considered irrelevant.
-            if distance > 0.6 {
+            // L2 distance threshold (e.g. 1.2). If distance is larger than 1.2, the result is considered irrelevant.
+            if distance > 1.2 {
                 log::info!("Skipping search result due to low similarity (distance: {})", distance);
                 continue;
             }
