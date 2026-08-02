@@ -10,9 +10,9 @@
   position: relative;
 }
 
-/* Ensure vertical scrollbar is clearly visible */
+/* Ensure vertical scrollbar is clearly visible but slim */
 .chat-history::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 .chat-history::-webkit-scrollbar-track {
