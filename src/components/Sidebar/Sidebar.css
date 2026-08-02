@@ -197,13 +197,13 @@
   flex-direction: column;
   gap: 4px;
   position: relative;
-  padding-left: 48px;
+  padding-left: 16px;
 }
 
 .timeline-items::before {
   content: "";
   position: absolute;
-  left: 54px;
+  left: 22px;
   top: 0;
   bottom: 0;
   width: 1px;
