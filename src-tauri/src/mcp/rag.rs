@@ -234,12 +234,29 @@ pub async fn query_nw_db(
             .map_err(|e| format!("Vector search error: {}", e))?
             .limit(3);
 
-        let mut stream = query.execute().await
-            .map_err(|e| format!("Search execution error: {}", e))?;
+        if let Ok(mut stream) = query.execute().await {
+            while let Some(Ok(batch)) = stream.next().await {
+                if batch.num_rows() > 0 {
+                    batches.push(batch);
+                }
+            }
+        }
+    }
 
-        while let Some(Ok(batch)) = stream.next().await {
-            if batch.num_rows() > 0 {
-                batches.push(batch);
+    // ベクトル検索で結果が得られなかった場合、全文検索（FTS: Full-Text Search）を実行
+    if batches.is_empty() && !processed_query.is_empty() {
+        log::info!("Executing LanceDB Full-Text Search (FTS) for query: {}", processed_query);
+        let fts_query = lancedb::index::scalar::FullTextSearchQuery::new(processed_query.clone());
+        let mut fts_builder = table.query().full_text_search(fts_query).limit(3);
+        if let Some(ref filter_str) = final_filter {
+            fts_builder = fts_builder.only_if(filter_str.clone());
+        }
+
+        if let Ok(mut stream) = fts_builder.execute().await {
+            while let Some(Ok(batch)) = stream.next().await {
+                if batch.num_rows() > 0 {
+                    batches.push(batch);
+                }
             }
         }
     }

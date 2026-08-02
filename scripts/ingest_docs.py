@@ -96,8 +96,14 @@ def main():
             num_sub_vectors=128
         )
     except Exception as e:
-        print(f"Warning: Could not create index: {e}")
-        print("Continuing without index (small datasets perform well with linear scan).")
+        print(f"Warning: Could not create IVF-PQ index: {e}")
+
+    print("Creating Full-Text Search (FTS) index on 'text' column...")
+    try:
+        table.create_fts_index("text", replace=True)
+        print("FTS index created successfully.")
+    except Exception as e:
+        print(f"Warning: Could not create FTS index: {e}")
     
     # Optimize table (compact files, cleanup old versions, etc.)
     print("Optimizing table...")
