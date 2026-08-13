@@ -176,76 +176,15 @@ pub async fn query_nw_db(
     }
 
     let db = state.get_db(&app).await?;
-    let model = state.get_model()?;
-
-    // E5 instruct format for query
-    let task_description = "ネットワーク機器の操作マニュアルから、関連する設定コマンドや手順を検索します。";
-    let instructional_query = format!("Instruct: {}\nQuery: {}", task_description, processed_query);
-    let embeddings = model.embed(vec![instructional_query], None)
-        .map_err(|e| format!("Embedding error: {}", e))?;
-    let query_vector = embeddings.first().ok_or("Failed to generate embedding")?.clone();
-
     let table = db.open_table("documents").execute().await
         .map_err(|e| format!("Failed to open table: {}", e))?;
 
     let final_filter = brand_filter.or(filter);
-
-    // 1. 事前フィルタ（Pre-filtering）の試行
     let mut batches: Vec<RecordBatch> = Vec::new();
 
-    if let Some(ref filter_str) = final_filter {
-        log::info!("Executing LanceDB Pre-filtering with condition: {}", filter_str);
-        let pre_query = table.query()
-            .nearest_to(query_vector.clone())
-            .map_err(|e| format!("Vector search error: {}", e))?
-            .only_if(filter_str.clone())
-            .limit(3);
-
-        if let Ok(mut stream) = pre_query.execute().await {
-            while let Some(Ok(batch)) = stream.next().await {
-                if batch.num_rows() > 0 {
-                    batches.push(batch);
-                }
-            }
-        }
-
-        // 事前フィルタで結果が得られなかった場合、2. 事後フィルタ（Post-filtering）へフォールバック
-        if batches.is_empty() {
-            log::info!("Pre-filtering returned no results. Falling back to Post-filtering: {}", filter_str);
-            let post_query = table.query()
-                .nearest_to(query_vector.clone())
-                .map_err(|e| format!("Vector search error: {}", e))?
-                .only_if(filter_str.clone())
-                .postfilter()
-                .limit(3);
-
-            if let Ok(mut stream) = post_query.execute().await {
-                while let Some(Ok(batch)) = stream.next().await {
-                    if batch.num_rows() > 0 {
-                        batches.push(batch);
-                    }
-                }
-            }
-        }
-    } else {
-        // フィルタなし通常ベクトル検索
-        let query = table.query()
-            .nearest_to(query_vector)
-            .map_err(|e| format!("Vector search error: {}", e))?
-            .limit(3);
-
-        if let Ok(mut stream) = query.execute().await {
-            while let Some(Ok(batch)) = stream.next().await {
-                if batch.num_rows() > 0 {
-                    batches.push(batch);
-                }
-            }
-        }
-    }
-
-    // ベクトル検索で結果が得られなかった場合、全文検索（FTS: Full-Text Search）を実行
-    if batches.is_empty() && !processed_query.is_empty() {
-        log::info!("Executing LanceDB Full-Text Search (FTS) for query: {}", processed_query);
+    // 1. 全文検索（FTS: Full-Text Search）をプライマリ検索として実行
+    if !processed_query.is_empty() {
+        log::info!("Executing LanceDB Full-Text Search (FTS) [Primary] for query: {}", processed_query);
         let fts_query = lancedb::index::scalar::FullTextSearchQuery::new(processed_query.clone());
         let mut fts_builder = table.query().full_text_search(fts_query).limit(3);
         if let Some(ref filter_str) = final_filter {
@@ -256,6 +195,70 @@ pub async fn query_nw_db(
             while let Some(Ok(batch)) = stream.next().await {
                 if batch.num_rows() > 0 {
                     batches.push(batch);
+                }
+            }
+        }
+    }
+
+    // 2. FTSで結果が得られなかった場合、ベクトル検索（E5 Embeddings）をフォールバックとして実行
+    if batches.is_empty() {
+        log::info!("FTS returned no results. Falling back to Vector Search for query: {}", processed_query);
+        
+        let model = state.get_model()?;
+
+        // E5 instruct format for query
+        let task_description = "ネットワーク機器の操作マニュアルから、関連する設定コマンドや手順を検索します。";
+        let instructional_query = format!("Instruct: {}\nQuery: {}", task_description, processed_query);
+        let embeddings = model.embed(vec![instructional_query], None)
+            .map_err(|e| format!("Embedding error: {}", e))?;
+        let query_vector = embeddings.first().ok_or("Failed to generate embedding")?.clone();
+
+        if let Some(ref filter_str) = final_filter {
+            log::info!("Executing LanceDB Pre-filtering with condition: {}", filter_str);
+            let pre_query = table.query()
+                .nearest_to(query_vector.clone())
+                .map_err(|e| format!("Vector search error: {}", e))?
+                .only_if(filter_str.clone())
+                .limit(3);
+
+            if let Ok(mut stream) = pre_query.execute().await {
+                while let Some(Ok(batch)) = stream.next().await {
+                    if batch.num_rows() > 0 {
+                        batches.push(batch);
+                    }
+                }
+            }
+
+            // 事前フィルタで結果が得られなかった場合、事後フィルタ（Post-filtering）へフォールバック
+            if batches.is_empty() {
+                log::info!("Pre-filtering returned no results. Falling back to Post-filtering: {}", filter_str);
+                let post_query = table.query()
+                    .nearest_to(query_vector.clone())
+                    .map_err(|e| format!("Vector search error: {}", e))?
+                    .only_if(filter_str.clone())
+                    .postfilter()
+                    .limit(3);
+
+                if let Ok(mut stream) = post_query.execute().await {
+                    while let Some(Ok(batch)) = stream.next().await {
+                        if batch.num_rows() > 0 {
+                            batches.push(batch);
+                        }
+                    }
+                }
+            }
+        } else {
+            // フィルタなし通常ベクトル検索
+            let query = table.query()
+                .nearest_to(query_vector)
+                .map_err(|e| format!("Vector search error: {}", e))?
+                .limit(3);
+
+            if let Ok(mut stream) = query.execute().await {
+                while let Some(Ok(batch)) = stream.next().await {
+                    if batch.num_rows() > 0 {
+                        batches.push(batch);
+                    }
                 }
             }
         }
