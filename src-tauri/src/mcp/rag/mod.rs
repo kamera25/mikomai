@@ -1,12 +1,19 @@
+pub mod traits;
+pub mod full_text;
+pub mod vector;
+pub mod vendor;
+
+pub use traits::RagSearcher;
+pub use full_text::FullTextSearcher;
+pub use vector::VectorSearcher;
+
+use std::sync::{Arc, Mutex};
+use arrow_array::{RecordBatch, StringArray, LargeStringArray, Float32Array, Array};
+use fastembed::{TextEmbedding, EmbeddingModel, InitOptions};
 use lancedb::connection::Connection;
 use lancedb::connect;
-use lancedb::query::{ExecutableQuery, QueryBase};
-use std::sync::{Arc, Mutex};
-use fastembed::{TextEmbedding, EmbeddingModel, InitOptions};
-use futures::StreamExt;
-use arrow_array::{RecordBatch, StringArray, LargeStringArray, Float32Array, Array};
+use serde::{Deserialize, Serialize};
 use tauri::Manager;
-use serde::{Serialize, Deserialize};
 
 pub struct RagState {
     pub db: Mutex<Option<Connection>>,
@@ -73,6 +80,12 @@ impl RagState {
     }
 }
 
+impl Default for RagState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[tauri::command]
 pub async fn connect_db(path: String, state: tauri::State<'_, RagState>) -> Result<String, String> {
     let conn = connect(&path).execute().await.map_err(|e| format!("DB connect error: {}", e))?;
@@ -108,10 +121,6 @@ impl From<RagResult> for crate::network::CommandResult {
     }
 }
 
-
-use crate::mcp::brands;
-use regex::Regex;
-
 #[tauri::command]
 pub async fn query_nw_db(
     query: String, 
@@ -119,156 +128,41 @@ pub async fn query_nw_db(
     state: tauri::State<'_, RagState>,
     app: tauri::AppHandle
 ) -> Result<RagResult, String> {
-    if let Some(info) = crate::mcp::devices::get_registered_device_info(&query, &app) {
+    // Check registered device info first
+    if let Some(info) = vendor::check_registered_device(&query, &app) {
         return Ok(RagResult {
             success: true,
             output: info,
         });
     }
 
-    let mut brand_filter: Option<String> = None;
-    let mut processed_query = query.clone();
-
-    // Regex to match [Context: BrandName]
-    // Matches something like [Context: Cisco] or [Context: Cisco OS=1.0]
-    let context_re = Regex::new(r"\[Context:\s*([^\]\s]+)[^\]]*\]").map_err(|e| e.to_string())?;
-    
-    if let Some(caps) = context_re.captures(&query) {
-        let brand_candidate = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-        if let Some(matched_brand) = brands::get_brand(brand_candidate) {
-            brand_filter = Some(format!("brand = '{0}' OR brand = '{1}'", matched_brand, brand_candidate));
-            // Remove the context tag from the query for embedding
-            processed_query = context_re.replace_all(&query, "").to_string().trim().to_string();
-        }
-    }
-
-    if brand_filter.is_none() {
-        // Fallback: check if any known brand keyword is mentioned in the query string
-        let search_keywords = [
-            ("cisco", "cisco_ios"),
-            ("juniper", "juniper_junos"),
-            ("junos", "juniper_junos"),
-            ("arista", "arista_eos"),
-            ("yamaha", "yamaha"),
-            ("furukawa", "furukawa_fitelnet"),
-            ("fitelnet", "furukawa_fitelnet"),
-            ("fortinet", "fortinet"),
-            ("fortigate", "fortinet"),
-            ("a10", "a10"),
-            ("paloalto", "paloalto_panos"),
-        ];
-        for (keyword, netmiko_id) in search_keywords {
-            let brand_re = Regex::new(&format!(r"(?i)\b{}\b", keyword)).map_err(|e| e.to_string())?;
-            if brand_re.is_match(&query) {
-                brand_filter = Some(format!("brand = '{0}' OR brand = '{1}'", netmiko_id, keyword));
-                break;
-            }
-        }
-    }
-
-    // If query is now empty (e.g. LLM sent ONLY the context tag), 
-    // we use a generic query or handle it. 
-    // For now, if it's empty, we use the original query's brand name as the query.
-    if processed_query.is_empty() && brand_filter.is_some() {
-        if let Some(caps) = context_re.captures(&query) {
-            processed_query = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
-        }
-    }
+    // Parse vendor-specific context & brand filters
+    let vendor_context = vendor::parse_vendor_context(&query);
+    let final_filter = vendor_context.brand_filter.or(filter);
 
     let db = state.get_db(&app).await?;
     let table = db.open_table("documents").execute().await
         .map_err(|e| format!("Failed to open table: {}", e))?;
 
-    let final_filter = brand_filter.or(filter);
-    let mut batches: Vec<RecordBatch> = Vec::new();
-
     // 1. 全文検索（FTS: Full-Text Search）をプライマリ検索として実行
-    if !processed_query.is_empty() {
-        log::info!("Executing LanceDB Full-Text Search (FTS) [Primary] for query: {}", processed_query);
-        let fts_query = lancedb::index::scalar::FullTextSearchQuery::new(processed_query.clone());
-        let mut fts_builder = table.query().full_text_search(fts_query).limit(3);
-        if let Some(ref filter_str) = final_filter {
-            fts_builder = fts_builder.only_if(filter_str.clone());
-        }
-
-        if let Ok(mut stream) = fts_builder.execute().await {
-            while let Some(Ok(batch)) = stream.next().await {
-                if batch.num_rows() > 0 {
-                    batches.push(batch);
-                }
-            }
-        }
-    }
+    let fts_searcher = FullTextSearcher::new();
+    let mut batches = fts_searcher.search(&table, &vendor_context.query, final_filter.as_deref(), 3).await?;
 
     // 2. FTSで結果が得られなかった場合、ベクトル検索（E5 Embeddings）をフォールバックとして実行
     if batches.is_empty() {
-        log::info!("FTS returned no results. Falling back to Vector Search for query: {}", processed_query);
-        
         let model = state.get_model()?;
-
-        // E5 instruct format for query
-        let task_description = "ネットワーク機器の操作マニュアルから、関連する設定コマンドや手順を検索します。";
-        let instructional_query = format!("Instruct: {}\nQuery: {}", task_description, processed_query);
-        let embeddings = model.embed(vec![instructional_query], None)
-            .map_err(|e| format!("Embedding error: {}", e))?;
-        let query_vector = embeddings.first().ok_or("Failed to generate embedding")?.clone();
-
-        if let Some(ref filter_str) = final_filter {
-            log::info!("Executing LanceDB Pre-filtering with condition: {}", filter_str);
-            let pre_query = table.query()
-                .nearest_to(query_vector.clone())
-                .map_err(|e| format!("Vector search error: {}", e))?
-                .only_if(filter_str.clone())
-                .limit(3);
-
-            if let Ok(mut stream) = pre_query.execute().await {
-                while let Some(Ok(batch)) = stream.next().await {
-                    if batch.num_rows() > 0 {
-                        batches.push(batch);
-                    }
-                }
-            }
-
-            // 事前フィルタで結果が得られなかった場合、事後フィルタ（Post-filtering）へフォールバック
-            if batches.is_empty() {
-                log::info!("Pre-filtering returned no results. Falling back to Post-filtering: {}", filter_str);
-                let post_query = table.query()
-                    .nearest_to(query_vector.clone())
-                    .map_err(|e| format!("Vector search error: {}", e))?
-                    .only_if(filter_str.clone())
-                    .postfilter()
-                    .limit(3);
-
-                if let Ok(mut stream) = post_query.execute().await {
-                    while let Some(Ok(batch)) = stream.next().await {
-                        if batch.num_rows() > 0 {
-                            batches.push(batch);
-                        }
-                    }
-                }
-            }
-        } else {
-            // フィルタなし通常ベクトル検索
-            let query = table.query()
-                .nearest_to(query_vector)
-                .map_err(|e| format!("Vector search error: {}", e))?
-                .limit(3);
-
-            if let Ok(mut stream) = query.execute().await {
-                while let Some(Ok(batch)) = stream.next().await {
-                    if batch.num_rows() > 0 {
-                        batches.push(batch);
-                    }
-                }
-            }
-        }
+        let vector_searcher = VectorSearcher::new(model, vendor::get_vector_search_instruction());
+        batches = vector_searcher.search(&table, &vendor_context.query, final_filter.as_deref(), 3).await?;
     }
 
+    format_search_results(batches)
+}
+
+fn format_search_results(batches: Vec<RecordBatch>) -> Result<RagResult, String> {
     let mut context = String::new();
     let mut count = 1;
 
     for batch in batches {
-        
         let text_col = batch.column_by_name("text")
             .ok_or("Column 'text' not found in results")?;
             

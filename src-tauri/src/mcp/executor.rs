@@ -597,7 +597,6 @@ pub fn execute_mcp_tools_flow(
     is_builder_caller: bool,
 ) -> futures::future::BoxFuture<'static, Result<String, String>> {
     Box::pin(async move {
-        use crate::llm::worker::Route;
 
         if depth >= 5 {
             return Err("Max nested depth reached".to_string());
