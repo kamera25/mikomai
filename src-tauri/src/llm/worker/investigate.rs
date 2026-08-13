@@ -4,7 +4,7 @@ use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
-use tauri::Manager;
+
 
 const INVESTIGATE_WORKER_PROMPT: &str = include_str!("../prompts/investigate_worker.txt");
 
@@ -14,6 +14,7 @@ const N_CTX: u32 = 8192;
 pub struct InvestigateWorker {
     pub ctx: Option<AgentContext>,
     pub active_vendor: Option<String>,
+    pub device_contexts: Vec<crate::llm::worker::DeviceContext>,
 }
 
 impl InvestigateWorker {
@@ -27,9 +28,9 @@ impl InvestigateWorker {
             let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 1, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Investigate context: {:?}", e))?;
             
-            Ok(Self { ctx: Some(ctx), active_vendor: None })
+            Ok(Self { ctx: Some(ctx), active_vendor: None, device_contexts: Vec::new() })
         } else {
-            Ok(Self { ctx: None, active_vendor: None })
+            Ok(Self { ctx: None, active_vendor: None, device_contexts: Vec::new() })
         }
     }
 
@@ -81,6 +82,10 @@ impl LlmWorker for InvestigateWorker {
         "Investigator (調査員)"
     }
 
+    fn set_device_contexts(&mut self, contexts: Vec<crate::llm::worker::DeviceContext>) {
+        self.device_contexts = contexts;
+    }
+
     fn context_mut(&mut self) -> &mut AgentContext {
         self.ctx.as_mut().expect("Investigate context not initialized")
     }
@@ -107,34 +112,14 @@ impl LlmWorker for InvestigateWorker {
         temperature: f32,
         repetition_penalty: f32,
     ) -> Result<String, String> {
-        // Detect vendor from prompt or user_message
-        let mut vendor = None;
-        if let Some(w) = window {
-            let app = w.app_handle();
-            let text_to_check = match (&prompt, &user_message) {
-                (Some(p), _) => p.clone(),
-                (_, Some(um)) => um.clone(),
-                _ => String::new(),
-            };
-            if !text_to_check.is_empty() {
-                if let Ok(connections) = crate::connections::load_connections_raw(app) {
-                    let lower_text = text_to_check.to_lowercase();
-                    for conn in connections {
-                        let hostname = conn.hostname.as_str().to_lowercase();
-                        let ip = conn.ip.to_string();
-                        if (!hostname.is_empty() && lower_text.contains(&hostname)) || lower_text.contains(&ip) {
-                            if let Some(vt) = conn.vendor_type {
-                                let vt_str = vt.as_str().trim();
-                                if !vt_str.is_empty() {
-                                    vendor = Some(vt_str.to_string());
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
+        // Detect vendor from pre-resolved device contexts
+        let vendor = self.device_contexts.first().and_then(|ctx| {
+            if ctx.vendor.is_empty() || ctx.vendor == "Unknown" {
+                None
+            } else {
+                Some(ctx.vendor.clone())
             }
-        }
+        });
 
         self.ensure_initialized_with_vendor(model, backend, vendor)?;
 

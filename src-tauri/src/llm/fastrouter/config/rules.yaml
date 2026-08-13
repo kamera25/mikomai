@@ -26,6 +26,12 @@ fastroute:
       - '(?i)([a-zA-Z0-9.:-]+?)\s*(?:に|へ|で|を)?\s*(?:trace(?:route)?|トレース|トレースルート)'
       - '(?i)(?:trace(?:route)?|トレース|トレースルート)\s*(?::|=|：)?\s*([a-zA-Z0-9.:-]+)'
 
+  test_connection:
+    action: "self_network_test_connection"
+    message: "Test-NetConnection (疎通・ポート確認) を実行します。"
+    patterns:
+      - '(?i)(?:test-netconnection|tnc)'
+
   host_list:
     action: "network_get_hosts"
     message: "登録機器の一覧を取得します。"

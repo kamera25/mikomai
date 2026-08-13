@@ -1,5 +1,5 @@
 use crate::llm::llm_manager::AgentContext;
-use crate::llm::worker::Route;
+use crate::llm::worker::{Route, DeviceContext};
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use std::sync::Arc;
@@ -17,6 +17,7 @@ pub struct RouteResult {
     pub routes: Vec<Route>,
     pub subsequent_task: Option<String>,
     pub confidence: f32,
+    pub device_contexts: Vec<DeviceContext>,
 }
 
 pub struct Router {
@@ -107,6 +108,7 @@ fn to_route_result(parsed: RouterJsonResponse) -> RouteResult {
         routes,
         subsequent_task,
         confidence: parsed.confidence,
+        device_contexts: Vec::new(),
     }
 }
 
@@ -133,6 +135,7 @@ fn fallback_parse_route_output(output: &str) -> RouteResult {
         routes: vec![Route::None],
         subsequent_task: None,
         confidence: 0.0,
+        device_contexts: Vec::new(),
     }
 }
 

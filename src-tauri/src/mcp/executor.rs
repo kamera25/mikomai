@@ -175,6 +175,58 @@ define_tool!(TracerouteTool, "self_network_traceroute", |app, args| {
     ).await.map(Into::into)
 });
 
+define_tool!(TestConnectionTool, "self_network_test_connection", |app, args| {
+    let host = get_str_arg(&args, &["host", "computer_name", "computerName", "target"]);
+    let device = get_str_arg(&args, &["device"]);
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let ip = get_str_arg(&args, &["ip"]);
+    let computer_name = get_str_arg(&args, &["computer_name", "computerName"]);
+    let port = get_u32_arg(&args, &["port", "remote_port", "remotePort"]).map(|p| p as u16);
+    let common_tcp_port = get_str_arg(&args, &["common_tcp_port", "commonTcpPort", "service"]);
+    let timeout_ms = args.get("timeout_ms").or(args.get("timeoutMs")).and_then(|v| v.as_u64());
+
+    crate::mcp::test_connection::self_network_test_connection(
+        app,
+        host,
+        device,
+        device_name.clone(),
+        device_name,
+        ip,
+        computer_name.clone(),
+        computer_name,
+        port,
+        common_tcp_port.clone(),
+        common_tcp_port,
+        timeout_ms,
+    ).await.map(Into::into)
+});
+
+define_tool!(TestNetConnectionTool, "self_network_test_net_connection", |app, args| {
+    let host = get_str_arg(&args, &["host", "computer_name", "computerName", "target"]);
+    let device = get_str_arg(&args, &["device"]);
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let ip = get_str_arg(&args, &["ip"]);
+    let computer_name = get_str_arg(&args, &["computer_name", "computerName"]);
+    let port = get_u32_arg(&args, &["port", "remote_port", "remotePort"]).map(|p| p as u16);
+    let common_tcp_port = get_str_arg(&args, &["common_tcp_port", "commonTcpPort", "service"]);
+    let timeout_ms = args.get("timeout_ms").or(args.get("timeoutMs")).and_then(|v| v.as_u64());
+
+    crate::mcp::test_connection::self_network_test_connection(
+        app,
+        host,
+        device,
+        device_name.clone(),
+        device_name,
+        ip,
+        computer_name.clone(),
+        computer_name,
+        port,
+        common_tcp_port.clone(),
+        common_tcp_port,
+        timeout_ms,
+    ).await.map(Into::into)
+});
+
 define_tool!(FetchConfigTool, "fetch_config", |app, args| {
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
     let device = get_str_arg(&args, &["device"]);
@@ -406,6 +458,8 @@ pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
         register_tools![
             PingTool,
             TracerouteTool,
+            TestConnectionTool,
+            TestNetConnectionTool,
             FetchConfigTool,
             FetchRoutingTool,
             FetchArpTool,

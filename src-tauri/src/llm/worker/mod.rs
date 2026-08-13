@@ -1,4 +1,6 @@
 pub mod router;
+pub mod device_context;
+pub use device_context::{DeviceContext, resolve_device_contexts, format_device_contexts};
 pub mod rag;
 pub mod knowledge;
 pub mod analysis;
@@ -112,6 +114,8 @@ pub trait LlmWorker {
             repetition_penalty,
         ).map_err(|e| format!("Worker inference failed: {:?}", e))
     }
+
+    fn set_device_contexts(&mut self, _contexts: Vec<crate::llm::worker::DeviceContext>) {}
 }
 
 pub fn build_common_worker_prompt(

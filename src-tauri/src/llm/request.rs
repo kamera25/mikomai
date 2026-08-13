@@ -11,7 +11,7 @@ use crate::llm::llm::{
     replace_interface_abbreviations, LlmError,
 };
 use crate::llm::llm_manager::SharedModel;
-use crate::llm::worker::{LlmWorker, Route};
+use crate::llm::worker::{LlmWorker, Route, resolve_device_contexts, format_device_contexts};
 
 pub enum InferenceRequest {
     Initial {
@@ -148,16 +148,25 @@ fn handle_initial(
     let model = shared_model.model.clone();
     let backend = shared_model.backend.clone();
 
+    let device_contexts = resolve_device_contexts(window.app_handle(), &original_query);
+    let enriched_query = if !device_contexts.is_empty() {
+        let enrichment = format_device_contexts(&device_contexts);
+        format!("{}{}", enrichment, original_query)
+    } else {
+        original_query.clone()
+    };
+
     log::info!(
-        "--- ROUTER INPUT QUERY ---\n{}\n-------------------------",
-        original_query
+        "--- ROUTER INPUT QUERY (Enriched) ---\n{}\n-------------------------",
+        enriched_query
     );
-    let route_result = {
+    let mut route_result = {
         let mut router_lock = shared_model.router.lock().unwrap();
         router_lock
-            .route(&model, &original_query, settings.repetition_penalty)
+            .route(&model, &enriched_query, settings.repetition_penalty)
             .map_err(|e| LlmError::Routing(format!("{:?}", e)))?
     };
+    route_result.device_contexts = device_contexts;
     log::info!(
         "--- ROUTER OUTPUT ---\n{:?}\n-------------------------",
         route_result
@@ -184,6 +193,7 @@ fn handle_initial(
     };
     let worker_res = if let Some(worker_mutex) = get_worker_for_route(shared_model, active_route) {
         let mut worker = worker_mutex.lock().unwrap();
+        worker.set_device_contexts(route_result.device_contexts.clone());
         let agent_name = worker.agent_name();
         let _ = window.emit(
             "chat-event",
@@ -298,19 +308,29 @@ fn handle_analyze(
             return Ok(cancel_msg.to_string());
         }
 
-        let (active_route, route_subsequent_task) = if is_any_choice {
-            (Route::Builder, None)
+        let (active_route, route_subsequent_task, matched_contexts) = if is_any_choice {
+            (Route::Builder, None, Vec::new())
         } else {
+            let device_contexts = resolve_device_contexts(window.app_handle(), &user_message);
+            let enriched_query = if !device_contexts.is_empty() {
+                let enrichment = format_device_contexts(&device_contexts);
+                format!("{}{}", enrichment, user_message)
+            } else {
+                user_message.clone()
+            };
+
             log::info!(
-                "--- ROUTER INPUT QUERY ---\n{}\n-------------------------",
-                user_message
+                "--- ROUTER INPUT QUERY (Enriched) ---\n{}\n-------------------------",
+                enriched_query
             );
-            let route_result = {
+            let mut route_result = {
                 let mut router_lock = shared_model.router.lock().unwrap();
                 router_lock
-                    .route(&model, &user_message, settings.repetition_penalty)
+                    .route(&model, &enriched_query, settings.repetition_penalty)
                     .map_err(|e| LlmError::Routing(format!("{:?}", e)))?
             };
+            route_result.device_contexts = device_contexts;
+
             log::info!(
                 "--- ROUTER OUTPUT ---\n{:?}\n-------------------------",
                 route_result
@@ -336,7 +356,7 @@ fn handle_analyze(
             } else {
                 return Ok("実行が完了しました。".to_string());
             };
-            (route, route_result.subsequent_task)
+            (route, route_result.subsequent_task, route_result.device_contexts)
         };
 
         let custom_subsequent_task = if is_ask_user_choice {
@@ -372,6 +392,7 @@ fn handle_analyze(
         };
         let worker_res = if let Some(worker_mutex) = get_worker_for_route(shared_model, active_route) {
             let mut worker = worker_mutex.lock().unwrap();
+            worker.set_device_contexts(matched_contexts);
             let agent_name = worker.agent_name();
             let _ = window.emit(
                 "chat-event",

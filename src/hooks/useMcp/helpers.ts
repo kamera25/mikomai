@@ -11,6 +11,8 @@ export function getHistoryBlock(items: SummaryItem[], limit: number): string {
 const TOOL_LABEL_MAP: Record<string, string> = {
   self_network_ping: "Ping",
   self_network_traceroute: "Traceroute",
+  self_network_test_connection: "Test-NetConnection",
+  self_network_test_net_connection: "Test-NetConnection",
   network_get_hosts: "Host List",
   network_query_nw_db: "NWDB検索",
   query_nw_db: "NWDB検索",

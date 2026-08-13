@@ -4,7 +4,7 @@ use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
-use tauri::Manager;
+
 
 const KNOWLEDGE_WORKER_PROMPT: &str = include_str!("../prompts/knowledge_worker.txt");
 
@@ -14,6 +14,7 @@ const N_CTX: u32 = 8192;
 pub struct KnowledgeWorker {
     pub ctx: Option<AgentContext>,
     pub active_vendor: Option<String>,
+    pub device_contexts: Vec<crate::llm::worker::DeviceContext>,
 }
 
 impl KnowledgeWorker {
@@ -27,9 +28,9 @@ impl KnowledgeWorker {
             let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 2, MAX_NEW_TOKENS, N_CTX)
                 .map_err(|e| format!("Failed to create Knowledge context: {:?}", e))?;
             
-            Ok(Self { ctx: Some(ctx), active_vendor: None })
+            Ok(Self { ctx: Some(ctx), active_vendor: None, device_contexts: Vec::new() })
         } else {
-            Ok(Self { ctx: None, active_vendor: None })
+            Ok(Self { ctx: None, active_vendor: None, device_contexts: Vec::new() })
         }
     }
 
@@ -71,6 +72,10 @@ impl LlmWorker for KnowledgeWorker {
         "Knowledge Expert (知識専門家)"
     }
 
+    fn set_device_contexts(&mut self, contexts: Vec<crate::llm::worker::DeviceContext>) {
+        self.device_contexts = contexts;
+    }
+
     fn context_mut(&mut self) -> &mut AgentContext {
         self.ctx.as_mut().expect("Knowledge context not initialized")
     }
@@ -97,29 +102,8 @@ impl LlmWorker for KnowledgeWorker {
         temperature: f32,
         repetition_penalty: f32,
     ) -> Result<String, String> {
-        // Detect connection details from prompt or user_message
-        let mut matched_connection = None;
-        if let Some(w) = window {
-            let app = w.app_handle();
-            let text_to_check = match (&prompt, &user_message) {
-                (Some(p), _) => p.clone(),
-                (_, Some(um)) => um.clone(),
-                _ => String::new(),
-            };
-            if !text_to_check.is_empty() {
-                if let Ok(connections) = crate::connections::load_connections_raw(app) {
-                    let lower_text = text_to_check.to_lowercase();
-                    for conn in connections {
-                        let hostname = conn.hostname.as_str().to_lowercase();
-                        let ip = conn.ip.to_string();
-                        if (!hostname.is_empty() && lower_text.contains(&hostname)) || lower_text.contains(&ip) {
-                            matched_connection = Some(conn);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        // Connection details are now provided in device_contexts
+        let matched_context = self.device_contexts.first().cloned();
 
         self.ensure_initialized_with_vendor(model, backend, None)?;
 
@@ -143,10 +127,10 @@ impl LlmWorker for KnowledgeWorker {
             subsequent_task,
         );
 
-        let (vendor_str, device_str, gateway_str) = if let Some(conn) = &matched_connection {
-            let v = conn.vendor_type.as_ref().map(|vt| vt.as_str()).unwrap_or("Unknown").to_string();
-            let d = conn.device_type.as_ref().map(|dt| dt.as_str()).unwrap_or("Unknown").to_string();
-            let g = format!("{} ({})", conn.hostname.as_str(), conn.ip.to_string());
+        let (vendor_str, device_str, gateway_str) = if let Some(ctx) = &matched_context {
+            let v = if ctx.vendor.is_empty() { "Unknown".to_string() } else { ctx.vendor.clone() };
+            let d = if ctx.device_type.is_empty() { "Unknown".to_string() } else { ctx.device_type.clone() };
+            let g = format!("{} ({})", ctx.hostname, ctx.ip);
             (v, d, g)
         } else {
             ("Unknown".to_string(), "Unknown".to_string(), "Unknown".to_string())

@@ -23,6 +23,7 @@ pub struct BuilderWorker {
     pub collected_choices: Vec<(String, String)>,
     pub phase: BuilderPhase,
     pub rag_context: Option<String>,
+    pub device_contexts: Vec<crate::llm::worker::DeviceContext>,
 }
 
 impl BuilderWorker {
@@ -42,6 +43,7 @@ impl BuilderWorker {
                 collected_choices: Vec::new(),
                 phase: BuilderPhase::Initial,
                 rag_context: None,
+                device_contexts: Vec::new(),
             })
         } else {
             Ok(Self {
@@ -49,6 +51,7 @@ impl BuilderWorker {
                 collected_choices: Vec::new(),
                 phase: BuilderPhase::Initial,
                 rag_context: None,
+                device_contexts: Vec::new(),
             })
         }
     }
@@ -57,6 +60,10 @@ impl BuilderWorker {
 impl LlmWorker for BuilderWorker {
     fn agent_name(&self) -> &'static str {
         "Builder (構築者)"
+    }
+
+    fn set_device_contexts(&mut self, contexts: Vec<crate::llm::worker::DeviceContext>) {
+        self.device_contexts = contexts;
     }
 
     fn context_mut(&mut self) -> &mut AgentContext {
@@ -208,49 +215,29 @@ impl LlmWorker for BuilderWorker {
 
         let mut subsequent_task_owned = subsequent_task.map(|s| s.to_string());
         let mut matched_device: Option<(String, String)> = None;
-        if let Some(w) = window {
-            let app = w.app_handle();
-            let text_to_check = match (&prompt, &modified_user_message) {
-                (Some(p), _) => p.clone(),
-                (_, Some(um)) => um.clone(),
-                _ => String::new(),
+        if self.device_contexts.len() == 1 {
+            let matched_ctx = &self.device_contexts[0];
+            matched_device = Some((matched_ctx.hostname.clone(), matched_ctx.ip.clone()));
+            let vendor_name = if !matched_ctx.vendor.is_empty() && matched_ctx.vendor != "Unknown" {
+                Some(matched_ctx.vendor.as_str())
+            } else if !matched_ctx.device_type.is_empty() && matched_ctx.device_type != "Unknown" {
+                Some(matched_ctx.device_type.as_str())
+            } else {
+                None
             };
-            if !text_to_check.is_empty() {
-                if let Ok(connections) = crate::connections::load_connections_raw(app) {
-                    let lower_text = text_to_check.to_lowercase();
-                    let mut matched_conns = Vec::new();
-                    for conn in &connections {
-                        let hostname = conn.hostname.as_str().to_lowercase();
-                        let ip = conn.ip.to_string();
-                        if (!hostname.is_empty() && lower_text.contains(&hostname)) || lower_text.contains(&ip) {
-                            matched_conns.push(conn);
-                        }
-                    }
-                    if matched_conns.len() == 1 {
-                        matched_device = Some((matched_conns[0].hostname.as_str().to_string(), matched_conns[0].ip.to_string()));
-                        let vendor_name = if let Some(vt) = &matched_conns[0].vendor_type {
-                            Some(vt.as_str())
-                        } else if let Some(dt) = &matched_conns[0].device_type {
-                            Some(dt.as_str())
-                        } else {
-                            None
-                        };
 
-                        if let Some(v_name) = vendor_name {
-                            let injection = format!("\n\n【対象機器のベンダーID】: {}", v_name);
-                            if let Some(ref mut p) = prompt {
-                                p.push_str(&injection);
-                                let vendor_info = format!(" (対象機器ベンダー: {})", v_name);
-                                if let Some(ref mut task) = subsequent_task_owned {
-                                    task.push_str(&vendor_info);
-                                } else {
-                                    subsequent_task_owned = Some(format!("対象機器ベンダー: {}", v_name));
-                                }
-                            } else if let Some(ref mut um) = modified_user_message {
-                                um.push_str(&injection);
-                            }
-                        }
+            if let Some(v_name) = vendor_name {
+                let injection = format!("\n\n【対象機器のベンダーID】: {}", v_name);
+                if let Some(ref mut p) = prompt {
+                    p.push_str(&injection);
+                    let vendor_info = format!(" (対象機器ベンダー: {})", v_name);
+                    if let Some(ref mut task) = subsequent_task_owned {
+                        task.push_str(&vendor_info);
+                    } else {
+                        subsequent_task_owned = Some(format!("対象機器ベンダー: {}", v_name));
                     }
+                } else if let Some(ref mut um) = modified_user_message {
+                    um.push_str(&injection);
                 }
             }
         }

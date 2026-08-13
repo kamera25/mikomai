@@ -47,6 +47,8 @@ pub struct FastRouteConfig {
     #[serde(default)]
     pub traceroute: ShortcutRule,
     #[serde(default)]
+    pub test_connection: ShortcutRule,
+    #[serde(default)]
     pub host_list: ShortcutRule,
     #[serde(default)]
     pub arp: ShortcutRule,
@@ -184,8 +186,9 @@ pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String, f64)>
         return Some(res);
     }
 
-    // 4. Simple shortcuts (Host List, ARP, Route, Serial Ports)
+    // 4. Simple shortcuts (Test-NetConnection, Host List, ARP, Route, Serial Ports)
     let simple_rules = [
+        &reg.test_connection,
         &reg.host_list,
         &reg.arp,
         &reg.route,
