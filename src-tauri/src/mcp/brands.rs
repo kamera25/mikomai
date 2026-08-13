@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::sync::LazyLock;
+use serde::Deserialize;
+
 pub const BRANDS: &[&str] = &[
     "cisco_ios",
     "juniper_junos",
@@ -9,19 +13,39 @@ pub const BRANDS: &[&str] = &[
     "paloalto_panos",
 ];
 
+#[derive(Debug, Deserialize)]
+struct BrandConfig {
+    aliases: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BrandsYaml {
+    brands: HashMap<String, BrandConfig>,
+}
+
+static BRAND_MAP: LazyLock<HashMap<String, &'static str>> = LazyLock::new(|| {
+    let yaml_str = include_str!("config/brands.yaml");
+    let parsed: BrandsYaml = serde_yaml::from_str(yaml_str).unwrap_or_else(|e| {
+        log::error!("Failed to parse brands.yaml: {}", e);
+        BrandsYaml {
+            brands: HashMap::new(),
+        }
+    });
+
+    let mut map = HashMap::new();
+    for brand_name in BRANDS {
+        if let Some(config) = parsed.brands.get(*brand_name) {
+            for alias in &config.aliases {
+                map.insert(alias.to_lowercase(), *brand_name);
+            }
+        }
+    }
+    map
+});
+
 pub fn get_brand(input: &str) -> Option<&'static str> {
     let trimmed = input.trim().to_lowercase();
-    match trimmed.as_str() {
-        "cisco" | "cisco_ios" | "cisco_xe" | "cisco_xr" | "cisco_nxos" | "ios" => Some("cisco_ios"),
-        "juniper" | "junos" | "juniper_junos" => Some("juniper_junos"),
-        "arista" | "eos" | "arista_eos" => Some("arista_eos"),
-        "yamaha" => Some("yamaha"),
-        "furukawa" | "fitelnet" | "furukawa_fitelnet" => Some("furukawa_fitelnet"),
-        "fortinet" | "fortigate" | "fortios" => Some("fortinet"),
-        "a10" | "a10_ax" | "a10_vthreads" => Some("a10"),
-        "paloalto" | "panos" | "paloalto_panos" => Some("paloalto_panos"),
-        _ => None,
-    }
+    BRAND_MAP.get(&trimmed).copied()
 }
 
 #[cfg(test)]
@@ -38,3 +62,4 @@ mod tests {
         assert_eq!(get_brand("unknown_vendor"), None);
     }
 }
+

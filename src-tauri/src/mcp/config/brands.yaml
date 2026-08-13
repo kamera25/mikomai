@@ -1,0 +1,42 @@
+brands:
+  cisco_ios:
+    aliases:
+      - "cisco"
+      - "cisco_ios"
+      - "cisco_xe"
+      - "cisco_xr"
+      - "cisco_nxos"
+      - "ios"
+  juniper_junos:
+    aliases:
+      - "juniper"
+      - "junos"
+      - "juniper_junos"
+  arista_eos:
+    aliases:
+      - "arista"
+      - "eos"
+      - "arista_eos"
+  yamaha:
+    aliases:
+      - "yamaha"
+  furukawa_fitelnet:
+    aliases:
+      - "furukawa"
+      - "fitelnet"
+      - "furukawa_fitelnet"
+  fortinet:
+    aliases:
+      - "fortinet"
+      - "fortigate"
+      - "fortios"
+  a10:
+    aliases:
+      - "a10"
+      - "a10_ax"
+      - "a10_vthreads"
+  paloalto_panos:
+    aliases:
+      - "paloalto"
+      - "panos"
+      - "paloalto_panos"
