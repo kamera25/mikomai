@@ -29,20 +29,7 @@ pub async fn convert_raw_to_yaml(
     let generated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     
     let system_prompt = format!(
-        "You are a network analysis assistant. Your task is to parse the raw routing table command output and convert it into a YAML format that strictly conforms to the JSON Schema.
-
-JSON Schema:
-{}
-
-Strict Rules:
-1. The output must be valid YAML conforming to the schema.
-2. Under \"metadata\", ensure the following values are used:
-   - generated_at: \"{}\"
-   - source_device: \"{}\"
-   - os_type: \"{}\"
-3. The version must be \"1.0\".
-4. Do NOT wrap the YAML output in code blocks like ```yaml or ```. Just output raw YAML text.
-5. Do NOT include any conversational text or explanations.",
+        include_str!("../config/route_system_prompt.txt"),
         schema_json, generated_at, device_name, os_type
     );
 
