@@ -23,8 +23,8 @@ pub fn get_templates_path(app: &tauri::AppHandle) -> PathBuf {
 }
 
 pub fn get_default_templates() -> CommandTemplates {
-    const DEFAULT_JSON: &str = include_str!("../default_templates.json");
-    serde_json::from_str(DEFAULT_JSON).expect("Failed to parse default_templates.json")
+    const DEFAULT_YAML: &str = include_str!("../config/default_templates.yaml");
+    serde_yaml::from_str(DEFAULT_YAML).expect("Failed to parse default_templates.yaml")
 }
 
 pub fn load_templates(app: &tauri::AppHandle) -> CommandTemplates {
@@ -53,11 +53,6 @@ pub fn get_template_for_dtype<'a>(templates: &'a CommandTemplates, dtype: &str) 
     templates.get(&mapped).or_else(|| templates.get("cisco_ios"))
 }
 
-#[derive(Deserialize, Debug, Clone)]
-struct VendorPattern {
-    patterns: Vec<String>,
-    device_type: String,
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FallbackConfig {
@@ -79,12 +74,24 @@ pub struct ShowRunningConfigRules {
     pub vendors: HashMap<String, VendorConfig>,
 }
 
-pub fn get_show_running_config_command(device_type: &str) -> String {
+use std::sync::LazyLock;
+
+static SHOW_RUNNING_CONFIG_RULES: LazyLock<Option<ShowRunningConfigRules>> = LazyLock::new(|| {
     let yaml_content = std::fs::read_to_string("src-tauri/src/mcp/config/show_running_config_commands.yaml")
         .or_else(|_| std::fs::read_to_string("src/mcp/config/show_running_config_commands.yaml"))
         .unwrap_or_else(|_| include_str!("../config/show_running_config_commands.yaml").to_string());
+    serde_yaml::from_str(&yaml_content).ok()
+});
 
-    if let Ok(rules) = serde_yaml::from_str::<ShowRunningConfigRules>(&yaml_content) {
+static APPLY_CONFIG_RULES: LazyLock<Option<ApplyConfigRules>> = LazyLock::new(|| {
+    let yaml_content = std::fs::read_to_string("src-tauri/src/mcp/config/apply_config_commands.yaml")
+        .or_else(|_| std::fs::read_to_string("src/mcp/config/apply_config_commands.yaml"))
+        .unwrap_or_else(|_| include_str!("../config/apply_config_commands.yaml").to_string());
+    serde_yaml::from_str(&yaml_content).ok()
+});
+
+pub fn get_show_running_config_command(device_type: &str) -> String {
+    if let Some(rules) = SHOW_RUNNING_CONFIG_RULES.as_ref() {
         let dt_lower = device_type.to_lowercase();
         if let Some(v) = rules.vendors.get(&dt_lower) {
             return v.command.clone();
@@ -101,7 +108,7 @@ pub fn get_show_running_config_command(device_type: &str) -> String {
                 }
             }
         }
-        return rules.fallback.command;
+        return rules.fallback.command.clone();
     }
 
     "show running-config".to_string()
@@ -138,11 +145,7 @@ pub struct ApplyAndSaveCommands {
 }
 
 pub fn get_apply_and_save_config_commands(device_type: &str) -> ApplyAndSaveCommands {
-    let yaml_content = std::fs::read_to_string("src-tauri/src/mcp/config/apply_config_commands.yaml")
-        .or_else(|_| std::fs::read_to_string("src/mcp/config/apply_config_commands.yaml"))
-        .unwrap_or_else(|_| include_str!("../config/apply_config_commands.yaml").to_string());
-
-    if let Ok(rules) = serde_yaml::from_str::<ApplyConfigRules>(&yaml_content) {
+    if let Some(rules) = APPLY_CONFIG_RULES.as_ref() {
         let dt_lower = device_type.to_lowercase();
         
         let find_vendor = rules.vendors.get(&dt_lower).or_else(|| {
@@ -182,19 +185,13 @@ pub fn get_apply_and_save_config_commands(device_type: &str) -> ApplyAndSaveComm
 
 
 pub fn map_vendor_type(conn_type: &str) -> String {
-    static MAPPINGS: std::sync::OnceLock<Vec<VendorPattern>> = std::sync::OnceLock::new();
-    let mappings = MAPPINGS.get_or_init(|| {
-        let json_str = include_str!("vender_mapping.json");
-        serde_json::from_str(json_str).expect("Failed to parse vender_mapping.json")
-    });
+    let conn_type_trimmed = conn_type.trim();
+    if let Some(brand) = crate::mcp::brands::get_brand(conn_type_trimmed) {
+        return brand.to_string();
+    }
 
-    let conn_type_lower = conn_type.to_lowercase();
-    for mapping in mappings {
-        for pattern in &mapping.patterns {
-            if conn_type_lower.contains(&pattern.to_lowercase()) {
-                return mapping.device_type.clone();
-            }
-        }
+    if let Some((brand, _)) = crate::mcp::brands::detect_brand_in_text(conn_type_trimmed) {
+        return brand.to_string();
     }
 
     // フェイルオーバーとして「Cisco IOS」を選択
@@ -218,7 +215,7 @@ mod tests {
     fn test_get_apply_and_save_config_commands() {
         assert_eq!(
             get_apply_and_save_config_commands("furukawa_fitelnet"),
-            ApplyAndSaveCommands { apply_command: "commit".to_string(), save_command: "save side".to_string() }
+            ApplyAndSaveCommands { apply_command: "commit".to_string(), save_command: "save moff".to_string() }
         );
         assert_eq!(
             get_apply_and_save_config_commands("cisco_ios"),
@@ -236,6 +233,19 @@ mod tests {
             get_apply_and_save_config_commands("unknown_device_type"),
             ApplyAndSaveCommands { apply_command: "".to_string(), save_command: "write memory".to_string() }
         );
+    }
+
+    #[test]
+    fn test_map_vendor_type() {
+        assert_eq!(map_vendor_type("Cisco IOS"), "cisco_ios");
+        assert_eq!(map_vendor_type("cisco"), "cisco_ios");
+        assert_eq!(map_vendor_type("Juniper"), "juniper_junos");
+        assert_eq!(map_vendor_type("Fortigate"), "fortinet");
+        assert_eq!(map_vendor_type("Yamaha"), "yamaha");
+        assert_eq!(map_vendor_type("Furukawa"), "furukawa_fitelnet");
+        assert_eq!(map_vendor_type("A10"), "a10");
+        assert_eq!(map_vendor_type("PaloAlto"), "paloalto_panos");
+        assert_eq!(map_vendor_type("unknown_device"), "cisco_ios");
     }
 }
 
