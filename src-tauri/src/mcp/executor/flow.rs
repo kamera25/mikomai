@@ -126,7 +126,13 @@ pub async fn execute_mcp_tool_raw(
             },
         }
     } else {
-        let mcp_timeout_duration = Duration::from_secs(mcp_timeout);
+        let is_heavy_network_tool = ["fetch_config", "fetch_routing", "fetch_arp", "network_show", "apply_config"].contains(&tool_id.as_str());
+        let effective_timeout = if is_heavy_network_tool {
+            std::cmp::max(mcp_timeout, 120)
+        } else {
+            mcp_timeout
+        };
+        let mcp_timeout_duration = Duration::from_secs(effective_timeout);
         match tokio::time::timeout(mcp_timeout_duration, execution_future).await {
             Ok(Ok(res)) => res,
             Ok(Err(e)) => crate::network::CommandResult {

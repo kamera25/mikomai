@@ -17,22 +17,13 @@ def send_command_wait_for_prompt(net_connect, command, read_timeout=120.0):
     except Exception:
         pass
 
-    prompt = ""
-    try:
-        prompt = net_connect.find_prompt().strip()
-    except Exception:
-        pass
-
     if hasattr(net_connect, "clear_buffer"):
         net_connect.clear_buffer()
     time.sleep(0.5)
 
-    expect_pattern = rf"{re.escape(prompt)}|[#>$]" if prompt else r"[#>$]"
-
     try:
         output = net_connect.send_command(
             command,
-            expect_string=expect_pattern,
             read_timeout=read_timeout,
             delay_factor=2.0,
             cmd_verify=False
@@ -48,13 +39,16 @@ def send_command_wait_for_prompt(net_connect, command, read_timeout=120.0):
             print(f"INFO: Command execution note: {str(e)}", file=sys.stderr, flush=True)
             output = ""
 
-    # Check for Pager prompts (--More--) and fetch remaining output until prompt returns
+    # Check for Pager prompts (--More--) at the end of output and fetch remaining pages if needed
     more_patterns = [r"--More--", r"-- more --", r"--- more ---", r"Press any key", r"--\s*More\s*--"]
     max_loops = 200
+    current_chunk = output
     while max_loops > 0:
         found_more = False
+        # Check last 500 characters of current chunk for pager prompt
+        tail_text = current_chunk[-500:] if len(current_chunk) > 500 else current_chunk
         for pat in more_patterns:
-            if re.search(pat, output, re.IGNORECASE):
+            if re.search(pat, tail_text, re.IGNORECASE):
                 found_more = True
                 break
         if not found_more:
@@ -63,10 +57,11 @@ def send_command_wait_for_prompt(net_connect, command, read_timeout=120.0):
         max_loops -= 1
         more_output = ""
         try:
-            more_output = net_connect.send_command_timing(" ", read_timeout=10.0, delay_factor=1.5)
+            more_output = net_connect.send_command_timing(" ", read_timeout=15.0, delay_factor=1.5)
         except Exception:
             break
         output += "\n" + more_output
+        current_chunk = more_output
 
     return output
 
