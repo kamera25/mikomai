@@ -5,9 +5,10 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Terminal } from "../Terminal";
-import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon, SpeechIcon, RobotIcon, FileTextIcon } from "../Icons";
+import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon, SpeechIcon, RobotIcon, FileTextIcon, FolderIcon, DownloadIcon } from "../Icons";
 import { Message } from "../../types";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { ImageModal } from "../ImageModal/ImageModal";
 
 
@@ -26,6 +27,10 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
   const [copied, setCopied] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; alt?: string } | null>(null);
+
+  const [fileFetched, setFileFetched] = useState(false);
+  const isMac = typeof navigator !== "undefined" && /Macintosh|Mac OS X/i.test(navigator.userAgent);
+  const openFileManagerLabel = isMac ? t("common.open_in_finder") : t("common.open_in_explorer");
 
   const handleDeviceRetrievalClick = () => {
     if (sendMessage) {
@@ -53,6 +58,38 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
       console.error("Failed to copy: ", err);
     }
   };
+
+  const handleOpenPathInFileManager = async (path: string) => {
+    try {
+      await invoke("open_path_in_file_manager", { path });
+    } catch (err) {
+      console.error("Failed to open path in file manager: ", err);
+    }
+  };
+
+  const handleFetchFileClick = async (savedPath: string) => {
+    try {
+      const pathParts = savedPath.replace(/\\/g, "/").split("/");
+      const defaultFilename = pathParts[pathParts.length - 1] || "downloaded_file.txt";
+
+      const selectedPath = await save({
+        defaultPath: defaultFilename,
+        title: t("common.fetch_file"),
+      });
+
+      if (selectedPath) {
+        await invoke("copy_file_to_destination", {
+          srcPath: savedPath,
+          destPath: selectedPath,
+        });
+        setFileFetched(true);
+        setTimeout(() => setFileFetched(false), 2000);
+      }
+    } catch (err) {
+      console.error("Failed to fetch file: ", err);
+    }
+  };
+
 
   if (msg.isHidden) return null;
 
@@ -263,37 +300,68 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
               </div>
             )}
 
-            {isExpanded && msg.saved_path && (
+            {msg.saved_path && (
               <div className="timeline-saved-path-wrapper">
-                <div className="timeline-saved-path-inner">
-                  <div className="timeline-saved-path-header">
-                    <BoxIcon size={14} className="box-icon" />
-                    <span>
-                      {msg.is_cached
-                        ? t("common.updated_at_cached", { time: msg.cache_time || "" })
-                        : t("common.log_saved")}
-                    </span>
-                    <button
-                      className={`copy-path-btn ${pathCopied ? "copied" : ""}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCopyPath(msg.saved_path || "");
-                      }}
-                      title={t("common.path_copied")}
-                    >
-                    {pathCopied ? (
+                <div className="timeline-saved-path-info">
+                  <BoxIcon size={14} className="box-icon" />
+                  <span>
+                    {msg.is_cached
+                      ? t("common.updated_at_cached", { time: msg.cache_time || "" })
+                      : t("common.log_saved")}
+                  </span>
+                </div>
+                <div className="timeline-saved-path-actions">
+                  <button
+                    className="open-path-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenPathInFileManager(msg.saved_path || "");
+                    }}
+                    title={openFileManagerLabel}
+                  >
+                    <FolderIcon size={12} />
+                    <span>{openFileManagerLabel}</span>
+                  </button>
+                  <button
+                    className={`fetch-file-btn ${fileFetched ? "copied" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFetchFileClick(msg.saved_path || "");
+                    }}
+                    title={t("common.fetch_file")}
+                  >
+                    {fileFetched ? (
                       <>
                         <CheckIcon size={12} strokeWidth={3} />
-                        <span>{t("common.copied")}</span>
+                        <span>{t("common.file_fetched")}</span>
                       </>
                     ) : (
                       <>
-                        <CopyIcon size={12} />
-                        <span>{t("common.save_path_copied")}</span>
+                        <DownloadIcon size={12} />
+                        <span>{t("common.fetch_file")}</span>
                       </>
                     )}
-                    </button>
-                  </div>
+                  </button>
+                  <button
+                    className={`copy-path-btn ${pathCopied ? "copied" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCopyPath(msg.saved_path || "");
+                    }}
+                    title={t("common.path_copied")}
+                  >
+                  {pathCopied ? (
+                    <>
+                      <CheckIcon size={12} strokeWidth={3} />
+                      <span>{t("common.copied")}</span>
+                    </>
+                  ) : (
+                    <>
+                      <CopyIcon size={12} />
+                      <span>{t("common.save_path_copied")}</span>
+                    </>
+                  )}
+                  </button>
                 </div>
               </div>
             )}

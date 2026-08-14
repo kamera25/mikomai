@@ -138,3 +138,58 @@ fn open_model_dir_inner(app: tauri::AppHandle, model_path: Option<String>) -> Re
 
     Ok(())
 }
+
+#[tauri::command]
+pub fn open_path_in_file_manager(app: tauri::AppHandle, path: String) -> Result<(), TauriError> {
+    use std::path::PathBuf;
+    use tauri_plugin_opener::OpenerExt;
+
+    if path.contains("..") {
+        return Err(TauriError(crate::error::MikomaiError::Validation("Path traversal detected".to_string())));
+    }
+
+    let p = PathBuf::from(&path);
+    let target = if p.is_file() {
+        p.parent().map(|parent| parent.to_path_buf()).unwrap_or(p)
+    } else {
+        p
+    };
+
+    if !target.exists() {
+        let _ = std::fs::create_dir_all(&target);
+    }
+
+    app.opener().open_path(target.to_string_lossy().to_string(), None::<String>)
+        .map_err(|e| TauriError(crate::error::MikomaiError::Llm(LlmError::Opener(e.to_string()))))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn copy_file_to_destination(src_path: String, dest_path: String) -> Result<(), TauriError> {
+    use std::path::PathBuf;
+
+    let src = PathBuf::from(&src_path);
+    let dest = PathBuf::from(&dest_path);
+
+    if !src.exists() {
+        return Err(TauriError(crate::error::MikomaiError::Validation(format!(
+            "Source file not found: {}",
+            src_path
+        ))));
+    }
+
+    if let Some(parent) = dest.parent() {
+        if !parent.exists() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+
+    std::fs::copy(&src, &dest).map_err(|e| {
+        TauriError(crate::error::MikomaiError::Io(e))
+    })?;
+
+    Ok(())
+}
+
+

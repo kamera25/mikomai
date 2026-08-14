@@ -44,6 +44,8 @@ pub fn run() {
             llm::download_model,
             llm::check_model_exists,
             llm::open_model_dir,
+            llm::open_path_in_file_manager,
+            llm::copy_file_to_destination,
             llm::load_model,
             llm::ask_llm_initial,
             llm::analyze_tool_output,

@@ -380,34 +380,40 @@
 
 .timeline-saved-path-wrapper {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   padding: 12px 18px;
   background-color: var(--bg-secondary);
   border-top: 1px solid var(--border-color);
   animation: slideDown 0.3s ease-out;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.timeline-saved-path-inner {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.timeline-saved-path-header {
+.timeline-saved-path-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-primary);
 }
 
-.timeline-saved-path-header .box-icon {
+.timeline-saved-path-info .box-icon {
   color: var(--text-muted);
 }
 
-.copy-path-btn {
+.timeline-saved-path-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.copy-path-btn,
+.open-path-btn,
+.fetch-file-btn {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
@@ -423,13 +429,17 @@
   user-select: none;
 }
 
-.copy-path-btn:hover {
+.copy-path-btn:hover,
+.open-path-btn:hover,
+.fetch-file-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--text-muted);
 }
 
-.copy-path-btn.copied {
+.copy-path-btn.copied,
+.open-path-btn.copied,
+.fetch-file-btn.copied {
   color: var(--success);
   background: rgba(39, 201, 63, 0.1);
   border-color: var(--success);

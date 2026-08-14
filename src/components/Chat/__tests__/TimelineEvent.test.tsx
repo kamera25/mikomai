@@ -1,8 +1,18 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { TimelineEvent } from "../TimelineEvent";
 import { Message } from "../../../types";
+import { save } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  save: vi.fn(),
+  open: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+}));
 
 describe("TimelineEvent Component", () => {
   const formatMessageTime = (_isoString?: string) => "12:00";
@@ -114,4 +124,51 @@ describe("TimelineEvent Component", () => {
     fireEvent.click(closeBtn);
     expect(screen.queryByTestId("image-modal-overlay")).not.toBeInTheDocument();
   });
+
+  it("renders open in finder/explorer and fetch file buttons, and calls save dialog on fetch file click", async () => {
+    const msg: Message = {
+      role: "ai",
+      content: "Fetch finished",
+      timestamp: new Date().toISOString(),
+      event_type: "ToolExecution",
+      tool_id: "fetch_config",
+      action_name: "Fetch Config",
+      summary_text: "Config fetched",
+      status: "Success",
+      raw_data: "hostname Router1",
+      saved_path: "/Users/test/storage/current/Router1_config.txt",
+    };
+
+    vi.mocked(save).mockResolvedValue("/Users/test/Downloads/Router1_config.txt" as any);
+    vi.mocked(invoke).mockResolvedValue(undefined as any);
+
+    render(
+      <TimelineEvent
+        msg={msg}
+        formatMessageTime={formatMessageTime}
+      />
+    );
+
+    const openBtn = screen.getByRole("button", { name: /(Finder|Explorer)で開く/i });
+    expect(openBtn).toBeInTheDocument();
+
+    const fetchBtn = screen.getByRole("button", { name: /ファイルを取得/i });
+    expect(fetchBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(fetchBtn);
+    });
+
+    expect(save).toHaveBeenCalledWith({
+      defaultPath: "Router1_config.txt",
+      title: "ファイルを取得",
+    });
+    expect(invoke).toHaveBeenCalledWith("copy_file_to_destination", {
+      srcPath: "/Users/test/storage/current/Router1_config.txt",
+      destPath: "/Users/test/Downloads/Router1_config.txt",
+    });
+  });
 });
+
+
+
