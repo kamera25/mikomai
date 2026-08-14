@@ -2,6 +2,7 @@ import React, { forwardRef, useRef, useEffect, useState, memo } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { SuggestionsList } from "./SuggestionsList";
 import { RefreshIcon, GearIcon, SendIcon, StopIcon, PaperclipIcon, CrossIcon, FileTextIcon } from "../Icons";
 import { Attachment } from "../../types";
@@ -99,6 +100,18 @@ export const ChatInput = memo(
         }
 
         if (!isImage && !isText) {
+          // Default fallback for pasted/selected file
+          setAttachments((prev) => {
+            if (prev.some((a) => a.name === file.name)) return prev;
+            return [
+              ...prev,
+              {
+                name: file.name,
+                type: "file",
+                content: `[ファイル: ${file.name}]`,
+              },
+            ];
+          });
           return;
         }
 
@@ -129,6 +142,21 @@ export const ChatInput = memo(
 
       if (hasImageRejected) {
         setShowVisionWarning(true);
+      }
+    };
+
+    const handleAttachClick = async () => {
+      try {
+        const selected = await open({
+          multiple: true,
+        });
+        if (selected) {
+          const paths = Array.isArray(selected) ? selected : [selected];
+          await processDroppedPaths(paths);
+        }
+      } catch (err) {
+        console.error("Failed to open file dialog, falling back to input:", err);
+        fileInputRef.current?.click();
       }
     };
 
@@ -531,10 +559,10 @@ export const ChatInput = memo(
                       className="attachment-thumb"
                       onClick={() => setSelectedImage({ src: att.content, alt: att.name })}
                       style={{ cursor: "pointer" }}
-                      title="クリックして拡大"
+                      title={att.path ? `${att.name}\n${att.path}` : "クリックして拡大"}
                     />
                   ) : (
-                    <div className="attachment-text-file">
+                    <div className="attachment-text-file" title={att.path ? `${att.name}\n${att.path}` : att.name}>
                       <FileTextIcon size={16} />
                       <span className="attachment-file-name">{att.name}</span>
                     </div>
@@ -558,23 +586,14 @@ export const ChatInput = memo(
               ref={fileInputRef}
               style={{ display: "none" }}
               multiple
-              accept={
-                visionEnabled
-                  ? "image/*,text/*,.txt,.md,.json,.csv,.log,.yaml,.yml"
-                  : "text/*,.txt,.md,.json,.csv,.log,.yaml,.yml"
-              }
               onChange={(e) => handleFileAttach(e.target.files)}
             />
             <button
               type="button"
               className="attach-button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={handleAttachClick}
               disabled={modelStatus !== "Loaded"}
-              title={
-                visionEnabled
-                  ? "ファイルを添付 (画像・テキスト)"
-                  : "ファイルを添付 (テキストのみ / Vision機能無効)"
-              }
+              title="ファイルを添付 (画像・テキスト・バイナリ)"
             >
               <PaperclipIcon size={16} />
             </button>

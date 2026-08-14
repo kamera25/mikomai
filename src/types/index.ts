@@ -1,7 +1,8 @@
 export interface Attachment {
   name: string;
-  type: "text" | "image";
-  content: string; // text content or base64 data URL
+  type: "text" | "image" | "file";
+  content: string; // text content, base64 data URL, or summary description
+  path?: string; // local file path on disk
 }
 
 export interface BaseMessage {

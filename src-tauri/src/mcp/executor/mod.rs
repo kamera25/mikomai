@@ -87,7 +87,11 @@ pub async fn handle_mcp_message(
     if let Some(att_list) = &attachments {
         for att in att_list {
             if att.mime_type == "text" {
-                final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
+                if let Some(path) = &att.path {
+                    final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n{}", att.name, path, att.content));
+                } else {
+                    final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
+                }
             } else if att.mime_type == "image" || att.mime_type.starts_with("image/") {
                 let analysis = crate::llm::vision::analyze_image_attachment(
                     &att.name,
@@ -97,7 +101,21 @@ pub async fn handle_mcp_message(
                     settings.mmproj_path.as_deref(),
                     &*llama_state,
                 ).await;
-                final_user_message.push_str(&format!("\n\n{}", analysis.extracted_context));
+                if let Some(path) = &att.path {
+                    final_user_message.push_str(&format!("\n\n[添付画像: {} (ローカルパス: {})]\n{}", att.name, path, analysis.extracted_context));
+                } else {
+                    final_user_message.push_str(&format!("\n\n{}", analysis.extracted_context));
+                }
+            } else {
+                // Binary or large file
+                if let Some(path) = &att.path {
+                    final_user_message.push_str(&format!(
+                        "\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n※バイナリまたは大容量ファイルのため内容は省略されています。機器へのアップロード等のツール実行時は local_file 引数に '{}' を指定してください。",
+                        att.name, path, path
+                    ));
+                } else {
+                    final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
+                }
             }
         }
     }

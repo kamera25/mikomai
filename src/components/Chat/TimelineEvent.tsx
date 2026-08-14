@@ -485,9 +485,26 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
                 } else {
                   return (
                     <div key={idx} className="message-attachment-text-wrapper">
-                      <div className="message-attachment-text-header">
+                      <div className="message-attachment-text-header" title={att.path || att.name}>
                         <FileTextIcon size={14} />
                         <span className="message-attachment-name">{att.name}</span>
+                        {att.path && (
+                          <span
+                            className="message-attachment-path"
+                            style={{
+                              fontSize: "0.75rem",
+                              opacity: 0.65,
+                              marginLeft: "6px",
+                              maxWidth: "220px",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={att.path}
+                          >
+                            ({att.path})
+                          </span>
+                        )}
                       </div>
                       <div className="message-attachment-text-body">
                         <pre>{att.content}</pre>

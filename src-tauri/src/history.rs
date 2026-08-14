@@ -7,8 +7,10 @@ use tauri::Manager;
 pub struct Attachment {
     pub name: String,
     #[serde(rename = "type")]
-    pub mime_type: String, // "text" | "image"
+    pub mime_type: String, // "text" | "image" | "file"
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -343,6 +345,63 @@ mod tests {
             panic!("Expected Session item");
         }
     }
+
+    #[test]
+    fn test_attachment_serialization_with_path() {
+        let att = Attachment {
+            name: "firmware.bin".to_string(),
+            mime_type: "file".to_string(),
+            content: "[ファイル: firmware.bin (サイズ: 1.2 MB)]".to_string(),
+            path: Some("/tmp/firmware.bin".to_string()),
+        };
+        let json = serde_json::to_string(&att).unwrap();
+        assert!(json.contains(r#""name":"firmware.bin""#));
+        assert!(json.contains(r#""type":"file""#));
+        assert!(json.contains(r#""path":"/tmp/firmware.bin""#));
+
+        let deserialized: Attachment = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "firmware.bin");
+        assert_eq!(deserialized.mime_type, "file");
+        assert_eq!(deserialized.path, Some("/tmp/firmware.bin".to_string()));
+    }
+
+    #[test]
+    fn test_read_files_as_attachments_text_and_binary() {
+        use std::io::Write;
+        let temp_dir = std::env::temp_dir();
+        let text_path = temp_dir.join("test_text_file.txt");
+        let bin_path = temp_dir.join("test_bin_file.bin");
+
+        let mut f_text = fs::File::create(&text_path).unwrap();
+        writeln!(f_text, "hostname Switch1\ninterface GigabitEthernet0/1").unwrap();
+
+        let mut f_bin = fs::File::create(&bin_path).unwrap();
+        // Write invalid utf-8 binary bytes
+        f_bin.write_all(&[0xDE, 0xAD, 0xBE, 0xEF, 0xFF, 0xFE, 0x00, 0x01]).unwrap();
+
+        let paths = vec![
+            text_path.to_string_lossy().to_string(),
+            bin_path.to_string_lossy().to_string(),
+        ];
+
+        let atts = read_files_as_attachments(paths).unwrap();
+        assert_eq!(atts.len(), 2);
+
+        let text_att = &atts[0];
+        assert_eq!(text_att.name, "test_text_file.txt");
+        assert_eq!(text_att.mime_type, "text");
+        assert!(text_att.content.contains("hostname Switch1"));
+        assert_eq!(text_att.path, Some(text_path.to_string_lossy().to_string()));
+
+        let bin_att = &atts[1];
+        assert_eq!(bin_att.name, "test_bin_file.bin");
+        assert_eq!(bin_att.mime_type, "file");
+        assert!(bin_att.content.contains("test_bin_file.bin"));
+        assert_eq!(bin_att.path, Some(bin_path.to_string_lossy().to_string()));
+
+        let _ = fs::remove_file(text_path);
+        let _ = fs::remove_file(bin_path);
+    }
 }
 
 fn get_summaries_path(app: &tauri::AppHandle) -> PathBuf {
@@ -426,16 +485,39 @@ pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, 
                     name: file_name,
                     mime_type: "image".to_string(),
                     content: data_url,
+                    path: Some(path_str),
                 });
             }
         } else {
-            if let Ok(text) = fs::read_to_string(&path) {
-                result.push(Attachment {
-                    name: file_name,
-                    mime_type: "text".to_string(),
-                    content: text,
-                });
+            let file_size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            const MAX_TEXT_FILE_SIZE: u64 = 512 * 1024; // 512 KB
+
+            if file_size <= MAX_TEXT_FILE_SIZE {
+                if let Ok(text) = fs::read_to_string(&path) {
+                    result.push(Attachment {
+                        name: file_name,
+                        mime_type: "text".to_string(),
+                        content: text,
+                        path: Some(path_str),
+                    });
+                    continue;
+                }
             }
+
+            let size_desc = if file_size < 1024 {
+                format!("{} B", file_size)
+            } else if file_size < 1024 * 1024 {
+                format!("{:.1} KB", file_size as f64 / 1024.0)
+            } else {
+                format!("{:.1} MB", file_size as f64 / (1024.0 * 1024.0))
+            };
+
+            result.push(Attachment {
+                name: file_name.clone(),
+                mime_type: "file".to_string(),
+                content: format!("[ファイル: {} (サイズ: {})]", file_name, size_desc),
+                path: Some(path_str),
+            });
         }
     }
     Ok(result)
