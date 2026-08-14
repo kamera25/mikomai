@@ -11,32 +11,19 @@ pub trait McpTool: Send + Sync {
     ) -> futures::future::BoxFuture<'static, Result<crate::network::CommandResult, String>>;
 }
 
+static TOOL_LABELS: std::sync::LazyLock<HashMap<String, String>> = std::sync::LazyLock::new(|| {
+    let yaml_str = include_str!("../config/tool_labels.yaml");
+    serde_yaml::from_str(yaml_str).unwrap_or_else(|e| {
+        log::error!("Failed to parse tool_labels.yaml: {}", e);
+        HashMap::new()
+    })
+});
+
 pub fn get_tool_label(tool_name: &str) -> String {
-    match tool_name {
-        "self_network_ping" => "Ping".to_string(),
-        "self_network_traceroute" => "Traceroute".to_string(),
-        "self_network_test_connection" | "self_network_test_net_connection" => "Test Connection".to_string(),
-        "network_get_hosts" => "Host List".to_string(),
-        "network_query_nw_db" | "query_nw_db" | "query_rag" => "NWDB検索".to_string(),
-        "self_network_arp" => "ARP Table".to_string(),
-        "self_network_route" => "Route Table".to_string(),
-        "network_get_ip_info" => "IP Info".to_string(),
-        "network_list_serial_ports" => "Serial Ports".to_string(),
-        "network_send_console_message" => "Console Message".to_string(),
-        "network_show" => "Show Command".to_string(),
-        "network_config" => "Config Command".to_string(),
-        "fetch_config" => "Fetch Config".to_string(),
-        "fetch_routing" => "Fetch Routing".to_string(),
-        "fetch_arp" => "Fetch ARP".to_string(),
-        "require_host_registered" => "ホスト登録要求".to_string(),
-        "self_network_nwdiag" => "ネットワーク図生成".to_string(),
-        "validate_cisco_config" => "Cisco設定検証".to_string(),
-        "convert_cisco_config" => "Cisco設定変換".to_string(),
-        "ask_user_choice" => "ユーザ選択".to_string(),
-        "ask_interface_choice" => "インターフェース選択".to_string(),
-        "ask_ipaddress_choice" => "IPアドレス選択".to_string(),
-        _ => tool_name.to_string(),
-    }
+    TOOL_LABELS
+        .get(tool_name)
+        .cloned()
+        .unwrap_or_else(|| tool_name.to_string())
 }
 
 pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>> {
