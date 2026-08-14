@@ -3,6 +3,7 @@ use serialport::SerialPortType;
 use std::io::{Read, Write};
 use std::time::Duration;
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SerialPortInfo {
     pub port_name: String,

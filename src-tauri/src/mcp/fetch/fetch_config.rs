@@ -40,7 +40,7 @@ pub async fn fetch_config(
 
 #[cfg(test)]
 mod tests {
-    use super::super::fetch_base::{get_default_templates, get_template_for_dtype};
+    use super::super::command_template::{get_default_templates, get_template_for_dtype};
 
     #[test]
     fn test_default_templates() {

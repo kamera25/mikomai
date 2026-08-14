@@ -4,7 +4,7 @@ use crate::mcp::fetch::netmiko::connection_wraper::NetmikoConnectionWrapper;
 use crate::crypto::decrypt;
 use super::ConnectionType;
 
-pub use super::command_template::{CommandTemplate, CommandTemplates, load_templates, get_default_templates, get_templates_path, get_template_for_dtype, map_vendor_type};
+pub use super::command_template::{CommandTemplate, load_templates, get_template_for_dtype, map_vendor_type};
 
 
 
@@ -216,6 +216,7 @@ pub fn check_yaml_cache(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::command_template::get_default_templates;
 
     #[test]
     fn test_command_template_serialization() {

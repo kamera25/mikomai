@@ -18,6 +18,7 @@ impl ConnectionId {
         Ok(Self(trimmed.to_string()))
     }
 
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &str {
         &self.0
     }

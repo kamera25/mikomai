@@ -23,6 +23,7 @@ pub enum RouteAction {
     AskClarification,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RoutingSource {
     Shortcut,
@@ -30,6 +31,7 @@ pub enum RoutingSource {
     Fallback,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct RoutingDecision {
     pub action: RouteAction,

@@ -40,6 +40,7 @@ pub enum ConnectionError {
     Json(#[from] serde_json::Error),
     #[error("Crypto error: {0}")]
     Crypto(#[from] crate::crypto::CryptoError),
+    #[allow(dead_code)]
     #[error("Old connection not found for ID {0}")]
     OldConnectionNotFound(String),
     #[error("Failed to validate encrypted password for connection {0}: {1}")]

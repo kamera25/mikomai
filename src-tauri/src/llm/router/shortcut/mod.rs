@@ -12,6 +12,7 @@ use serde_json::Value;
 
 use super::types::{RouteAction, RoutingDecision, RoutingSource};
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct DenyRules {
     pub patterns: Vec<String>,
@@ -68,6 +69,7 @@ pub struct FastRouteConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ShortcutRulesConfig {
+    #[allow(dead_code)]
     pub deny_rules: Option<DenyRules>,
     #[serde(default, alias = "regex_patterns")]
     pub fastroute: FastRouteConfig,

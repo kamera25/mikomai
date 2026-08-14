@@ -55,6 +55,7 @@ impl Default for PingRegexConfig {
     }
 }
 
+#[allow(dead_code)]
 pub fn parse_ping_command(input: &str) -> Option<Value> {
     let config = ShortcutRulesConfig::load();
     parse_ping_command_with_config(input, &config)

@@ -20,6 +20,7 @@ pub enum NetworkError {
     SidecarFailed(i32, String),
     #[error("Sidecar completed unexpectedly")]
     SidecarUnexpectedCompletion,
+    #[allow(dead_code)]
     #[error("Mutex lock poisoned")]
     PoisonedLock,
     #[error("Spawn blocking failed: {0}")]

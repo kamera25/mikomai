@@ -28,6 +28,7 @@ impl SnapshotManager {
     }
 
     /// Creates a new `SnapshotManager` targeting a custom base directory (useful for testing/demo).
+    #[allow(dead_code)]
     pub fn with_base_dir(base_dir: PathBuf) -> Self {
         if !base_dir.exists() {
             let _ = fs::create_dir_all(&base_dir);
@@ -121,6 +122,7 @@ impl SnapshotManager {
     }
 
     /// Returns the current active snapshot directory, if any.
+    #[allow(dead_code)]
     pub fn current_snapshot_dir(&self) -> Option<&PathBuf> {
         self.current_snapshot_dir.as_ref()
     }

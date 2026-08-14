@@ -231,12 +231,9 @@ pub async fn tftp_upload_core(
         .map_err(|e| format!("Failed to send WRQ to {}: {}", server_addr, e))?;
 
     let start_time = Instant::now();
-    let mut transfer_tid: Option<SocketAddr> = None;
     let mut buf = [0u8; 1024];
-
-    // 1. Wait for initial ACK(0)
     let mut retries = 0;
-    loop {
+    let tid: SocketAddr = loop {
         match tokio::time::timeout(timeout_duration, socket.recv_from(&mut buf)).await {
             Ok(Ok((len, addr))) => {
                 if len >= 4 {
@@ -244,8 +241,7 @@ pub async fn tftp_upload_core(
                     if opcode == OP_ACK {
                         let block = u16::from_be_bytes([buf[2], buf[3]]);
                         if block == 0 {
-                            transfer_tid = Some(addr);
-                            break;
+                            break addr;
                         }
                     } else if opcode == OP_ERROR {
                         return Err(parse_error_packet(&buf[..len]));
@@ -264,9 +260,7 @@ pub async fn tftp_upload_core(
                 let _ = socket.send_to(&wrq, server_addr).await;
             }
         }
-    }
-
-    let tid = transfer_tid.ok_or_else(|| "Failed to establish server TID".to_string())?;
+    };
 
     // 2. Send DATA blocks
     let chunks: Vec<&[u8]> = data.chunks(TFTP_BLOCK_SIZE).collect();

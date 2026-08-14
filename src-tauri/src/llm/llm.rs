@@ -42,6 +42,7 @@ pub enum ModelState {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LlmError {
+    #[allow(dead_code)]
     #[error("Mutex lock poisoned")]
     PoisonedLock,
     #[error("Llama backend initialization failed")]
