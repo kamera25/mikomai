@@ -14,6 +14,7 @@ pub mod executor;
 pub mod safe_cmd;
 pub mod protocol;
 pub mod nwdiag;
+pub mod nwdiag_validator;
 pub mod config_helper;
 pub mod test_connection;
 pub mod file_transfer;

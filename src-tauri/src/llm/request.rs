@@ -313,8 +313,27 @@ fn handle_analyze(
             return Ok(cancel_msg.to_string());
         }
 
+        let is_nwdiag_tool = tool_label.contains("nwdiag") || tool_label.contains("ネットワーク図");
+        let is_nwdiag_success = is_nwdiag_tool && output.contains("Network diagram generated successfully");
+        let is_nwdiag_failed = is_nwdiag_tool && (output.contains("validation failed") || output.contains("compilation failed") || output.contains("Execution failed"));
+
+        if is_nwdiag_success {
+            let success_msg = "ネットワーク図の生成が完了しました。";
+            let _ = window.emit(
+                "chat-event",
+                crate::mcp::protocol::ChatEvent::LlmChunk(success_msg.to_string()),
+            );
+            return Ok(success_msg.to_string());
+        }
+
         let (active_route, route_subsequent_task, matched_contexts) = if is_any_choice {
             (Route::Builder, None, Vec::new())
+        } else if is_nwdiag_failed {
+            (
+                Route::Plotter,
+                Some("前回のnwdiagスキーマに構文エラーが発生しました。エラーメッセージと指示に従って、正しい構文でnwdiagスキーマを修正・再生成してください。".to_string()),
+                Vec::new(),
+            )
         } else {
             let decision = crate::llm::router::RoutingPipeline::route(
                 shared_model,
@@ -338,9 +357,11 @@ fn handle_analyze(
                     );
                     return Ok(ask_msg);
                 }
-                crate::llm::router::RouteAction::WorkerRoute { subsequent_route, subsequent_task, .. } => {
+                crate::llm::router::RouteAction::WorkerRoute { route, subsequent_route, subsequent_task, .. } => {
                     if let Some(sub_route) = subsequent_route {
                         (sub_route, subsequent_task, decision.device_contexts)
+                    } else if is_builder || route == Route::Plotter || route == Route::Builder {
+                        (route, subsequent_task, decision.device_contexts)
                     } else {
                         return Ok("実行が完了しました。".to_string());
                     }

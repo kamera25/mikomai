@@ -11,6 +11,11 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String> {
         return Err("Schema cannot be empty".to_string());
     }
 
+    // Validate nwdiag DSL schema before invoking python wrapper
+    if let Err(err) = crate::mcp::nwdiag_validator::validate_nwdiag_schema(schema) {
+        return Err(err.to_llm_feedback_string());
+    }
+
     let mut current_dir = std::env::current_dir()
         .map_err(|e| format!("Failed to get current directory: {}", e))?;
     if current_dir.ends_with("src-tauri") {
@@ -152,6 +157,11 @@ mod tests {
             }
         }
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("nwdiag compilation failed"));
+        let err_msg = result.unwrap_err();
+        assert!(
+            err_msg.contains("validation failed") || err_msg.contains("compilation failed"),
+            "Expected validation or compilation error, got: {}",
+            err_msg
+        );
     }
 }

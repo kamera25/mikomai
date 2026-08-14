@@ -372,6 +372,7 @@ pub fn execute_mcp_tools_flow(
                 || *tool_id == "ask_ipaddress_choice"
                 || *tool_id == "validate_cisco_config"
                 || *tool_id == "convert_cisco_config"
+                || *tool_id == "self_network_nwdiag"
         });
 
         let analyze_payload = crate::llm::llm::AnalyzePayload {
@@ -431,7 +432,10 @@ pub fn execute_mcp_tools_flow(
         }
 
         // 6. Check for nested tool calls (nested MCP)
-        if is_builder_context && depth < 5 {
+        let has_nwdiag = execution_info.iter().any(|(tool_id, _, _)| *tool_id == "self_network_nwdiag");
+        let max_depth = if has_nwdiag { 3 } else { 5 };
+
+        if is_builder_context && depth < max_depth {
             let json_blocks = extract_json_blocks(&response_str);
             let mut nested_tool_calls = Vec::new();
             for block in json_blocks {

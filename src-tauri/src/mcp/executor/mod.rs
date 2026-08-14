@@ -30,7 +30,8 @@ pub async fn execute_mcp_tool(
         || payload.tool_id == "ask_interface_choice"
         || payload.tool_id == "ask_ipaddress_choice"
         || payload.tool_id == "validate_cisco_config"
-        || payload.tool_id == "convert_cisco_config";
+        || payload.tool_id == "convert_cisco_config"
+        || payload.tool_id == "self_network_nwdiag";
 
     execute_mcp_tools_flow(
         app,
@@ -145,7 +146,16 @@ pub async fn handle_mcp_message(
     }
 
     if !tool_calls.is_empty() {
-        let is_builder_caller = route == crate::llm::worker::Route::Builder;
+        let is_builder_caller = route == crate::llm::worker::Route::Builder
+            || route == crate::llm::worker::Route::Plotter
+            || tool_calls.iter().any(|t| {
+                t.tool == "self_network_nwdiag"
+                    || t.tool == "validate_cisco_config"
+                    || t.tool == "convert_cisco_config"
+                    || t.tool == "ask_user_choice"
+                    || t.tool == "ask_interface_choice"
+                    || t.tool == "ask_ipaddress_choice"
+            });
         let _ = execute_mcp_tools_flow(
             app.clone(),
             window.clone(),
