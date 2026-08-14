@@ -4,6 +4,17 @@ use tokio::time::Duration;
 use serde::{Deserialize, Serialize};
 use crate::connections::resolve_host_with_mcp;
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct PingParams {
+    pub host: Option<String>,
+    pub device: Option<String>,
+    pub device_name: Option<String>,
+    pub ip: Option<String>,
+    pub size: Option<usize>,
+    pub count: Option<u32>,
+    pub df: Option<bool>,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PingResult {
     pub success: bool,
@@ -21,7 +32,6 @@ impl From<PingResult> for crate::network::CommandResult {
         }
     }
 }
-
 
 fn resolve_host(host: &str) -> Result<IpAddr, String> {
     let addrs = format!("{}:80", host).to_socket_addrs().map_err(|e| e.to_string())?;
@@ -89,6 +99,31 @@ pub async fn network_ping_core(
     })
 }
 
+pub async fn self_network_ping_with_params(
+    app: tauri::AppHandle,
+    params: PingParams,
+) -> Result<PingResult, String> {
+    let target_host = crate::mcp::args::normalize_host_args(
+        &app,
+        params.host,
+        params.device,
+        params.device_name.clone(),
+        params.device_name,
+        params.ip,
+    )?;
+    let resolved_host = resolve_host_with_mcp(&app, &target_host);
+    let app_clone = app.clone();
+    let resolved_host_clone = resolved_host.clone();
+    let ip_addr = tokio::task::spawn_blocking(move || {
+        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    
+    network_ping_core(ip_addr.to_string(), params.size, params.count, params.df).await
+}
+
 #[tauri::command]
 #[allow(non_snake_case)]
 pub async fn self_network_ping(
@@ -102,27 +137,20 @@ pub async fn self_network_ping(
     count: Option<u32>,
     df: Option<bool>,
 ) -> Result<PingResult, String> {
-    let target_host = crate::mcp::args::normalize_host_args(
-        &app,
-        host,
-        device,
-        deviceName,
-        device_name,
-        ip,
-    )?;
-    let resolved_host = resolve_host_with_mcp(&app, &target_host);
-    let app_clone = app.clone();
-    let resolved_host_clone = resolved_host.clone();
-    let ip_addr = tokio::task::spawn_blocking(move || {
-        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
-    
-    network_ping_core(ip_addr.to_string(), size, count, df).await
+    let dev_name = deviceName.or(device_name);
+    self_network_ping_with_params(
+        app,
+        PingParams {
+            host,
+            device,
+            device_name: dev_name,
+            ip,
+            size,
+            count,
+            df,
+        },
+    ).await
 }
-
 
 async fn run_system_ping(host: &str, size: Option<usize>, count: Option<u32>, df: bool) -> Result<PingResult, String> {
     use std::process::Command;
@@ -133,10 +161,6 @@ async fn run_system_ping(host: &str, size: Option<usize>, count: Option<u32>, df
     let ping_path = resolve_safe_command_path(ping_cmd)?;
 
     let mut cmd = Command::new(&ping_path);
-    
-    // Mac and Linux differ slightly in arguments
-    // On Mac: -s size -c count -D (for DF)
-    // On Linux: -s size -c count -M do (for DF)
     
     if let Some(s) = size {
         cmd.arg("-s").arg(s.to_string());
@@ -203,10 +227,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_network_ping_core_localhost() {
-        // Note: this test uses standard surge_ping or system fallback
-        // It might fail on Linux without correct permissions for surge_ping if not root,
-        // but we'll try to run it. If it fails, users usually run it with df=true.
-        // Let's test the system fallback directly (df=true).
         let result = network_ping_core("127.0.0.1".to_string(), Some(32), Some(1), Some(true)).await;
         assert!(result.is_ok());
         let ping_res = result.unwrap();

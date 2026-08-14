@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { SystemSettings } from "../types";
 import {
@@ -12,63 +12,87 @@ import {
   DEFAULT_CACHE_EXPIRY_MINUTES,
 } from "../constants/defaults";
 
+export interface SettingsState {
+  historyLimit: number;
+  temperature: number;
+  repetitionPenalty: number;
+  modelPath: string | null;
+  mcpTimeout: number;
+  cacheExpiryMinutes: number;
+  dbPath: string;
+  ipVersion: string;
+  consolePort: string | null;
+  consoleBaudRate: number;
+  preloadInvestigate: boolean;
+  preloadKnowledge: boolean;
+  preloadAnalysis: boolean;
+  preloadRag: boolean;
+  preloadPlotter: boolean;
+  preloadBuilder: boolean;
+  preloadSummarization: boolean;
+  visionEnabled: boolean;
+  autoDryRun: boolean;
+  mmprojPath: string | null;
+  recentIps: string[];
+}
+
+const INITIAL_SETTINGS_STATE: SettingsState = {
+  historyLimit: DEFAULT_HISTORY_LIMIT,
+  temperature: DEFAULT_TEMPERATURE,
+  repetitionPenalty: DEFAULT_REPETITION_PENALTY,
+  modelPath: DEFAULT_MODEL_PATH,
+  mcpTimeout: DEFAULT_MCP_TIMEOUT,
+  cacheExpiryMinutes: DEFAULT_CACHE_EXPIRY_MINUTES,
+  dbPath: DEFAULT_DB_PATH,
+  ipVersion: DEFAULT_IP_VERSION,
+  consolePort: null,
+  consoleBaudRate: 9600,
+  preloadInvestigate: false,
+  preloadKnowledge: false,
+  preloadAnalysis: false,
+  preloadRag: false,
+  preloadPlotter: false,
+  preloadBuilder: false,
+  preloadSummarization: false,
+  visionEnabled: false,
+  autoDryRun: false,
+  mmprojPath: null,
+  recentIps: [],
+};
+
 export function useSettings() {
-  const [historyLimit, setHistoryLimit] = useState<number>(DEFAULT_HISTORY_LIMIT);
-  const [temperature, setTemperature] = useState<number>(DEFAULT_TEMPERATURE);
-  const [repetitionPenalty, setRepetitionPenalty] = useState<number>(DEFAULT_REPETITION_PENALTY);
-  const [modelPath, setModelPath] = useState<string | null>(DEFAULT_MODEL_PATH);
-  const [mcpTimeout, setMcpTimeout] = useState<number>(DEFAULT_MCP_TIMEOUT);
-  const [cacheExpiryMinutes, setCacheExpiryMinutes] = useState<number>(
-    DEFAULT_CACHE_EXPIRY_MINUTES
-  );
-  const [dbPath, setDbPath] = useState<string>(DEFAULT_DB_PATH);
-  const [ipVersion, setIpVersion] = useState<string>(DEFAULT_IP_VERSION);
-  const [consolePort, setConsolePort] = useState<string | null>(null);
-  const [consoleBaudRate, setConsoleBaudRate] = useState<number>(9600);
-  const [preloadInvestigate, setPreloadInvestigate] = useState<boolean>(false);
-  const [preloadKnowledge, setPreloadKnowledge] = useState<boolean>(false);
-  const [preloadAnalysis, setPreloadAnalysis] = useState<boolean>(false);
-  const [preloadRag, setPreloadRag] = useState<boolean>(false);
-  const [preloadPlotter, setPreloadPlotter] = useState<boolean>(false);
-  const [preloadBuilder, setPreloadBuilder] = useState<boolean>(false);
-  const [preloadSummarization, setPreloadSummarization] = useState<boolean>(false);
-  const [visionEnabled, setVisionEnabled] = useState<boolean>(false);
-  const [autoDryRun, setAutoDryRun] = useState<boolean>(false);
-  const [mmprojPath, setMmprojPath] = useState<string | null>(null);
-  const [recentIPs, setRecentIPs] = useState<string[]>([]);
+  const [settings, setSettings] = useState<SettingsState>(INITIAL_SETTINGS_STATE);
 
   // Load settings from backend
   useEffect(() => {
     const initSettings = async () => {
       try {
-        const settings = await invoke<SystemSettings>("load_settings");
-        if (settings) {
-          if (settings.historyLimit !== undefined) setHistoryLimit(settings.historyLimit);
-          if (settings.temperature !== undefined) setTemperature(settings.temperature);
-          if (settings.repetitionPenalty !== undefined)
-            setRepetitionPenalty(settings.repetitionPenalty);
-          if (settings.modelPath !== undefined) setModelPath(settings.modelPath);
-          if (settings.recentIps !== undefined) setRecentIPs(settings.recentIps);
-          if (settings.mcpTimeout !== undefined) setMcpTimeout(settings.mcpTimeout);
-          if (settings.cacheExpiryMinutes !== undefined)
-            setCacheExpiryMinutes(settings.cacheExpiryMinutes);
-          if (settings.dbPath !== undefined) setDbPath(settings.dbPath);
-          if (settings.ipVersion !== undefined) setIpVersion(settings.ipVersion);
-          if (settings.consolePort !== undefined) setConsolePort(settings.consolePort);
-          if (settings.consoleBaudRate !== undefined) setConsoleBaudRate(settings.consoleBaudRate);
-          if (settings.preloadInvestigate !== undefined)
-            setPreloadInvestigate(settings.preloadInvestigate);
-          if (settings.preloadKnowledge !== undefined)
-            setPreloadKnowledge(settings.preloadKnowledge);
-          if (settings.preloadAnalysis !== undefined) setPreloadAnalysis(settings.preloadAnalysis);
-          if (settings.preloadRag !== undefined) setPreloadRag(settings.preloadRag);
-          if (settings.preloadPlotter !== undefined) setPreloadPlotter(settings.preloadPlotter);
-          if (settings.preloadBuilder !== undefined) setPreloadBuilder(settings.preloadBuilder);
-          if (settings.preloadSummarization !== undefined)
-            setPreloadSummarization(settings.preloadSummarization);
-          if (settings.visionEnabled !== undefined) setVisionEnabled(settings.visionEnabled);
-          if (settings.autoDryRun !== undefined) setAutoDryRun(settings.autoDryRun);
-          if (settings.mmprojPath !== undefined) setMmprojPath(settings.mmprojPath);
+        const loaded = await invoke<SystemSettings>("load_settings");
+        if (loaded) {
+          setSettings((prev) => ({
+            ...prev,
+            ...(loaded.historyLimit !== undefined && { historyLimit: loaded.historyLimit }),
+            ...(loaded.temperature !== undefined && { temperature: loaded.temperature }),
+            ...(loaded.repetitionPenalty !== undefined && { repetitionPenalty: loaded.repetitionPenalty }),
+            ...(loaded.modelPath !== undefined && { modelPath: loaded.modelPath }),
+            ...(loaded.recentIps !== undefined && { recentIps: loaded.recentIps }),
+            ...(loaded.mcpTimeout !== undefined && { mcpTimeout: loaded.mcpTimeout }),
+            ...(loaded.cacheExpiryMinutes !== undefined && { cacheExpiryMinutes: loaded.cacheExpiryMinutes }),
+            ...(loaded.dbPath !== undefined && { dbPath: loaded.dbPath }),
+            ...(loaded.ipVersion !== undefined && { ipVersion: loaded.ipVersion }),
+            ...(loaded.consolePort !== undefined && { consolePort: loaded.consolePort }),
+            ...(loaded.consoleBaudRate !== undefined && { consoleBaudRate: loaded.consoleBaudRate }),
+            ...(loaded.preloadInvestigate !== undefined && { preloadInvestigate: loaded.preloadInvestigate }),
+            ...(loaded.preloadKnowledge !== undefined && { preloadKnowledge: loaded.preloadKnowledge }),
+            ...(loaded.preloadAnalysis !== undefined && { preloadAnalysis: loaded.preloadAnalysis }),
+            ...(loaded.preloadRag !== undefined && { preloadRag: loaded.preloadRag }),
+            ...(loaded.preloadPlotter !== undefined && { preloadPlotter: loaded.preloadPlotter }),
+            ...(loaded.preloadBuilder !== undefined && { preloadBuilder: loaded.preloadBuilder }),
+            ...(loaded.preloadSummarization !== undefined && { preloadSummarization: loaded.preloadSummarization }),
+            ...(loaded.visionEnabled !== undefined && { visionEnabled: loaded.visionEnabled }),
+            ...(loaded.autoDryRun !== undefined && { autoDryRun: loaded.autoDryRun }),
+            ...(loaded.mmprojPath !== undefined && { mmprojPath: loaded.mmprojPath }),
+          }));
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -77,74 +101,46 @@ export function useSettings() {
     initSettings();
   }, []);
 
-  const saveAllSettings = async (overrides: Partial<SystemSettings>) => {
-    const updatedHistoryLimit = overrides.historyLimit !== undefined ? overrides.historyLimit : historyLimit;
-    const updatedTemperature = overrides.temperature !== undefined ? overrides.temperature : temperature;
-    const updatedRepetitionPenalty = overrides.repetitionPenalty !== undefined ? overrides.repetitionPenalty : repetitionPenalty;
-    const updatedModelPath = overrides.modelPath !== undefined ? overrides.modelPath : modelPath;
-    const updatedRecentIps = overrides.recentIps !== undefined ? overrides.recentIps : recentIPs;
-    const updatedMcpTimeout = overrides.mcpTimeout !== undefined ? overrides.mcpTimeout : mcpTimeout;
-    const updatedCacheExpiryMinutes = overrides.cacheExpiryMinutes !== undefined ? overrides.cacheExpiryMinutes : cacheExpiryMinutes;
-    const updatedDbPath = overrides.dbPath !== undefined ? overrides.dbPath : dbPath;
-    const updatedIpVersion = overrides.ipVersion !== undefined ? overrides.ipVersion : ipVersion;
-    const updatedConsolePort = overrides.consolePort !== undefined ? overrides.consolePort : consolePort;
-    const updatedConsoleBaudRate = overrides.consoleBaudRate !== undefined ? overrides.consoleBaudRate : consoleBaudRate;
-    const updatedPreloadInvestigate = overrides.preloadInvestigate !== undefined ? overrides.preloadInvestigate : preloadInvestigate;
-    const updatedPreloadKnowledge = overrides.preloadKnowledge !== undefined ? overrides.preloadKnowledge : preloadKnowledge;
-    const updatedPreloadAnalysis = overrides.preloadAnalysis !== undefined ? overrides.preloadAnalysis : preloadAnalysis;
-    const updatedPreloadRag = overrides.preloadRag !== undefined ? overrides.preloadRag : preloadRag;
-    const updatedPreloadPlotter = overrides.preloadPlotter !== undefined ? overrides.preloadPlotter : preloadPlotter;
-    const updatedPreloadBuilder = overrides.preloadBuilder !== undefined ? overrides.preloadBuilder : preloadBuilder;
-    const updatedPreloadSummarization = overrides.preloadSummarization !== undefined ? overrides.preloadSummarization : preloadSummarization;
-    const updatedVisionEnabled = overrides.visionEnabled !== undefined ? overrides.visionEnabled : visionEnabled;
-    const updatedAutoDryRun = overrides.autoDryRun !== undefined ? overrides.autoDryRun : autoDryRun;
-    const updatedMmprojPath = overrides.mmprojPath !== undefined ? overrides.mmprojPath : mmprojPath;
+  const updateSetting = useCallback(<K extends keyof SettingsState>(key: K, value: SettingsState[K] | ((prev: SettingsState[K]) => SettingsState[K])) => {
+    setSettings((prev) => ({
+      ...prev,
+      [key]: typeof value === "function" ? (value as (prev: SettingsState[K]) => SettingsState[K])(prev[key]) : value,
+    }));
+  }, []);
 
-    if (overrides.historyLimit !== undefined) setHistoryLimit(overrides.historyLimit);
-    if (overrides.temperature !== undefined) setTemperature(overrides.temperature);
-    if (overrides.repetitionPenalty !== undefined) setRepetitionPenalty(overrides.repetitionPenalty);
-    if (overrides.modelPath !== undefined) setModelPath(overrides.modelPath);
-    if (overrides.recentIps !== undefined) setRecentIPs(overrides.recentIps);
-    if (overrides.mcpTimeout !== undefined) setMcpTimeout(overrides.mcpTimeout);
-    if (overrides.cacheExpiryMinutes !== undefined) setCacheExpiryMinutes(overrides.cacheExpiryMinutes);
-    if (overrides.dbPath !== undefined) setDbPath(overrides.dbPath);
-    if (overrides.ipVersion !== undefined) setIpVersion(overrides.ipVersion);
-    if (overrides.consolePort !== undefined) setConsolePort(overrides.consolePort);
-    if (overrides.consoleBaudRate !== undefined) setConsoleBaudRate(overrides.consoleBaudRate);
-    if (overrides.preloadInvestigate !== undefined) setPreloadInvestigate(overrides.preloadInvestigate);
-    if (overrides.preloadKnowledge !== undefined) setPreloadKnowledge(overrides.preloadKnowledge);
-    if (overrides.preloadAnalysis !== undefined) setPreloadAnalysis(overrides.preloadAnalysis);
-    if (overrides.preloadRag !== undefined) setPreloadRag(overrides.preloadRag);
-    if (overrides.preloadPlotter !== undefined) setPreloadPlotter(overrides.preloadPlotter);
-    if (overrides.preloadBuilder !== undefined) setPreloadBuilder(overrides.preloadBuilder);
-    if (overrides.preloadSummarization !== undefined) setPreloadSummarization(overrides.preloadSummarization);
-    if (overrides.visionEnabled !== undefined) setVisionEnabled(overrides.visionEnabled);
-    if (overrides.autoDryRun !== undefined) setAutoDryRun(overrides.autoDryRun);
-    if (overrides.mmprojPath !== undefined) setMmprojPath(overrides.mmprojPath);
+  const saveAllSettings = async (overrides: Partial<SystemSettings>) => {
+    const updated: SettingsState = {
+      ...settings,
+      ...overrides,
+      ...(overrides.recentIps !== undefined && { recentIps: overrides.recentIps }),
+    };
+
+    setSettings(updated);
 
     const payload = {
-      historyLimit: updatedHistoryLimit,
-      temperature: updatedTemperature,
-      repetitionPenalty: updatedRepetitionPenalty,
-      modelPath: updatedModelPath,
-      recentIps: updatedRecentIps,
-      mcpTimeout: updatedMcpTimeout,
-      cacheExpiryMinutes: updatedCacheExpiryMinutes,
-      dbPath: updatedDbPath,
-      ipVersion: updatedIpVersion,
-      consolePort: updatedConsolePort,
-      consoleBaudRate: updatedConsoleBaudRate,
-      preloadInvestigate: updatedPreloadInvestigate,
-      preloadKnowledge: updatedPreloadKnowledge,
-      preloadAnalysis: updatedPreloadAnalysis,
-      preloadRag: updatedPreloadRag,
-      preloadPlotter: updatedPreloadPlotter,
-      preloadBuilder: updatedPreloadBuilder,
-      preloadSummarization: updatedPreloadSummarization,
-      visionEnabled: updatedVisionEnabled,
-      autoDryRun: updatedAutoDryRun,
-      mmprojPath: updatedMmprojPath,
+      historyLimit: updated.historyLimit,
+      temperature: updated.temperature,
+      repetitionPenalty: updated.repetitionPenalty,
+      modelPath: updated.modelPath,
+      recentIps: updated.recentIps,
+      mcpTimeout: updated.mcpTimeout,
+      cacheExpiryMinutes: updated.cacheExpiryMinutes,
+      dbPath: updated.dbPath,
+      ipVersion: updated.ipVersion,
+      consolePort: updated.consolePort,
+      consoleBaudRate: updated.consoleBaudRate,
+      preloadInvestigate: updated.preloadInvestigate,
+      preloadKnowledge: updated.preloadKnowledge,
+      preloadAnalysis: updated.preloadAnalysis,
+      preloadRag: updated.preloadRag,
+      preloadPlotter: updated.preloadPlotter,
+      preloadBuilder: updated.preloadBuilder,
+      preloadSummarization: updated.preloadSummarization,
+      visionEnabled: updated.visionEnabled,
+      autoDryRun: updated.autoDryRun,
+      mmprojPath: updated.mmprojPath,
     };
+
     try {
       await invoke("save_settings", { settings: payload });
     } catch (e) {
@@ -153,48 +149,48 @@ export function useSettings() {
   };
 
   return {
-    historyLimit,
-    setHistoryLimit,
-    temperature,
-    setTemperature,
-    repetitionPenalty,
-    setRepetitionPenalty,
-    modelPath,
-    setModelPath,
-    mcpTimeout,
-    setMcpTimeout,
-    cacheExpiryMinutes,
-    setCacheExpiryMinutes,
-    dbPath,
-    setDbPath,
-    ipVersion,
-    setIpVersion,
-    consolePort,
-    setConsolePort,
-    consoleBaudRate,
-    setConsoleBaudRate,
-    preloadInvestigate,
-    setPreloadInvestigate,
-    preloadKnowledge,
-    setPreloadKnowledge,
-    preloadAnalysis,
-    setPreloadAnalysis,
-    preloadRag,
-    setPreloadRag,
-    preloadPlotter,
-    setPreloadPlotter,
-    preloadBuilder,
-    setPreloadBuilder,
-    preloadSummarization,
-    setPreloadSummarization,
-    visionEnabled,
-    setVisionEnabled,
-    autoDryRun,
-    setAutoDryRun,
-    mmprojPath,
-    setMmprojPath,
-    recentIPs,
-    setRecentIPs,
+    historyLimit: settings.historyLimit,
+    setHistoryLimit: (val: number | ((prev: number) => number)) => updateSetting("historyLimit", val),
+    temperature: settings.temperature,
+    setTemperature: (val: number | ((prev: number) => number)) => updateSetting("temperature", val),
+    repetitionPenalty: settings.repetitionPenalty,
+    setRepetitionPenalty: (val: number | ((prev: number) => number)) => updateSetting("repetitionPenalty", val),
+    modelPath: settings.modelPath,
+    setModelPath: (val: string | null | ((prev: string | null) => string | null)) => updateSetting("modelPath", val),
+    mcpTimeout: settings.mcpTimeout,
+    setMcpTimeout: (val: number | ((prev: number) => number)) => updateSetting("mcpTimeout", val),
+    cacheExpiryMinutes: settings.cacheExpiryMinutes,
+    setCacheExpiryMinutes: (val: number | ((prev: number) => number)) => updateSetting("cacheExpiryMinutes", val),
+    dbPath: settings.dbPath,
+    setDbPath: (val: string | ((prev: string) => string)) => updateSetting("dbPath", val),
+    ipVersion: settings.ipVersion,
+    setIpVersion: (val: string | ((prev: string) => string)) => updateSetting("ipVersion", val),
+    consolePort: settings.consolePort,
+    setConsolePort: (val: string | null | ((prev: string | null) => string | null)) => updateSetting("consolePort", val),
+    consoleBaudRate: settings.consoleBaudRate,
+    setConsoleBaudRate: (val: number | ((prev: number) => number)) => updateSetting("consoleBaudRate", val),
+    preloadInvestigate: settings.preloadInvestigate,
+    setPreloadInvestigate: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("preloadInvestigate", val),
+    preloadKnowledge: settings.preloadKnowledge,
+    setPreloadKnowledge: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("preloadKnowledge", val),
+    preloadAnalysis: settings.preloadAnalysis,
+    setPreloadAnalysis: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("preloadAnalysis", val),
+    preloadRag: settings.preloadRag,
+    setPreloadRag: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("preloadRag", val),
+    preloadPlotter: settings.preloadPlotter,
+    setPreloadPlotter: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("preloadPlotter", val),
+    preloadBuilder: settings.preloadBuilder,
+    setPreloadBuilder: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("preloadBuilder", val),
+    preloadSummarization: settings.preloadSummarization,
+    setPreloadSummarization: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("preloadSummarization", val),
+    visionEnabled: settings.visionEnabled,
+    setVisionEnabled: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("visionEnabled", val),
+    autoDryRun: settings.autoDryRun,
+    setAutoDryRun: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("autoDryRun", val),
+    mmprojPath: settings.mmprojPath,
+    setMmprojPath: (val: string | null | ((prev: string | null) => string | null)) => updateSetting("mmprojPath", val),
+    recentIPs: settings.recentIps,
+    setRecentIPs: (val: string[] | ((prev: string[]) => string[])) => updateSetting("recentIps", val),
     saveAllSettings,
   };
 }

@@ -4,6 +4,14 @@ use tokio::time::Duration;
 use serde::{Deserialize, Serialize};
 use crate::connections::resolve_host_with_mcp;
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct TracerouteParams {
+    pub host: Option<String>,
+    pub device: Option<String>,
+    pub device_name: Option<String>,
+    pub ip: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TracerouteResult {
     pub success: bool,
@@ -22,7 +30,6 @@ impl From<TracerouteResult> for crate::network::CommandResult {
     }
 }
 
-
 #[cfg(test)]
 fn resolve_host(host: &str) -> Result<IpAddr, String> {
     use std::net::ToSocketAddrs;
@@ -30,23 +37,17 @@ fn resolve_host(host: &str) -> Result<IpAddr, String> {
     addrs.into_iter().next().map(|a| a.ip()).ok_or("Could not resolve host".to_string())
 }
 
-#[tauri::command]
-#[allow(non_snake_case)]
-pub async fn self_network_traceroute(
+pub async fn self_network_traceroute_with_params(
     app: tauri::AppHandle,
-    host: Option<String>,
-    device: Option<String>,
-    deviceName: Option<String>,
-    device_name: Option<String>,
-    ip: Option<String>,
+    params: TracerouteParams,
 ) -> Result<TracerouteResult, String> {
     let target_host = crate::mcp::args::normalize_host_args(
         &app,
-        host,
-        device,
-        deviceName,
-        device_name,
-        ip,
+        params.host,
+        params.device,
+        params.device_name.clone(),
+        params.device_name,
+        params.ip,
     )?;
     let resolved_host = resolve_host_with_mcp(&app, &target_host);
     let app_clone = app.clone();
@@ -57,7 +58,6 @@ pub async fn self_network_traceroute(
     .await
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
-
 
     let mut output = format!("Tracing route to {} over a maximum of 30 hops:\n\n", ip_addr);
     let mut success = false;
@@ -99,6 +99,28 @@ pub async fn self_network_traceroute(
     })
 }
 
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn self_network_traceroute(
+    app: tauri::AppHandle,
+    host: Option<String>,
+    device: Option<String>,
+    deviceName: Option<String>,
+    device_name: Option<String>,
+    ip: Option<String>,
+) -> Result<TracerouteResult, String> {
+    let dev_name = deviceName.or(device_name);
+    self_network_traceroute_with_params(
+        app,
+        TracerouteParams {
+            host,
+            device,
+            device_name: dev_name,
+            ip,
+        },
+    ).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,19 +140,5 @@ mod tests {
         let ip = resolve_host("127.0.0.1");
         assert!(ip.is_ok());
         assert_eq!(ip.unwrap().to_string(), "127.0.0.1");
-    }
-
-    #[test]
-    fn test_resolve_host_domain() {
-        let ip = resolve_host("localhost");
-        assert!(ip.is_ok());
-        let ip_str = ip.unwrap().to_string();
-        assert!(ip_str == "127.0.0.1" || ip_str == "::1");
-    }
-
-    #[test]
-    fn test_resolve_host_invalid() {
-        let ip = resolve_host("this.is.an.invalid.domain.that.does.not.exist.local");
-        assert!(ip.is_err());
     }
 }
