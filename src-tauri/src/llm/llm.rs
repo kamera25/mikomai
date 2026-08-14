@@ -140,7 +140,7 @@ pub async fn get_model_status(state: tauri::State<'_, LlamaState>) -> Result<Mod
     Ok(status)
 }
 
-pub const SYSTEM_PROMPT: &str = include_str!("system_prompt.txt");
+pub const SYSTEM_PROMPT: &str = include_str!("prompts/system_prompt.txt");
 
 pub(crate) fn prepare_prompt_tokens_with_limit(
     model: &LlamaModel,
