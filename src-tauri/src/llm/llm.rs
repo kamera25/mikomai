@@ -254,19 +254,23 @@ pub async fn ask_llm_initial_internal(
     let has_image_attachment = original_query.contains("【添付画像Vision解析情報") || original_query.contains("[添付画像:");
 
     if !has_image_attachment {
-        if let Some((tool_name, params, message, confidence)) = crate::llm::fastrouter::detect_shortcut_tool(&original_query) {
-            if confidence >= 0.8 {
-                let response_str = if tool_name == "static_reply" || tool_name.is_empty() {
-                    message
-                } else {
-                    let tool_call = serde_json::json!({
-                        "tool_name": tool_name,
-                        "params": params
-                    });
-                    format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap())
+        if let Some(decision) = crate::llm::router::shortcut::detect_shortcut(&original_query) {
+            if decision.confidence >= 0.8 {
+                let response_str = match decision.action {
+                    crate::llm::router::RouteAction::StaticReply { message } => message,
+                    crate::llm::router::RouteAction::DirectToolCall { tool_name, params, message } => {
+                        let tool_call = serde_json::json!({
+                            "tool_name": tool_name,
+                            "params": params
+                        });
+                        format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap())
+                    }
+                    _ => String::new(),
                 };
-                let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()));
-                return Ok((response_str, Route::None));
+                if !response_str.is_empty() {
+                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()));
+                    return Ok((response_str, Route::None));
+                }
             }
         }
     }

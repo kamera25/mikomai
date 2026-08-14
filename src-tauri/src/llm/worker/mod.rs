@@ -1,6 +1,6 @@
-pub mod router;
-pub mod device_context;
+pub use crate::llm::router::llm_router::Router;
 pub use device_context::{DeviceContext, resolve_device_contexts, format_device_contexts};
+pub mod device_context;
 pub mod rag;
 pub mod knowledge;
 pub mod analysis;
@@ -8,8 +8,6 @@ pub mod investigate;
 pub mod summarization;
 pub mod plotter;
 pub mod builder;
-
-pub use router::Router;
 pub use rag::RagWorker;
 pub use knowledge::KnowledgeWorker;
 pub use analysis::AnalysisWorker;

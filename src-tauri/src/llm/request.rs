@@ -11,7 +11,7 @@ use crate::llm::llm::{
     replace_interface_abbreviations, LlmError,
 };
 use crate::llm::llm_manager::SharedModel;
-use crate::llm::worker::{LlmWorker, Route, resolve_device_contexts, format_device_contexts};
+use crate::llm::worker::{LlmWorker, Route};
 
 pub enum InferenceRequest {
     Initial {
@@ -148,76 +148,81 @@ fn handle_initial(
     let model = shared_model.model.clone();
     let backend = shared_model.backend.clone();
 
-    let device_contexts = resolve_device_contexts(window.app_handle(), &original_query);
-    let enriched_query = if !device_contexts.is_empty() {
-        let enrichment = format_device_contexts(&device_contexts);
-        format!("{}{}", enrichment, original_query)
-    } else {
-        original_query.clone()
-    };
+    let decision = crate::llm::router::RoutingPipeline::route(
+        shared_model,
+        &original_query,
+        &settings,
+        window.app_handle(),
+    )?;
 
-    log::info!(
-        "--- ROUTER INPUT QUERY (Enriched) ---\n{}\n-------------------------",
-        enriched_query
-    );
-    let mut route_result = {
-        let mut router_lock = shared_model.router.lock().unwrap();
-        router_lock
-            .route(&model, &enriched_query, settings.repetition_penalty)
-            .map_err(|e| LlmError::Routing(format!("{:?}", e)))?
-    };
-    route_result.device_contexts = device_contexts;
-    log::info!(
-        "--- ROUTER OUTPUT ---\n{:?}\n-------------------------",
-        route_result
-    );
-
-    if route_result.confidence < 0.5 {
-        let ask_msg = "ご質問の意図を確認させてください。\n\n```json\n{\n  \"tool_name\": \"ask_user_choice\",\n  \"params\": {\n    \"title\": \"ご質問の意図の確認\",\n    \"message\": \"ご質問の意図を確認させてください。以下のどれに該当しますか？\",\n    \"options\": [\n      \"1. ネットワーク機器の調査 (INVESTIGATE)\",\n      \"2. 技術知識の解説 (KNOWLEDGE)\",\n      \"3. Config作成 (BUILDER)\"\n    ]\n  }\n}\n```";
-        let _ = window.emit(
-            "chat-event",
-            crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI (アシスタント)".to_string()),
-        );
-        let _ = window.emit(
-            "chat-event",
-            crate::mcp::protocol::ChatEvent::LlmChunk(ask_msg.to_string()),
-        );
-        return Ok((ask_msg.to_string(), Route::None));
+    match decision.action {
+        crate::llm::router::RouteAction::StaticReply { message } => {
+            let _ = window.emit(
+                "chat-event",
+                crate::mcp::protocol::ChatEvent::LlmChunk(message.clone()),
+            );
+            Ok((message, Route::None))
+        }
+        crate::llm::router::RouteAction::DirectToolCall { tool_name, params, message } => {
+            let tool_call = serde_json::json!({
+                "tool_name": tool_name,
+                "params": params
+            });
+            let response_str = format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap());
+            let _ = window.emit(
+                "chat-event",
+                crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()),
+            );
+            Ok((response_str, Route::None))
+        }
+        crate::llm::router::RouteAction::AskClarification => {
+            let ask_msg = crate::llm::router::RoutingPipeline::build_clarification_message();
+            let _ = window.emit(
+                "chat-event",
+                crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI (アシスタント)".to_string()),
+            );
+            let _ = window.emit(
+                "chat-event",
+                crate::mcp::protocol::ChatEvent::LlmChunk(ask_msg.clone()),
+            );
+            Ok((ask_msg, Route::None))
+        }
+        crate::llm::router::RouteAction::WorkerRoute { route, subsequent_task, .. } => {
+            let active_route = route;
+            let final_prompt = if active_route == Route::Builder {
+                prepare_builder_prompt(&prompt)
+            } else {
+                prompt
+            };
+            let worker_res = if let Some(worker_mutex) = get_worker_for_route(shared_model, active_route) {
+                let mut worker = worker_mutex.lock().unwrap();
+                worker.set_device_contexts(decision.device_contexts);
+                let agent_name = worker.agent_name();
+                let _ = window.emit(
+                    "chat-event",
+                    crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()),
+                );
+                worker
+                    .ask(
+                        &model,
+                        &backend,
+                        Some(final_prompt),
+                        None,
+                        None,
+                        None,
+                        None,
+                        subsequent_task.as_deref(),
+                        Some(&window),
+                        settings.temperature,
+                        settings.repetition_penalty,
+                    )
+                    .map_err(LlmError::Worker)
+            } else {
+                Ok("実行が完了しました。".to_string())
+            };
+            worker_res.map(|s| (s, active_route))
+        }
     }
-
-    let active_route = route_result.routes[0];
-    let final_prompt = if active_route == Route::Builder {
-        prepare_builder_prompt(&prompt)
-    } else {
-        prompt
-    };
-    let worker_res = if let Some(worker_mutex) = get_worker_for_route(shared_model, active_route) {
-        let mut worker = worker_mutex.lock().unwrap();
-        worker.set_device_contexts(route_result.device_contexts.clone());
-        let agent_name = worker.agent_name();
-        let _ = window.emit(
-            "chat-event",
-            crate::mcp::protocol::ChatEvent::AgentSelected(agent_name.to_string()),
-        );
-        worker
-            .ask(
-                &model,
-                &backend,
-                Some(final_prompt),
-                None,
-                None,
-                None,
-                None,
-                route_result.subsequent_task.as_deref(),
-                Some(&window),
-                settings.temperature,
-                settings.repetition_penalty,
-            )
-            .map_err(LlmError::Worker)
-    } else {
-        Ok("実行が完了しました。".to_string())
-    };
-    worker_res.map(|s| (s, active_route))
 }
 
 fn handle_analyze(
@@ -311,52 +316,39 @@ fn handle_analyze(
         let (active_route, route_subsequent_task, matched_contexts) = if is_any_choice {
             (Route::Builder, None, Vec::new())
         } else {
-            let device_contexts = resolve_device_contexts(window.app_handle(), &user_message);
-            let enriched_query = if !device_contexts.is_empty() {
-                let enrichment = format_device_contexts(&device_contexts);
-                format!("{}{}", enrichment, user_message)
-            } else {
-                user_message.clone()
-            };
+            let decision = crate::llm::router::RoutingPipeline::route(
+                shared_model,
+                &user_message,
+                &settings,
+                window.app_handle(),
+            )?;
 
-            log::info!(
-                "--- ROUTER INPUT QUERY (Enriched) ---\n{}\n-------------------------",
-                enriched_query
-            );
-            let mut route_result = {
-                let mut router_lock = shared_model.router.lock().unwrap();
-                router_lock
-                    .route(&model, &enriched_query, settings.repetition_penalty)
-                    .map_err(|e| LlmError::Routing(format!("{:?}", e)))?
-            };
-            route_result.device_contexts = device_contexts;
-
-            log::info!(
-                "--- ROUTER OUTPUT ---\n{:?}\n-------------------------",
-                route_result
-            );
-
-            if route_result.confidence < 0.5 {
-                let ask_msg = "ご質問の意図を確認させてください。\n\n```json\n{\n  \"tool_name\": \"ask_user_choice\",\n  \"params\": {\n    \"title\": \"ご質問の意図の確認\",\n    \"message\": \"ご質問の意図を確認させてください。以下のどれに該当しますか？\",\n    \"options\": [\n      \"1. ネットワーク機器の調査 (INVESTIGATE)\",\n      \"2. 技術知識の解説 (KNOWLEDGE)\",\n      \"3. Config作成 (BUILDER)\"\n    ]\n  }\n}\n```";
-                let _ = window.emit(
-                    "chat-event",
-                    crate::mcp::protocol::ChatEvent::AgentSelected(
-                        "MIKOMAI (アシスタント)".to_string(),
-                    ),
-                );
-                let _ = window.emit(
-                    "chat-event",
-                    crate::mcp::protocol::ChatEvent::LlmChunk(ask_msg.to_string()),
-                );
-                return Ok(ask_msg.to_string());
+            match decision.action {
+                crate::llm::router::RouteAction::AskClarification => {
+                    let ask_msg = crate::llm::router::RoutingPipeline::build_clarification_message();
+                    let _ = window.emit(
+                        "chat-event",
+                        crate::mcp::protocol::ChatEvent::AgentSelected(
+                            "MIKOMAI (アシスタント)".to_string(),
+                        ),
+                    );
+                    let _ = window.emit(
+                        "chat-event",
+                        crate::mcp::protocol::ChatEvent::LlmChunk(ask_msg.clone()),
+                    );
+                    return Ok(ask_msg);
+                }
+                crate::llm::router::RouteAction::WorkerRoute { subsequent_route, subsequent_task, .. } => {
+                    if let Some(sub_route) = subsequent_route {
+                        (sub_route, subsequent_task, decision.device_contexts)
+                    } else {
+                        return Ok("実行が完了しました。".to_string());
+                    }
+                }
+                _ => {
+                    return Ok("実行が完了しました。".to_string());
+                }
             }
-
-            let route = if route_result.routes.len() > 1 {
-                route_result.routes[1]
-            } else {
-                return Ok("実行が完了しました。".to_string());
-            };
-            (route, route_result.subsequent_task, route_result.device_contexts)
         };
 
         let custom_subsequent_task = if is_ask_user_choice {

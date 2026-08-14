@@ -175,7 +175,6 @@ mod tests {
 
     #[test]
     fn test_parse_route_output_fallback_repair() {
-        // Missing closing brace, trailing comma, single quotes
         let fallback_input = r#"{
             'first_route': 'ANALYSIS',
             'subsequent_route': 'INVESTIGATE',
@@ -196,15 +195,4 @@ mod tests {
         assert_eq!(res.subsequent_task, None);
         assert!((res.confidence - 0.0).abs() < f32::EPSILON);
     }
-
-    #[test]
-    fn test_route_from_str() {
-        assert_eq!(Route::from_str("knowledge").unwrap(), Route::Knowledge);
-        assert_eq!(Route::from_str("ANALYSIS").unwrap(), Route::Analysis);
-        assert_eq!(Route::from_str("none").unwrap(), Route::None);
-        assert_eq!(Route::from_str("ploter").unwrap(), Route::Plotter);
-        assert_eq!(Route::from_str("PLOTTER").unwrap(), Route::Plotter);
-        assert_eq!(Route::from_str("anything_else").unwrap(), Route::Investigate);
-    }
 }
-

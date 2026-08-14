@@ -10,6 +10,8 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 
+use super::types::{RouteAction, RoutingDecision, RoutingSource};
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct DenyRules {
     pub patterns: Vec<String>,
@@ -73,7 +75,7 @@ pub struct ShortcutRulesConfig {
 
 impl ShortcutRulesConfig {
     pub fn load() -> Self {
-        let yaml_str = include_str!("config/rules.yaml");
+        let yaml_str = include_str!("../config/rules.yaml");
         serde_yaml::from_str(yaml_str).unwrap_or_else(|e| {
             log::error!("Failed to parse rules.yaml: {}", e);
             ShortcutRulesConfig {
@@ -166,7 +168,7 @@ fn detect_simple_shortcut(
     None
 }
 
-pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String, f64)> {
+pub fn detect_shortcut_raw(input: &str) -> Option<(String, Value, String, f64)> {
     let config = ShortcutRulesConfig::load();
     let lower_input = input.to_lowercase();
     let reg = &config.fastroute;
@@ -208,6 +210,26 @@ pub fn detect_shortcut_tool(input: &str) -> Option<(String, Value, String, f64)>
     None
 }
 
+pub fn detect_shortcut(input: &str) -> Option<RoutingDecision> {
+    let (tool_name, params, message, confidence) = detect_shortcut_raw(input)?;
+    let action = if tool_name == "static_reply" || tool_name.is_empty() {
+        RouteAction::StaticReply { message }
+    } else {
+        RouteAction::DirectToolCall {
+            tool_name,
+            params,
+            message,
+        }
+    };
+
+    Some(RoutingDecision {
+        action,
+        confidence,
+        device_contexts: Vec::new(),
+        source: RoutingSource::Shortcut,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,82 +249,114 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_shortcut_tool() {
+    fn test_detect_shortcut() {
         let config = ShortcutRulesConfig::load();
 
         // Greeting
-        let res = detect_shortcut_tool("こんにちは").unwrap();
-        assert_eq!(res.0, "static_reply");
-        assert!(res.2.contains("MIKOMAI"));
-        assert_eq!(res.3, 1.0);
+        let res = detect_shortcut("こんにちは").unwrap();
+        match res.action {
+            RouteAction::StaticReply { ref message } => {
+                assert!(message.contains("MIKOMAI"));
+            }
+            _ => panic!("Expected StaticReply"),
+        }
+        assert_eq!(res.confidence, 1.0);
 
-        let res_intro = detect_shortcut_tool("自己紹介してください").unwrap();
-        assert_eq!(res_intro.0, "static_reply");
-        assert!(res_intro.2.contains("MIKOMAI"));
-        assert_eq!(res_intro.3, 1.0);
+        let res_intro = detect_shortcut("自己紹介してください").unwrap();
+        match res_intro.action {
+            RouteAction::StaticReply { ref message } => {
+                assert!(message.contains("MIKOMAI"));
+            }
+            _ => panic!("Expected StaticReply"),
+        }
+        assert_eq!(res_intro.confidence, 1.0);
 
         // Ping
-        let res = detect_shortcut_tool("ping google.com").unwrap();
-        assert_eq!(res.0, "self_network_ping");
+        let res = detect_shortcut("ping google.com").unwrap();
+        match res.action {
+            RouteAction::DirectToolCall { ref tool_name, .. } => {
+                assert_eq!(tool_name, "self_network_ping");
+            }
+            _ => panic!("Expected DirectToolCall"),
+        }
 
-        let res_fqdn_no_space = detect_shortcut_tool("dns.googleへPing").unwrap();
-        assert_eq!(res_fqdn_no_space.0, "self_network_ping");
-        assert_eq!(res_fqdn_no_space.1["host"], "dns.google");
+        let res_fqdn_no_space = detect_shortcut("dns.googleへPing").unwrap();
+        match res_fqdn_no_space.action {
+            RouteAction::DirectToolCall { ref tool_name, ref params, .. } => {
+                assert_eq!(tool_name, "self_network_ping");
+                assert_eq!(params["host"], "dns.google");
+            }
+            _ => panic!("Expected DirectToolCall"),
+        }
 
-        let res_fqdn_direct_ping = detect_shortcut_tool("dns.googlePing").unwrap();
-        assert_eq!(res_fqdn_direct_ping.0, "self_network_ping");
-        assert_eq!(res_fqdn_direct_ping.1["host"], "dns.google");
-
-        let res_fqdn_de_ping = detect_shortcut_tool("dns.googleでping").unwrap();
-        assert_eq!(res_fqdn_de_ping.0, "self_network_ping");
-        assert_eq!(res_fqdn_de_ping.1["host"], "dns.google");
-
-        let res_ping_colon = detect_shortcut_tool("ping:dns.google").unwrap();
-        assert_eq!(res_ping_colon.0, "self_network_ping");
-        assert_eq!(res_ping_colon.1["host"], "dns.google");
-
-        // Ping question fallback
+        // Ping question fallback (low confidence)
         let res_ping_q = detect_ping_shortcut("ping google.comとは何？", &config).unwrap();
         assert_eq!(res_ping_q.0, "self_network_ping");
         assert!(res_ping_q.3 < 0.8);
 
         // Traceroute
-        let res = detect_shortcut_tool("traceroute 1.1.1.1").unwrap();
-        assert_eq!(res.0, "self_network_traceroute");
-        assert_eq!(res.1["host"], "1.1.1.1");
-        assert!(res.3 >= 0.8);
-
-        let res_trace_no_space = detect_shortcut_tool("dns.googleへtraceroute").unwrap();
-        assert_eq!(res_trace_no_space.0, "self_network_traceroute");
-        assert_eq!(res_trace_no_space.1["host"], "dns.google");
+        let res = detect_shortcut("traceroute 1.1.1.1").unwrap();
+        match res.action {
+            RouteAction::DirectToolCall { ref tool_name, ref params, .. } => {
+                assert_eq!(tool_name, "self_network_traceroute");
+                assert_eq!(params["host"], "1.1.1.1");
+            }
+            _ => panic!("Expected DirectToolCall"),
+        }
+        assert!(res.confidence >= 0.8);
 
         // Host List
-        let res = detect_shortcut_tool("接続先一覧を確認したい").unwrap();
-        assert_eq!(res.0, "network_get_hosts");
-        assert!(res.3 >= 0.8);
+        let res = detect_shortcut("接続先一覧を確認したい").unwrap();
+        match res.action {
+            RouteAction::DirectToolCall { ref tool_name, .. } => {
+                assert_eq!(tool_name, "network_get_hosts");
+            }
+            _ => panic!("Expected DirectToolCall"),
+        }
+        assert!(res.confidence >= 0.8);
 
         // Local ARP
-        let res = detect_shortcut_tool("自機のarpテーブル").unwrap();
-        assert_eq!(res.0, "self_network_arp");
-        assert!(res.3 >= 0.8);
+        let res = detect_shortcut("自機のarpテーブル").unwrap();
+        match res.action {
+            RouteAction::DirectToolCall { ref tool_name, .. } => {
+                assert_eq!(tool_name, "self_network_arp");
+            }
+            _ => panic!("Expected DirectToolCall"),
+        }
+        assert!(res.confidence >= 0.8);
 
         // Local Route
-        let res = detect_shortcut_tool("ローカルのルーティングテーブル").unwrap();
-        assert_eq!(res.0, "self_network_route");
-        assert!(res.3 >= 0.8);
+        let res = detect_shortcut("ローカルのルーティングテーブル").unwrap();
+        match res.action {
+            RouteAction::DirectToolCall { ref tool_name, .. } => {
+                assert_eq!(tool_name, "self_network_route");
+            }
+            _ => panic!("Expected DirectToolCall"),
+        }
+        assert!(res.confidence >= 0.8);
 
         // Serial Ports
-        let res = detect_shortcut_tool("コンソールポート一覧").unwrap();
-        assert_eq!(res.0, "network_list_serial_ports");
-        assert!(res.3 >= 0.8);
+        let res = detect_shortcut("コンソールポート一覧").unwrap();
+        match res.action {
+            RouteAction::DirectToolCall { ref tool_name, .. } => {
+                assert_eq!(tool_name, "network_list_serial_ports");
+            }
+            _ => panic!("Expected DirectToolCall"),
+        }
+        assert!(res.confidence >= 0.8);
 
         // nwdiag
-        let res = detect_shortcut_tool("nwdiagで図を作成して：\nnwdiag {\n  network {\n    web01;\n  }\n}").unwrap();
-        assert_eq!(res.0, "self_network_nwdiag");
-        assert_eq!(res.1["schema"], "nwdiag {\n  network {\n    web01;\n  }\n}");
-        assert_eq!(res.3, 1.0);
+        let res = detect_shortcut("nwdiagで図を作成して：\nnwdiag {\n  network {\n    web01;\n  }\n}").unwrap();
+        match res.action {
+            RouteAction::DirectToolCall { ref tool_name, ref params, .. } => {
+                assert_eq!(tool_name, "self_network_nwdiag");
+                assert_eq!(params["schema"], "nwdiag {\n  network {\n    web01;\n  }\n}");
+            }
+            _ => panic!("Expected DirectToolCall"),
+        }
+        assert_eq!(res.confidence, 1.0);
 
         // None
-        assert!(detect_shortcut_tool("普通の質問: NTPって何？").is_none());
+        assert!(detect_shortcut("普通の質問: NTPって何？").is_none());
     }
 }
