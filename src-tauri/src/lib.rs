@@ -96,7 +96,11 @@ pub fn run() {
             mcp::config_helper::submit_interface_choice,
             mcp::config_helper::ask_interface_choice,
             mcp::config_helper::submit_ipaddress_choice,
-            mcp::config_helper::ask_ipaddress_choice
+            mcp::config_helper::ask_ipaddress_choice,
+            mcp::ftp::network_ftp_download,
+            mcp::ftp::network_ftp_upload,
+            mcp::tftp::network_tftp_download,
+            mcp::tftp::network_tftp_upload
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

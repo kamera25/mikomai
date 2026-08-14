@@ -16,3 +16,6 @@ pub mod protocol;
 pub mod nwdiag;
 pub mod config_helper;
 pub mod test_connection;
+pub mod file_transfer;
+pub use file_transfer::ftp;
+pub use file_transfer::tftp;

@@ -60,6 +60,8 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "std", "fmt"] }
 tracing-log = "0.2.0"
 jsonrepair-rs = "0.2.1"
+suppaftp = { version = "10.0.1", features = ["tokio"] }
+async-tftp = "0.4.2"
 
 
 

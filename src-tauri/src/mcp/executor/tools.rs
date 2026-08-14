@@ -287,6 +287,130 @@ define_tool!(AskIpAddressChoiceTool, "ask_ipaddress_choice", |app, args| {
     }
 });
 
+define_tool!(FtpDownloadTool, "network_ftp_download", |app, args| {
+    let host = get_str_arg(&args, &["host"]);
+    let device = get_str_arg(&args, &["device"]);
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let ip = get_str_arg(&args, &["ip"]);
+    let port = get_u32_arg(&args, &["port"]).map(|p| p as u16);
+    let username = get_str_arg(&args, &["username", "user"]);
+    let password = get_str_arg(&args, &["password", "pass"]);
+    let remote_file = get_str_arg(&args, &["remote_file", "remoteFile"]);
+    let filename = get_str_arg(&args, &["filename", "file"]);
+    let local_path = get_str_arg(&args, &["local_path", "localPath"]);
+    let timeout_secs = get_u32_arg(&args, &["timeout_secs", "timeoutSecs", "timeout"]).map(|t| t as u64);
+
+    crate::mcp::ftp::network_ftp_download_with_params(
+        app,
+        crate::mcp::ftp::FtpDownloadParams {
+            host,
+            device,
+            device_name,
+            ip,
+            port,
+            username,
+            password,
+            remote_file,
+            filename,
+            local_path,
+            timeout_secs,
+        },
+    ).await.map(Into::into)
+});
+
+define_tool!(FtpUploadTool, "network_ftp_upload", |app, args| {
+    let host = get_str_arg(&args, &["host"]);
+    let device = get_str_arg(&args, &["device"]);
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let ip = get_str_arg(&args, &["ip"]);
+    let port = get_u32_arg(&args, &["port"]).map(|p| p as u16);
+    let username = get_str_arg(&args, &["username", "user"]);
+    let password = get_str_arg(&args, &["password", "pass"]);
+    let local_file = get_str_arg(&args, &["local_file", "localFile"]);
+    let remote_file = get_str_arg(&args, &["remote_file", "remoteFile"]);
+    let filename = get_str_arg(&args, &["filename", "file"]);
+    let content = get_str_arg(&args, &["content"]);
+    let timeout_secs = get_u32_arg(&args, &["timeout_secs", "timeoutSecs", "timeout"]).map(|t| t as u64);
+
+    crate::mcp::ftp::network_ftp_upload_with_params(
+        app,
+        crate::mcp::ftp::FtpUploadParams {
+            host,
+            device,
+            device_name,
+            ip,
+            port,
+            username,
+            password,
+            local_file,
+            remote_file,
+            filename,
+            content,
+            timeout_secs,
+        },
+    ).await.map(Into::into)
+});
+
+define_tool!(TftpDownloadTool, "network_tftp_download", |app, args| {
+    let host = get_str_arg(&args, &["host"]);
+    let device = get_str_arg(&args, &["device"]);
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let ip = get_str_arg(&args, &["ip"]);
+    let port = get_u32_arg(&args, &["port"]).map(|p| p as u16);
+    let remote_file = get_str_arg(&args, &["remote_file", "remoteFile"]);
+    let filename = get_str_arg(&args, &["filename", "file"]);
+    let local_path = get_str_arg(&args, &["local_path", "localPath"]);
+    let mode = get_str_arg(&args, &["mode"]);
+    let timeout_secs = get_u32_arg(&args, &["timeout_secs", "timeoutSecs", "timeout"]).map(|t| t as u64);
+
+    crate::mcp::tftp::network_tftp_download_with_params(
+        app,
+        crate::mcp::tftp::TftpDownloadParams {
+            host,
+            device,
+            device_name,
+            ip,
+            port,
+            remote_file,
+            filename,
+            local_path,
+            mode,
+            timeout_secs,
+        },
+    ).await.map(Into::into)
+});
+
+define_tool!(TftpUploadTool, "network_tftp_upload", |app, args| {
+    let host = get_str_arg(&args, &["host"]);
+    let device = get_str_arg(&args, &["device"]);
+    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let ip = get_str_arg(&args, &["ip"]);
+    let port = get_u32_arg(&args, &["port"]).map(|p| p as u16);
+    let local_file = get_str_arg(&args, &["local_file", "localFile"]);
+    let remote_file = get_str_arg(&args, &["remote_file", "remoteFile"]);
+    let filename = get_str_arg(&args, &["filename", "file"]);
+    let content = get_str_arg(&args, &["content"]);
+    let mode = get_str_arg(&args, &["mode"]);
+    let timeout_secs = get_u32_arg(&args, &["timeout_secs", "timeoutSecs", "timeout"]).map(|t| t as u64);
+
+    crate::mcp::tftp::network_tftp_upload_with_params(
+        app,
+        crate::mcp::tftp::TftpUploadParams {
+            host,
+            device,
+            device_name,
+            ip,
+            port,
+            local_file,
+            remote_file,
+            filename,
+            content,
+            mode,
+            timeout_secs,
+        },
+    ).await.map(Into::into)
+});
+
 // Delegate alias tool to avoid duplicate implementations
 struct DelegatingAliasTool {
     name: &'static str,
@@ -347,6 +471,10 @@ pub fn init_tool_registry() -> HashMap<String, Box<dyn McpTool>> {
     reg!(AskUserChoiceTool);
     reg!(AskInterfaceChoiceTool);
     reg!(AskIpAddressChoiceTool);
+    reg!(FtpDownloadTool);
+    reg!(FtpUploadTool);
+    reg!(TftpDownloadTool);
+    reg!(TftpUploadTool);
 
     // Aliases (Eliminates duplication)
     macro_rules! alias {

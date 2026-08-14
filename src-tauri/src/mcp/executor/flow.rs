@@ -69,7 +69,16 @@ pub async fn execute_mcp_tool_raw(
         } else {
             resolved
         }
-    } else if ["self_network_ping", "self_network_traceroute"].contains(&tool_id.as_str()) {
+    } else if [
+        "self_network_ping",
+        "self_network_traceroute",
+        "self_network_test_connection",
+        "self_network_test_net_connection",
+        "network_ftp_download",
+        "network_ftp_upload",
+        "network_tftp_download",
+        "network_tftp_upload",
+    ].contains(&tool_id.as_str()) {
         let host = get_str_arg(&processed_args, &["host"]);
         let device = get_str_arg(&processed_args, &["device"]);
         let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
