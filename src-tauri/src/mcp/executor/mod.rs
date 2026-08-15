@@ -72,7 +72,7 @@ pub async fn handle_mcp_message(
     let thinking_task_id = format!("task_think_{}", chrono::Utc::now().timestamp_millis());
 
     let has_image = attachments.as_ref().map_or(false, |atts| {
-        atts.iter().any(|att| att.mime_type == "image" || att.mime_type.starts_with("image/"))
+        atts.iter().any(|att| att.mime_type == crate::history::AttachmentType::Image)
     });
 
     let _ = window.emit("chat-event", ChatEvent::McpInitialStarted(InitialStartedPayload {
@@ -86,35 +86,39 @@ pub async fn handle_mcp_message(
     let mut final_user_message = user_message.clone();
     if let Some(att_list) = &attachments {
         for att in att_list {
-            if att.mime_type == "text" {
-                if let Some(path) = &att.path {
-                    final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n{}", att.name, path, att.content));
-                } else {
-                    final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
+            match att.mime_type {
+                crate::history::AttachmentType::Text => {
+                    if let Some(path) = &att.path {
+                        final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n{}", att.name, path, att.content));
+                    } else {
+                        final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
+                    }
                 }
-            } else if att.mime_type == "image" || att.mime_type.starts_with("image/") {
-                let analysis = crate::llm::vision::analyze_image_attachment(
-                    &att.name,
-                    &att.mime_type,
-                    &att.content,
-                    settings.vision_enabled,
-                    settings.mmproj_path.as_deref(),
-                    &*llama_state,
-                ).await;
-                if let Some(path) = &att.path {
-                    final_user_message.push_str(&format!("\n\n[添付画像: {} (ローカルパス: {})]\n{}", att.name, path, analysis.extracted_context));
-                } else {
-                    final_user_message.push_str(&format!("\n\n{}", analysis.extracted_context));
+                crate::history::AttachmentType::Image => {
+                    let analysis = crate::llm::vision::analyze_image_attachment(
+                        &att.name,
+                        att.mime_type.as_str(),
+                        &att.content,
+                        settings.vision_enabled,
+                        settings.mmproj_path.as_deref(),
+                        &*llama_state,
+                    ).await;
+                    if let Some(path) = &att.path {
+                        final_user_message.push_str(&format!("\n\n[添付画像: {} (ローカルパス: {})]\n{}", att.name, path, analysis.extracted_context));
+                    } else {
+                        final_user_message.push_str(&format!("\n\n{}", analysis.extracted_context));
+                    }
                 }
-            } else {
-                // Binary or large file
-                if let Some(path) = &att.path {
-                    final_user_message.push_str(&format!(
-                        "\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n※バイナリまたは大容量ファイルのため内容は省略されています。機器へのアップロード等のツール実行時は local_file 引数に '{}' を指定してください。",
-                        att.name, path, path
-                    ));
-                } else {
-                    final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
+                crate::history::AttachmentType::File => {
+                    // Binary or large file
+                    if let Some(path) = &att.path {
+                        final_user_message.push_str(&format!(
+                            "\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n※バイナリまたは大容量ファイルのため内容は省略されています。機器へのアップロード等のツール実行時は local_file 引数に '{}' を指定してください。",
+                            att.name, path, path
+                        ));
+                    } else {
+                        final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
+                    }
                 }
             }
         }

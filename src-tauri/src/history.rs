@@ -3,11 +3,35 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AttachmentType {
+    Text,
+    Image,
+    File,
+}
+
+impl AttachmentType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Image => "image",
+            Self::File => "file",
+        }
+    }
+}
+
+impl std::fmt::Display for AttachmentType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Attachment {
     pub name: String,
     #[serde(rename = "type")]
-    pub mime_type: String, // "text" | "image" | "file"
+    pub mime_type: AttachmentType,
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -350,7 +374,7 @@ mod tests {
     fn test_attachment_serialization_with_path() {
         let att = Attachment {
             name: "firmware.bin".to_string(),
-            mime_type: "file".to_string(),
+            mime_type: AttachmentType::File,
             content: "[ファイル: firmware.bin (サイズ: 1.2 MB)]".to_string(),
             path: Some("/tmp/firmware.bin".to_string()),
         };
@@ -361,7 +385,7 @@ mod tests {
 
         let deserialized: Attachment = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.name, "firmware.bin");
-        assert_eq!(deserialized.mime_type, "file");
+        assert_eq!(deserialized.mime_type, AttachmentType::File);
         assert_eq!(deserialized.path, Some("/tmp/firmware.bin".to_string()));
     }
 
@@ -389,13 +413,13 @@ mod tests {
 
         let text_att = &atts[0];
         assert_eq!(text_att.name, "test_text_file.txt");
-        assert_eq!(text_att.mime_type, "text");
+        assert_eq!(text_att.mime_type, AttachmentType::Text);
         assert!(text_att.content.contains("hostname Switch1"));
         assert_eq!(text_att.path, Some(text_path.to_string_lossy().to_string()));
 
         let bin_att = &atts[1];
         assert_eq!(bin_att.name, "test_bin_file.bin");
-        assert_eq!(bin_att.mime_type, "file");
+        assert_eq!(bin_att.mime_type, AttachmentType::File);
         assert!(bin_att.content.contains("test_bin_file.bin"));
         assert_eq!(bin_att.path, Some(bin_path.to_string_lossy().to_string()));
 
@@ -483,7 +507,7 @@ pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, 
                 let data_url = format!("data:{};base64,{}", mime, b64);
                 result.push(Attachment {
                     name: file_name,
-                    mime_type: "image".to_string(),
+                    mime_type: AttachmentType::Image,
                     content: data_url,
                     path: Some(path_str),
                 });
@@ -496,7 +520,7 @@ pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, 
                 if let Ok(text) = fs::read_to_string(&path) {
                     result.push(Attachment {
                         name: file_name,
-                        mime_type: "text".to_string(),
+                        mime_type: AttachmentType::Text,
                         content: text,
                         path: Some(path_str),
                     });
@@ -514,7 +538,7 @@ pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, 
 
             result.push(Attachment {
                 name: file_name.clone(),
-                mime_type: "file".to_string(),
+                mime_type: AttachmentType::File,
                 content: format!("[ファイル: {} (サイズ: {})]", file_name, size_desc),
                 path: Some(path_str),
             });
