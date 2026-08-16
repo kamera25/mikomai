@@ -62,7 +62,7 @@ export function useHistory() {
           }
         } else {
           // Initialize with default session if empty
-          const defaultId = "session-1";
+          const defaultId = crypto.randomUUID();
           const defaultHistory: HistoryItem[] = [
             {
               id: defaultId,
@@ -153,7 +153,7 @@ export function useHistory() {
         if (folderName && folderName.trim()) {
           setHistory((prev) => [
             {
-              id: `folder-${Date.now()}`,
+              id: crypto.randomUUID(),
               type: "folder",
               name: folderName.trim(),
               isOpen: true,
@@ -169,7 +169,7 @@ export function useHistory() {
   };
 
   const createNewSession = () => {
-    const id = `session-${Date.now()}`;
+    const id = crypto.randomUUID();
     setHistory((prev) => [
       {
         id,
@@ -249,7 +249,7 @@ export function useHistory() {
         let updated = removeSession(history);
 
         if (updated.length === 0) {
-          const defaultId = `session-${Date.now()}`;
+          const defaultId = crypto.randomUUID();
           updated = [
             {
               id: defaultId,
@@ -272,7 +272,7 @@ export function useHistory() {
           if (firstSession) {
             setActiveSessionId(firstSession.id);
           } else {
-            const defaultId = `session-${Date.now()}`;
+            const defaultId = crypto.randomUUID();
             setHistory((prev) => [
               {
                 id: defaultId,

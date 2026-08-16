@@ -19,7 +19,7 @@ pub struct ToolCall
 #[serde(rename_all = "camelCase")]
 pub struct ExecuteMcpToolPayload
 {
-    pub task_id: String,
+    pub task_id: uuid::Uuid,
     pub tool_id: String,
     pub tool_label: String,
     pub user_message: String,
@@ -33,7 +33,7 @@ pub struct ExecuteMcpToolPayload
 pub async fn execute_mcp_tool_raw(
     app: AppHandle,
     window: Window,
-    task_id: String,
+    task_id: uuid::Uuid,
     tool_id: String,
     tool_label: String,
     user_message: String,
@@ -56,7 +56,7 @@ pub async fn execute_mcp_tool_raw(
         );
         map.insert(
             "task_id".to_string(),
-            serde_json::Value::String(task_id.clone()),
+            serde_json::Value::String(task_id.to_string()),
         );
     }
 
@@ -255,7 +255,7 @@ pub fn execute_mcp_tools_flow(
             let tc_args = tc.args.clone();
             let recent_ips_c = recent_ips.clone();
 
-            let task_id = uuid::Uuid::new_v4().to_string();
+            let task_id = uuid::Uuid::new_v4();
 
             execution_futures.push(async move {
                 let res = execute_mcp_tool_raw(
@@ -468,12 +468,12 @@ pub fn execute_mcp_tools_flow(
         let history_block = get_history_block_rust(&summaries, history_limit);
 
         // 4. Analysis phase (comprehensive LLM request)
-        let analysis_task_id = uuid::Uuid::new_v4().to_string();
-        let first_task_id = uuid::Uuid::new_v4().to_string();
+        let analysis_task_id = uuid::Uuid::new_v4();
+        let first_task_id = uuid::Uuid::new_v4();
 
         let analysis_started_payload = AnalysisStartedPayload {
             task_id: first_task_id,
-            analysis_task_id: analysis_task_id.clone(),
+            analysis_task_id,
         };
         let _ = window.emit(
             "chat-event",

@@ -184,7 +184,7 @@ define_tool!(NetworkGetHostsTool, "network_get_hosts", |app, _args| {
 define_tool!(
     RequireHostRegisteredTool,
     "require_host_registered",
-    |_app, _args| { crate::mcp::hosts::require_host_registered().map(Into::into) }
+    |_app, _args| crate::mcp::hosts::require_host_registered().map(Into::into)
 );
 
 define_tool!(NetworkGetIpInfoTool, "network_get_ip_info", |_app, args| {
@@ -197,7 +197,7 @@ define_tool!(NetworkGetIpInfoTool, "network_get_ip_info", |_app, args| {
 define_tool!(
     NetworkListSerialPortsTool,
     "network_list_serial_ports",
-    |_app, _args| { crate::mcp::console::network_list_serial_ports().map(Into::into) }
+    |_app, _args| crate::mcp::console::network_list_serial_ports().map(Into::into)
 );
 
 define_tool!(

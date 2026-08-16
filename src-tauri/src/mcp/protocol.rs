@@ -17,7 +17,7 @@ pub struct ChatRequest
 #[serde(rename_all = "camelCase")]
 pub struct ToolStartedPayload
 {
-    pub task_id: String,
+    pub task_id: uuid::Uuid,
     pub tool_id: String,
     pub tool_label: String,
     pub args: serde_json::Value,
@@ -28,7 +28,7 @@ pub struct ToolStartedPayload
 #[serde(rename_all = "camelCase")]
 pub struct ToolFinishedPayload
 {
-    pub task_id: String,
+    pub task_id: uuid::Uuid,
     pub success: bool,
     pub output: String,
     pub saved_path: Option<String>,
@@ -40,15 +40,15 @@ pub struct ToolFinishedPayload
 #[serde(rename_all = "camelCase")]
 pub struct AnalysisStartedPayload
 {
-    pub task_id: String,
-    pub analysis_task_id: String,
+    pub task_id: uuid::Uuid,
+    pub analysis_task_id: uuid::Uuid,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct InitialStartedPayload
 {
-    pub task_id: String,
+    pub task_id: uuid::Uuid,
     #[serde(default)]
     pub has_image: bool,
 }
@@ -57,7 +57,7 @@ pub struct InitialStartedPayload
 #[serde(rename_all = "camelCase")]
 pub struct InitialFinishedPayload
 {
-    pub task_id: String,
+    pub task_id: uuid::Uuid,
     pub content: String,
 }
 
@@ -65,7 +65,7 @@ pub struct InitialFinishedPayload
 #[serde(rename_all = "camelCase")]
 pub struct SummarySavedPayload
 {
-    pub task_id: String,
+    pub task_id: uuid::Uuid,
     pub summary_text: String,
     pub summary: SummaryItem,
     pub content: String,

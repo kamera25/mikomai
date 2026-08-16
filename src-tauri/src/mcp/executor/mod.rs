@@ -71,7 +71,7 @@ pub async fn handle_mcp_message(
     }
 
     // 1. Generate thinkingTaskId and emit mcp-initial-started
-    let thinking_task_id = uuid::Uuid::new_v4().to_string();
+    let thinking_task_id = uuid::Uuid::new_v4();
 
     let has_image = attachments.as_ref().map_or(false, |atts| {
         atts.iter()
@@ -81,7 +81,7 @@ pub async fn handle_mcp_message(
     let _ = window.emit(
         "chat-event",
         ChatEvent::McpInitialStarted(InitialStartedPayload {
-            task_id: thinking_task_id.clone(),
+            task_id: thinking_task_id,
             has_image,
         }),
     );

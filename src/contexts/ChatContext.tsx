@@ -208,7 +208,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             payload: { history: savedHistory, sessionId: firstSessionId, messages: firstSessionMessages },
           });
         } else {
-          const defaultId = "session-1";
+          const defaultId = crypto.randomUUID();
           const defaultHistory: HistoryItem[] = [
             {
               id: defaultId,
@@ -298,7 +298,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
               type: "SET_HISTORY",
               payload: [
                 {
-                  id: `folder-${Date.now()}`,
+                  id: crypto.randomUUID(),
                   type: "folder",
                   name: folderName.trim(),
                   isOpen: true,
@@ -316,7 +316,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const createNewSession = () => {
-    const id = `session-${Date.now()}`;
+    const id = crypto.randomUUID();
     const newSession: ChatSession = {
       id,
       type: "session",
@@ -392,7 +392,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           let updated = removeSession(state.history);
 
           if (updated.length === 0) {
-            const defaultId = `session-${Date.now()}`;
+            const defaultId = crypto.randomUUID();
             updated = [
               {
                 id: defaultId,
@@ -415,7 +415,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (firstSession) {
               dispatch({ type: "SET_ACTIVE_SESSION_ID", payload: firstSession.id });
             } else {
-              const defaultId = `session-${Date.now()}`;
+              const defaultId = crypto.randomUUID();
               dispatch({
                 type: "SET_HISTORY",
                 payload: [

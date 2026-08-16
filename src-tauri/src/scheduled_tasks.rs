@@ -36,7 +36,7 @@ pub enum ScheduledTaskError
 #[serde(rename_all = "camelCase")]
 pub struct ScheduledTask
 {
-    pub id: String,
+    pub id: Uuid,
     #[validate(length(min = 1))]
     pub name: String,
     pub status: String,
@@ -252,7 +252,7 @@ pub async fn add_scheduled_task(
 ) -> Result<ScheduledTask, TauriError>
 {
     let task = ScheduledTask {
-        id: Uuid::new_v4().to_string(),
+        id: Uuid::new_v4(),
         name,
         status: "running".to_string(),
         schedule,
@@ -305,7 +305,7 @@ pub async fn update_scheduled_task(
 #[tauri::command]
 pub async fn delete_scheduled_task(
     app: tauri::AppHandle,
-    id: String,
+    id: Uuid,
     state: tauri::State<'_, SchedulerState>,
 ) -> Result<(), TauriError>
 {
@@ -325,7 +325,7 @@ pub async fn delete_scheduled_task(
 #[tauri::command]
 pub async fn execute_task(
     app: tauri::AppHandle,
-    id: String,
+    id: Uuid,
     state: tauri::State<'_, SchedulerState>,
 ) -> Result<(), TauriError>
 {
@@ -356,8 +356,9 @@ mod tests
     #[test]
     fn test_scheduled_task_serialization()
     {
+        let task_id = Uuid::new_v4();
         let task = ScheduledTask {
-            id: "task-1".to_string(),
+            id: task_id,
             name: "Test Task".to_string(),
             status: "running".to_string(),
             schedule: "0 0 * * * *".to_string(),
@@ -366,7 +367,7 @@ mod tests
         };
 
         let serialized = serde_json::to_string(&task).unwrap();
-        assert!(serialized.contains(r#""id":"task-1""#));
+        assert!(serialized.contains(&format!(r#""id":"{}""#, task_id)));
         assert!(serialized.contains(r#""name":"Test Task""#));
         assert!(serialized.contains(r#""schedule":"0 0 * * * *""#));
     }

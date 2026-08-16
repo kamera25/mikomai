@@ -388,10 +388,10 @@ impl LlmWorker for BuilderWorker
                 let rt = tauri::async_runtime::handle();
 
                 // Step A: Validate Cisco Config
-                let val_task_id = uuid::Uuid::new_v4().to_string();
+                let val_task_id = uuid::Uuid::new_v4();
                 let start_payload_val = crate::mcp::protocol::ChatEvent::McpToolStarted(
                     crate::mcp::protocol::ToolStartedPayload {
-                        task_id: val_task_id.clone(),
+                        task_id: val_task_id,
                         tool_id: "validate_cisco_config".to_string(),
                         tool_label: "validate_cisco_config".to_string(),
                         args: serde_json::json!({ "config": config }),
@@ -405,7 +405,7 @@ impl LlmWorker for BuilderWorker
                     use tauri::Manager;
                     crate::mcp::config_helper::validate_cisco_config_impl(
                         Some(w.app_handle().clone()),
-                        Some(val_task_id.clone()),
+                        Some(val_task_id.to_string()),
                         config.clone(),
                         matched_device.clone(),
                     )
@@ -489,10 +489,10 @@ impl LlmWorker for BuilderWorker
 
                     for vendor in target_vendors
                     {
-                        let conv_task_id = uuid::Uuid::new_v4().to_string();
+                        let conv_task_id = uuid::Uuid::new_v4();
                         let start_payload_conv = crate::mcp::protocol::ChatEvent::McpToolStarted(
                             crate::mcp::protocol::ToolStartedPayload {
-                                task_id: conv_task_id.clone(),
+                                task_id: conv_task_id,
                                 tool_id: "convert_cisco_config".to_string(),
                                 tool_label: format!("convert_cisco_config ({})", vendor),
                                 args: serde_json::json!({ "config": config.clone(), "target_vendor": vendor.clone() }),

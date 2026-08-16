@@ -149,7 +149,7 @@ pub enum Message
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ChatSession
 {
-    pub id: String,
+    pub id: uuid::Uuid,
     pub title: String,
     pub messages: Vec<Message>,
     #[serde(rename = "recentIps", skip_serializing_if = "Option::is_none")]
@@ -167,7 +167,7 @@ pub struct SummaryItem
 #[serde(rename_all = "camelCase")]
 pub struct Folder
 {
-    pub id: String,
+    pub id: uuid::Uuid,
     pub name: String,
     pub items: Vec<HistoryItem>,
     pub is_open: bool,
@@ -340,8 +340,9 @@ mod tests
     #[test]
     fn test_history_item_session_serialization()
     {
+        let session_id = uuid::Uuid::new_v4();
         let session = ChatSession {
-            id: "session-1".to_string(),
+            id: session_id,
             title: "Test Session".to_string(),
             messages: vec![Message::UserInput {
                 base: BaseMessage {
@@ -360,14 +361,15 @@ mod tests
         let item = HistoryItem::Session(session);
         let serialized = serde_json::to_string(&item).unwrap();
         assert!(serialized.contains(r#""type":"session""#));
-        assert!(serialized.contains(r#""id":"session-1""#));
+        assert!(serialized.contains(&format!(r#""id":"{}""#, session_id)));
     }
 
     #[test]
     fn test_history_item_folder_serialization()
     {
+        let folder_id = uuid::Uuid::new_v4();
         let folder = Folder {
-            id: "folder-1".to_string(),
+            id: folder_id,
             name: "Test Folder".to_string(),
             items: vec![],
             is_open: true,
@@ -377,6 +379,7 @@ mod tests
         assert!(serialized.contains(r#""type":"folder""#));
         assert!(serialized.contains(r#""name":"Test Folder""#));
         assert!(serialized.contains(r#""isOpen":true"#));
+        assert!(serialized.contains(&format!(r#""id":"{}""#, folder_id)));
     }
 
     #[test]
@@ -396,8 +399,9 @@ mod tests
     #[test]
     fn test_sanitize_history_items_running_mcp()
     {
+        let session_id = uuid::Uuid::new_v4();
         let mut history = vec![HistoryItem::Session(ChatSession {
-            id: "session-1".to_string(),
+            id: session_id,
             title: "Test Session".to_string(),
             messages: vec![Message::ToolExecution {
                 base: BaseMessage {
