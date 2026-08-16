@@ -126,7 +126,8 @@ export function useMcpListeners({
             }
 
             case "mcpToolStarted": {
-              const { taskId, toolId, toolLabel, args, resolvedHost } = chatEvent.payload;
+              const { taskId, toolId, args, resolvedHost } = chatEvent.payload;
+              const toolLabel = i18n.t(`tools.${toolId}`, { defaultValue: toolId });
               const isRag = toolId === "query_nw_db" || toolId === "network_query_nw_db";
               const statusMsg = toolId === "validate_cisco_config"
                 ? "Configのチェック中"

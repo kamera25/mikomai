@@ -40,8 +40,6 @@ pub struct ToolStartedPayload
 {
     pub task_id: uuid::Uuid,
     pub tool_id: crate::mcp::ToolKind,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_label: Option<String>,
     pub args: serde_json::Value,
     pub resolved_host: Option<String>,
 }

@@ -393,7 +393,6 @@ impl LlmWorker for BuilderWorker
                     crate::mcp::protocol::ToolStartedPayload {
                         task_id: val_task_id,
                         tool_id: crate::mcp::ToolKind::ValidateCiscoConfig,
-                        tool_label: Some("validate_cisco_config".to_string()),
                         args: serde_json::json!({ "config": config }),
                         resolved_host: None,
                     },
@@ -494,7 +493,6 @@ impl LlmWorker for BuilderWorker
                             crate::mcp::protocol::ToolStartedPayload {
                                 task_id: conv_task_id,
                                 tool_id: crate::mcp::ToolKind::ConvertCiscoConfig,
-                                tool_label: Some(format!("convert_cisco_config ({})", vendor)),
                                 args: serde_json::json!({ "config": config.clone(), "target_vendor": vendor.clone() }),
                                 resolved_host: None,
                             },

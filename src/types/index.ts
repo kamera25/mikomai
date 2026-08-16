@@ -143,7 +143,6 @@ export interface AnalyzePayload {
 export interface ToolStartedPayload {
   taskId: string;
   toolId: string;
-  toolLabel: string;
   args: any;
   resolvedHost?: string;
 }
