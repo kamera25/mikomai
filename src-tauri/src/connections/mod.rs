@@ -375,7 +375,7 @@ pub fn save_connections(
     Ok(())
 }
 
-pub fn resolve_host_with_mcp(app: &tauri::AppHandle, host: &str) -> String
+pub fn resolve_host_with_mcp<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &str) -> String
 {
     // 1. Check local connections first
     if let Ok(connections) = load_connections_raw(app)
@@ -514,8 +514,8 @@ pub fn get_device_config(
     None
 }
 
-pub fn resolve_host_with_preference(
-    app: &tauri::AppHandle,
+pub fn resolve_host_with_preference<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     host: &str,
 ) -> Result<std::net::IpAddr, ConnectionError>
 {

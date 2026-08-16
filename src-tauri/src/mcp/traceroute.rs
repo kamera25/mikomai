@@ -1,4 +1,4 @@
-use crate::connections::{resolve_host_with_mcp, IpAddress};
+use crate::connections::IpAddress;
 use crate::mcp::protocol::McpToolResult;
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
@@ -42,15 +42,7 @@ pub async fn self_network_traceroute_with_params(
         None,
         params.ip,
     )?;
-    let resolved_host = resolve_host_with_mcp(&app, &target_host);
-    let app_clone = app.clone();
-    let resolved_host_clone = resolved_host.clone();
-    let ip_addr = tokio::task::spawn_blocking(move || {
-        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
 
     let mut output = format!(
         "Tracing route to {} over a maximum of 30 hops:\n\n",

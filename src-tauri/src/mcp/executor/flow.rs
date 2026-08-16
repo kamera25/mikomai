@@ -63,7 +63,7 @@ pub async fn execute_mcp_tool_raw(
     let kind_opt = std::str::FromStr::from_str(&tool_id).ok();
 
     // 2. Extract resolved host for recentIPs updates in the frontend
-    let resolved_host = if kind_opt
+    let raw_target_host = if kind_opt
         .map_or(false, |k: crate::mcp::ToolKind| k.is_device_target_tool())
     {
         let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
@@ -119,6 +119,15 @@ pub async fn execute_mcp_tool_raw(
     else
     {
         None
+    };
+
+    let resolved_host = match raw_target_host
+    {
+        Some(ref target) => crate::mcp::args::resolve_target_host_string(&app, target)
+            .await
+            .ok()
+            .or_else(|| Some(target.clone())),
+        None => None,
     };
 
     // Emit started event

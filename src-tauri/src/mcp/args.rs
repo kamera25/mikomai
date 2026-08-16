@@ -78,6 +78,31 @@ pub fn normalize_host_args<R: Runtime>(
         .ok_or_else(|| "Error: host is required but was not provided or is empty.".to_string())
 }
 
+pub async fn resolve_target_ip<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    target_host: &str,
+) -> Result<std::net::IpAddr, String>
+{
+    let resolved_host = crate::connections::resolve_host_with_mcp(app, target_host);
+    let app_clone = app.clone();
+    tokio::task::spawn_blocking(move || {
+        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+pub async fn resolve_target_host_string<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    target_host: &str,
+) -> Result<String, String>
+{
+    resolve_target_ip(app, target_host)
+        .await
+        .map(|ip| ip.to_string())
+}
+
 fn resolve_device_from_connections<R: Runtime>(
     app: &AppHandle<R>,
     user_message: &str,
@@ -158,5 +183,20 @@ mod tests
 
         let res = normalize_host_args(handle, None, None, None, None, None);
         assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_target_ip_loopback()
+    {
+        let app = mock_app();
+        let handle = app.handle();
+
+        let res = resolve_target_ip(handle, "127.0.0.1").await;
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap().to_string(), "127.0.0.1");
+
+        let str_res = resolve_target_host_string(handle, "127.0.0.1").await;
+        assert!(str_res.is_ok());
+        assert_eq!(str_res.unwrap(), "127.0.0.1");
     }
 }

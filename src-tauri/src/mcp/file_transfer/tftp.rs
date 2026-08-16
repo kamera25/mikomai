@@ -7,7 +7,7 @@ use tokio::net::UdpSocket;
 use tokio::time::Instant;
 
 use super::FileTransferResult;
-use crate::connections::{resolve_host_with_mcp, IpAddress, Port};
+use crate::connections::{IpAddress, Port};
 use crate::snapshot::SnapshotManager;
 
 const TFTP_DEFAULT_PORT: u16 = 69;
@@ -405,16 +405,7 @@ pub async fn network_tftp_download_with_params(
         params.ip,
     )?;
 
-    let resolved_host = resolve_host_with_mcp(&app, &target_host);
-    let app_clone = app.clone();
-    let resolved_host_clone = resolved_host.clone();
-
-    let ip_addr = tokio::task::spawn_blocking(move || {
-        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
 
     let port = params.port.map(|p| *p).unwrap_or(TFTP_DEFAULT_PORT);
     let server_addr = SocketAddr::new(ip_addr, port);
@@ -468,10 +459,11 @@ pub async fn network_tftp_download_with_params(
 
     let bytes_len = file_data.len();
     let output = format!(
-        "TFTP download successful:\n- Host: {}\n- Port: {}\n- Remote file: {}\n- Saved to: {}\n- Size: {} bytes\n- Time: {} ms",
-        server_addr.ip(),
-        server_addr.port(),
+        "TFTP download successful:\n- Host: {}\n- Port: {}\n- Remote file: {}\n- Mode: {}\n- Saved to: {}\n- Size: {} bytes\n- Time: {} ms",
+        ip_addr,
+        port,
         remote_file,
+        mode,
         saved_path.display(),
         bytes_len,
         duration_ms
@@ -486,7 +478,8 @@ pub async fn network_tftp_download_with_params(
     })
 }
 
-/// Upload a file via TFTP with parameter resolution.
+
+/// Upload a file via TFTP.
 pub async fn network_tftp_upload_with_params(
     app: tauri::AppHandle,
     params: TftpUploadParams,
@@ -501,16 +494,7 @@ pub async fn network_tftp_upload_with_params(
         params.ip,
     )?;
 
-    let resolved_host = resolve_host_with_mcp(&app, &target_host);
-    let app_clone = app.clone();
-    let resolved_host_clone = resolved_host.clone();
-
-    let ip_addr = tokio::task::spawn_blocking(move || {
-        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
 
     let port = params.port.map(|p| *p).unwrap_or(TFTP_DEFAULT_PORT);
     let server_addr = SocketAddr::new(ip_addr, port);

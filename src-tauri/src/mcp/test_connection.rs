@@ -1,4 +1,4 @@
-use crate::connections::{resolve_host_with_mcp, IpAddress, Port};
+use crate::connections::{IpAddress, Port};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
@@ -270,15 +270,7 @@ pub async fn self_network_test_connection_with_params(
         })
         .ok_or_else(|| "Target host or computer_name is required".to_string())?;
 
-    let resolved_host = resolve_host_with_mcp(&app, &target_host);
-    let app_clone = app.clone();
-    let resolved_host_clone = resolved_host.clone();
-    let ip_addr = tokio::task::spawn_blocking(move || {
-        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
 
     network_test_connection_core(
         target_host,

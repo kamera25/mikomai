@@ -190,7 +190,7 @@
     "opt_auto": "自動",
     "opt_ipv4": "IPv4のみ",
     "opt_ipv6": "IPv6のみ",
-    "desc_ip_version": "ホスト名解決および接続時に使用するIPプロトコルの優先設定です。",
+    "desc_ip_version": "ホスト名解決および接続時に使用するIPプロトコルの優先設定です。「自動」の場合 Happy Eyeballs(RFC6555) に従い、両方解決できる場合はIPv6を優先します。 ",
     "label_console_port": "コンソールポート (MCP用)",
     "opt_none": "None (使用しない)",
     "opt_custom": "手動入力...",

@@ -7,7 +7,7 @@ use suppaftp::tokio::AsyncFtpStream;
 use tokio::time::Instant;
 
 use super::FileTransferResult;
-use crate::connections::{resolve_host_with_mcp, IpAddress, Port};
+use crate::connections::{IpAddress, Port};
 use crate::crypto::decrypt;
 use crate::snapshot::SnapshotManager;
 
@@ -108,16 +108,7 @@ pub async fn network_ftp_download_with_params(
         params.ip,
     )?;
 
-    let resolved_host = resolve_host_with_mcp(&app, &target_host);
-    let app_clone = app.clone();
-    let resolved_host_clone = resolved_host.clone();
-
-    let ip_addr = tokio::task::spawn_blocking(move || {
-        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
 
     let port = params.port.map(|p| *p).unwrap_or(FTP_DEFAULT_PORT);
     let (username, password) =
@@ -242,16 +233,7 @@ pub async fn network_ftp_upload_with_params(
         params.ip,
     )?;
 
-    let resolved_host = resolve_host_with_mcp(&app, &target_host);
-    let app_clone = app.clone();
-    let resolved_host_clone = resolved_host.clone();
-
-    let ip_addr = tokio::task::spawn_blocking(move || {
-        crate::connections::resolve_host_with_preference(&app_clone, &resolved_host_clone)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
 
     let port = params.port.map(|p| *p).unwrap_or(FTP_DEFAULT_PORT);
     let (username, password) =
