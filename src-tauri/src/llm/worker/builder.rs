@@ -388,7 +388,7 @@ impl LlmWorker for BuilderWorker
                 let rt = tauri::async_runtime::handle();
 
                 // Step A: Validate Cisco Config
-                let val_task_id = format!("task_val_{}", uuid::Uuid::new_v4());
+                let val_task_id = uuid::Uuid::new_v4().to_string();
                 let start_payload_val = crate::mcp::protocol::ChatEvent::McpToolStarted(
                     crate::mcp::protocol::ToolStartedPayload {
                         task_id: val_task_id.clone(),
@@ -489,7 +489,7 @@ impl LlmWorker for BuilderWorker
 
                     for vendor in target_vendors
                     {
-                        let conv_task_id = format!("task_conv_{}", uuid::Uuid::new_v4());
+                        let conv_task_id = uuid::Uuid::new_v4().to_string();
                         let start_payload_conv = crate::mcp::protocol::ChatEvent::McpToolStarted(
                             crate::mcp::protocol::ToolStartedPayload {
                                 task_id: conv_task_id.clone(),

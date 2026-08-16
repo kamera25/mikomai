@@ -255,15 +255,7 @@ pub fn execute_mcp_tools_flow(
             let tc_args = tc.args.clone();
             let recent_ips_c = recent_ips.clone();
 
-            let task_id = format!(
-                "task_{}_{}",
-                chrono::Utc::now().timestamp_millis(),
-                uuid::Uuid::new_v4()
-                    .to_string()
-                    .chars()
-                    .take(8)
-                    .collect::<String>()
-            );
+            let task_id = uuid::Uuid::new_v4().to_string();
 
             execution_futures.push(async move {
                 let res = execute_mcp_tool_raw(
@@ -476,24 +468,8 @@ pub fn execute_mcp_tools_flow(
         let history_block = get_history_block_rust(&summaries, history_limit);
 
         // 4. Analysis phase (comprehensive LLM request)
-        let analysis_task_id = format!(
-            "task_{}_{}",
-            chrono::Utc::now().timestamp_millis(),
-            uuid::Uuid::new_v4()
-                .to_string()
-                .chars()
-                .take(8)
-                .collect::<String>()
-        );
-
-        let first_task_id = format!(
-            "task_{}",
-            uuid::Uuid::new_v4()
-                .to_string()
-                .chars()
-                .take(8)
-                .collect::<String>()
-        );
+        let analysis_task_id = uuid::Uuid::new_v4().to_string();
+        let first_task_id = uuid::Uuid::new_v4().to_string();
 
         let analysis_started_payload = AnalysisStartedPayload {
             task_id: first_task_id,

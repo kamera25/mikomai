@@ -44,40 +44,82 @@ pub struct Attachment
     pub path: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageRole
+{
+    User,
+    Ai,
+}
+
+impl MessageRole
+{
+    pub fn as_str(&self) -> &'static str
+    {
+        match self
+        {
+            Self::User => "user",
+            Self::Ai => "ai",
+        }
+    }
+}
+
+impl std::fmt::Display for MessageRole
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecutionStatus
+{
+    Running,
+    Success,
+    Failed,
+}
+
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UserInputStatus
+{
+    Pending,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct BaseMessage
+{
+    pub role: MessageRole,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
+    pub is_tool_loading: Option<bool>,
+    #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
+    pub is_hidden: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<uuid::Uuid>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "event_type")]
 pub enum Message
 {
     UserInput
     {
-        role: String,
-        content: String,
+        #[serde(flatten)]
+        base: BaseMessage,
         #[serde(skip_serializing_if = "Option::is_none")]
-        timestamp: Option<String>,
-        #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
-        is_tool_loading: Option<bool>,
-        #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
-        is_hidden: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        task_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        status: Option<String>,
+        status: Option<UserInputStatus>,
         #[serde(skip_serializing_if = "Option::is_none")]
         attachments: Option<Vec<Attachment>>,
     },
     ToolExecution
     {
-        role: String,
-        content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        timestamp: Option<String>,
-        #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
-        is_tool_loading: Option<bool>,
-        #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
-        is_hidden: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        task_id: Option<String>,
-        status: String,
+        #[serde(flatten)]
+        base: BaseMessage,
+        status: ExecutionStatus,
         action_name: String,
         tool_id: String,
         summary_text: String,
@@ -93,31 +135,16 @@ pub enum Message
     },
     AgentResponse
     {
-        role: String,
-        content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        timestamp: Option<String>,
-        #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
-        is_tool_loading: Option<bool>,
-        #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
-        is_hidden: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        task_id: Option<String>,
+        #[serde(flatten)]
+        base: BaseMessage,
     },
     SystemMessage
     {
-        role: String,
-        content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        timestamp: Option<String>,
-        #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
-        is_tool_loading: Option<bool>,
-        #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
-        is_hidden: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        task_id: Option<String>,
+        #[serde(flatten)]
+        base: BaseMessage,
     },
 }
+
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ChatSession
@@ -193,17 +220,17 @@ pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool
                     {
                         Message::ToolExecution {
                             ref mut status,
-                            ref mut is_tool_loading,
+                            ref mut base,
                             ref mut summary_text,
                             ref mut raw_data,
                             ref action_name,
                             ..
                         } =>
                         {
-                            if status == "Running" || is_tool_loading == &Some(true)
+                            if *status == ExecutionStatus::Running || base.is_tool_loading == Some(true)
                             {
-                                *status = "Failed".to_string();
-                                *is_tool_loading = Some(false);
+                                *status = ExecutionStatus::Failed;
+                                base.is_tool_loading = Some(false);
                                 *summary_text = format!("{} 失敗", action_name);
                                 if raw_data.is_none()
                                     || raw_data.as_deref().unwrap_or("").trim().is_empty()
@@ -216,22 +243,13 @@ pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool
                                 modified = true;
                             }
                         }
-                        Message::AgentResponse {
-                            ref mut is_tool_loading,
-                            ..
-                        }
-                        | Message::UserInput {
-                            ref mut is_tool_loading,
-                            ..
-                        }
-                        | Message::SystemMessage {
-                            ref mut is_tool_loading,
-                            ..
-                        } =>
+                        Message::AgentResponse { ref mut base }
+                        | Message::UserInput { ref mut base, .. }
+                        | Message::SystemMessage { ref mut base } =>
                         {
-                            if is_tool_loading == &Some(true)
+                            if base.is_tool_loading == Some(true)
                             {
-                                *is_tool_loading = Some(false);
+                                base.is_tool_loading = Some(false);
                                 modified = true;
                             }
                         }
@@ -302,12 +320,14 @@ mod tests
     fn test_message_serialization()
     {
         let msg = Message::UserInput {
-            role: "user".to_string(),
-            content: "Hello".to_string(),
-            timestamp: None,
-            is_tool_loading: None,
-            is_hidden: None,
-            task_id: None,
+            base: BaseMessage {
+                role: MessageRole::User,
+                content: "Hello".to_string(),
+                timestamp: None,
+                is_tool_loading: None,
+                is_hidden: None,
+                task_id: None,
+            },
             status: None,
             attachments: None,
         };
@@ -324,12 +344,14 @@ mod tests
             id: "session-1".to_string(),
             title: "Test Session".to_string(),
             messages: vec![Message::UserInput {
-                role: "user".to_string(),
-                content: "Hi".to_string(),
-                timestamp: None,
-                is_tool_loading: None,
-                is_hidden: None,
-                task_id: None,
+                base: BaseMessage {
+                    role: MessageRole::User,
+                    content: "Hi".to_string(),
+                    timestamp: None,
+                    is_tool_loading: None,
+                    is_hidden: None,
+                    task_id: None,
+                },
                 status: None,
                 attachments: None,
             }],
@@ -378,13 +400,15 @@ mod tests
             id: "session-1".to_string(),
             title: "Test Session".to_string(),
             messages: vec![Message::ToolExecution {
-                role: "ai".to_string(),
-                content: "".to_string(),
-                timestamp: None,
-                is_tool_loading: Some(true),
-                is_hidden: None,
-                task_id: Some("task-123".to_string()),
-                status: "Running".to_string(),
+                base: BaseMessage {
+                    role: MessageRole::Ai,
+                    content: "".to_string(),
+                    timestamp: None,
+                    is_tool_loading: Some(true),
+                    is_hidden: None,
+                    task_id: Some(uuid::Uuid::new_v4()),
+                },
+                status: ExecutionStatus::Running,
                 action_name: "ask_interface_choice".to_string(),
                 tool_id: "ask_interface_choice".to_string(),
                 summary_text: "ask_interface_choice を実行中...".to_string(),
@@ -404,14 +428,14 @@ mod tests
         {
             if let Message::ToolExecution {
                 status,
-                is_tool_loading,
+                base,
                 summary_text,
                 raw_data,
                 ..
             } = &session.messages[0]
             {
-                assert_eq!(status, "Failed");
-                assert_eq!(*is_tool_loading, Some(false));
+                assert_eq!(*status, ExecutionStatus::Failed);
+                assert_eq!(base.is_tool_loading, Some(false));
                 assert_eq!(summary_text, "ask_interface_choice 失敗");
                 assert_eq!(
                     raw_data.as_deref(),
@@ -428,6 +452,7 @@ mod tests
             panic!("Expected Session item");
         }
     }
+
 
     #[test]
     fn test_attachment_serialization_with_path()

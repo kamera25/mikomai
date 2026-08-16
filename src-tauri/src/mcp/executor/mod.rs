@@ -71,7 +71,7 @@ pub async fn handle_mcp_message(
     }
 
     // 1. Generate thinkingTaskId and emit mcp-initial-started
-    let thinking_task_id = format!("task_think_{}", chrono::Utc::now().timestamp_millis());
+    let thinking_task_id = uuid::Uuid::new_v4().to_string();
 
     let has_image = attachments.as_ref().map_or(false, |atts| {
         atts.iter()

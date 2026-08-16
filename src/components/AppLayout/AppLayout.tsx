@@ -235,7 +235,7 @@ export function AppLayout() {
     if (!messageText && (!attachments || attachments.length === 0)) return;
 
     const timestamp = new Date().toISOString();
-    const taskId = `task_user_${Date.now()}`;
+    const taskId = crypto.randomUUID();
     const sessionId = chatState.activeSessionId;
 
     const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
