@@ -93,7 +93,7 @@ pub struct BaseMessage
     pub role: MessageRole,
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<String>,
+    pub timestamp: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(rename = "isToolLoading", skip_serializing_if = "Option::is_none")]
     pub is_tool_loading: Option<bool>,
     #[serde(rename = "isHidden", skip_serializing_if = "Option::is_none")]
