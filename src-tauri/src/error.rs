@@ -1,5 +1,6 @@
 #[derive(Debug, thiserror::Error)]
-pub enum MikomaiError {
+pub enum MikomaiError
+{
     #[error("Settings error: {0}")]
     Settings(#[from] crate::settings::SettingsError),
 
@@ -34,13 +35,16 @@ pub enum MikomaiError {
 #[derive(Debug)]
 pub struct TauriError(pub MikomaiError);
 
-impl std::fmt::Display for TauriError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Display for TauriError
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
         write!(f, "{}", self.0)
     }
 }
 
-impl serde::Serialize for TauriError {
+impl serde::Serialize for TauriError
+{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -53,7 +57,8 @@ impl<E> From<E> for TauriError
 where
     E: Into<MikomaiError>,
 {
-    fn from(err: E) -> Self {
+    fn from(err: E) -> Self
+    {
         Self(err.into())
     }
 }

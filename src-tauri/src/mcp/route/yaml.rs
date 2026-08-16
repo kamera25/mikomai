@@ -1,25 +1,41 @@
 use crate::snapshot::SnapshotManager;
 
-pub fn quote_yaml_strings(yaml: &str) -> String {
+pub fn quote_yaml_strings(yaml: &str) -> String
+{
     let mut result = String::new();
-    for line in yaml.lines() {
-        if let Some(colon_idx) = line.find(':') {
+    for line in yaml.lines()
+    {
+        if let Some(colon_idx) = line.find(':')
+        {
             let key_part = &line[..colon_idx];
             let val_part = line[colon_idx + 1..].trim();
-            
+
             let trimmed_key = key_part.trim().trim_start_matches('-').trim();
-            
-            if ["version", "generated_at", "source_device", "os_type", "destination", "gateway", "flags", "interface"].contains(&trimmed_key) && !val_part.is_empty() {
+
+            if [
+                "version",
+                "generated_at",
+                "source_device",
+                "os_type",
+                "destination",
+                "gateway",
+                "flags",
+                "interface",
+            ]
+            .contains(&trimmed_key)
+                && !val_part.is_empty()
+            {
                 let mut clean_val = val_part;
-                if (clean_val.starts_with('"') && clean_val.ends_with('"')) || 
-                   (clean_val.starts_with('\'') && clean_val.ends_with('\'')) {
+                if (clean_val.starts_with('"') && clean_val.ends_with('"'))
+                    || (clean_val.starts_with('\'') && clean_val.ends_with('\''))
+                {
                     clean_val = &clean_val[1..clean_val.len() - 1];
                 }
-                
+
                 let indent_len = key_part.len() - key_part.trim_start().len();
                 let indent = &key_part[..indent_len];
                 let key_name = key_part.trim();
-                
+
                 result.push_str(&format!("{}{}: \"{}\"\n", indent, key_name, clean_val));
                 continue;
             }
@@ -30,11 +46,19 @@ pub fn quote_yaml_strings(yaml: &str) -> String {
     result
 }
 
-pub fn save_validated_yaml(app: &tauri::AppHandle, device_name: &str, yaml_content: &str) -> Result<String, String> {
+pub fn save_validated_yaml(
+    app: &tauri::AppHandle,
+    device_name: &str,
+    yaml_content: &str,
+) -> Result<String, String>
+{
     let quoted_yaml = quote_yaml_strings(yaml_content);
-    let mut manager = SnapshotManager::new(app).map_err(|e| format!("Failed to create SnapshotManager: {}", e))?;
-    match manager.save_artifact(device_name, "route.yaml", &quoted_yaml) {
-        Ok(path) => {
+    let mut manager = SnapshotManager::new(app)
+        .map_err(|e| format!("Failed to create SnapshotManager: {}", e))?;
+    match manager.save_artifact(device_name, "route.yaml", &quoted_yaml)
+    {
+        Ok(path) =>
+        {
             let _ = manager.update_current_link(path.parent().unwrap());
             Ok(path.to_string_lossy().to_string())
         }
@@ -43,11 +67,13 @@ pub fn save_validated_yaml(app: &tauri::AppHandle, device_name: &str, yaml_conte
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_quote_yaml_strings() {
+    fn test_quote_yaml_strings()
+    {
         let input = r#"version: 1.0
 metadata:
   generated_at: 2026-06-13T13:51:38Z

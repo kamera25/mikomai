@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone, PartialEq)]
-pub struct UniversalRouteTable {
+pub struct UniversalRouteTable
+{
     #[validate(custom(function = "validate_version"))]
     pub version: String,
 
@@ -13,16 +14,21 @@ pub struct UniversalRouteTable {
     pub routes: Vec<RouteEntry>,
 }
 
-fn validate_version(val: &str) -> Result<(), ValidationError> {
-    if val == "1.0" {
+fn validate_version(val: &str) -> Result<(), ValidationError>
+{
+    if val == "1.0"
+    {
         Ok(())
-    } else {
+    }
+    else
+    {
         Err(ValidationError::new("invalid_version"))
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone, PartialEq)]
-pub struct RouteMetadata {
+pub struct RouteMetadata
+{
     #[validate(custom(function = "validate_iso8601"))]
     pub generated_at: String,
 
@@ -33,16 +39,21 @@ pub struct RouteMetadata {
     pub os_type: String,
 }
 
-fn validate_iso8601(val: &str) -> Result<(), ValidationError> {
-    if chrono::DateTime::parse_from_rfc3339(val).is_ok() {
+fn validate_iso8601(val: &str) -> Result<(), ValidationError>
+{
+    if chrono::DateTime::parse_from_rfc3339(val).is_ok()
+    {
         Ok(())
-    } else {
+    }
+    else
+    {
         Err(ValidationError::new("invalid_iso8601"))
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone, PartialEq)]
-pub struct RouteEntry {
+pub struct RouteEntry
+{
     #[validate(length(min = 1))]
     pub destination: String,
 
@@ -59,11 +70,13 @@ pub struct RouteEntry {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_universal_route_validation_success() {
+    fn test_universal_route_validation_success()
+    {
         let yaml_content = r#"
 version: "1.0"
 metadata:
@@ -83,7 +96,7 @@ routes:
 "#;
         let parsed: UniversalRouteTable = serde_yaml::from_str(yaml_content).unwrap();
         assert!(parsed.validate().is_ok());
-        
+
         assert_eq!(parsed.version, "1.0");
         assert_eq!(parsed.metadata.source_device, "Core-Router-01");
         assert_eq!(parsed.routes[0].destination, "default");
@@ -100,7 +113,8 @@ routes:
     }
 
     #[test]
-    fn test_universal_route_validation_fail_invalid_version() {
+    fn test_universal_route_validation_fail_invalid_version()
+    {
         let yaml_content = r#"
 version: "2.0"
 metadata:
@@ -118,7 +132,8 @@ routes:
     }
 
     #[test]
-    fn test_universal_route_validation_fail_invalid_timestamp() {
+    fn test_universal_route_validation_fail_invalid_timestamp()
+    {
         let yaml_content = r#"
 version: "1.0"
 metadata:

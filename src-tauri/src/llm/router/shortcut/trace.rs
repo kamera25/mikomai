@@ -1,11 +1,12 @@
-use serde_json::Value;
 use super::{calculate_host_confidence, extract_first_capture, ShortcutRulesConfig};
+use serde_json::Value;
 
 pub fn detect_traceroute_shortcut(
     input: &str,
     lower_input: &str,
     config: &ShortcutRulesConfig,
-) -> Option<(String, Value, String, f64)> {
+) -> Option<(String, Value, String, f64)>
+{
     let trace_cfg = &config.fastroute.traceroute;
     let trace_host = extract_first_capture(lower_input, &trace_cfg.patterns)?;
 

@@ -1,10 +1,11 @@
-use serde::{Deserialize, Serialize};
-use validator::{Validate, ValidationError};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
+use validator::{Validate, ValidationError};
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone, PartialEq)]
-pub struct UniversalArpTable {
+pub struct UniversalArpTable
+{
     #[validate(custom(function = "validate_version"))]
     pub version: String,
 
@@ -15,16 +16,21 @@ pub struct UniversalArpTable {
     pub arp_table: Vec<ArpEntry>,
 }
 
-fn validate_version(val: &str) -> Result<(), ValidationError> {
-    if val == "1.0" {
+fn validate_version(val: &str) -> Result<(), ValidationError>
+{
+    if val == "1.0"
+    {
         Ok(())
-    } else {
+    }
+    else
+    {
         Err(ValidationError::new("invalid_version"))
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone, PartialEq)]
-pub struct ArpMetadata {
+pub struct ArpMetadata
+{
     #[validate(custom(function = "validate_iso8601"))]
     pub generated_at: String,
 
@@ -35,16 +41,21 @@ pub struct ArpMetadata {
     pub os_type: String,
 }
 
-fn validate_iso8601(val: &str) -> Result<(), ValidationError> {
-    if chrono::DateTime::parse_from_rfc3339(val).is_ok() {
+fn validate_iso8601(val: &str) -> Result<(), ValidationError>
+{
+    if chrono::DateTime::parse_from_rfc3339(val).is_ok()
+    {
         Ok(())
-    } else {
+    }
+    else
+    {
         Err(ValidationError::new("invalid_iso8601"))
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone, PartialEq)]
-pub struct ArpEntry {
+pub struct ArpEntry
+{
     #[validate(ip)]
     pub ip_address: String,
 
@@ -62,29 +73,36 @@ pub struct ArpEntry {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum ArpEntryType {
+pub enum ArpEntryType
+{
     Dynamic,
     Static,
     Incomplete,
     Permanent,
 }
 
-fn validate_mac_address(val: &str) -> Result<(), ValidationError> {
+fn validate_mac_address(val: &str) -> Result<(), ValidationError>
+{
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$").unwrap());
-    if re.is_match(val) {
+    if re.is_match(val)
+    {
         Ok(())
-    } else {
+    }
+    else
+    {
         Err(ValidationError::new("invalid_mac_address"))
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_universal_arp_validation_success() {
+    fn test_universal_arp_validation_success()
+    {
         let yaml_content = r#"
 version: "1.0"
 metadata:
@@ -104,7 +122,7 @@ arp_table:
 "#;
         let parsed: UniversalArpTable = serde_yaml::from_str(yaml_content).unwrap();
         assert!(parsed.validate().is_ok());
-        
+
         assert_eq!(parsed.version, "1.0");
         assert_eq!(parsed.metadata.source_device, "Core-Router-01");
         assert_eq!(parsed.arp_table[0].ip_address, "192.168.1.1");
@@ -121,7 +139,8 @@ arp_table:
     }
 
     #[test]
-    fn test_universal_arp_validation_fail_invalid_mac() {
+    fn test_universal_arp_validation_fail_invalid_mac()
+    {
         let yaml_content = r#"
 version: "1.0"
 metadata:
@@ -142,7 +161,8 @@ arp_table:
     }
 
     #[test]
-    fn test_universal_arp_validation_fail_uppercase_mac() {
+    fn test_universal_arp_validation_fail_uppercase_mac()
+    {
         let yaml_content = r#"
 version: "1.0"
 metadata:
@@ -161,7 +181,8 @@ arp_table:
     }
 
     #[test]
-    fn test_universal_arp_validation_fail_invalid_ip() {
+    fn test_universal_arp_validation_fail_invalid_ip()
+    {
         let yaml_content = r#"
 version: "1.0"
 metadata:
@@ -180,7 +201,8 @@ arp_table:
     }
 
     #[test]
-    fn test_universal_arp_validation_fail_invalid_version() {
+    fn test_universal_arp_validation_fail_invalid_version()
+    {
         let yaml_content = r#"
 version: "2.0" # only "1.0" allowed
 metadata:
@@ -199,7 +221,8 @@ arp_table:
     }
 
     #[test]
-    fn test_universal_arp_validation_fail_invalid_timestamp() {
+    fn test_universal_arp_validation_fail_invalid_timestamp()
+    {
         let yaml_content = r#"
 version: "1.0"
 metadata:

@@ -1,23 +1,24 @@
-use tauri::{AppHandle, Emitter, Manager, Window};
 use serde_json::Value;
 use std::time::Duration;
+use tauri::{AppHandle, Emitter, Manager, Window};
 
-use crate::mcp::protocol::{
-    ChatEvent, ToolStartedPayload, ToolFinishedPayload,
-    AnalysisStartedPayload, SummarySavedPayload,
-};
 use super::extract::*;
 use super::registry::{get_tool_label, get_tool_registry};
+use crate::mcp::protocol::{
+    AnalysisStartedPayload, ChatEvent, SummarySavedPayload, ToolFinishedPayload, ToolStartedPayload,
+};
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
-pub struct ToolCall {
+pub struct ToolCall
+{
     pub tool: String,
     pub args: Value,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct ExecuteMcpToolPayload {
+pub struct ExecuteMcpToolPayload
+{
     pub task_id: String,
     pub tool_id: String,
     pub tool_label: String,
@@ -39,21 +40,34 @@ pub async fn execute_mcp_tool_raw(
     args: Value,
     recent_ips: Vec<String>,
     mcp_timeout: u64,
-) -> Result<crate::network::CommandResult, String> {
+) -> Result<crate::network::CommandResult, String>
+{
     // 1. Normalize arguments by injecting userMessage/user_message
     let mut processed_args = args.clone();
-    if let serde_json::Value::Object(ref mut map) = processed_args {
-        map.insert("userMessage".to_string(), serde_json::Value::String(user_message.clone()));
-        map.insert("user_message".to_string(), serde_json::Value::String(user_message.clone()));
-        map.insert("task_id".to_string(), serde_json::Value::String(task_id.clone()));
+    if let serde_json::Value::Object(ref mut map) = processed_args
+    {
+        map.insert(
+            "userMessage".to_string(),
+            serde_json::Value::String(user_message.clone()),
+        );
+        map.insert(
+            "user_message".to_string(),
+            serde_json::Value::String(user_message.clone()),
+        );
+        map.insert(
+            "task_id".to_string(),
+            serde_json::Value::String(task_id.clone()),
+        );
     }
 
     // 2. Extract resolved host for recentIPs updates in the frontend
-    let resolved_host = if ["fetch_config", "fetch_routing", "fetch_arp"].contains(&tool_id.as_str()) {
+    let resolved_host = if ["fetch_config", "fetch_routing", "fetch_arp"]
+        .contains(&tool_id.as_str())
+    {
         let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
         let device = get_str_arg(&processed_args, &["device"]);
         let host = get_str_arg(&processed_args, &["host"]);
-        
+
         let resolved = crate::mcp::args::normalize_device_args(
             &app,
             device_name.clone(),
@@ -62,14 +76,19 @@ pub async fn execute_mcp_tool_raw(
             host,
             Some(user_message.clone()),
             Some(user_message.clone()),
-        ).ok();
+        )
+        .ok();
 
-        if resolved.as_ref().map_or(true, |r| r.trim().is_empty()) {
+        if resolved.as_ref().map_or(true, |r| r.trim().is_empty())
+        {
             recent_ips.first().cloned()
-        } else {
+        }
+        else
+        {
             resolved
         }
-    } else if [
+    }
+    else if [
         "self_network_ping",
         "self_network_traceroute",
         "self_network_test_connection",
@@ -78,12 +97,14 @@ pub async fn execute_mcp_tool_raw(
         "network_ftp_upload",
         "network_tftp_download",
         "network_tftp_upload",
-    ].contains(&tool_id.as_str()) {
+    ]
+    .contains(&tool_id.as_str())
+    {
         let host = get_str_arg(&processed_args, &["host"]);
         let device = get_str_arg(&processed_args, &["device"]);
         let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
         let ip = get_str_arg(&processed_args, &["ip"]);
-        
+
         let resolved = crate::mcp::args::normalize_host_args(
             &app,
             host,
@@ -91,14 +112,20 @@ pub async fn execute_mcp_tool_raw(
             device_name.clone(),
             device_name.clone(),
             ip,
-        ).ok();
+        )
+        .ok();
 
-        if resolved.as_ref().map_or(true, |r| r.trim().is_empty()) {
+        if resolved.as_ref().map_or(true, |r| r.trim().is_empty())
+        {
             recent_ips.first().cloned()
-        } else {
+        }
+        else
+        {
             resolved
         }
-    } else {
+    }
+    else
+    {
         None
     };
 
@@ -114,17 +141,24 @@ pub async fn execute_mcp_tool_raw(
 
     // 3. Match and execute the appropriate command in a future
     let execution_future = async {
-        if let Some(tool) = get_tool_registry().get(&tool_id) {
+        if let Some(tool) = get_tool_registry().get(&tool_id)
+        {
             tool.execute(app.clone(), processed_args.clone()).await
-        } else {
+        }
+        else
+        {
             Err(format!("Unknown tool ID: {}", tool_id))
         }
     };
 
     // Run execution with timeout (bypass timeout for user choice prompts)
-    let is_choice_tool = tool_id == "ask_user_choice" || tool_id == "ask_interface_choice" || tool_id == "ask_ipaddress_choice";
-    let result = if is_choice_tool {
-        match execution_future.await {
+    let is_choice_tool = tool_id == "ask_user_choice"
+        || tool_id == "ask_interface_choice"
+        || tool_id == "ask_ipaddress_choice";
+    let result = if is_choice_tool
+    {
+        match execution_future.await
+        {
             Ok(res) => res,
             Err(e) => crate::network::CommandResult {
                 success: false,
@@ -134,15 +168,28 @@ pub async fn execute_mcp_tool_raw(
                 cache_time: None,
             },
         }
-    } else {
-        let is_heavy_network_tool = ["fetch_config", "fetch_routing", "fetch_arp", "network_show", "apply_config"].contains(&tool_id.as_str());
-        let effective_timeout = if is_heavy_network_tool {
+    }
+    else
+    {
+        let is_heavy_network_tool = [
+            "fetch_config",
+            "fetch_routing",
+            "fetch_arp",
+            "network_show",
+            "apply_config",
+        ]
+        .contains(&tool_id.as_str());
+        let effective_timeout = if is_heavy_network_tool
+        {
             std::cmp::max(mcp_timeout, 120)
-        } else {
+        }
+        else
+        {
             mcp_timeout
         };
         let mcp_timeout_duration = Duration::from_secs(effective_timeout);
-        match tokio::time::timeout(mcp_timeout_duration, execution_future).await {
+        match tokio::time::timeout(mcp_timeout_duration, execution_future).await
+        {
             Ok(Ok(res)) => res,
             Ok(Err(e)) => crate::network::CommandResult {
                 success: false,
@@ -186,9 +233,11 @@ pub fn execute_mcp_tools_flow(
     mcp_timeout: u64,
     depth: usize,
     is_builder_caller: bool,
-) -> futures::future::BoxFuture<'static, Result<String, String>> {
+) -> futures::future::BoxFuture<'static, Result<String, String>>
+{
     Box::pin(async move {
-        if depth >= 5 {
+        if depth >= 5
+        {
             return Err("Max nested depth reached".to_string());
         }
 
@@ -196,7 +245,8 @@ pub fn execute_mcp_tools_flow(
 
         // 1. Run all tool executions in parallel
         let mut execution_futures = Vec::new();
-        for tc in &tool_calls {
+        for tc in &tool_calls
+        {
             let app_c = app.clone();
             let window_c = window.clone();
             let user_message_c = user_message.clone();
@@ -204,11 +254,15 @@ pub fn execute_mcp_tools_flow(
             let tc_label = get_tool_label(&tc_tool);
             let tc_args = tc.args.clone();
             let recent_ips_c = recent_ips.clone();
-            
+
             let task_id = format!(
                 "task_{}_{}",
                 chrono::Utc::now().timestamp_millis(),
-                uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>()
+                uuid::Uuid::new_v4()
+                    .to_string()
+                    .chars()
+                    .take(8)
+                    .collect::<String>()
             );
 
             execution_futures.push(async move {
@@ -222,7 +276,8 @@ pub fn execute_mcp_tools_flow(
                     tc_args,
                     recent_ips_c,
                     mcp_timeout,
-                ).await;
+                )
+                .await;
                 (tc_tool, tc_label, res)
             });
         }
@@ -231,12 +286,16 @@ pub fn execute_mcp_tools_flow(
 
         // Separate successful results
         let mut execution_results = Vec::new();
-        for (tool_id, tool_label, res) in raw_results {
-            match res {
-                Ok(cmd_res) => {
+        for (tool_id, tool_label, res) in raw_results
+        {
+            match res
+            {
+                Ok(cmd_res) =>
+                {
                     execution_results.push((tool_id, tool_label, cmd_res));
                 }
-                Err(e) => {
+                Err(e) =>
+                {
                     execution_results.push((
                         tool_id,
                         tool_label,
@@ -246,7 +305,7 @@ pub fn execute_mcp_tools_flow(
                             saved_path: None,
                             is_cached: None,
                             cache_time: None,
-                        }
+                        },
                     ));
                 }
             }
@@ -261,61 +320,119 @@ pub fn execute_mcp_tools_flow(
         let pending_ips = ip_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
 
         let has_choice_tool = execution_results.iter().any(|(tool_id, _, _)| {
-            *tool_id == "ask_user_choice" || *tool_id == "ask_interface_choice" || *tool_id == "ask_ipaddress_choice"
+            *tool_id == "ask_user_choice"
+                || *tool_id == "ask_interface_choice"
+                || *tool_id == "ask_ipaddress_choice"
         });
 
         // Generate custom labels
         let mut execution_info = Vec::new();
-        for (tool_id, tool_label, result) in &execution_results {
-            let custom_tool_label = if *tool_id == "ask_user_choice" {
-                let q_msg = get_str_arg(&tool_calls.iter().find(|t| t.tool == *tool_id).map(|t| &t.args).unwrap_or(&Value::Null), &["message"]).unwrap_or_default();
+        for (tool_id, tool_label, result) in &execution_results
+        {
+            let custom_tool_label = if *tool_id == "ask_user_choice"
+            {
+                let q_msg = get_str_arg(
+                    &tool_calls
+                        .iter()
+                        .find(|t| t.tool == *tool_id)
+                        .map(|t| &t.args)
+                        .unwrap_or(&Value::Null),
+                    &["message"],
+                )
+                .unwrap_or_default();
                 format!("ask_user_choice: {}", q_msg)
-            } else if *tool_id == "ask_interface_choice" {
-                let q_msg = get_str_arg(&tool_calls.iter().find(|t| t.tool == *tool_id).map(|t| &t.args).unwrap_or(&Value::Null), &["message"]).unwrap_or_default();
+            }
+            else if *tool_id == "ask_interface_choice"
+            {
+                let q_msg = get_str_arg(
+                    &tool_calls
+                        .iter()
+                        .find(|t| t.tool == *tool_id)
+                        .map(|t| &t.args)
+                        .unwrap_or(&Value::Null),
+                    &["message"],
+                )
+                .unwrap_or_default();
                 format!("ask_interface_choice: {}", q_msg)
-            } else if *tool_id == "ask_ipaddress_choice" {
-                let q_msg = get_str_arg(&tool_calls.iter().find(|t| t.tool == *tool_id).map(|t| &t.args).unwrap_or(&Value::Null), &["message"]).unwrap_or_default();
+            }
+            else if *tool_id == "ask_ipaddress_choice"
+            {
+                let q_msg = get_str_arg(
+                    &tool_calls
+                        .iter()
+                        .find(|t| t.tool == *tool_id)
+                        .map(|t| &t.args)
+                        .unwrap_or(&Value::Null),
+                    &["message"],
+                )
+                .unwrap_or_default();
                 format!("ask_ipaddress_choice: {}", q_msg)
-            } else {
+            }
+            else
+            {
                 tool_label.clone()
             };
             execution_info.push((tool_id.clone(), custom_tool_label, result));
         }
 
         let mut synthesized_task = None;
-        if has_choice_tool && pending_choices == 0 && pending_ifaces == 0 && pending_ips == 0 {
+        if has_choice_tool && pending_choices == 0 && pending_ifaces == 0 && pending_ips == 0
+        {
             let collected_choices = {
                 let shared_opt = llama_state.shared.lock().await;
-                if let Some(shared) = &*shared_opt {
+                if let Some(shared) = &*shared_opt
+                {
                     let mut builder = shared.builder.lock().unwrap();
-                    for (tool_id, custom_label, result) in &execution_info {
-                        if (*tool_id == "ask_user_choice" || *tool_id == "ask_interface_choice" || *tool_id == "ask_ipaddress_choice") && result.output.trim() != "cancelled" {
-                            builder.collected_choices.push((custom_label.clone(), result.output.clone()));
+                    for (tool_id, custom_label, result) in &execution_info
+                    {
+                        if (*tool_id == "ask_user_choice"
+                            || *tool_id == "ask_interface_choice"
+                            || *tool_id == "ask_ipaddress_choice")
+                            && result.output.trim() != "cancelled"
+                        {
+                            builder
+                                .collected_choices
+                                .push((custom_label.clone(), result.output.clone()));
                         }
                     }
                     builder.collected_choices.clone()
-                } else {
+                }
+                else
+                {
                     Vec::new()
                 }
             };
 
-            if !collected_choices.is_empty() {
-                let answers_block = collected_choices.iter().map(|(label, val)| {
-                    if label.starts_with("ask_user_choice:") {
-                        let q_msg = label.strip_prefix("ask_user_choice:").unwrap().trim();
-                        format!("- 「{}」の回答: {}", q_msg, val)
-                    } else if label.starts_with("ask_interface_choice:") {
-                        let q_msg = label.strip_prefix("ask_interface_choice:").unwrap().trim();
-                        format!("- 「{}」の回答: {}", q_msg, val)
-                    } else if label.starts_with("ask_ipaddress_choice:") {
-                        let q_msg = label.strip_prefix("ask_ipaddress_choice:").unwrap().trim();
-                        format!("- 「{}」の回答: {}", q_msg, val)
-                    } else {
-                        format!("- {}: {}", label, val)
-                    }
-                }).collect::<Vec<String>>().join("\n");
+            if !collected_choices.is_empty()
+            {
+                let answers_block = collected_choices
+                    .iter()
+                    .map(|(label, val)| {
+                        if label.starts_with("ask_user_choice:")
+                        {
+                            let q_msg = label.strip_prefix("ask_user_choice:").unwrap().trim();
+                            format!("- 「{}」の回答: {}", q_msg, val)
+                        }
+                        else if label.starts_with("ask_interface_choice:")
+                        {
+                            let q_msg = label.strip_prefix("ask_interface_choice:").unwrap().trim();
+                            format!("- 「{}」の回答: {}", q_msg, val)
+                        }
+                        else if label.starts_with("ask_ipaddress_choice:")
+                        {
+                            let q_msg = label.strip_prefix("ask_ipaddress_choice:").unwrap().trim();
+                            format!("- 「{}」の回答: {}", q_msg, val)
+                        }
+                        else
+                        {
+                            format!("- {}: {}", label, val)
+                        }
+                    })
+                    .collect::<Vec<String>>()
+                    .join("\n");
 
-                let synthesized_query = format!("{}。追加の確定条件：\n{}", user_message, answers_block);
+                let synthesized_query =
+                    format!("{}。追加の確定条件：\n{}", user_message, answers_block);
                 log::info!("Synthesized task (template): {}", synthesized_query);
                 synthesized_task = Some(synthesized_query);
             }
@@ -325,29 +442,36 @@ pub fn execute_mcp_tools_flow(
         let mut combined_output = String::new();
         let mut combined_label_parts = Vec::new();
         let mut has_rag = false;
-        for (tool_id, custom_label, result) in &execution_info {
-            if *tool_id == "query_nw_db" || *tool_id == "network_query_nw_db" || *tool_id == "query_rag" {
+        for (tool_id, custom_label, result) in &execution_info
+        {
+            if *tool_id == "query_nw_db"
+                || *tool_id == "network_query_nw_db"
+                || *tool_id == "query_rag"
+            {
                 has_rag = true;
             }
             combined_label_parts.push(custom_label.clone());
 
-            if !combined_output.is_empty() {
+            if !combined_output.is_empty()
+            {
                 combined_output.push_str("\n\n");
             }
-            
-            let formatted_result_output = if *tool_id == "self_network_nwdiag" && result.success {
+
+            let formatted_result_output = if *tool_id == "self_network_nwdiag" && result.success
+            {
                 "Success: Network diagram generated successfully and saved to artifact.".to_string()
-            } else {
+            }
+            else
+            {
                 result.output.clone()
             };
-            
+
             combined_output.push_str(&format!(
                 "【{}の実行結果】:\n{}",
-                custom_label,
-                formatted_result_output
+                custom_label, formatted_result_output
             ));
         }
-        
+
         let combined_tool_label = combined_label_parts.join(", ");
         let history_block = get_history_block_rust(&summaries, history_limit);
 
@@ -355,25 +479,40 @@ pub fn execute_mcp_tools_flow(
         let analysis_task_id = format!(
             "task_{}_{}",
             chrono::Utc::now().timestamp_millis(),
-            uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>()
+            uuid::Uuid::new_v4()
+                .to_string()
+                .chars()
+                .take(8)
+                .collect::<String>()
         );
 
-        let first_task_id = format!("task_{}", uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>());
+        let first_task_id = format!(
+            "task_{}",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .chars()
+                .take(8)
+                .collect::<String>()
+        );
 
         let analysis_started_payload = AnalysisStartedPayload {
             task_id: first_task_id,
             analysis_task_id: analysis_task_id.clone(),
         };
-        let _ = window.emit("chat-event", ChatEvent::McpAnalysisStarted(analysis_started_payload));
+        let _ = window.emit(
+            "chat-event",
+            ChatEvent::McpAnalysisStarted(analysis_started_payload),
+        );
 
-        let is_builder_context = is_builder_caller || execution_info.iter().any(|(tool_id, _, _)| {
-            *tool_id == "ask_user_choice"
-                || *tool_id == "ask_interface_choice"
-                || *tool_id == "ask_ipaddress_choice"
-                || *tool_id == "validate_cisco_config"
-                || *tool_id == "convert_cisco_config"
-                || *tool_id == "self_network_nwdiag"
-        });
+        let is_builder_context = is_builder_caller
+            || execution_info.iter().any(|(tool_id, _, _)| {
+                *tool_id == "ask_user_choice"
+                    || *tool_id == "ask_interface_choice"
+                    || *tool_id == "ask_ipaddress_choice"
+                    || *tool_id == "validate_cisco_config"
+                    || *tool_id == "convert_cisco_config"
+                    || *tool_id == "self_network_nwdiag"
+            });
 
         let analyze_payload = crate::llm::llm::AnalyzePayload {
             user_message: user_message.clone(),
@@ -389,11 +528,14 @@ pub fn execute_mcp_tools_flow(
             window.clone(),
             analyze_payload,
             llama_state.clone(),
-        ).await.unwrap_or_else(|e| format!("Analysis failed: {}", e));
+        )
+        .await
+        .unwrap_or_else(|e| format!("Analysis failed: {}", e));
 
         // 5. Generate and save summary
         let mut next_summaries = summaries.clone();
-        if response_str == "PENDING_DECISION" {
+        if response_str == "PENDING_DECISION"
+        {
             let summary_payload = SummarySavedPayload {
                 task_id: analysis_task_id.clone(),
                 summary_text: "".to_string(),
@@ -404,7 +546,9 @@ pub fn execute_mcp_tools_flow(
                 content: response_str.clone(),
             };
             let _ = window.emit("chat-event", ChatEvent::McpSummarySaved(summary_payload));
-        } else {
+        }
+        else
+        {
             let summary_prompt = format!(
                 "以下の内容を要約してください。\n\nユーザー入力: {}\n実行ツール: {}\n分析結果: {}",
                 user_message, combined_tool_label, response_str
@@ -413,7 +557,9 @@ pub fn execute_mcp_tools_flow(
                 summary_prompt,
                 app.clone(),
                 llama_state.clone(),
-            ).await {
+            )
+            .await
+            {
                 let new_summary = crate::history::SummaryItem {
                     timestamp: chrono::Utc::now().to_rfc3339(),
                     content: summary_text.clone(),
@@ -432,30 +578,45 @@ pub fn execute_mcp_tools_flow(
         }
 
         // 6. Check for nested tool calls (nested MCP)
-        let has_nwdiag = execution_info.iter().any(|(tool_id, _, _)| *tool_id == "self_network_nwdiag");
+        let has_nwdiag = execution_info
+            .iter()
+            .any(|(tool_id, _, _)| *tool_id == "self_network_nwdiag");
         let max_depth = if has_nwdiag { 3 } else { 5 };
 
-        if is_builder_context && depth < max_depth {
+        if is_builder_context && depth < max_depth
+        {
             let json_blocks = extract_json_blocks(&response_str);
             let mut nested_tool_calls = Vec::new();
-            for block in json_blocks {
-                if let Ok(parsed) = serde_json::from_str::<Value>(&block) {
-                    let tool = parsed.get("tool_name")
+            for block in json_blocks
+            {
+                if let Ok(parsed) = serde_json::from_str::<Value>(&block)
+                {
+                    let tool = parsed
+                        .get("tool_name")
                         .or_else(|| parsed.get("tool"))
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    let args = parsed.get("params")
+                    let args = parsed
+                        .get("params")
                         .or_else(|| parsed.get("args"))
                         .cloned()
                         .unwrap_or(Value::Object(serde_json::Map::new()));
-                    if let Some(t) = tool {
+                    if let Some(t) = tool
+                    {
                         nested_tool_calls.push(ToolCall { tool: t, args });
                     }
                 }
             }
 
-            if !nested_tool_calls.is_empty() {
-                log::info!("Executing nested tools comprehensively: {:?}", nested_tool_calls.iter().map(|t| &t.tool).collect::<Vec<_>>());
+            if !nested_tool_calls.is_empty()
+            {
+                log::info!(
+                    "Executing nested tools comprehensively: {:?}",
+                    nested_tool_calls
+                        .iter()
+                        .map(|t| &t.tool)
+                        .collect::<Vec<_>>()
+                );
                 let nested_response = execute_mcp_tools_flow(
                     app.clone(),
                     window.clone(),
@@ -467,7 +628,8 @@ pub fn execute_mcp_tools_flow(
                     mcp_timeout,
                     depth + 1,
                     is_builder_context,
-                ).await;
+                )
+                .await;
                 return nested_response;
             }
         }

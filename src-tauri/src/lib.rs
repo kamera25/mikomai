@@ -1,26 +1,24 @@
+mod connections;
+pub(crate) mod crypto;
+pub(crate) mod error;
+mod history;
 mod llm;
+mod logger;
 pub(crate) mod mcp;
 mod network;
-pub(crate) mod snapshot;
-mod history;
-mod connections;
 pub(crate) mod scheduled_tasks;
-pub(crate) mod settings;
-pub(crate) mod crypto;
 pub(crate) mod schema;
-mod logger;
-pub(crate) mod error;
-
+pub(crate) mod settings;
+pub(crate) mod snapshot;
 
 use tauri::Manager;
 
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub fn run()
+{
     logger::init().expect("Failed to initialize logger");
     let llama_state = llm::LlamaState::new().expect("Failed to initialize Llama backend");
     let rag_state = mcp::rag::RagState::new();
-
 
     tauri::Builder::default()
         .setup(|app| {
@@ -106,12 +104,15 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| match event {
-            tauri::RunEvent::ExitRequested { .. } => {
+        .run(|app_handle, event| match event
+        {
+            tauri::RunEvent::ExitRequested { .. } =>
+            {
                 let _ = history::cleanup_running_history_on_exit(app_handle);
                 let state = app_handle.state::<llm::LlamaState>();
                 let status = state.status.blocking_lock();
-                if let llm::ModelState::Loading = *status {
+                if let llm::ModelState::Loading = *status
+                {
                     log::info!("Exiting while model is loading; using fast exit to prevent crash.");
                     #[cfg(unix)]
                     unsafe {
@@ -127,12 +128,15 @@ pub fn run() {
                         }
                         ExitProcess(0);
                     }
-                } else {
+                }
+                else
+                {
                     let mut shared = state.shared.blocking_lock();
                     *shared = None;
                     log::info!("Llama model cleared on exit.");
                 }
             }
-            _ => {}
+            _ =>
+            {}
         });
 }

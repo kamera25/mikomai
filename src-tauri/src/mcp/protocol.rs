@@ -1,9 +1,10 @@
-use serde::{Deserialize, Serialize};
 use crate::history::SummaryItem;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatRequest {
+pub struct ChatRequest
+{
     pub user_message: String,
     pub summaries: Vec<SummaryItem>,
     pub recent_ips: Vec<String>,
@@ -14,7 +15,8 @@ pub struct ChatRequest {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct ToolStartedPayload {
+pub struct ToolStartedPayload
+{
     pub task_id: String,
     pub tool_id: String,
     pub tool_label: String,
@@ -24,7 +26,8 @@ pub struct ToolStartedPayload {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct ToolFinishedPayload {
+pub struct ToolFinishedPayload
+{
     pub task_id: String,
     pub success: bool,
     pub output: String,
@@ -35,14 +38,16 @@ pub struct ToolFinishedPayload {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct AnalysisStartedPayload {
+pub struct AnalysisStartedPayload
+{
     pub task_id: String,
     pub analysis_task_id: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct InitialStartedPayload {
+pub struct InitialStartedPayload
+{
     pub task_id: String,
     #[serde(default)]
     pub has_image: bool,
@@ -50,14 +55,16 @@ pub struct InitialStartedPayload {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct InitialFinishedPayload {
+pub struct InitialFinishedPayload
+{
     pub task_id: String,
     pub content: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct SummarySavedPayload {
+pub struct SummarySavedPayload
+{
     pub task_id: String,
     pub summary_text: String,
     pub summary: SummaryItem,
@@ -66,9 +73,18 @@ pub struct SummarySavedPayload {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", content = "payload", rename_all = "camelCase")]
-pub enum ChatEvent {
-    ArpYamlSaved { device_name: String, saved_path: String },
-    RouteYamlSaved { device_name: String, saved_path: String },
+pub enum ChatEvent
+{
+    ArpYamlSaved
+    {
+        device_name: String,
+        saved_path: String,
+    },
+    RouteYamlSaved
+    {
+        device_name: String,
+        saved_path: String,
+    },
     McpToolStarted(ToolStartedPayload),
     McpToolFinished(ToolFinishedPayload),
     McpAnalysisStarted(AnalysisStartedPayload),

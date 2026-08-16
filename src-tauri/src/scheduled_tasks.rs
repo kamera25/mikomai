@@ -1,26 +1,31 @@
+use crate::error::TauriError;
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, State, Emitter};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 use tokio_cron_scheduler::{Job, JobScheduler};
-use uuid::Uuid;
-use chrono::Local;
 use tracing::Instrument;
-use crate::error::TauriError;
+use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
-pub fn validate_cron_expression(schedule: &str) -> Result<(), ValidationError> {
-    if Job::new_async(schedule, |_uuid, _l| Box::pin(async move {})).is_ok() {
+pub fn validate_cron_expression(schedule: &str) -> Result<(), ValidationError>
+{
+    if Job::new_async(schedule, |_uuid, _l| Box::pin(async move {})).is_ok()
+    {
         Ok(())
-    } else {
+    }
+    else
+    {
         Err(ValidationError::new("invalid_cron_expression"))
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum ScheduledTaskError {
+pub enum ScheduledTaskError
+{
     #[error("File I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Serialization/Deserialization error: {0}")]
@@ -29,7 +34,8 @@ pub enum ScheduledTaskError {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
-pub struct ScheduledTask {
+pub struct ScheduledTask
+{
     pub id: String,
     #[validate(length(min = 1))]
     pub name: String,
@@ -41,37 +47,51 @@ pub struct ScheduledTask {
     pub prompt: String,
 }
 
-pub struct SchedulerState {
+pub struct SchedulerState
+{
     pub sched: Arc<Mutex<JobScheduler>>,
     pub tasks: Arc<Mutex<Vec<ScheduledTask>>>,
 }
 
-fn get_tasks_path(app: &tauri::AppHandle) -> PathBuf {
-    let path = app.path().app_data_dir().expect("Failed to get app data dir");
-    if !path.exists() {
+fn get_tasks_path(app: &tauri::AppHandle) -> PathBuf
+{
+    let path = app
+        .path()
+        .app_data_dir()
+        .expect("Failed to get app data dir");
+    if !path.exists()
+    {
         let _ = fs::create_dir_all(&path);
     }
     path.join("scheduled_tasks.json")
 }
 
-pub async fn init_scheduler(app: &AppHandle) -> SchedulerState {
+pub async fn init_scheduler(app: &AppHandle) -> SchedulerState
+{
     let tasks_path = get_tasks_path(app);
     let mut tasks = Vec::new();
-    if tasks_path.exists() {
-        if let Ok(data) = fs::read_to_string(&tasks_path) {
-            if let Ok(loaded_tasks) = serde_json::from_str::<Vec<ScheduledTask>>(&data) {
+    if tasks_path.exists()
+    {
+        if let Ok(data) = fs::read_to_string(&tasks_path)
+        {
+            if let Ok(loaded_tasks) = serde_json::from_str::<Vec<ScheduledTask>>(&data)
+            {
                 tasks = loaded_tasks;
             }
         }
     }
 
-    let sched = JobScheduler::new().await.expect("Failed to create JobScheduler");
+    let sched = JobScheduler::new()
+        .await
+        .expect("Failed to create JobScheduler");
 
     let tasks_state = Arc::new(Mutex::new(tasks.clone()));
 
     // Add jobs for existing tasks
-    for task in tasks {
-        if task.status == "running" {
+    for task in tasks
+    {
+        if task.status == "running"
+        {
             let task_id = task.id.clone();
             let app_handle = app.clone();
             let cron_expr = task.schedule.clone();
@@ -90,12 +110,14 @@ pub async fn init_scheduler(app: &AppHandle) -> SchedulerState {
 
                         let state: State<SchedulerState> = app_handle_clone.state();
                         let mut tasks = state.tasks.lock().await;
-                        if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id_clone) {
+                        if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id_clone)
+                        {
                             t.last_run = Local::now().format("%Y-%m-%d %H:%M").to_string();
                         }
 
                         let path = get_tasks_path(&app_handle_clone);
-                        if let Ok(data) = serde_json::to_string_pretty(&*tasks) {
+                        if let Ok(data) = serde_json::to_string_pretty(&*tasks)
+                        {
                             let _ = fs::write(path, data);
                         }
                     }
@@ -104,7 +126,8 @@ pub async fn init_scheduler(app: &AppHandle) -> SchedulerState {
                 })
             });
 
-            if let Ok(j) = job {
+            if let Ok(j) = job
+            {
                 let _ = sched.add(j).await;
             }
         }
@@ -118,14 +141,19 @@ pub async fn init_scheduler(app: &AppHandle) -> SchedulerState {
     }
 }
 
-pub async fn restart_scheduler(app: &AppHandle, sched_state: &SchedulerState) {
+pub async fn restart_scheduler(app: &AppHandle, sched_state: &SchedulerState)
+{
     let tasks = sched_state.tasks.lock().await.clone();
 
     // Create new scheduler to replace the old one
-    let new_sched = JobScheduler::new().await.expect("Failed to create new JobScheduler");
+    let new_sched = JobScheduler::new()
+        .await
+        .expect("Failed to create new JobScheduler");
 
-    for task in tasks {
-        if task.status == "running" {
+    for task in tasks
+    {
+        if task.status == "running"
+        {
             let task_id = task.id.clone();
             let app_handle = app.clone();
             let cron_expr = task.schedule.clone();
@@ -142,12 +170,14 @@ pub async fn restart_scheduler(app: &AppHandle, sched_state: &SchedulerState) {
 
                         let state: State<SchedulerState> = app_handle_clone.state();
                         let mut tasks = state.tasks.lock().await;
-                        if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id_clone) {
+                        if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id_clone)
+                        {
                             t.last_run = Local::now().format("%Y-%m-%d %H:%M").to_string();
                         }
 
                         let path = get_tasks_path(&app_handle_clone);
-                        if let Ok(data) = serde_json::to_string_pretty(&*tasks) {
+                        if let Ok(data) = serde_json::to_string_pretty(&*tasks)
+                        {
                             let _ = fs::write(path, data);
                         }
                     }
@@ -156,15 +186,21 @@ pub async fn restart_scheduler(app: &AppHandle, sched_state: &SchedulerState) {
                 })
             });
 
-            if let Ok(j) = job {
+            if let Ok(j) = job
+            {
                 let _ = new_sched.add(j).await;
-            } else {
+            }
+            else
+            {
                 tracing::error!(cron_expr = %cron_expr, "Failed to parse cron expression");
             }
         }
     }
 
-    new_sched.start().await.expect("Failed to start new scheduler");
+    new_sched
+        .start()
+        .await
+        .expect("Failed to start new scheduler");
 
     // Replace the active scheduler
     let mut sched_lock = sched_state.sched.lock().await;
@@ -172,15 +208,25 @@ pub async fn restart_scheduler(app: &AppHandle, sched_state: &SchedulerState) {
 }
 
 #[tauri::command]
-pub async fn load_scheduled_tasks(state: tauri::State<'_, SchedulerState>) -> Result<Vec<ScheduledTask>, TauriError> {
+pub async fn load_scheduled_tasks(
+    state: tauri::State<'_, SchedulerState>,
+) -> Result<Vec<ScheduledTask>, TauriError>
+{
     let tasks = state.tasks.lock().await;
     Ok(tasks.clone())
 }
 
 #[tauri::command]
-pub async fn save_scheduled_tasks(app: tauri::AppHandle, tasks: Vec<ScheduledTask>, state: tauri::State<'_, SchedulerState>) -> Result<(), TauriError> {
-    for task in &tasks {
-        task.validate().map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
+pub async fn save_scheduled_tasks(
+    app: tauri::AppHandle,
+    tasks: Vec<ScheduledTask>,
+    state: tauri::State<'_, SchedulerState>,
+) -> Result<(), TauriError>
+{
+    for task in &tasks
+    {
+        task.validate()
+            .map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
     }
     {
         let mut state_tasks = state.tasks.lock().await;
@@ -202,8 +248,9 @@ pub async fn add_scheduled_task(
     name: String,
     schedule: String,
     prompt: String,
-    state: tauri::State<'_, SchedulerState>
-) -> Result<ScheduledTask, TauriError> {
+    state: tauri::State<'_, SchedulerState>,
+) -> Result<ScheduledTask, TauriError>
+{
     let task = ScheduledTask {
         id: Uuid::new_v4().to_string(),
         name,
@@ -213,7 +260,8 @@ pub async fn add_scheduled_task(
         prompt,
     };
 
-    task.validate().map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
+    task.validate()
+        .map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
 
     let path = get_tasks_path(&app);
     {
@@ -232,14 +280,17 @@ pub async fn add_scheduled_task(
 pub async fn update_scheduled_task(
     app: tauri::AppHandle,
     task: ScheduledTask,
-    state: tauri::State<'_, SchedulerState>
-) -> Result<(), TauriError> {
-    task.validate().map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
+    state: tauri::State<'_, SchedulerState>,
+) -> Result<(), TauriError>
+{
+    task.validate()
+        .map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
 
     let path = get_tasks_path(&app);
     {
         let mut tasks = state.tasks.lock().await;
-        if let Some(pos) = tasks.iter().position(|t| t.id == task.id) {
+        if let Some(pos) = tasks.iter().position(|t| t.id == task.id)
+        {
             tasks[pos] = task;
         }
         let data = serde_json::to_string_pretty(&*tasks)?;
@@ -255,8 +306,9 @@ pub async fn update_scheduled_task(
 pub async fn delete_scheduled_task(
     app: tauri::AppHandle,
     id: String,
-    state: tauri::State<'_, SchedulerState>
-) -> Result<(), TauriError> {
+    state: tauri::State<'_, SchedulerState>,
+) -> Result<(), TauriError>
+{
     let path = get_tasks_path(&app);
     {
         let mut tasks = state.tasks.lock().await;
@@ -274,13 +326,15 @@ pub async fn delete_scheduled_task(
 pub async fn execute_task(
     app: tauri::AppHandle,
     id: String,
-    state: tauri::State<'_, SchedulerState>
-) -> Result<(), TauriError> {
+    state: tauri::State<'_, SchedulerState>,
+) -> Result<(), TauriError>
+{
     let span = tracing::info_span!("execute_task", task_id = %id);
     async move {
         tracing::info!("Manually executing task");
         let mut tasks = state.tasks.lock().await;
-        if let Some(t) = tasks.iter_mut().find(|task| task.id == id) {
+        if let Some(t) = tasks.iter_mut().find(|task| task.id == id)
+        {
             t.last_run = Local::now().format("%Y-%m-%d %H:%M").to_string();
 
             let path = get_tasks_path(&app);
@@ -295,11 +349,13 @@ pub async fn execute_task(
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_scheduled_task_serialization() {
+    fn test_scheduled_task_serialization()
+    {
         let task = ScheduledTask {
             id: "task-1".to_string(),
             name: "Test Task".to_string(),
@@ -316,11 +372,11 @@ mod tests {
     }
 
     #[test]
-    fn test_rust_settings_integration() {
+    fn test_rust_settings_integration()
+    {
         // Let's verify we can serialize and parse app settings, and it fails for ScheduledTask.
         let serialized = r#"{"repoPath":"/mock/repo","modelFilename":"test.gguf","dbPath":"/mock/db","consolePort":"COM1","consoleBaudRate":9600,"ipVersion":"ipv4","autoSaveHistory":true}"#;
         let settings: Result<ScheduledTask, _> = serde_json::from_str(serialized);
         assert!(settings.is_err());
     }
 }
-

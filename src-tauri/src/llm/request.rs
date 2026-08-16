@@ -1,8 +1,8 @@
-use std::num::NonZeroU32;
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::AddBos;
 use llama_cpp_2::sampling::LlamaSampler;
+use std::num::NonZeroU32;
 use tauri::Emitter;
 use tauri::Manager;
 
@@ -13,14 +13,17 @@ use crate::llm::llm::{
 use crate::llm::llm_manager::SharedModel;
 use crate::llm::worker::{LlmWorker, Route};
 
-pub enum InferenceRequest {
-    Initial {
+pub enum InferenceRequest
+{
+    Initial
+    {
         window: tauri::Window,
         prompt: String,
         original_query: String,
         respond_to: tokio::sync::oneshot::Sender<Result<(String, Route), LlmError>>,
     },
-    Analyze {
+    Analyze
+    {
         window: tauri::Window,
         user_message: String,
         tool_label: String,
@@ -31,12 +34,14 @@ pub enum InferenceRequest {
         subsequent_task: Option<String>,
         respond_to: tokio::sync::oneshot::Sender<Result<String, LlmError>>,
     },
-    Background {
+    Background
+    {
         prompt: String,
         app: tauri::AppHandle,
         respond_to: tokio::sync::oneshot::Sender<Result<String, LlmError>>,
     },
-    Internal {
+    Internal
+    {
         prompt: String,
         system_prompt: String,
         app: tauri::AppHandle,
@@ -44,37 +49,48 @@ pub enum InferenceRequest {
     },
 }
 
-pub trait InferenceRequestHandler {
+pub trait InferenceRequestHandler
+{
     fn handle(self, shared_model: &SharedModel);
     fn reject(self, error: LlmError);
 }
 
-impl InferenceRequestHandler for InferenceRequest {
-    fn reject(self, error: LlmError) {
-        match self {
-            InferenceRequest::Initial { respond_to, .. } => {
+impl InferenceRequestHandler for InferenceRequest
+{
+    fn reject(self, error: LlmError)
+    {
+        match self
+        {
+            InferenceRequest::Initial { respond_to, .. } =>
+            {
                 let _ = respond_to.send(Err(error));
             }
-            InferenceRequest::Analyze { respond_to, .. } => {
+            InferenceRequest::Analyze { respond_to, .. } =>
+            {
                 let _ = respond_to.send(Err(error));
             }
-            InferenceRequest::Background { respond_to, .. } => {
+            InferenceRequest::Background { respond_to, .. } =>
+            {
                 let _ = respond_to.send(Err(error));
             }
-            InferenceRequest::Internal { respond_to, .. } => {
+            InferenceRequest::Internal { respond_to, .. } =>
+            {
                 let _ = respond_to.send(Err(error));
             }
         }
     }
 
-    fn handle(self, shared_model: &SharedModel) {
-        match self {
+    fn handle(self, shared_model: &SharedModel)
+    {
+        match self
+        {
             InferenceRequest::Initial {
                 window,
                 prompt,
                 original_query,
                 respond_to,
-            } => {
+            } =>
+            {
                 let res = handle_initial(shared_model, window, prompt, original_query);
                 let _ = respond_to.send(res);
             }
@@ -88,7 +104,8 @@ impl InferenceRequestHandler for InferenceRequest {
                 history_block,
                 subsequent_task,
                 respond_to,
-            } => {
+            } =>
+            {
                 let res = handle_analyze(
                     shared_model,
                     window,
@@ -106,7 +123,8 @@ impl InferenceRequestHandler for InferenceRequest {
                 prompt,
                 app,
                 respond_to,
-            } => {
+            } =>
+            {
                 let res = handle_background(shared_model, app, prompt);
                 let _ = respond_to.send(res);
             }
@@ -115,7 +133,8 @@ impl InferenceRequestHandler for InferenceRequest {
                 system_prompt,
                 app,
                 respond_to,
-            } => {
+            } =>
+            {
                 let res = handle_internal(shared_model, app, prompt, system_prompt);
                 let _ = respond_to.send(res);
             }
@@ -126,8 +145,10 @@ impl InferenceRequestHandler for InferenceRequest {
 pub fn get_worker_for_route(
     shared: &SharedModel,
     route: Route,
-) -> Option<&std::sync::Mutex<dyn LlmWorker>> {
-    match route {
+) -> Option<&std::sync::Mutex<dyn LlmWorker>>
+{
+    match route
+    {
         Route::Investigate => Some(&shared.investigate),
         Route::Knowledge => Some(&shared.knowledge),
         Route::Analysis => Some(&shared.analysis),
@@ -142,9 +163,9 @@ fn handle_initial(
     window: tauri::Window,
     prompt: String,
     original_query: String,
-) -> Result<(String, Route), LlmError> {
-    let settings =
-        crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
+) -> Result<(String, Route), LlmError>
+{
+    let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
     let model = shared_model.model.clone();
     let backend = shared_model.backend.clone();
 
@@ -155,31 +176,45 @@ fn handle_initial(
         window.app_handle(),
     )?;
 
-    match decision.action {
-        crate::llm::router::RouteAction::StaticReply { message } => {
+    match decision.action
+    {
+        crate::llm::router::RouteAction::StaticReply { message } =>
+        {
             let _ = window.emit(
                 "chat-event",
                 crate::mcp::protocol::ChatEvent::LlmChunk(message.clone()),
             );
             Ok((message, Route::None))
         }
-        crate::llm::router::RouteAction::DirectToolCall { tool_name, params, message } => {
+        crate::llm::router::RouteAction::DirectToolCall {
+            tool_name,
+            params,
+            message,
+        } =>
+        {
             let tool_call = serde_json::json!({
                 "tool_name": tool_name,
                 "params": params
             });
-            let response_str = format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap());
+            let response_str = format!(
+                "{}\n\n```json\n{}\n```",
+                message,
+                serde_json::to_string_pretty(&tool_call).unwrap()
+            );
             let _ = window.emit(
                 "chat-event",
                 crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()),
             );
             Ok((response_str, Route::None))
         }
-        crate::llm::router::RouteAction::AskClarification => {
+        crate::llm::router::RouteAction::AskClarification =>
+        {
             let ask_msg = crate::llm::router::RoutingPipeline::build_clarification_message();
             let _ = window.emit(
                 "chat-event",
-                crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI (アシスタント)".to_string()),
+                crate::mcp::protocol::ChatEvent::AgentSelected(
+                    "MIKOMAI (アシスタント)".to_string(),
+                ),
             );
             let _ = window.emit(
                 "chat-event",
@@ -187,14 +222,24 @@ fn handle_initial(
             );
             Ok((ask_msg, Route::None))
         }
-        crate::llm::router::RouteAction::WorkerRoute { route, subsequent_task, .. } => {
+        crate::llm::router::RouteAction::WorkerRoute {
+            route,
+            subsequent_task,
+            ..
+        } =>
+        {
             let active_route = route;
-            let final_prompt = if active_route == Route::Builder {
+            let final_prompt = if active_route == Route::Builder
+            {
                 prepare_builder_prompt(&prompt)
-            } else {
+            }
+            else
+            {
                 prompt
             };
-            let worker_res = if let Some(worker_mutex) = get_worker_for_route(shared_model, active_route) {
+            let worker_res = if let Some(worker_mutex) =
+                get_worker_for_route(shared_model, active_route)
+            {
                 let mut worker = worker_mutex.lock().unwrap();
                 worker.set_device_contexts(decision.device_contexts);
                 let agent_name = worker.agent_name();
@@ -217,7 +262,9 @@ fn handle_initial(
                         settings.repetition_penalty,
                     )
                     .map_err(LlmError::Worker)
-            } else {
+            }
+            else
+            {
                 Ok("実行が完了しました。".to_string())
             };
             worker_res.map(|s| (s, active_route))
@@ -235,14 +282,16 @@ fn handle_analyze(
     is_builder: bool,
     history_block: Option<String>,
     subsequent_task: Option<String>,
-) -> Result<String, LlmError> {
-    let settings =
-        crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
+) -> Result<String, LlmError>
+{
+    let settings = crate::settings::load_settings(window.app_handle().clone()).unwrap_or_default();
     let model = shared_model.model.clone();
     let backend = shared_model.backend.clone();
 
-    if is_rag {
-        if is_builder {
+    if is_rag
+    {
+        if is_builder
+        {
             let mut worker = shared_model.builder.lock().unwrap();
             let agent_name = worker.agent_name();
             let _ = window.emit(
@@ -265,7 +314,9 @@ fn handle_analyze(
                     settings.repetition_penalty,
                 )
                 .map_err(LlmError::Worker)
-        } else {
+        }
+        else
+        {
             let mut worker = shared_model.rag.lock().unwrap();
             let agent_name = worker.agent_name();
             let _ = window.emit(
@@ -289,7 +340,9 @@ fn handle_analyze(
                 )
                 .map_err(LlmError::Worker)
         }
-    } else {
+    }
+    else
+    {
         let is_ask_user_choice = tool_label.contains("ask_user_choice");
         let is_ask_interface_choice = tool_label.contains("ask_interface_choice");
         let is_ask_ipaddress_choice = tool_label.contains("ask_ipaddress_choice");
@@ -314,10 +367,15 @@ fn handle_analyze(
         }
 
         let is_nwdiag_tool = tool_label.contains("nwdiag") || tool_label.contains("ネットワーク図");
-        let is_nwdiag_success = is_nwdiag_tool && output.contains("Network diagram generated successfully");
-        let is_nwdiag_failed = is_nwdiag_tool && (output.contains("validation failed") || output.contains("compilation failed") || output.contains("Execution failed"));
+        let is_nwdiag_success =
+            is_nwdiag_tool && output.contains("Network diagram generated successfully");
+        let is_nwdiag_failed = is_nwdiag_tool
+            && (output.contains("validation failed")
+                || output.contains("compilation failed")
+                || output.contains("Execution failed"));
 
-        if is_nwdiag_success {
+        if is_nwdiag_success
+        {
             let success_msg = "ネットワーク図の生成が完了しました。";
             let _ = window.emit(
                 "chat-event",
@@ -326,15 +384,20 @@ fn handle_analyze(
             return Ok(success_msg.to_string());
         }
 
-        let (active_route, route_subsequent_task, matched_contexts) = if is_any_choice {
+        let (active_route, route_subsequent_task, matched_contexts) = if is_any_choice
+        {
             (Route::Builder, None, Vec::new())
-        } else if is_nwdiag_failed {
+        }
+        else if is_nwdiag_failed
+        {
             (
                 Route::Plotter,
                 Some("前回のnwdiagスキーマに構文エラーが発生しました。エラーメッセージと指示に従って、正しい構文でnwdiagスキーマを修正・再生成してください。".to_string()),
                 Vec::new(),
             )
-        } else {
+        }
+        else
+        {
             let decision = crate::llm::router::RoutingPipeline::route(
                 shared_model,
                 &user_message,
@@ -342,9 +405,12 @@ fn handle_analyze(
                 window.app_handle(),
             )?;
 
-            match decision.action {
-                crate::llm::router::RouteAction::AskClarification => {
-                    let ask_msg = crate::llm::router::RoutingPipeline::build_clarification_message();
+            match decision.action
+            {
+                crate::llm::router::RouteAction::AskClarification =>
+                {
+                    let ask_msg =
+                        crate::llm::router::RoutingPipeline::build_clarification_message();
                     let _ = window.emit(
                         "chat-event",
                         crate::mcp::protocol::ChatEvent::AgentSelected(
@@ -357,53 +423,82 @@ fn handle_analyze(
                     );
                     return Ok(ask_msg);
                 }
-                crate::llm::router::RouteAction::WorkerRoute { route, subsequent_route, subsequent_task, .. } => {
-                    if let Some(sub_route) = subsequent_route {
+                crate::llm::router::RouteAction::WorkerRoute {
+                    route,
+                    subsequent_route,
+                    subsequent_task,
+                    ..
+                } =>
+                {
+                    if let Some(sub_route) = subsequent_route
+                    {
                         (sub_route, subsequent_task, decision.device_contexts)
-                    } else if is_builder || route == Route::Plotter || route == Route::Builder {
+                    }
+                    else if is_builder || route == Route::Plotter || route == Route::Builder
+                    {
                         (route, subsequent_task, decision.device_contexts)
-                    } else {
+                    }
+                    else
+                    {
                         return Ok("実行が完了しました。".to_string());
                     }
                 }
-                _ => {
+                _ =>
+                {
                     return Ok("実行が完了しました。".to_string());
                 }
             }
         };
 
-        let custom_subsequent_task = if is_ask_user_choice {
+        let custom_subsequent_task = if is_ask_user_choice
+        {
             Some(format!(
                 "ユーザーが「{}」を選択しました。この回答要件を含めてCisco Configを設定・生成してください。",
                 output
             ))
-        } else if is_ask_interface_choice {
+        }
+        else if is_ask_interface_choice
+        {
             Some(format!(
                 "ユーザーがインターフェースとして「{}」を選択・入力しました。この情報を反映して設定を生成または変更してください。",
                 output
             ))
-        } else if is_ask_ipaddress_choice {
+        }
+        else if is_ask_ipaddress_choice
+        {
             Some(format!(
                 "ユーザーがIPアドレス（およびサブネット）として「{}」を指定・確定しました。この情報を反映して設定を生成または変更してください。",
                 output
             ))
-        } else {
+        }
+        else
+        {
             None
         };
-        let subsequent_task_ref = if let Some(ref s) = subsequent_task {
+        let subsequent_task_ref = if let Some(ref s) = subsequent_task
+        {
             Some(s.as_str())
-        } else if is_any_choice {
+        }
+        else if is_any_choice
+        {
             custom_subsequent_task.as_deref()
-        } else {
+        }
+        else
+        {
             route_subsequent_task.as_deref()
         };
 
-        let user_message = if active_route == Route::Builder {
+        let user_message = if active_route == Route::Builder
+        {
             replace_interface_abbreviations(&user_message)
-        } else {
+        }
+        else
+        {
             user_message
         };
-        let worker_res = if let Some(worker_mutex) = get_worker_for_route(shared_model, active_route) {
+        let worker_res = if let Some(worker_mutex) =
+            get_worker_for_route(shared_model, active_route)
+        {
             let mut worker = worker_mutex.lock().unwrap();
             worker.set_device_contexts(matched_contexts);
             let agent_name = worker.agent_name();
@@ -426,7 +521,9 @@ fn handle_analyze(
                     settings.repetition_penalty,
                 )
                 .map_err(LlmError::Worker)
-        } else {
+        }
+        else
+        {
             Ok("実行が完了しました。".to_string())
         };
         worker_res
@@ -437,7 +534,8 @@ fn handle_background(
     shared_model: &SharedModel,
     app: tauri::AppHandle,
     prompt: String,
-) -> Result<String, LlmError> {
+) -> Result<String, LlmError>
+{
     let settings = crate::settings::load_settings(app).unwrap_or_default();
     let model = shared_model.model.clone();
     let backend = shared_model.backend.clone();
@@ -459,7 +557,8 @@ fn handle_background(
             settings.repetition_penalty,
         )
         .map_err(LlmError::Worker);
-    match &res {
+    match &res
+    {
         Ok(out) => log::info!("LLM Background Response: {}", out),
         Err(e) => log::error!("LLM Background Error: {}", e),
     }
@@ -471,7 +570,8 @@ fn handle_internal(
     app: tauri::AppHandle,
     prompt: String,
     system_prompt: String,
-) -> Result<String, LlmError> {
+) -> Result<String, LlmError>
+{
     let formatted_prompt = format!(
         "<|turn>system\n{}<turn|>\n<|turn>user\n{}<turn|>\n<|turn>model\n",
         system_prompt, prompt
@@ -508,7 +608,8 @@ fn handle_internal(
 
     let mut batch = LlamaBatch::new(n_ctx, 1);
     let last_index = tokens.len() - 1;
-    for (i, token) in tokens.into_iter().enumerate() {
+    for (i, token) in tokens.into_iter().enumerate()
+    {
         let is_last = i == last_index;
         batch
             .add(token, i as i32, &[0], is_last)
@@ -535,14 +636,17 @@ fn handle_internal(
 
     let mut bytes_accumulator = Vec::new();
 
-    for _ in 0..n_len {
-        if is_cancelled() {
+    for _ in 0..n_len
+    {
+        if is_cancelled()
+        {
             log::info!("LLM internal loop cancelled");
             break;
         }
         let new_token_id = sampler.sample(&mut ctx, batch.n_tokens() - 1);
 
-        if new_token_id == shared_model.model.token_eos() || Some(new_token_id) == turn_end_token {
+        if new_token_id == shared_model.model.token_eos() || Some(new_token_id) == turn_end_token
+        {
             break;
         }
 
@@ -564,7 +668,8 @@ fn handle_internal(
             .map_err(|e| LlmError::Decode(format!("{:?}", e)))?;
     }
 
-    if !bytes_accumulator.is_empty() {
+    if !bytes_accumulator.is_empty()
+    {
         result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
     }
 

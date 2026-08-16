@@ -1,14 +1,17 @@
+use super::fetch_base::{CommandTemplate, McpCommandFetcher};
 use crate::network::CommandResult;
-use super::fetch_base::{McpCommandFetcher, CommandTemplate};
 
 struct ConfigFetcher;
 
-impl McpCommandFetcher for ConfigFetcher {
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+impl McpCommandFetcher for ConfigFetcher
+{
+    fn get_command_from_template(&self, template: &CommandTemplate) -> String
+    {
         template.fetch_config.clone()
     }
-    
-    fn get_log_prefix(&self) -> &'static str {
+
+    fn get_log_prefix(&self) -> &'static str
+    {
         "config"
     }
 }
@@ -16,14 +19,15 @@ impl McpCommandFetcher for ConfigFetcher {
 #[tauri::command]
 #[allow(non_snake_case)]
 pub async fn fetch_config(
-    app: tauri::AppHandle, 
+    app: tauri::AppHandle,
     device_name: Option<String>,
     deviceName: Option<String>,
     device: Option<String>,
     host: Option<String>,
     user_message: Option<String>,
     userMessage: Option<String>,
-) -> Result<CommandResult, String> {
+) -> Result<CommandResult, String>
+{
     let resolved_name = crate::mcp::args::normalize_device_args(
         &app,
         device_name,
@@ -36,14 +40,14 @@ pub async fn fetch_config(
     ConfigFetcher.fetch_device_info(&app, &resolved_name).await
 }
 
-
-
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::super::command_template::{get_default_templates, get_template_for_dtype};
 
     #[test]
-    fn test_default_templates() {
+    fn test_default_templates()
+    {
         let templates = get_default_templates();
         assert!(templates.contains_key("cisco_ios"));
         assert!(templates.contains_key("juniper_junos"));
@@ -65,7 +69,8 @@ mod tests {
     }
 
     #[test]
-    fn test_get_template_for_dtype() {
+    fn test_get_template_for_dtype()
+    {
         let templates = get_default_templates();
 
         // Exact match

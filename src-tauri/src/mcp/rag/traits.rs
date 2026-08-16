@@ -1,7 +1,8 @@
 use arrow_array::RecordBatch;
 use lancedb::Table;
 
-pub trait RagSearcher {
+pub trait RagSearcher
+{
     async fn search(
         &self,
         table: &Table,

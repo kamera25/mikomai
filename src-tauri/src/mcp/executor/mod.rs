@@ -1,18 +1,16 @@
 pub mod extract;
+pub mod flow;
 pub mod registry;
 pub mod tools;
-pub mod flow;
 
 pub use extract::*;
-pub use registry::*;
 pub use flow::*;
+pub use registry::*;
 
-use tauri::{AppHandle, Emitter, Manager, State, Window};
 use serde_json::Value;
+use tauri::{AppHandle, Emitter, Manager, State, Window};
 
-use crate::mcp::protocol::{
-    ChatEvent, ChatRequest, InitialStartedPayload, InitialFinishedPayload,
-};
+use crate::mcp::protocol::{ChatEvent, ChatRequest, InitialFinishedPayload, InitialStartedPayload};
 
 #[tauri::command]
 pub async fn execute_mcp_tool(
@@ -20,7 +18,8 @@ pub async fn execute_mcp_tool(
     window: Window,
     _llama_state: State<'_, crate::llm::llm::LlamaState>,
     payload: ExecuteMcpToolPayload,
-) -> Result<String, String> {
+) -> Result<String, String>
+{
     let tool_calls = vec![ToolCall {
         tool: payload.tool_id.clone(),
         args: payload.args.clone(),
@@ -43,7 +42,8 @@ pub async fn execute_mcp_tool(
         payload.mcp_timeout,
         0,
         is_builder_caller,
-    ).await
+    )
+    .await
 }
 
 #[tauri::command]
@@ -52,7 +52,8 @@ pub async fn handle_mcp_message(
     window: Window,
     llama_state: State<'_, crate::llm::llm::LlamaState>,
     payload: ChatRequest,
-) -> Result<(), String> {
+) -> Result<(), String>
+{
     crate::llm::llm::reset_cancel();
 
     let ChatRequest {
@@ -64,7 +65,8 @@ pub async fn handle_mcp_message(
         attachments,
     } = payload;
 
-    if crate::llm::llm::is_cancelled() {
+    if crate::llm::llm::is_cancelled()
+    {
         return Ok(());
     }
 
@@ -72,29 +74,47 @@ pub async fn handle_mcp_message(
     let thinking_task_id = format!("task_think_{}", chrono::Utc::now().timestamp_millis());
 
     let has_image = attachments.as_ref().map_or(false, |atts| {
-        atts.iter().any(|att| att.mime_type == crate::history::AttachmentType::Image)
+        atts.iter()
+            .any(|att| att.mime_type == crate::history::AttachmentType::Image)
     });
 
-    let _ = window.emit("chat-event", ChatEvent::McpInitialStarted(InitialStartedPayload {
-        task_id: thinking_task_id.clone(),
-        has_image,
-    }));
+    let _ = window.emit(
+        "chat-event",
+        ChatEvent::McpInitialStarted(InitialStartedPayload {
+            task_id: thinking_task_id.clone(),
+            has_image,
+        }),
+    );
 
     // 2. Build history block and prompt
     let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
     let history_block = get_history_block_rust(&summaries, history_limit);
     let mut final_user_message = user_message.clone();
-    if let Some(att_list) = &attachments {
-        for att in att_list {
-            match att.mime_type {
-                crate::history::AttachmentType::Text => {
-                    if let Some(path) = &att.path {
-                        final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n{}", att.name, path, att.content));
-                    } else {
-                        final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
+    if let Some(att_list) = &attachments
+    {
+        for att in att_list
+        {
+            match att.mime_type
+            {
+                crate::history::AttachmentType::Text =>
+                {
+                    if let Some(path) = &att.path
+                    {
+                        final_user_message.push_str(&format!(
+                            "\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n{}",
+                            att.name, path, att.content
+                        ));
+                    }
+                    else
+                    {
+                        final_user_message.push_str(&format!(
+                            "\n\n--- 添付ファイル: {} ---\n{}",
+                            att.name, att.content
+                        ));
                     }
                 }
-                crate::history::AttachmentType::Image => {
+                crate::history::AttachmentType::Image =>
+                {
                     let analysis = crate::llm::vision::analyze_image_attachment(
                         &att.name,
                         att.mime_type.as_str(),
@@ -102,22 +122,36 @@ pub async fn handle_mcp_message(
                         settings.vision_enabled,
                         settings.mmproj_path.as_deref(),
                         &*llama_state,
-                    ).await;
-                    if let Some(path) = &att.path {
-                        final_user_message.push_str(&format!("\n\n[添付画像: {} (ローカルパス: {})]\n{}", att.name, path, analysis.extracted_context));
-                    } else {
+                    )
+                    .await;
+                    if let Some(path) = &att.path
+                    {
+                        final_user_message.push_str(&format!(
+                            "\n\n[添付画像: {} (ローカルパス: {})]\n{}",
+                            att.name, path, analysis.extracted_context
+                        ));
+                    }
+                    else
+                    {
                         final_user_message.push_str(&format!("\n\n{}", analysis.extracted_context));
                     }
                 }
-                crate::history::AttachmentType::File => {
+                crate::history::AttachmentType::File =>
+                {
                     // Binary or large file
-                    if let Some(path) = &att.path {
+                    if let Some(path) = &att.path
+                    {
                         final_user_message.push_str(&format!(
                             "\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n※バイナリまたは大容量ファイルのため内容は省略されています。機器へのアップロード等のツール実行時は local_file 引数に '{}' を指定してください。",
                             att.name, path, path
                         ));
-                    } else {
-                        final_user_message.push_str(&format!("\n\n--- 添付ファイル: {} ---\n{}", att.name, att.content));
+                    }
+                    else
+                    {
+                        final_user_message.push_str(&format!(
+                            "\n\n--- 添付ファイル: {} ---\n{}",
+                            att.name, att.content
+                        ));
                     }
                 }
             }
@@ -125,48 +159,66 @@ pub async fn handle_mcp_message(
     }
     let prompt_with_context = format!("【ユーザー入力】\n{}{}", final_user_message, history_block);
 
-    if crate::llm::llm::is_cancelled() {
+    if crate::llm::llm::is_cancelled()
+    {
         return Ok(());
     }
 
     // 3. Call ask_llm_initial_internal to get the route along with response
-    let (response, route) = match crate::llm::llm::ask_llm_initial_internal(window.clone(), prompt_with_context, &*llama_state).await {
+    let (response, route) = match crate::llm::llm::ask_llm_initial_internal(
+        window.clone(),
+        prompt_with_context,
+        &*llama_state,
+    )
+    .await
+    {
         Ok(res) => res,
-        Err(e) => {
+        Err(e) =>
+        {
             return Err(e.to_string());
         }
     };
 
-    if crate::llm::llm::is_cancelled() {
+    if crate::llm::llm::is_cancelled()
+    {
         return Ok(());
     }
 
-    let _ = window.emit("chat-event", ChatEvent::McpInitialFinished(InitialFinishedPayload {
-        task_id: thinking_task_id.clone(),
-        content: response.clone(),
-    }));
+    let _ = window.emit(
+        "chat-event",
+        ChatEvent::McpInitialFinished(InitialFinishedPayload {
+            task_id: thinking_task_id.clone(),
+            content: response.clone(),
+        }),
+    );
 
     // 4. Extract and parse tool calls
     let json_blocks = extract_json_blocks(&response);
 
     let mut tool_calls = Vec::new();
-    for block in json_blocks {
-        if let Ok(parsed) = serde_json::from_str::<Value>(&block) {
-            let tool = parsed.get("tool_name")
+    for block in json_blocks
+    {
+        if let Ok(parsed) = serde_json::from_str::<Value>(&block)
+        {
+            let tool = parsed
+                .get("tool_name")
                 .or_else(|| parsed.get("tool"))
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            let args = parsed.get("params")
+            let args = parsed
+                .get("params")
                 .or_else(|| parsed.get("args"))
                 .cloned()
                 .unwrap_or(Value::Object(serde_json::Map::new()));
-            if let Some(t) = tool {
+            if let Some(t) = tool
+            {
                 tool_calls.push(ToolCall { tool: t, args });
             }
         }
     }
 
-    if !tool_calls.is_empty() {
+    if !tool_calls.is_empty()
+    {
         let is_builder_caller = route == crate::llm::worker::Route::Builder
             || route == crate::llm::worker::Route::Plotter
             || tool_calls.iter().any(|t| {
@@ -188,8 +240,11 @@ pub async fn handle_mcp_message(
             mcp_timeout,
             0,
             is_builder_caller,
-        ).await;
-    } else {
+        )
+        .await;
+    }
+    else
+    {
         // No tools called: perform summarizeAndSave for the initial response.
         let app_c = app.clone();
         let window_c = window.clone();
@@ -199,13 +254,14 @@ pub async fn handle_mcp_message(
 
         tokio::spawn(async move {
             let llama_state_bg = app_c.state::<crate::llm::llm::LlamaState>();
-            let content_to_summarize = format!("ユーザー入力: {}\n回答: {}", user_message_c, response_c);
-            let summary_prompt = format!("以下の内容を要約してください。\n\n{}", content_to_summarize);
-            if let Ok(summary_text) = crate::llm::llm::ask_llm_background(
-                summary_prompt,
-                app_c.clone(),
-                llama_state_bg,
-            ).await {
+            let content_to_summarize =
+                format!("ユーザー入力: {}\n回答: {}", user_message_c, response_c);
+            let summary_prompt =
+                format!("以下の内容を要約してください。\n\n{}", content_to_summarize);
+            if let Ok(summary_text) =
+                crate::llm::llm::ask_llm_background(summary_prompt, app_c.clone(), llama_state_bg)
+                    .await
+            {
                 let new_summary = crate::history::SummaryItem {
                     timestamp: chrono::Utc::now().to_rfc3339(),
                     content: summary_text.clone(),

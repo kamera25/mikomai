@@ -1,43 +1,63 @@
-use crate::llm::worker::LlmWorker;
-use crate::llm::llm_manager::AgentContext;
-use llama_cpp_2::model::LlamaModel;
-use llama_cpp_2::llama_backend::LlamaBackend;
-use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
+use crate::llm::llm_manager::AgentContext;
+use crate::llm::worker::LlmWorker;
+use llama_cpp_2::llama_backend::LlamaBackend;
+use llama_cpp_2::model::LlamaModel;
+use std::sync::Arc;
 
 const PLOTTER_WORKER_PROMPT: &str = include_str!("../prompts/plotter_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 2048;
 const N_CTX: u32 = 8192;
 
-pub struct PlotterWorker {
+pub struct PlotterWorker
+{
     pub ctx: Option<AgentContext>,
 }
 
-impl PlotterWorker {
-    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>, preload: bool) -> Result<Self, String> {
-        if preload {
+impl PlotterWorker
+{
+    pub fn new(
+        model: &Arc<LlamaModel>,
+        backend: &Arc<LlamaBackend>,
+        preload: bool,
+    ) -> Result<Self, String>
+    {
+        if preload
+        {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Plotter (作図器)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
                 PLOTTER_WORKER_PROMPT
             );
-            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 6, MAX_NEW_TOKENS, N_CTX)
-                .map_err(|e| format!("Failed to create Plotter context: {:?}", e))?;
-            
+            let ctx = AgentContext::new(
+                model.clone(),
+                backend.clone(),
+                &full_system_prompt,
+                6,
+                MAX_NEW_TOKENS,
+                N_CTX,
+            )
+            .map_err(|e| format!("Failed to create Plotter context: {:?}", e))?;
+
             Ok(Self { ctx: Some(ctx) })
-        } else {
+        }
+        else
+        {
             Ok(Self { ctx: None })
         }
     }
 }
 
-impl LlmWorker for PlotterWorker {
-    fn agent_name(&self) -> &'static str {
+impl LlmWorker for PlotterWorker
+{
+    fn agent_name(&self) -> &'static str
+    {
         "Plotter (作図器)"
     }
 
-    fn context_mut(&mut self) -> &mut AgentContext {
+    fn context_mut(&mut self) -> &mut AgentContext
+    {
         self.ctx.as_mut().expect("Plotter context not initialized")
     }
 
@@ -45,22 +65,32 @@ impl LlmWorker for PlotterWorker {
         &mut self,
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
-    ) -> Result<(), String> {
-        if self.ctx.is_none() {
+    ) -> Result<(), String>
+    {
+        if self.ctx.is_none()
+        {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Plotter (作図器)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
                 PLOTTER_WORKER_PROMPT
             );
-            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 6, MAX_NEW_TOKENS, N_CTX)
-                .map_err(|e| format!("Failed to create Plotter context: {:?}", e))?;
-            
+            let ctx = AgentContext::new(
+                model.clone(),
+                backend.clone(),
+                &full_system_prompt,
+                6,
+                MAX_NEW_TOKENS,
+                N_CTX,
+            )
+            .map_err(|e| format!("Failed to create Plotter context: {:?}", e))?;
+
             self.ctx = Some(ctx);
         }
         Ok(())
     }
 
-    fn max_new_tokens(&self) -> u32 {
+    fn max_new_tokens(&self) -> u32
+    {
         MAX_NEW_TOKENS
     }
 
@@ -77,19 +107,22 @@ impl LlmWorker for PlotterWorker {
         window: Option<&tauri::Window>,
         temperature: f32,
         repetition_penalty: f32,
-    ) -> Result<String, String> {
+    ) -> Result<String, String>
+    {
         self.ensure_initialized(model, backend)?;
 
-        let (prompt, user_message, output, history_block) = crate::llm::llm_manager::apply_token_budget(
-            model,
-            self.context_mut().n_ctx,
-            self.context_mut().base_n_past,
-            self.context_mut().max_new_tokens,
-            prompt,
-            user_message,
-            output,
-            history_block,
-        ).map_err(|e| format!("Failed to apply token budget: {:?}", e))?;
+        let (prompt, user_message, output, history_block) =
+            crate::llm::llm_manager::apply_token_budget(
+                model,
+                self.context_mut().n_ctx,
+                self.context_mut().base_n_past,
+                self.context_mut().max_new_tokens,
+                prompt,
+                user_message,
+                output,
+                history_block,
+            )
+            .map_err(|e| format!("Failed to apply token budget: {:?}", e))?;
 
         let worker_prompt = self.build_prompt(
             prompt,
@@ -118,8 +151,12 @@ impl LlmWorker for PlotterWorker {
         let grammar_str = llama_cpp_2::json_schema_to_grammar(schema)
             .map_err(|e| format!("Failed to convert schema to grammar: {:?}", e))?;
 
-        let grammar_sampler = llama_cpp_2::sampling::LlamaSampler::grammar(&self.context_mut().model, &grammar_str, "root")
-            .map_err(|e| format!("Failed to create grammar sampler: {:?}", e))?;
+        let grammar_sampler = llama_cpp_2::sampling::LlamaSampler::grammar(
+            &self.context_mut().model,
+            &grammar_str,
+            "root",
+        )
+        .map_err(|e| format!("Failed to create grammar sampler: {:?}", e))?;
 
         crate::llm::llm_manager::run_inference_with_grammar(
             self.context_mut(),
@@ -128,7 +165,8 @@ impl LlmWorker for PlotterWorker {
             temperature,
             repetition_penalty,
             Some(grammar_sampler),
-        ).map_err(|e| format!("Plotter inference failed: {:?}", e))
+        )
+        .map_err(|e| format!("Plotter inference failed: {:?}", e))
     }
 
     fn build_prompt(
@@ -139,7 +177,15 @@ impl LlmWorker for PlotterWorker {
         output: Option<String>,
         history_block: Option<String>,
         subsequent_task: Option<&str>,
-    ) -> String {
-        crate::llm::worker::build_common_worker_prompt(prompt, user_message, tool_label, output, history_block, subsequent_task)
+    ) -> String
+    {
+        crate::llm::worker::build_common_worker_prompt(
+            prompt,
+            user_message,
+            tool_label,
+            output,
+            history_block,
+            subsequent_task,
+        )
     }
 }

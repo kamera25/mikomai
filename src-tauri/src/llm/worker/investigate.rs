@@ -1,36 +1,60 @@
-use crate::llm::worker::{LlmWorker, build_common_worker_prompt};
-use crate::llm::llm_manager::AgentContext;
-use llama_cpp_2::model::LlamaModel;
-use llama_cpp_2::llama_backend::LlamaBackend;
-use std::sync::Arc;
 use crate::llm::llm::SYSTEM_PROMPT;
-
+use crate::llm::llm_manager::AgentContext;
+use crate::llm::worker::{build_common_worker_prompt, LlmWorker};
+use llama_cpp_2::llama_backend::LlamaBackend;
+use llama_cpp_2::model::LlamaModel;
+use std::sync::Arc;
 
 const INVESTIGATE_WORKER_PROMPT: &str = include_str!("../prompts/investigate_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 256;
 const N_CTX: u32 = 8192;
 
-pub struct InvestigateWorker {
+pub struct InvestigateWorker
+{
     pub ctx: Option<AgentContext>,
     pub active_vendor: Option<String>,
     pub device_contexts: Vec<crate::llm::worker::DeviceContext>,
 }
 
-impl InvestigateWorker {
-    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>, preload: bool) -> Result<Self, String> {
-        if preload {
+impl InvestigateWorker
+{
+    pub fn new(
+        model: &Arc<LlamaModel>,
+        backend: &Arc<LlamaBackend>,
+        preload: bool,
+    ) -> Result<Self, String>
+    {
+        if preload
+        {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Investigator (調査員)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
                 INVESTIGATE_WORKER_PROMPT
             );
-            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 1, MAX_NEW_TOKENS, N_CTX)
-                .map_err(|e| format!("Failed to create Investigate context: {:?}", e))?;
-            
-            Ok(Self { ctx: Some(ctx), active_vendor: None, device_contexts: Vec::new() })
-        } else {
-            Ok(Self { ctx: None, active_vendor: None, device_contexts: Vec::new() })
+            let ctx = AgentContext::new(
+                model.clone(),
+                backend.clone(),
+                &full_system_prompt,
+                1,
+                MAX_NEW_TOKENS,
+                N_CTX,
+            )
+            .map_err(|e| format!("Failed to create Investigate context: {:?}", e))?;
+
+            Ok(Self {
+                ctx: Some(ctx),
+                active_vendor: None,
+                device_contexts: Vec::new(),
+            })
+        }
+        else
+        {
+            Ok(Self {
+                ctx: None,
+                active_vendor: None,
+                device_contexts: Vec::new(),
+            })
         }
     }
 
@@ -39,37 +63,47 @@ impl InvestigateWorker {
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
         vendor: Option<String>,
-    ) -> Result<(), String> {
-        let needs_init = match &self.ctx {
+    ) -> Result<(), String>
+    {
+        let needs_init = match &self.ctx
+        {
             None => true,
             Some(_) => self.active_vendor != vendor,
         };
 
-        if needs_init {
+        if needs_init
+        {
             self.ctx = None;
 
-            let role_desc = if let Some(ref v) = vendor {
+            let role_desc = if let Some(ref v) = vendor
+            {
                 format!(
                     "あなたは現在「Investigator (調査員)」として動作しています。対象機種: {}\n以下の役割指示に特化してください:\n{}",
                     v,
                     INVESTIGATE_WORKER_PROMPT
                 )
-            } else {
+            }
+            else
+            {
                 format!(
                     "あなたは現在「Investigator (調査員)」として動作しています。以下の役割指示に特化してください:\n{}",
                     INVESTIGATE_WORKER_PROMPT
                 )
             };
 
-            let full_system_prompt = format!(
-                "{}\n\n=== Current Role ===\n{}",
-                SYSTEM_PROMPT,
-                role_desc
-            );
+            let full_system_prompt =
+                format!("{}\n\n=== Current Role ===\n{}", SYSTEM_PROMPT, role_desc);
 
-            let ctx = AgentContext::new(model.clone(), backend.clone(), &full_system_prompt, 1, MAX_NEW_TOKENS, N_CTX)
-                .map_err(|e| format!("Failed to create Investigate context: {:?}", e))?;
-            
+            let ctx = AgentContext::new(
+                model.clone(),
+                backend.clone(),
+                &full_system_prompt,
+                1,
+                MAX_NEW_TOKENS,
+                N_CTX,
+            )
+            .map_err(|e| format!("Failed to create Investigate context: {:?}", e))?;
+
             self.ctx = Some(ctx);
             self.active_vendor = vendor;
         }
@@ -77,24 +111,31 @@ impl InvestigateWorker {
     }
 }
 
-impl LlmWorker for InvestigateWorker {
-    fn agent_name(&self) -> &'static str {
+impl LlmWorker for InvestigateWorker
+{
+    fn agent_name(&self) -> &'static str
+    {
         "Investigator (調査員)"
     }
 
-    fn set_device_contexts(&mut self, contexts: Vec<crate::llm::worker::DeviceContext>) {
+    fn set_device_contexts(&mut self, contexts: Vec<crate::llm::worker::DeviceContext>)
+    {
         self.device_contexts = contexts;
     }
 
-    fn context_mut(&mut self) -> &mut AgentContext {
-        self.ctx.as_mut().expect("Investigate context not initialized")
+    fn context_mut(&mut self) -> &mut AgentContext
+    {
+        self.ctx
+            .as_mut()
+            .expect("Investigate context not initialized")
     }
 
     fn ensure_initialized(
         &mut self,
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
-    ) -> Result<(), String> {
+    ) -> Result<(), String>
+    {
         self.ensure_initialized_with_vendor(model, backend, None)
     }
 
@@ -111,28 +152,34 @@ impl LlmWorker for InvestigateWorker {
         window: Option<&tauri::Window>,
         temperature: f32,
         repetition_penalty: f32,
-    ) -> Result<String, String> {
+    ) -> Result<String, String>
+    {
         // Detect vendor from pre-resolved device contexts
         let vendor = self.device_contexts.first().and_then(|ctx| {
-            if ctx.vendor.is_empty() || ctx.vendor == "Unknown" {
+            if ctx.vendor.is_empty() || ctx.vendor == "Unknown"
+            {
                 None
-            } else {
+            }
+            else
+            {
                 Some(ctx.vendor.clone())
             }
         });
 
         self.ensure_initialized_with_vendor(model, backend, vendor)?;
 
-        let (prompt, user_message, output, history_block) = crate::llm::llm_manager::apply_token_budget(
-            model,
-            self.context_mut().n_ctx,
-            self.context_mut().base_n_past,
-            self.context_mut().max_new_tokens,
-            prompt,
-            user_message,
-            output,
-            history_block,
-        ).map_err(|e| format!("Failed to apply token budget: {:?}", e))?;
+        let (prompt, user_message, output, history_block) =
+            crate::llm::llm_manager::apply_token_budget(
+                model,
+                self.context_mut().n_ctx,
+                self.context_mut().base_n_past,
+                self.context_mut().max_new_tokens,
+                prompt,
+                user_message,
+                output,
+                history_block,
+            )
+            .map_err(|e| format!("Failed to apply token budget: {:?}", e))?;
 
         let worker_prompt = self.build_prompt(
             prompt,
@@ -148,7 +195,8 @@ impl LlmWorker for InvestigateWorker {
             window,
             temperature,
             repetition_penalty,
-        ).map_err(|e| format!("Worker inference failed: {:?}", e))
+        )
+        .map_err(|e| format!("Worker inference failed: {:?}", e))
     }
 
     fn build_prompt(
@@ -159,7 +207,15 @@ impl LlmWorker for InvestigateWorker {
         output: Option<String>,
         history_block: Option<String>,
         subsequent_task: Option<&str>,
-    ) -> String {
-        build_common_worker_prompt(prompt, user_message, tool_label, output, history_block, subsequent_task)
+    ) -> String
+    {
+        build_common_worker_prompt(
+            prompt,
+            user_message,
+            tool_label,
+            output,
+            history_block,
+            subsequent_task,
+        )
     }
 }

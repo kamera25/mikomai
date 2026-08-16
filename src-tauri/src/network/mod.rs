@@ -1,11 +1,12 @@
+use crate::error::TauriError;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
-use crate::error::TauriError;
 use validator::Validate;
 
 #[derive(Debug, thiserror::Error)]
-pub enum NetworkError {
+pub enum NetworkError
+{
     #[error("Failed to serialize payload: {0}")]
     Serialization(#[from] serde_json::Error),
     #[error("Failed to create sidecar command: {0}")]
@@ -31,7 +32,8 @@ pub enum NetworkError {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
-pub struct NetmikoDeviceConfig {
+pub struct NetmikoDeviceConfig
+{
     #[validate(length(min = 1))]
     pub host: String,
     #[validate(length(min = 1))]
@@ -58,7 +60,8 @@ pub struct NetmikoDeviceConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct CommandResult {
+pub struct CommandResult
+{
     pub success: bool,
     pub output: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -70,7 +73,8 @@ pub struct CommandResult {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DryRunLineResult {
+pub struct DryRunLineResult
+{
     pub line: String,
     pub ok: bool,
     pub output: String,
@@ -78,23 +82,35 @@ pub struct DryRunLineResult {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DryRunResult {
+pub struct DryRunResult
+{
     pub success: bool,
     pub results: Vec<DryRunLineResult>,
 }
 
 // Abstract trait for network operations
-pub trait NetworkInterface {
-    async fn execute_show(&self, device: &NetmikoDeviceConfig, command: &str) -> Result<String, NetworkError>;
-    async fn execute_config(&self, device: &NetmikoDeviceConfig, commands: Vec<String>) -> Result<String, NetworkError>;
+pub trait NetworkInterface
+{
+    async fn execute_show(
+        &self,
+        device: &NetmikoDeviceConfig,
+        command: &str,
+    ) -> Result<String, NetworkError>;
+    async fn execute_config(
+        &self,
+        device: &NetmikoDeviceConfig,
+        commands: Vec<String>,
+    ) -> Result<String, NetworkError>;
 }
 
 // Implementation using a Tauri Sidecar fallback
-pub struct SidecarNetmikoWrapper {
+pub struct SidecarNetmikoWrapper
+{
     app: AppHandle,
 }
 
-fn find_python_with_netmiko(current_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+fn find_python_with_netmiko(current_dir: &std::path::Path) -> Option<std::path::PathBuf>
+{
     let candidates = [
         std::path::PathBuf::from("/opt/homebrew/bin/python3"),
         std::path::PathBuf::from("/usr/local/bin/python3"),
@@ -102,8 +118,10 @@ fn find_python_with_netmiko(current_dir: &std::path::Path) -> Option<std::path::
         current_dir.join("venv").join("bin").join("python"),
     ];
 
-    for candidate in &candidates {
-        if candidate.exists() {
+    for candidate in &candidates
+    {
+        if candidate.exists()
+        {
             let status = std::process::Command::new(candidate)
                 .arg("-c")
                 .arg("import netmiko")
@@ -111,8 +129,10 @@ fn find_python_with_netmiko(current_dir: &std::path::Path) -> Option<std::path::
                 .stderr(std::process::Stdio::null())
                 .status();
 
-            if let Ok(st) = status {
-                if st.success() {
+            if let Ok(st) = status
+            {
+                if st.success()
+                {
                     return Some(candidate.clone());
                 }
             }
@@ -121,12 +141,19 @@ fn find_python_with_netmiko(current_dir: &std::path::Path) -> Option<std::path::
     None
 }
 
-impl SidecarNetmikoWrapper {
-    pub fn new(app: &AppHandle) -> Self {
+impl SidecarNetmikoWrapper
+{
+    pub fn new(app: &AppHandle) -> Self
+    {
         Self { app: app.clone() }
     }
 
-    pub async fn execute_dry_run(&self, device: &NetmikoDeviceConfig, commands: Vec<String>) -> Result<DryRunResult, NetworkError> {
+    pub async fn execute_dry_run(
+        &self,
+        device: &NetmikoDeviceConfig,
+        commands: Vec<String>,
+    ) -> Result<DryRunResult, NetworkError>
+    {
         let mut payload = serde_json::json!({
             "action": "dry_run",
             "username": device.username,
@@ -141,31 +168,42 @@ impl SidecarNetmikoWrapper {
             "passphrase": device.passphrase,
             "allow_agent": device.agent_forwarding,
         });
-        if device.console_port.is_none() {
+        if device.console_port.is_none()
+        {
             payload["host"] = serde_json::json!(device.host);
         }
         let output_str = self.run_sidecar(payload).await?;
-        let json_line = output_str.lines()
+        let json_line = output_str
+            .lines()
             .find(|l| l.trim().starts_with('{') && l.contains("\"results\""))
-            .ok_or_else(|| NetworkError::SidecarError("Failed to find dry-run JSON in output".to_string()))?;
-        
+            .ok_or_else(|| {
+                NetworkError::SidecarError("Failed to find dry-run JSON in output".to_string())
+            })?;
+
         let res: DryRunResult = serde_json::from_str(json_line)?;
         Ok(res)
     }
 
-    async fn run_sidecar(&self, payload: serde_json::Value) -> Result<String, NetworkError> {
+    async fn run_sidecar(&self, payload: serde_json::Value) -> Result<String, NetworkError>
+    {
         let payload_str = serde_json::to_string(&payload)?;
 
         let mut current_dir = std::env::current_dir().unwrap_or_default();
-        if current_dir.ends_with("src-tauri") {
+        if current_dir.ends_with("src-tauri")
+        {
             current_dir.pop();
         }
 
-        let wrapper_path = current_dir.join("src-tauri").join("python").join("netmiko_wrapper.py");
+        let wrapper_path = current_dir
+            .join("src-tauri")
+            .join("python")
+            .join("netmiko_wrapper.py");
         let python_path = find_python_with_netmiko(&current_dir);
 
-        if let Some(py_bin) = python_path {
-            if wrapper_path.exists() {
+        if let Some(py_bin) = python_path
+        {
+            if wrapper_path.exists()
+            {
                 let mut child = std::process::Command::new(&py_bin)
                     .arg(&wrapper_path)
                     .arg("--stdin")
@@ -173,40 +211,57 @@ impl SidecarNetmikoWrapper {
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .spawn()
-                    .map_err(|e| NetworkError::SidecarSpawn(format!("Failed to spawn python wrapper: {}", e)))?;
+                    .map_err(|e| {
+                        NetworkError::SidecarSpawn(format!("Failed to spawn python wrapper: {}", e))
+                    })?;
 
-                if let Some(mut stdin) = child.stdin.take() {
+                if let Some(mut stdin) = child.stdin.take()
+                {
                     use std::io::Write;
                     let _ = stdin.write_all(format!("{}\n", payload_str).as_bytes());
                 }
 
-                let output = child.wait_with_output()
-                    .map_err(|e| NetworkError::SidecarError(format!("Failed to wait on python wrapper: {}", e)))?;
+                let output = child.wait_with_output().map_err(|e| {
+                    NetworkError::SidecarError(format!("Failed to wait on python wrapper: {}", e))
+                })?;
 
                 let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
                 let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
 
                 use tauri::Emitter;
-                if !stdout_text.is_empty() {
-                    for line in stdout_text.lines() {
-                        let _ = self.app.emit("commit-log", serde_json::json!({
-                            "line": line,
-                            "stream": "stdout"
-                        }));
+                if !stdout_text.is_empty()
+                {
+                    for line in stdout_text.lines()
+                    {
+                        let _ = self.app.emit(
+                            "commit-log",
+                            serde_json::json!({
+                                "line": line,
+                                "stream": "stdout"
+                            }),
+                        );
                     }
                 }
-                if !stderr_text.is_empty() {
-                    for line in stderr_text.lines() {
-                        let _ = self.app.emit("commit-log", serde_json::json!({
-                            "line": line,
-                            "stream": "stderr"
-                        }));
+                if !stderr_text.is_empty()
+                {
+                    for line in stderr_text.lines()
+                    {
+                        let _ = self.app.emit(
+                            "commit-log",
+                            serde_json::json!({
+                                "line": line,
+                                "stream": "stderr"
+                            }),
+                        );
                     }
                 }
 
-                if output.status.success() {
+                if output.status.success()
+                {
                     return Ok(stdout_text);
-                } else {
+                }
+                else
+                {
                     return Err(NetworkError::SidecarFailed(
                         output.status.code().unwrap_or(-1),
                         stderr_text.trim().to_string(),
@@ -215,53 +270,72 @@ impl SidecarNetmikoWrapper {
             }
         }
 
-        let (mut rx, mut child) = self.app.shell()
+        let (mut rx, mut child) = self
+            .app
+            .shell()
             .sidecar("netmiko_wrapper")
             .map_err(|e| NetworkError::SidecarCreate(e.to_string()))?
             .arg("--stdin")
             .spawn()
             .map_err(|e| NetworkError::SidecarSpawn(e.to_string()))?;
 
-        child.write(format!("{}\n", payload_str).as_bytes())
+        child
+            .write(format!("{}\n", payload_str).as_bytes())
             .map_err(|e| NetworkError::SidecarWrite(e.to_string()))?;
 
         let mut stdout = String::new();
         let mut stderr = String::new();
 
-        while let Some(event) = rx.recv().await {
-            match event {
-                tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
+        while let Some(event) = rx.recv().await
+        {
+            match event
+            {
+                tauri_plugin_shell::process::CommandEvent::Stdout(line) =>
+                {
                     let text = String::from_utf8_lossy(&line).to_string();
                     stdout.push_str(&text);
                     stdout.push('\n');
                     use tauri::Emitter;
-                    let _ = self.app.emit("commit-log", serde_json::json!({
-                        "line": text,
-                        "stream": "stdout"
-                    }));
+                    let _ = self.app.emit(
+                        "commit-log",
+                        serde_json::json!({
+                            "line": text,
+                            "stream": "stdout"
+                        }),
+                    );
                 }
-                tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
+                tauri_plugin_shell::process::CommandEvent::Stderr(line) =>
+                {
                     let text = String::from_utf8_lossy(&line).to_string();
                     stderr.push_str(&text);
                     stderr.push('\n');
                     use tauri::Emitter;
-                    let _ = self.app.emit("commit-log", serde_json::json!({
-                        "line": text,
-                        "stream": "stderr"
-                    }));
+                    let _ = self.app.emit(
+                        "commit-log",
+                        serde_json::json!({
+                            "line": text,
+                            "stream": "stderr"
+                        }),
+                    );
                 }
-                tauri_plugin_shell::process::CommandEvent::Error(err) => {
+                tauri_plugin_shell::process::CommandEvent::Error(err) =>
+                {
                     return Err(NetworkError::SidecarError(err.to_string()));
                 }
-                tauri_plugin_shell::process::CommandEvent::Terminated(payload) => {
+                tauri_plugin_shell::process::CommandEvent::Terminated(payload) =>
+                {
                     let code = payload.code.unwrap_or(-1);
-                    if code == 0 {
+                    if code == 0
+                    {
                         return Ok(stdout);
-                    } else {
+                    }
+                    else
+                    {
                         return Err(NetworkError::SidecarFailed(code, stderr.trim().to_string()));
                     }
                 }
-                _ => {}
+                _ =>
+                {}
             }
         }
 
@@ -269,8 +343,14 @@ impl SidecarNetmikoWrapper {
     }
 }
 
-impl NetworkInterface for SidecarNetmikoWrapper {
-    async fn execute_show(&self, device: &NetmikoDeviceConfig, command: &str) -> Result<String, NetworkError> {
+impl NetworkInterface for SidecarNetmikoWrapper
+{
+    async fn execute_show(
+        &self,
+        device: &NetmikoDeviceConfig,
+        command: &str,
+    ) -> Result<String, NetworkError>
+    {
         let mut payload = serde_json::json!({
             "action": "show",
             "username": device.username,
@@ -285,13 +365,19 @@ impl NetworkInterface for SidecarNetmikoWrapper {
             "passphrase": device.passphrase,
             "allow_agent": device.agent_forwarding,
         });
-        if device.console_port.is_none() {
+        if device.console_port.is_none()
+        {
             payload["host"] = serde_json::json!(device.host);
         }
         self.run_sidecar(payload).await
     }
 
-    async fn execute_config(&self, device: &NetmikoDeviceConfig, commands: Vec<String>) -> Result<String, NetworkError> {
+    async fn execute_config(
+        &self,
+        device: &NetmikoDeviceConfig,
+        commands: Vec<String>,
+    ) -> Result<String, NetworkError>
+    {
         let mut payload = serde_json::json!({
             "action": "config",
             "username": device.username,
@@ -306,30 +392,40 @@ impl NetworkInterface for SidecarNetmikoWrapper {
             "passphrase": device.passphrase,
             "allow_agent": device.agent_forwarding,
         });
-        if device.console_port.is_none() {
+        if device.console_port.is_none()
+        {
             payload["host"] = serde_json::json!(device.host);
         }
         self.run_sidecar(payload).await
     }
 }
 
-pub fn sanitize_network_command(cmd: &str) -> Result<(), String> {
+pub fn sanitize_network_command(cmd: &str) -> Result<(), String>
+{
     let trimmed = cmd.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty()
+    {
         return Err("Command cannot be empty".to_string());
     }
 
     // 1. Block command injection characters / shell metacharacters
-    let disallowed_chars = [';', '|', '&', '$', '(', ')', '`', '>', '<', '\\', '\n', '\r', '"', '\''];
-    for c in trimmed.chars() {
-        if disallowed_chars.contains(&c) {
+    let disallowed_chars = [
+        ';', '|', '&', '$', '(', ')', '`', '>', '<', '\\', '\n', '\r', '"', '\'',
+    ];
+    for c in trimmed.chars()
+    {
+        if disallowed_chars.contains(&c)
+        {
             return Err(format!("Command contains forbidden character: '{}'", c));
         }
     }
 
     // 2. Allowlist of safe characters
-    for c in trimmed.chars() {
-        if !c.is_alphanumeric() && ![' ', '-', '_', '.', '/', ':', '?', '*', '[', ']', ','].contains(&c) {
+    for c in trimmed.chars()
+    {
+        if !c.is_alphanumeric()
+            && ![' ', '-', '_', '.', '/', ':', '?', '*', '[', ']', ','].contains(&c)
+        {
             return Err(format!("Command contains unsafe character: '{}'", c));
         }
     }
@@ -337,16 +433,31 @@ pub fn sanitize_network_command(cmd: &str) -> Result<(), String> {
     // 3. For show commands, ensure they don't contain config keywords or destructive commands
     let lower = trimmed.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
-    if words.is_empty() {
+    if words.is_empty()
+    {
         return Err("Command cannot be empty".to_string());
     }
 
     let blocked_keywords = [
-        "config", "configure", "write", "reload", "reboot", "erase", "delete", "copy",
-        "format", "sysreq", "terminal", "enable", "disable", "configuration"
+        "config",
+        "configure",
+        "write",
+        "reload",
+        "reboot",
+        "erase",
+        "delete",
+        "copy",
+        "format",
+        "sysreq",
+        "terminal",
+        "enable",
+        "disable",
+        "configuration",
     ];
-    for word in &words {
-        if blocked_keywords.contains(word) {
+    for word in &words
+    {
+        if blocked_keywords.contains(word)
+        {
             return Err(format!("Command contains forbidden keyword: '{}'", word));
         }
     }
@@ -354,23 +465,35 @@ pub fn sanitize_network_command(cmd: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn sanitize_config_command(cmd: &str) -> Result<(), String> {
+pub fn sanitize_config_command(cmd: &str) -> Result<(), String>
+{
     let trimmed = cmd.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty()
+    {
         return Err("Command cannot be empty".to_string());
     }
 
     // Block command injection characters / shell metacharacters
-    let disallowed_chars = [';', '|', '&', '$', '(', ')', '`', '>', '<', '\\', '\n', '\r', '"', '\''];
-    for c in trimmed.chars() {
-        if disallowed_chars.contains(&c) {
-            return Err(format!("Config command contains forbidden character: '{}'", c));
+    let disallowed_chars = [
+        ';', '|', '&', '$', '(', ')', '`', '>', '<', '\\', '\n', '\r', '"', '\'',
+    ];
+    for c in trimmed.chars()
+    {
+        if disallowed_chars.contains(&c)
+        {
+            return Err(format!(
+                "Config command contains forbidden character: '{}'",
+                c
+            ));
         }
     }
 
     // Allow only safe characters
-    for c in trimmed.chars() {
-        if !c.is_alphanumeric() && ![' ', '-', '_', '.', '/', ':', '?', '*', '[', ']', ','].contains(&c) {
+    for c in trimmed.chars()
+    {
+        if !c.is_alphanumeric()
+            && ![' ', '-', '_', '.', '/', ':', '?', '*', '[', ']', ','].contains(&c)
+        {
             return Err(format!("Config command contains unsafe character: '{}'", c));
         }
     }
@@ -383,24 +506,54 @@ pub async fn network_show(
     app: AppHandle,
     device: NetmikoDeviceConfig,
     command: String,
-) -> Result<CommandResult, TauriError> {
-    device.validate().map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
-    sanitize_network_command(&command).map_err(|e| TauriError(crate::error::MikomaiError::Validation(e)))?;
+) -> Result<CommandResult, TauriError>
+{
+    device
+        .validate()
+        .map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
+    sanitize_network_command(&command)
+        .map_err(|e| TauriError(crate::error::MikomaiError::Validation(e)))?;
 
     let target_device = device_resolver::TargetDeviceBuilder::new(app.clone(), device)
         .resolve()
         .await?;
 
-    if target_device.console_port().is_none() {
-        log::info!("Executing read-only command on {}: {}", target_device.host(), command);
-    } else {
-        log::info!("Executing read-only command via console port {}: {}", target_device.console_port().unwrap(), command);
+    if target_device.console_port().is_none()
+    {
+        log::info!(
+            "Executing read-only command on {}: {}",
+            target_device.host(),
+            command
+        );
+    }
+    else
+    {
+        log::info!(
+            "Executing read-only command via console port {}: {}",
+            target_device.console_port().unwrap(),
+            command
+        );
     }
 
     let wrapper = SidecarNetmikoWrapper::new(&app);
-    match wrapper.execute_show(&target_device.to_netmiko_config(), &command).await {
-        Ok(output) => Ok(CommandResult { success: true, output, saved_path: None, is_cached: None, cache_time: None }),
-        Err(err) => Ok(CommandResult { success: false, output: err.to_string(), saved_path: None, is_cached: None, cache_time: None }),
+    match wrapper
+        .execute_show(&target_device.to_netmiko_config(), &command)
+        .await
+    {
+        Ok(output) => Ok(CommandResult {
+            success: true,
+            output,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }),
+        Err(err) => Ok(CommandResult {
+            success: false,
+            output: err.to_string(),
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }),
     }
 }
 
@@ -409,40 +562,72 @@ pub async fn network_config(
     app: AppHandle,
     device: NetmikoDeviceConfig,
     commands: Vec<String>,
-) -> Result<CommandResult, TauriError> {
-    device.validate().map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
-    for cmd in &commands {
-        sanitize_config_command(cmd).map_err(|e| TauriError(crate::error::MikomaiError::Validation(e)))?;
+) -> Result<CommandResult, TauriError>
+{
+    device
+        .validate()
+        .map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
+    for cmd in &commands
+    {
+        sanitize_config_command(cmd)
+            .map_err(|e| TauriError(crate::error::MikomaiError::Validation(e)))?;
     }
 
     let target_device = device_resolver::TargetDeviceBuilder::new(app.clone(), device)
         .resolve()
         .await?;
 
-    if target_device.console_port().is_none() {
-        log::info!("Executing WRITE command on {}: {:?}", target_device.host(), commands);
-    } else {
-        log::info!("Executing WRITE command via console port {:?}: {:?}", target_device.console_port().unwrap(), commands);
+    if target_device.console_port().is_none()
+    {
+        log::info!(
+            "Executing WRITE command on {}: {:?}",
+            target_device.host(),
+            commands
+        );
+    }
+    else
+    {
+        log::info!(
+            "Executing WRITE command via console port {:?}: {:?}",
+            target_device.console_port().unwrap(),
+            commands
+        );
     }
 
     let wrapper = SidecarNetmikoWrapper::new(&app);
-    match wrapper.execute_config(&target_device.to_netmiko_config(), commands).await {
-        Ok(output) => Ok(CommandResult { success: true, output, saved_path: None, is_cached: None, cache_time: None }),
-        Err(err) => Ok(CommandResult { success: false, output: err.to_string(), saved_path: None, is_cached: None, cache_time: None }),
+    match wrapper
+        .execute_config(&target_device.to_netmiko_config(), commands)
+        .await
+    {
+        Ok(output) => Ok(CommandResult {
+            success: true,
+            output,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }),
+        Err(err) => Ok(CommandResult {
+            success: false,
+            output: err.to_string(),
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }),
     }
 }
 
-
+pub mod device_resolver;
 pub mod dns;
 pub mod fact_graph;
-pub mod device_resolver;
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_device_config_serialization() {
+    fn test_device_config_serialization()
+    {
         let config = NetmikoDeviceConfig {
             host: "10.0.0.1".to_string(),
             username: "admin".to_string(),
@@ -462,7 +647,8 @@ mod tests {
     }
 
     #[test]
-    fn test_command_result_serialization() {
+    fn test_command_result_serialization()
+    {
         let result = CommandResult {
             success: true,
             output: "show run output".to_string(),
@@ -475,7 +661,8 @@ mod tests {
     }
 
     #[test]
-    fn test_netmiko_device_config_validation() {
+    fn test_netmiko_device_config_validation()
+    {
         let mut config = NetmikoDeviceConfig {
             host: "".to_string(),
             username: "admin".to_string(),
@@ -499,7 +686,8 @@ mod tests {
     }
 
     #[test]
-    fn test_sanitize_network_command() {
+    fn test_sanitize_network_command()
+    {
         assert!(sanitize_network_command("show ip interface brief").is_ok());
         assert!(sanitize_network_command("show version").is_ok());
         assert!(sanitize_network_command("show run").is_ok());
@@ -510,10 +698,12 @@ mod tests {
     }
 
     #[test]
-    fn test_sanitize_config_command() {
+    fn test_sanitize_config_command()
+    {
         assert!(sanitize_config_command("interface GigabitEthernet1/1").is_ok());
         assert!(sanitize_config_command("ip address 192.168.1.1 255.255.255.0").is_ok());
         assert!(sanitize_config_command("no shutdown").is_ok());
-        assert!(sanitize_config_command("interface GigabitEthernet1/1; rm -rf /").is_err()); // contains semicolon
+        assert!(sanitize_config_command("interface GigabitEthernet1/1; rm -rf /").is_err());
+        // contains semicolon
     }
 }

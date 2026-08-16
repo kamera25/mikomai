@@ -1,20 +1,22 @@
-pub mod types;
-pub mod shortcut;
 pub mod llm_router;
+pub mod shortcut;
+pub mod types;
 
 pub use types::*;
 
-use tauri::AppHandle;
-use crate::llm::llm_manager::SharedModel;
 use crate::llm::llm::LlmError;
+use crate::llm::llm_manager::SharedModel;
 use crate::llm::worker::{format_device_contexts, resolve_device_contexts, Route};
 use crate::settings::AppSettings;
+use tauri::AppHandle;
 
 pub struct RoutingPipeline;
 
-impl RoutingPipeline {
+impl RoutingPipeline
+{
     /// Clarification message to ask the user for intent
-    pub fn build_clarification_message() -> String {
+    pub fn build_clarification_message() -> String
+    {
         "ご質問の意図を確認させてください。\n\n```json\n{\n  \"tool_name\": \"ask_user_choice\",\n  \"params\": {\n    \"title\": \"ご質問の意図の確認\",\n    \"message\": \"ご質問の意図を確認させてください。以下のどれに該当しますか？\",\n    \"options\": [\n      \"1. ネットワーク機器の調査 (INVESTIGATE)\",\n      \"2. 技術知識の解説 (KNOWLEDGE)\",\n      \"3. Config作成 (BUILDER)\"\n    ]\n  }\n}\n```".to_string()
     }
 
@@ -24,13 +26,18 @@ impl RoutingPipeline {
         original_query: &str,
         settings: &AppSettings,
         app: &AppHandle,
-    ) -> Result<RoutingDecision, LlmError> {
-        let has_image_attachment = original_query.contains("【添付画像Vision解析情報") || original_query.contains("[添付画像:");
+    ) -> Result<RoutingDecision, LlmError>
+    {
+        let has_image_attachment = original_query.contains("【添付画像Vision解析情報")
+            || original_query.contains("[添付画像:");
 
         // 1. Phase 1: Fast shortcut routing (regex-based)
-        if !has_image_attachment {
-            if let Some(decision) = shortcut::detect_shortcut(original_query) {
-                if decision.confidence >= 0.8 {
+        if !has_image_attachment
+        {
+            if let Some(decision) = shortcut::detect_shortcut(original_query)
+            {
+                if decision.confidence >= 0.8
+                {
                     return Ok(decision);
                 }
             }
@@ -38,10 +45,13 @@ impl RoutingPipeline {
 
         // 2. Phase 2: LLM Router with context enrichment
         let device_contexts = resolve_device_contexts(app, original_query);
-        let enriched_query = if !device_contexts.is_empty() {
+        let enriched_query = if !device_contexts.is_empty()
+        {
             let enrichment = format_device_contexts(&device_contexts);
             format!("{}{}", enrichment, original_query)
-        } else {
+        }
+        else
+        {
             original_query.to_string()
         };
 
@@ -53,7 +63,11 @@ impl RoutingPipeline {
         let mut route_result = {
             let mut router_lock = shared_model.router.lock().unwrap();
             router_lock
-                .route(&shared_model.model, &enriched_query, settings.repetition_penalty)
+                .route(
+                    &shared_model.model,
+                    &enriched_query,
+                    settings.repetition_penalty,
+                )
                 .map_err(|e| LlmError::Routing(format!("{:?}", e)))?
         };
         route_result.device_contexts = device_contexts.clone();
@@ -64,7 +78,8 @@ impl RoutingPipeline {
         );
 
         // Low confidence fallback
-        if route_result.confidence < 0.5 {
+        if route_result.confidence < 0.5
+        {
             return Ok(RoutingDecision {
                 action: RouteAction::AskClarification,
                 confidence: route_result.confidence as f64,
@@ -73,7 +88,11 @@ impl RoutingPipeline {
             });
         }
 
-        let first_route = route_result.routes.first().copied().unwrap_or(Route::Investigate);
+        let first_route = route_result
+            .routes
+            .first()
+            .copied()
+            .unwrap_or(Route::Investigate);
         let subsequent_route = route_result.routes.get(1).copied();
 
         Ok(RoutingDecision {

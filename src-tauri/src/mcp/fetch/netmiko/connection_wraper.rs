@@ -1,14 +1,17 @@
-use crate::network::{SidecarNetmikoWrapper, NetmikoDeviceConfig, NetworkInterface};
+use crate::network::{NetmikoDeviceConfig, NetworkInterface, SidecarNetmikoWrapper};
 use tauri::AppHandle;
 
 /// A wrapper around `SidecarNetmikoWrapper` to encapsulate Netmiko-specific connection processes.
-pub struct NetmikoConnectionWrapper {
+pub struct NetmikoConnectionWrapper
+{
     wrapper: SidecarNetmikoWrapper,
 }
 
-impl NetmikoConnectionWrapper {
+impl NetmikoConnectionWrapper
+{
     /// Creates a new `NetmikoConnectionWrapper` using the provided Tauri application handle.
-    pub fn new(app: &AppHandle) -> Self {
+    pub fn new(app: &AppHandle) -> Self
+    {
         Self {
             wrapper: SidecarNetmikoWrapper::new(app),
         }
@@ -19,17 +22,23 @@ impl NetmikoConnectionWrapper {
         &self,
         device: &NetmikoDeviceConfig,
         command: &str,
-    ) -> Result<String, String> {
-        self.wrapper.execute_show(device, command).await.map_err(|e| e.to_string())
+    ) -> Result<String, String>
+    {
+        self.wrapper
+            .execute_show(device, command)
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_device_config_validation() {
+    fn test_device_config_validation()
+    {
         let config = NetmikoDeviceConfig {
             host: "192.168.1.1".to_string(),
             username: "admin".to_string(),
@@ -54,7 +63,8 @@ mod tests {
     }
 
     #[test]
-    fn test_device_config_with_console() {
+    fn test_device_config_with_console()
+    {
         let config = NetmikoDeviceConfig {
             host: "".to_string(),
             username: "admin".to_string(),

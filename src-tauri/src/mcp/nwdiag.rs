@@ -1,39 +1,58 @@
-use std::fs;
-use std::process::Command;
-use base64::{Engine as _, engine::general_purpose};
 use crate::network::CommandResult;
 use crate::snapshot::SnapshotManager;
+use base64::{engine::general_purpose, Engine as _};
+use std::fs;
+use std::process::Command;
 
 /// Compiles nwdiag DSL code to SVG using the Python wrapper script.
 /// This helper is free of Tauri-specific structs so it can be easily unit tested.
-pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String> {
-    if schema.trim().is_empty() {
+pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String>
+{
+    if schema.trim().is_empty()
+    {
         return Err("Schema cannot be empty".to_string());
     }
 
     // Validate nwdiag DSL schema before invoking python wrapper
-    if let Err(err) = crate::mcp::nwdiag_validator::validate_nwdiag_schema(schema) {
+    if let Err(err) = crate::mcp::nwdiag_validator::validate_nwdiag_schema(schema)
+    {
         return Err(err.to_llm_feedback_string());
     }
 
-    let mut current_dir = std::env::current_dir()
-        .map_err(|e| format!("Failed to get current directory: {}", e))?;
-    if current_dir.ends_with("src-tauri") {
+    let mut current_dir =
+        std::env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?;
+    if current_dir.ends_with("src-tauri")
+    {
         current_dir.pop();
     }
-    
+
     let python_path = current_dir.join("venv").join("bin").join("python");
-    let wrapper_path = current_dir.join("src-tauri").join("python").join("nwdiag_wrapper.py");
+    let wrapper_path = current_dir
+        .join("src-tauri")
+        .join("python")
+        .join("nwdiag_wrapper.py");
 
-    if !python_path.exists() {
-        return Err(format!("Python virtual environment binary not found at {:?}", python_path));
+    if !python_path.exists()
+    {
+        return Err(format!(
+            "Python virtual environment binary not found at {:?}",
+            python_path
+        ));
     }
-    if !wrapper_path.exists() {
-        return Err(format!("nwdiag wrapper script not found at {:?}", wrapper_path));
+    if !wrapper_path.exists()
+    {
+        return Err(format!(
+            "nwdiag wrapper script not found at {:?}",
+            wrapper_path
+        ));
     }
 
-    let temp_dir = current_dir.join("src-tauri").join("target").join("tmp_nwdiag");
-    if !temp_dir.exists() {
+    let temp_dir = current_dir
+        .join("src-tauri")
+        .join("target")
+        .join("tmp_nwdiag");
+    if !temp_dir.exists()
+    {
         fs::create_dir_all(&temp_dir)
             .map_err(|e| format!("Failed to create temporary directory: {}", e))?;
     }
@@ -58,7 +77,8 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String> {
 
     let output = output.map_err(|e| format!("Failed to run nwdiag command: {}", e))?;
 
-    if !output.status.success() {
+    if !output.status.success()
+    {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let _ = fs::remove_file(&svg_path);
@@ -68,12 +88,13 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String> {
         ));
     }
 
-    if !svg_path.exists() {
+    if !svg_path.exists()
+    {
         return Err("nwdiag completed successfully but output SVG was not found".to_string());
     }
 
-    let svg_content = fs::read(&svg_path)
-        .map_err(|e| format!("Failed to read compiled SVG file: {}", e))?;
+    let svg_content =
+        fs::read(&svg_path).map_err(|e| format!("Failed to read compiled SVG file: {}", e))?;
 
     let _ = fs::remove_file(&svg_path);
 
@@ -84,7 +105,8 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String> {
 pub async fn self_network_nwdiag(
     app: tauri::AppHandle,
     schema: String,
-) -> Result<CommandResult, String> {
+) -> Result<CommandResult, String>
+{
     let svg_content = compile_nwdiag_to_svg(&schema)?;
 
     let b64_encoded = general_purpose::STANDARD.encode(&svg_content);
@@ -93,11 +115,12 @@ pub async fn self_network_nwdiag(
 
     let mut manager = SnapshotManager::new(&app)
         .map_err(|e| format!("Failed to initialize SnapshotManager: {}", e))?;
-    
+
     let svg_string = String::from_utf8(svg_content)
         .map_err(|e| format!("SVG content is not valid UTF-8: {}", e))?;
 
-    let saved_path = manager.save_artifact("network", "diagram.svg", &svg_string)
+    let saved_path = manager
+        .save_artifact("network", "diagram.svg", &svg_string)
         .map_err(|e| format!("Failed to save artifact: {}", e))?;
 
     let _ = manager.update_current_link(saved_path.parent().unwrap());
@@ -112,18 +135,21 @@ pub async fn self_network_nwdiag(
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_compile_empty_schema() {
+    fn test_compile_empty_schema()
+    {
         let result = compile_nwdiag_to_svg("");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Schema cannot be empty");
     }
 
     #[test]
-    fn test_compile_valid_schema() {
+    fn test_compile_valid_schema()
+    {
         let schema = r#"
             nwdiag {
                 network dmz {
@@ -133,25 +159,40 @@ mod tests {
             }
         "#;
         let result = compile_nwdiag_to_svg(schema);
-        if let Err(e) = &result {
-            if e.contains("No module named 'nwdiag'") || e.contains("Python virtual environment binary not found") {
+        if let Err(e) = &result
+        {
+            if e.contains("No module named 'nwdiag'")
+                || e.contains("Python virtual environment binary not found")
+            {
                 eprintln!("Skipping nwdiag valid schema test: python nwdiag module not installed in environment");
                 return;
             }
         }
-        assert!(result.is_ok(), "Expected compile success, got: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Expected compile success, got: {:?}",
+            result
+        );
         let bytes = result.unwrap();
         assert!(!bytes.is_empty());
         let svg_str = String::from_utf8_lossy(&bytes);
-        assert!(svg_str.contains("<svg"), "Expected SVG content, got: {}", svg_str);
+        assert!(
+            svg_str.contains("<svg"),
+            "Expected SVG content, got: {}",
+            svg_str
+        );
     }
 
     #[test]
-    fn test_compile_invalid_schema() {
+    fn test_compile_invalid_schema()
+    {
         let schema = "invalid syntax {";
         let result = compile_nwdiag_to_svg(schema);
-        if let Err(e) = &result {
-            if e.contains("No module named 'nwdiag'") || e.contains("Python virtual environment binary not found") {
+        if let Err(e) = &result
+        {
+            if e.contains("No module named 'nwdiag'")
+                || e.contains("Python virtual environment binary not found")
+            {
                 eprintln!("Skipping nwdiag invalid schema test: python nwdiag module not installed in environment");
                 return;
             }

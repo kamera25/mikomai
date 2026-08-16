@@ -1,7 +1,8 @@
-use crate::schema::arp::{UniversalArpTable, ArpMetadata, ArpEntry, ArpEntryType};
+use crate::schema::arp::{ArpEntry, ArpEntryType, ArpMetadata, UniversalArpTable};
 use chrono::Utc;
 
-pub fn parse_windows_arp(stdout: &str) -> Result<UniversalArpTable, String> {
+pub fn parse_windows_arp(stdout: &str) -> Result<UniversalArpTable, String>
+{
     let mut entries = Vec::new();
     let mut current_interface = "unknown".to_string();
 
@@ -10,63 +11,81 @@ pub fn parse_windows_arp(stdout: &str) -> Result<UniversalArpTable, String> {
     //   Internet Address      Physical Address      Type
     //   192.168.1.1           ac-44-f2-91-fa-f8     dynamic
     //   224.0.0.22            01-00-5e-00-00-16     static
-    
-    for line in stdout.lines() {
+
+    for line in stdout.lines()
+    {
         let line = line.trim();
-        if line.is_empty() {
+        if line.is_empty()
+        {
             continue;
         }
 
         // Check if this line defines an interface
-        if line.starts_with("Interface:") {
+        if line.starts_with("Interface:")
+        {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() > 1 {
+            if parts.len() > 1
+            {
                 current_interface = parts[1].to_string();
             }
             continue;
         }
 
         // Skip header lines
-        if line.contains("Internet Address") || line.contains("インターネット アドレス") {
+        if line.contains("Internet Address") || line.contains("インターネット アドレス")
+        {
             continue;
         }
 
         // Parse entry lines (they should have IP, Physical Address, and Type)
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 3 {
+        if parts.len() >= 3
+        {
             let ip_address = parts[0].to_string();
             let raw_mac = parts[1].to_string();
             let raw_type = parts[2].to_lowercase();
 
             // Ignore invalid/loopback IP address entries that are not valid IPv4/IPv6 if necessary,
             // or simply validate IP via std::net::IpAddr
-            if ip_address.parse::<std::net::IpAddr>().is_err() {
+            if ip_address.parse::<std::net::IpAddr>().is_err()
+            {
                 continue;
             }
 
             // Normalization of MAC Address: Windows uses hyphens (e.g. ac-44-f2-91-fa-f8). We need to convert it to colons.
-            let mac_address = if raw_mac == "---" || raw_mac.to_lowercase() == "invalid" {
+            let mac_address = if raw_mac == "---" || raw_mac.to_lowercase() == "invalid"
+            {
                 "00:00:00:00:00:00".to_string()
-            } else {
+            }
+            else
+            {
                 let colons_mac = raw_mac.replace('-', ":").to_lowercase();
                 // Ensure proper padding (e.g., if any octet is single digit, which is rare on Windows but just in case)
                 let parts: Vec<&str> = colons_mac.split(':').collect();
-                if parts.len() == 6 {
+                if parts.len() == 6
+                {
                     let mut padded_parts = Vec::new();
-                    for part in parts {
-                        if part.len() == 1 {
+                    for part in parts
+                    {
+                        if part.len() == 1
+                        {
                             padded_parts.push(format!("0{}", part));
-                        } else {
+                        }
+                        else
+                        {
                             padded_parts.push(part.to_string());
                         }
                     }
                     padded_parts.join(":")
-                } else {
+                }
+                else
+                {
                     colons_mac
                 }
             };
 
-            let entry_type = match raw_type.as_str() {
+            let entry_type = match raw_type.as_str()
+            {
                 "static" | "静的" => ArpEntryType::Static,
                 "invalid" | "無効" => ArpEntryType::Incomplete,
                 _ => ArpEntryType::Dynamic,
@@ -94,11 +113,13 @@ pub fn parse_windows_arp(stdout: &str) -> Result<UniversalArpTable, String> {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_parse_windows_arp_success() {
+    fn test_parse_windows_arp_success()
+    {
         let sample_output = r#"
 Interface: 192.168.50.15 --- 0x12
   Internet Address      Physical Address      Type
@@ -107,7 +128,7 @@ Interface: 192.168.50.15 --- 0x12
 "#;
         let parsed = parse_windows_arp(sample_output).unwrap();
         assert_eq!(parsed.arp_table.len(), 2);
-        
+
         assert_eq!(parsed.arp_table[0].ip_address, "192.168.50.1");
         assert_eq!(parsed.arp_table[0].mac_address, "ac:44:f2:91:fa:f8");
         assert_eq!(parsed.arp_table[0].r#type, ArpEntryType::Dynamic);

@@ -5,15 +5,19 @@ use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum AttachmentType {
+pub enum AttachmentType
+{
     Text,
     Image,
     File,
 }
 
-impl AttachmentType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
+impl AttachmentType
+{
+    pub fn as_str(&self) -> &'static str
+    {
+        match self
+        {
             Self::Text => "text",
             Self::Image => "image",
             Self::File => "file",
@@ -21,14 +25,17 @@ impl AttachmentType {
     }
 }
 
-impl std::fmt::Display for AttachmentType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Display for AttachmentType
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
         write!(f, "{}", self.as_str())
     }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct Attachment {
+pub struct Attachment
+{
     pub name: String,
     #[serde(rename = "type")]
     pub mime_type: AttachmentType,
@@ -39,8 +46,10 @@ pub struct Attachment {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "event_type")]
-pub enum Message {
-    UserInput {
+pub enum Message
+{
+    UserInput
+    {
         role: String,
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -56,7 +65,8 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         attachments: Option<Vec<Attachment>>,
     },
-    ToolExecution {
+    ToolExecution
+    {
         role: String,
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,7 +91,8 @@ pub enum Message {
         #[serde(rename = "cache_time", skip_serializing_if = "Option::is_none")]
         cache_time: Option<String>,
     },
-    AgentResponse {
+    AgentResponse
+    {
         role: String,
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -93,7 +104,8 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         task_id: Option<String>,
     },
-    SystemMessage {
+    SystemMessage
+    {
         role: String,
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -108,7 +120,8 @@ pub enum Message {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ChatSession {
+pub struct ChatSession
+{
     pub id: String,
     pub title: String,
     pub messages: Vec<Message>,
@@ -117,14 +130,16 @@ pub struct ChatSession {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SummaryItem {
+pub struct SummaryItem
+{
     pub timestamp: String,
     pub content: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct Folder {
+pub struct Folder
+{
     pub id: String,
     pub name: String,
     pub items: Vec<HistoryItem>,
@@ -133,14 +148,20 @@ pub struct Folder {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum HistoryItem {
+pub enum HistoryItem
+{
     Session(ChatSession),
     Folder(Folder),
 }
 
-fn get_history_path(app: &tauri::AppHandle) -> PathBuf {
-    let path = app.path().app_data_dir().expect("Failed to get app data dir");
-    if !path.exists() {
+fn get_history_path(app: &tauri::AppHandle) -> PathBuf
+{
+    let path = app
+        .path()
+        .app_data_dir()
+        .expect("Failed to get app data dir");
+    if !path.exists()
+    {
         let _ = fs::create_dir_all(&path);
     }
     path.join("history.json")
@@ -149,20 +170,27 @@ fn get_history_path(app: &tauri::AppHandle) -> PathBuf {
 use crate::error::TauriError;
 
 #[derive(Debug, thiserror::Error)]
-pub enum HistoryError {
+pub enum HistoryError
+{
     #[error("File I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Serialization/Deserialization error: {0}")]
     Json(#[from] serde_json::Error),
 }
 
-pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool {
+pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool
+{
     let mut modified = false;
-    for item in items.iter_mut() {
-        match item {
-            HistoryItem::Session(ref mut session) => {
-                for msg in session.messages.iter_mut() {
-                    match msg {
+    for item in items.iter_mut()
+    {
+        match item
+        {
+            HistoryItem::Session(ref mut session) =>
+            {
+                for msg in session.messages.iter_mut()
+                {
+                    match msg
+                    {
                         Message::ToolExecution {
                             ref mut status,
                             ref mut is_tool_loading,
@@ -170,13 +198,20 @@ pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool {
                             ref mut raw_data,
                             ref action_name,
                             ..
-                        } => {
-                            if status == "Running" || is_tool_loading == &Some(true) {
+                        } =>
+                        {
+                            if status == "Running" || is_tool_loading == &Some(true)
+                            {
                                 *status = "Failed".to_string();
                                 *is_tool_loading = Some(false);
                                 *summary_text = format!("{} 失敗", action_name);
-                                if raw_data.is_none() || raw_data.as_deref().unwrap_or("").trim().is_empty() {
-                                    *raw_data = Some("アプリケーションが終了したため、MCPの実行が失敗しました。".to_string());
+                                if raw_data.is_none()
+                                    || raw_data.as_deref().unwrap_or("").trim().is_empty()
+                                {
+                                    *raw_data = Some(
+                                        "アプリケーションが終了したため、MCPの実行が失敗しました。"
+                                            .to_string(),
+                                    );
                                 }
                                 modified = true;
                             }
@@ -192,8 +227,10 @@ pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool {
                         | Message::SystemMessage {
                             ref mut is_tool_loading,
                             ..
-                        } => {
-                            if is_tool_loading == &Some(true) {
+                        } =>
+                        {
+                            if is_tool_loading == &Some(true)
+                            {
                                 *is_tool_loading = Some(false);
                                 modified = true;
                             }
@@ -201,8 +238,10 @@ pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool {
                     }
                 }
             }
-            HistoryItem::Folder(ref mut folder) => {
-                if sanitize_history_items(&mut folder.items) {
+            HistoryItem::Folder(ref mut folder) =>
+            {
+                if sanitize_history_items(&mut folder.items)
+                {
                     modified = true;
                 }
             }
@@ -211,14 +250,17 @@ pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool {
     modified
 }
 
-pub fn cleanup_running_history_on_exit(app: &tauri::AppHandle) -> Result<(), TauriError> {
+pub fn cleanup_running_history_on_exit(app: &tauri::AppHandle) -> Result<(), TauriError>
+{
     let path = get_history_path(app);
-    if !path.exists() {
+    if !path.exists()
+    {
         return Ok(());
     }
     let data = fs::read_to_string(&path)?;
     let mut history: Vec<HistoryItem> = serde_json::from_str(&data)?;
-    if sanitize_history_items(&mut history) {
+    if sanitize_history_items(&mut history)
+    {
         let data = serde_json::to_string_pretty(&history)?;
         fs::write(path, data)?;
     }
@@ -226,21 +268,25 @@ pub fn cleanup_running_history_on_exit(app: &tauri::AppHandle) -> Result<(), Tau
 }
 
 #[tauri::command]
-pub fn load_history(app: tauri::AppHandle) -> Result<Vec<HistoryItem>, TauriError> {
+pub fn load_history(app: tauri::AppHandle) -> Result<Vec<HistoryItem>, TauriError>
+{
     let path = get_history_path(&app);
-    if !path.exists() {
+    if !path.exists()
+    {
         return Ok(vec![]);
     }
     let data = fs::read_to_string(path)?;
     let mut history: Vec<HistoryItem> = serde_json::from_str(&data)?;
-    if sanitize_history_items(&mut history) {
+    if sanitize_history_items(&mut history)
+    {
         let _ = save_history(app, history.clone());
     }
     Ok(history)
 }
 
 #[tauri::command]
-pub fn save_history(app: tauri::AppHandle, history: Vec<HistoryItem>) -> Result<(), TauriError> {
+pub fn save_history(app: tauri::AppHandle, history: Vec<HistoryItem>) -> Result<(), TauriError>
+{
     let path = get_history_path(&app);
     let data = serde_json::to_string_pretty(&history)?;
     fs::write(path, data)?;
@@ -248,11 +294,13 @@ pub fn save_history(app: tauri::AppHandle, history: Vec<HistoryItem>) -> Result<
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_message_serialization() {
+    fn test_message_serialization()
+    {
         let msg = Message::UserInput {
             role: "user".to_string(),
             content: "Hello".to_string(),
@@ -270,7 +318,8 @@ mod tests {
     }
 
     #[test]
-    fn test_history_item_session_serialization() {
+    fn test_history_item_session_serialization()
+    {
         let session = ChatSession {
             id: "session-1".to_string(),
             title: "Test Session".to_string(),
@@ -293,7 +342,8 @@ mod tests {
     }
 
     #[test]
-    fn test_history_item_folder_serialization() {
+    fn test_history_item_folder_serialization()
+    {
         let folder = Folder {
             id: "folder-1".to_string(),
             name: "Test Folder".to_string(),
@@ -308,7 +358,8 @@ mod tests {
     }
 
     #[test]
-    fn test_summary_item_serialization() {
+    fn test_summary_item_serialization()
+    {
         let summary = SummaryItem {
             timestamp: "2023-10-27T10:00:00Z".to_string(),
             content: "Test summary".to_string(),
@@ -319,7 +370,8 @@ mod tests {
     }
 
     #[test]
-    fn test_sanitize_history_items_running_mcp() {
+    fn test_sanitize_history_items_running_mcp()
+    {
         let mut history = vec![HistoryItem::Session(ChatSession {
             id: "session-1".to_string(),
             title: "Test Session".to_string(),
@@ -346,7 +398,8 @@ mod tests {
         let modified = sanitize_history_items(&mut history);
         assert!(modified);
 
-        if let HistoryItem::Session(session) = &history[0] {
+        if let HistoryItem::Session(session) = &history[0]
+        {
             if let Message::ToolExecution {
                 status,
                 is_tool_loading,
@@ -362,16 +415,21 @@ mod tests {
                     raw_data.as_deref(),
                     Some("アプリケーションが終了したため、MCPの実行が失敗しました。")
                 );
-            } else {
+            }
+            else
+            {
                 panic!("Expected ToolExecution message");
             }
-        } else {
+        }
+        else
+        {
             panic!("Expected Session item");
         }
     }
 
     #[test]
-    fn test_attachment_serialization_with_path() {
+    fn test_attachment_serialization_with_path()
+    {
         let att = Attachment {
             name: "firmware.bin".to_string(),
             mime_type: AttachmentType::File,
@@ -390,7 +448,8 @@ mod tests {
     }
 
     #[test]
-    fn test_read_files_as_attachments_text_and_binary() {
+    fn test_read_files_as_attachments_text_and_binary()
+    {
         use std::io::Write;
         let temp_dir = std::env::temp_dir();
         let text_path = temp_dir.join("test_text_file.txt");
@@ -401,7 +460,9 @@ mod tests {
 
         let mut f_bin = fs::File::create(&bin_path).unwrap();
         // Write invalid utf-8 binary bytes
-        f_bin.write_all(&[0xDE, 0xAD, 0xBE, 0xEF, 0xFF, 0xFE, 0x00, 0x01]).unwrap();
+        f_bin
+            .write_all(&[0xDE, 0xAD, 0xBE, 0xEF, 0xFF, 0xFE, 0x00, 0x01])
+            .unwrap();
 
         let paths = vec![
             text_path.to_string_lossy().to_string(),
@@ -428,18 +489,25 @@ mod tests {
     }
 }
 
-fn get_summaries_path(app: &tauri::AppHandle) -> PathBuf {
-    let path = app.path().app_data_dir().expect("Failed to get app data dir");
-    if !path.exists() {
+fn get_summaries_path(app: &tauri::AppHandle) -> PathBuf
+{
+    let path = app
+        .path()
+        .app_data_dir()
+        .expect("Failed to get app data dir");
+    if !path.exists()
+    {
         let _ = fs::create_dir_all(&path);
     }
     path.join("summaries.json")
 }
 
 #[tauri::command]
-pub fn load_summaries(app: tauri::AppHandle) -> Result<Vec<SummaryItem>, TauriError> {
+pub fn load_summaries(app: tauri::AppHandle) -> Result<Vec<SummaryItem>, TauriError>
+{
     let path = get_summaries_path(&app);
-    if !path.exists() {
+    if !path.exists()
+    {
         return Ok(vec![]);
     }
     let data = fs::read_to_string(path)?;
@@ -448,12 +516,14 @@ pub fn load_summaries(app: tauri::AppHandle) -> Result<Vec<SummaryItem>, TauriEr
 }
 
 #[tauri::command]
-pub fn save_summary(app: tauri::AppHandle, summary: SummaryItem) -> Result<(), TauriError> {
+pub fn save_summary(app: tauri::AppHandle, summary: SummaryItem) -> Result<(), TauriError>
+{
     let mut summaries = load_summaries(app.clone()).unwrap_or_default();
     summaries.push(summary);
-    
+
     // Keep only the last 100 summaries to prevent the file from growing indefinitely
-    if summaries.len() > 100 {
+    if summaries.len() > 100
+    {
         let skip = summaries.len() - 100;
         summaries = summaries.into_iter().skip(skip).collect();
     }
@@ -464,14 +534,17 @@ pub fn save_summary(app: tauri::AppHandle, summary: SummaryItem) -> Result<(), T
     Ok(())
 }
 
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 
 #[tauri::command]
-pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, TauriError> {
+pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, TauriError>
+{
     let mut result = Vec::new();
-    for path_str in paths {
+    for path_str in paths
+    {
         let path = std::path::Path::new(&path_str);
-        if !path.exists() || !path.is_file() {
+        if !path.exists() || !path.is_file()
+        {
             continue;
         }
 
@@ -492,9 +565,12 @@ pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, 
             "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg"
         );
 
-        if is_image {
-            if let Ok(bytes) = fs::read(&path) {
-                let mime = match extension.as_str() {
+        if is_image
+        {
+            if let Ok(bytes) = fs::read(&path)
+            {
+                let mime = match extension.as_str()
+                {
                     "png" => "image/png",
                     "jpg" | "jpeg" => "image/jpeg",
                     "gif" => "image/gif",
@@ -512,12 +588,16 @@ pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, 
                     path: Some(path_str),
                 });
             }
-        } else {
+        }
+        else
+        {
             let file_size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             const MAX_TEXT_FILE_SIZE: u64 = 512 * 1024; // 512 KB
 
-            if file_size <= MAX_TEXT_FILE_SIZE {
-                if let Ok(text) = fs::read_to_string(&path) {
+            if file_size <= MAX_TEXT_FILE_SIZE
+            {
+                if let Ok(text) = fs::read_to_string(&path)
+                {
                     result.push(Attachment {
                         name: file_name,
                         mime_type: AttachmentType::Text,
@@ -528,11 +608,16 @@ pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, 
                 }
             }
 
-            let size_desc = if file_size < 1024 {
+            let size_desc = if file_size < 1024
+            {
                 format!("{} B", file_size)
-            } else if file_size < 1024 * 1024 {
+            }
+            else if file_size < 1024 * 1024
+            {
                 format!("{:.1} KB", file_size as f64 / 1024.0)
-            } else {
+            }
+            else
+            {
                 format!("{:.1} MB", file_size as f64 / (1024.0 * 1024.0))
             };
 

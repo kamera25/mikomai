@@ -1,20 +1,24 @@
-use serde_json::Value;
 use crate::llm::worker::{DeviceContext, Route};
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum RouteAction {
+pub enum RouteAction
+{
     /// Direct execution of an MCP tool
-    DirectToolCall {
+    DirectToolCall
+    {
         tool_name: String,
         params: Value,
         message: String,
     },
     /// Static reply without calling LLM worker
-    StaticReply {
-        message: String,
+    StaticReply
+    {
+        message: String
     },
     /// Delegate to LLM worker
-    WorkerRoute {
+    WorkerRoute
+    {
         route: Route,
         subsequent_route: Option<Route>,
         subsequent_task: Option<String>,
@@ -25,7 +29,8 @@ pub enum RouteAction {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RoutingSource {
+pub enum RoutingSource
+{
     Shortcut,
     LlmRouter,
     Fallback,
@@ -33,7 +38,8 @@ pub enum RoutingSource {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct RoutingDecision {
+pub struct RoutingDecision
+{
     pub action: RouteAction,
     pub confidence: f64,
     pub device_contexts: Vec<DeviceContext>,

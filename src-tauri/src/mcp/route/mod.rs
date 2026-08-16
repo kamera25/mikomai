@@ -1,14 +1,15 @@
+use crate::mcp::safe_cmd::resolve_safe_command_path;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
-use crate::mcp::safe_cmd::resolve_safe_command_path;
 
 pub mod llm;
-pub mod yaml;
 pub mod macos;
 pub mod windows;
+pub mod yaml;
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RouteResult {
+pub struct RouteResult
+{
     pub success: bool,
     pub output: String,
     pub parsed: Option<crate::schema::route::UniversalRouteTable>,
@@ -16,8 +17,10 @@ pub struct RouteResult {
     pub saved_path: Option<String>,
 }
 
-impl From<RouteResult> for crate::network::CommandResult {
-    fn from(res: RouteResult) -> Self {
+impl From<RouteResult> for crate::network::CommandResult
+{
+    fn from(res: RouteResult) -> Self
+    {
         Self {
             success: res.success,
             output: res.output,
@@ -28,55 +31,69 @@ impl From<RouteResult> for crate::network::CommandResult {
     }
 }
 
-
 #[tauri::command]
-pub async fn self_network_route(app: tauri::AppHandle) -> Result<RouteResult, String> {
+pub async fn self_network_route(app: tauri::AppHandle) -> Result<RouteResult, String>
+{
     let is_windows = cfg!(target_os = "windows");
-    let output = if is_windows {
+    let output = if is_windows
+    {
         let route_path = resolve_safe_command_path("route")?;
-        Command::new(&route_path)
-            .arg("print")
-            .output()
-    } else {
+        Command::new(&route_path).arg("print").output()
+    }
+    else
+    {
         // macOS and Linux
         let netstat_path = resolve_safe_command_path("netstat")?;
-        Command::new(&netstat_path)
-            .arg("-rn")
-            .output()
-    }.map_err(|e| format!("Failed to execute route/netstat command: {}", e))?;
+        Command::new(&netstat_path).arg("-rn").output()
+    }
+    .map_err(|e| format!("Failed to execute route/netstat command: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     let success = output.status.success();
-    let display_output = if success {
+    let display_output = if success
+    {
         stdout.clone()
-    } else {
+    }
+    else
+    {
         format!("Error: {}\n{}", stderr, stdout)
     };
 
     let mut saved_path = None;
-    let parsed = if success {
-        let parsed_table = if is_windows {
+    let parsed = if success
+    {
+        let parsed_table = if is_windows
+        {
             windows::parse_windows_route(&stdout).ok()
-        } else {
+        }
+        else
+        {
             macos::parse_macos_route(&stdout).ok()
         };
 
-        if let Some(ref table) = parsed_table {
-            if let Ok(yaml_content) = serde_yaml::to_string(table) {
-                match yaml::save_validated_yaml(&app, "localhost", &yaml_content) {
-                    Ok(path) => {
+        if let Some(ref table) = parsed_table
+        {
+            if let Ok(yaml_content) = serde_yaml::to_string(table)
+            {
+                match yaml::save_validated_yaml(&app, "localhost", &yaml_content)
+                {
+                    Ok(path) =>
+                    {
                         saved_path = Some(path);
                     }
-                    Err(e) => {
+                    Err(e) =>
+                    {
                         log::error!("Failed to save local route table yaml: {}", e);
                     }
                 }
             }
         }
         parsed_table
-    } else {
+    }
+    else
+    {
         None
     };
 
@@ -89,11 +106,13 @@ pub async fn self_network_route(app: tauri::AppHandle) -> Result<RouteResult, St
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_route_result_serialization() {
+    fn test_route_result_serialization()
+    {
         let result = RouteResult {
             success: true,
             output: "routing info".to_string(),
@@ -101,6 +120,9 @@ mod tests {
             saved_path: None,
         };
         let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(serialized, r#"{"success":true,"output":"routing info","parsed":null,"savedPath":null}"#);
+        assert_eq!(
+            serialized,
+            r#"{"success":true,"output":"routing info","parsed":null,"savedPath":null}"#
+        );
     }
 }

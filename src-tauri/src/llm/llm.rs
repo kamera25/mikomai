@@ -1,39 +1,42 @@
 use llama_cpp_2::llama_backend::LlamaBackend;
-use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::model::AddBos;
+use llama_cpp_2::model::LlamaModel;
 
-use tauri::Emitter;
+use crate::error::TauriError;
 use crate::llm::llm_manager::SharedModel;
 use crate::llm::request::{InferenceRequest, InferenceRequestHandler};
-use std::sync::Arc;
 use crate::llm::worker::Route;
-use crate::error::TauriError;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tauri::Emitter;
 
 static CANCEL_LLM: AtomicBool = AtomicBool::new(false);
 
-pub fn cancel() {
+pub fn cancel()
+{
     CANCEL_LLM.store(true, Ordering::SeqCst);
 }
 
-pub fn reset_cancel() {
+pub fn reset_cancel()
+{
     CANCEL_LLM.store(false, Ordering::SeqCst);
 }
 
-pub fn is_cancelled() -> bool {
+pub fn is_cancelled() -> bool
+{
     CANCEL_LLM.load(Ordering::SeqCst)
 }
 
 #[tauri::command]
-pub fn stop_llm() {
+pub fn stop_llm()
+{
     log::info!("stop_llm command invoked by user");
     cancel();
 }
 
-
-
 #[derive(serde::Serialize)]
-pub enum ModelState {
+pub enum ModelState
+{
     NotLoaded,
     Loading,
     Loaded,
@@ -41,7 +44,8 @@ pub enum ModelState {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum LlmError {
+pub enum LlmError
+{
     #[allow(dead_code)]
     #[error("Mutex lock poisoned")]
     PoisonedLock,
@@ -79,7 +83,8 @@ pub enum LlmError {
     Tauri(#[from] tauri::Error),
 }
 
-impl serde::Serialize for LlmError {
+impl serde::Serialize for LlmError
+{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -88,30 +93,36 @@ impl serde::Serialize for LlmError {
     }
 }
 
-pub struct LlamaState {
+pub struct LlamaState
+{
     pub shared: Arc<tokio::sync::Mutex<Option<Arc<SharedModel>>>>,
     pub status: tokio::sync::Mutex<ModelState>,
     pub backend: Arc<LlamaBackend>,
     pub inference_tx: tokio::sync::mpsc::Sender<InferenceRequest>,
 }
 
-impl LlamaState {
-    pub fn new() -> Result<Self, LlmError> {
+impl LlamaState
+{
+    pub fn new() -> Result<Self, LlmError>
+    {
         let backend = LlamaBackend::init().map_err(|_| LlmError::BackendInit)?;
         let backend_arc = Arc::new(backend);
-        let shared: Arc<tokio::sync::Mutex<Option<Arc<SharedModel>>>> = Arc::new(tokio::sync::Mutex::new(None));
+        let shared: Arc<tokio::sync::Mutex<Option<Arc<SharedModel>>>> =
+            Arc::new(tokio::sync::Mutex::new(None));
         let status = tokio::sync::Mutex::new(ModelState::NotLoaded);
-        
+
         let (tx, mut rx) = tokio::sync::mpsc::channel::<InferenceRequest>(100);
-        
+
         let shared_clone = shared.clone();
         std::thread::spawn(move || {
-            while let Some(req) = rx.blocking_recv() {
+            while let Some(req) = rx.blocking_recv()
+            {
                 let shared_model_opt: Option<Arc<SharedModel>> = {
                     let lock = shared_clone.blocking_lock();
                     lock.clone()
                 };
-                match shared_model_opt {
+                match shared_model_opt
+                {
                     Some(shared_model) => req.handle(&shared_model),
                     None => req.reject(LlmError::ModelNotLoaded),
                 }
@@ -127,12 +138,13 @@ impl LlamaState {
     }
 }
 
-
-
 #[tauri::command]
-pub async fn get_model_status(state: tauri::State<'_, LlamaState>) -> Result<ModelState, TauriError> {
+pub async fn get_model_status(state: tauri::State<'_, LlamaState>)
+    -> Result<ModelState, TauriError>
+{
     let status_lock = state.status.lock().await;
-    let status = match &*status_lock {
+    let status = match &*status_lock
+    {
         ModelState::NotLoaded => ModelState::NotLoaded,
         ModelState::Loading => ModelState::Loading,
         ModelState::Loaded => ModelState::Loaded,
@@ -149,69 +161,103 @@ pub(crate) fn prepare_prompt_tokens_with_limit(
     n_ctx: usize,
     max_gen: usize,
     keep_tokens: usize,
-) -> Result<Vec<llama_cpp_2::token::LlamaToken>, LlmError> {
-    let mut tokens = model.str_to_token(prompt, AddBos::Always).map_err(|e| LlmError::Tokenization(format!("{:?}", e)))?;
+) -> Result<Vec<llama_cpp_2::token::LlamaToken>, LlmError>
+{
+    let mut tokens = model
+        .str_to_token(prompt, AddBos::Always)
+        .map_err(|e| LlmError::Tokenization(format!("{:?}", e)))?;
 
     let max_tokens = n_ctx.saturating_sub(max_gen);
-    if tokens.len() > max_tokens {
-        log::warn!("Prompt too long ({} tokens). Truncating to {} tokens.", tokens.len(), max_tokens);
+    if tokens.len() > max_tokens
+    {
+        log::warn!(
+            "Prompt too long ({} tokens). Truncating to {} tokens.",
+            tokens.len(),
+            max_tokens
+        );
 
-        let note_tokens = model.str_to_token("\n※コンテキストの一部が省略されました\n", AddBos::Never).map_err(|e| LlmError::Tokenization(format!("{:?}", e)))?;
+        let note_tokens = model
+            .str_to_token("\n※コンテキストの一部が省略されました\n", AddBos::Never)
+            .map_err(|e| LlmError::Tokenization(format!("{:?}", e)))?;
         let note_len = note_tokens.len();
 
         let to_remove = tokens.len() - max_tokens;
         let start_keep = keep_tokens;
 
-        if tokens.len() > start_keep + to_remove + note_len {
-            let remaining_space = max_tokens.saturating_sub(start_keep).saturating_sub(note_len);
+        if tokens.len() > start_keep + to_remove + note_len
+        {
+            let remaining_space = max_tokens
+                .saturating_sub(start_keep)
+                .saturating_sub(note_len);
             let start_take = tokens.len() - remaining_space;
-            
+
             let mut new_tokens = tokens[..start_keep].to_vec();
             new_tokens.extend_from_slice(&note_tokens);
             new_tokens.extend_from_slice(&tokens[start_take..]);
             tokens = new_tokens;
-        } else if max_tokens > note_len {
+        }
+        else if max_tokens > note_len
+        {
             let remaining_space = max_tokens - note_len;
             let start_take = tokens.len() - remaining_space;
             let mut new_tokens = note_tokens;
             new_tokens.extend_from_slice(&tokens[start_take..]);
             tokens = new_tokens;
-        } else {
+        }
+        else
+        {
             tokens.truncate(max_tokens);
         }
     }
     Ok(tokens)
 }
 
-
 pub(crate) fn process_token_bytes(
     bytes_accumulator: &mut Vec<u8>,
     result_string: &mut String,
     window: Option<&tauri::Window>,
-) {
-    match std::str::from_utf8(bytes_accumulator) {
-        Ok(s) => {
-            if let Some(w) = window {
-                let _ = w.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(s.to_string()));
+)
+{
+    match std::str::from_utf8(bytes_accumulator)
+    {
+        Ok(s) =>
+        {
+            if let Some(w) = window
+            {
+                let _ = w.emit(
+                    "chat-event",
+                    crate::mcp::protocol::ChatEvent::LlmChunk(s.to_string()),
+                );
             }
             result_string.push_str(s);
             bytes_accumulator.clear();
         }
-        Err(e) => {
+        Err(e) =>
+        {
             let utf8_error_index = e.valid_up_to();
-            let valid_str = String::from_utf8_lossy(&bytes_accumulator[..utf8_error_index]).to_string();
-            if let Some(w) = window {
-                let _ = w.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(valid_str.clone()));
+            let valid_str =
+                String::from_utf8_lossy(&bytes_accumulator[..utf8_error_index]).to_string();
+            if let Some(w) = window
+            {
+                let _ = w.emit(
+                    "chat-event",
+                    crate::mcp::protocol::ChatEvent::LlmChunk(valid_str.clone()),
+                );
             }
             result_string.push_str(&valid_str);
             bytes_accumulator.drain(..utf8_error_index);
-            if bytes_accumulator.len() > 8 {
-                 let s = String::from_utf8_lossy(bytes_accumulator);
-                 if let Some(w) = window {
-                     let _ = w.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(s.to_string()));
-                 }
-                 result_string.push_str(&s);
-                 bytes_accumulator.clear();
+            if bytes_accumulator.len() > 8
+            {
+                let s = String::from_utf8_lossy(bytes_accumulator);
+                if let Some(w) = window
+                {
+                    let _ = w.emit(
+                        "chat-event",
+                        crate::mcp::protocol::ChatEvent::LlmChunk(s.to_string()),
+                    );
+                }
+                result_string.push_str(&s);
+                bytes_accumulator.clear();
             }
         }
     }
@@ -219,13 +265,15 @@ pub(crate) fn process_token_bytes(
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AskInitialPayload {
+pub struct AskInitialPayload
+{
     pub prompt: String,
 }
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AnalyzePayload {
+pub struct AnalyzePayload
+{
     pub user_message: String,
     pub tool_label: String,
     pub output: String,
@@ -239,57 +287,101 @@ pub async fn ask_llm_initial_internal(
     window: tauri::Window,
     prompt: String,
     llama_state: &LlamaState,
-) -> Result<(String, Route), LlmError> {
-    let AskInitialPayload { prompt: _ } = AskInitialPayload { prompt: prompt.clone() };
-    let original_query = if prompt.starts_with("【ユーザー入力】\n") {
-        prompt.strip_prefix("【ユーザー入力】\n")
+) -> Result<(String, Route), LlmError>
+{
+    let AskInitialPayload { prompt: _ } = AskInitialPayload {
+        prompt: prompt.clone(),
+    };
+    let original_query = if prompt.starts_with("【ユーザー入力】\n")
+    {
+        prompt
+            .strip_prefix("【ユーザー入力】\n")
             .unwrap()
             .split("\n\n<memory>")
             .next()
             .unwrap_or(&prompt)
             .to_string()
-    } else {
-        prompt.split("\n\n<memory>").next().unwrap_or(&prompt).chars().take(300).collect::<String>()
+    }
+    else
+    {
+        prompt
+            .split("\n\n<memory>")
+            .next()
+            .unwrap_or(&prompt)
+            .chars()
+            .take(300)
+            .collect::<String>()
     };
 
-    let has_image_attachment = original_query.contains("【添付画像Vision解析情報") || original_query.contains("[添付画像:");
+    let has_image_attachment = original_query.contains("【添付画像Vision解析情報")
+        || original_query.contains("[添付画像:");
 
-    if !has_image_attachment {
-        if let Some(decision) = crate::llm::router::shortcut::detect_shortcut(&original_query) {
-            if decision.confidence >= 0.8 {
-                let response_str = match decision.action {
+    if !has_image_attachment
+    {
+        if let Some(decision) = crate::llm::router::shortcut::detect_shortcut(&original_query)
+        {
+            if decision.confidence >= 0.8
+            {
+                let response_str = match decision.action
+                {
                     crate::llm::router::RouteAction::StaticReply { message } => message,
-                    crate::llm::router::RouteAction::DirectToolCall { tool_name, params, message } => {
+                    crate::llm::router::RouteAction::DirectToolCall {
+                        tool_name,
+                        params,
+                        message,
+                    } =>
+                    {
                         let tool_call = serde_json::json!({
                             "tool_name": tool_name,
                             "params": params
                         });
-                        format!("{}\n\n```json\n{}\n```", message, serde_json::to_string_pretty(&tool_call).unwrap())
+                        format!(
+                            "{}\n\n```json\n{}\n```",
+                            message,
+                            serde_json::to_string_pretty(&tool_call).unwrap()
+                        )
                     }
                     _ => String::new(),
                 };
-                if !response_str.is_empty() {
-                    let _ = window.emit("chat-event", crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()));
+                if !response_str.is_empty()
+                {
+                    let _ = window.emit(
+                        "chat-event",
+                        crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()),
+                    );
                     return Ok((response_str, Route::None));
                 }
             }
         }
     }
 
-    log::info!("Received original query (has_image={}): '{}'", has_image_attachment, original_query);
-
+    log::info!(
+        "Received original query (has_image={}): '{}'",
+        has_image_attachment,
+        original_query
+    );
 
     let (tx, rx) = tokio::sync::oneshot::channel();
-    llama_state.inference_tx.send(InferenceRequest::Initial {
-        window,
-        prompt: prompt.clone(),
-        original_query,
-        respond_to: tx,
-    }).await.map_err(|e| LlmError::Worker(format!("Failed to send inference request: {}", e)))?;
+    llama_state
+        .inference_tx
+        .send(InferenceRequest::Initial {
+            window,
+            prompt: prompt.clone(),
+            original_query,
+            respond_to: tx,
+        })
+        .await
+        .map_err(|e| LlmError::Worker(format!("Failed to send inference request: {}", e)))?;
 
-    let inference_result = rx.await.map_err(|e| LlmError::Worker(format!("Failed to receive inference result: {}", e)))??;
+    let inference_result = rx
+        .await
+        .map_err(|e| LlmError::Worker(format!("Failed to receive inference result: {}", e)))??;
 
-    log::info!("LLM Initial Prompt: {:?}\nResponse: {:?}", prompt, inference_result);
+    log::info!(
+        "LLM Initial Prompt: {:?}\nResponse: {:?}",
+        prompt,
+        inference_result
+    );
     Ok(inference_result)
 }
 
@@ -298,7 +390,8 @@ pub async fn ask_llm_initial(
     window: tauri::Window,
     payload: AskInitialPayload,
     llama_state: tauri::State<'_, LlamaState>,
-) -> Result<String, TauriError> {
+) -> Result<String, TauriError>
+{
     let AskInitialPayload { prompt } = payload;
     let (response, _route) = ask_llm_initial_internal(window, prompt, &*llama_state)
         .await
@@ -311,7 +404,8 @@ pub async fn analyze_tool_output(
     window: tauri::Window,
     payload: AnalyzePayload,
     llama_state: tauri::State<'_, LlamaState>,
-) -> Result<String, TauriError> {
+) -> Result<String, TauriError>
+{
     let AnalyzePayload {
         user_message,
         tool_label,
@@ -326,21 +420,39 @@ pub async fn analyze_tool_output(
     let is_builder_val = is_builder.unwrap_or(false);
 
     let (tx, rx) = tokio::sync::oneshot::channel();
-    llama_state.inference_tx.send(InferenceRequest::Analyze {
-        window,
-        user_message,
-        tool_label,
-        output,
-        is_rag,
-        is_builder: is_builder_val,
-        history_block,
-        subsequent_task,
-        respond_to: tx,
-    }).await.map_err(|e| TauriError::from(LlmError::Worker(format!("Failed to send inference request: {}", e))))?;
+    llama_state
+        .inference_tx
+        .send(InferenceRequest::Analyze {
+            window,
+            user_message,
+            tool_label,
+            output,
+            is_rag,
+            is_builder: is_builder_val,
+            history_block,
+            subsequent_task,
+            respond_to: tx,
+        })
+        .await
+        .map_err(|e| {
+            TauriError::from(LlmError::Worker(format!(
+                "Failed to send inference request: {}",
+                e
+            )))
+        })?;
 
-    let inference_result = rx.await.map_err(|e| TauriError::from(LlmError::Worker(format!("Failed to receive inference result: {}", e))))??;
+    let inference_result = rx.await.map_err(|e| {
+        TauriError::from(LlmError::Worker(format!(
+            "Failed to receive inference result: {}",
+            e
+        )))
+    })??;
 
-    log::info!("LLM Analysis User Message: {:?}\nResponse: {}", user_message_log, inference_result);
+    log::info!(
+        "LLM Analysis User Message: {:?}\nResponse: {}",
+        user_message_log,
+        inference_result
+    );
     Ok(inference_result)
 }
 
@@ -349,48 +461,74 @@ pub async fn ask_llm_internal(
     system_prompt: &str,
     app: &tauri::AppHandle,
     state: &LlamaState,
-) -> Result<String, LlmError> {
+) -> Result<String, LlmError>
+{
     let (tx, rx) = tokio::sync::oneshot::channel();
-    state.inference_tx.send(InferenceRequest::Internal {
-        prompt: prompt.to_string(),
-        system_prompt: system_prompt.to_string(),
-        app: app.clone(),
-        respond_to: tx,
-    }).await.map_err(|e| LlmError::Worker(format!("Failed to send inference request: {}", e)))?;
+    state
+        .inference_tx
+        .send(InferenceRequest::Internal {
+            prompt: prompt.to_string(),
+            system_prompt: system_prompt.to_string(),
+            app: app.clone(),
+            respond_to: tx,
+        })
+        .await
+        .map_err(|e| LlmError::Worker(format!("Failed to send inference request: {}", e)))?;
 
-    rx.await.map_err(|e| LlmError::Worker(format!("Failed to receive inference result: {}", e)))?
+    rx.await
+        .map_err(|e| LlmError::Worker(format!("Failed to receive inference result: {}", e)))?
 }
 
 #[tauri::command]
 pub async fn ask_llm_background(
-    prompt: String, 
+    prompt: String,
     app: tauri::AppHandle,
-    state: tauri::State<'_, LlamaState>
-) -> Result<String, TauriError> {
+    state: tauri::State<'_, LlamaState>,
+) -> Result<String, TauriError>
+{
     let (tx, rx) = tokio::sync::oneshot::channel();
-    state.inference_tx.send(InferenceRequest::Background {
-        prompt,
-        app,
-        respond_to: tx,
-    }).await.map_err(|e| TauriError::from(LlmError::Worker(format!("Failed to send inference request: {}", e))))?;
+    state
+        .inference_tx
+        .send(InferenceRequest::Background {
+            prompt,
+            app,
+            respond_to: tx,
+        })
+        .await
+        .map_err(|e| {
+            TauriError::from(LlmError::Worker(format!(
+                "Failed to send inference request: {}",
+                e
+            )))
+        })?;
 
-    let inference_result = rx.await.map_err(|e| TauriError::from(LlmError::Worker(format!("Failed to receive inference result: {}", e))))??;
+    let inference_result = rx.await.map_err(|e| {
+        TauriError::from(LlmError::Worker(format!(
+            "Failed to receive inference result: {}",
+            e
+        )))
+    })??;
     Ok(inference_result)
 }
 
 pub const BUILDER_DIFF_CONFIG_PROMPT: &str = "ユーザーから提供される設定情報は「差分（部分設定）」であることが前提です。たとえホスト名の変更のみであっても不完全とみなさず、提供されたパラメータだけを対象機器のコマンドに変換してください。ユーザーからの明示的な指示がない限り、不足していると思われる他の設定項目（インターフェースや経路など）を推測して補完したり、そのためにRAGを検索したりすることは厳禁です。";
 
-pub fn prepare_builder_prompt(input: &str) -> String {
+pub fn prepare_builder_prompt(input: &str) -> String
+{
     let text = replace_interface_abbreviations(input);
-    if text.contains(BUILDER_DIFF_CONFIG_PROMPT) {
+    if text.contains(BUILDER_DIFF_CONFIG_PROMPT)
+    {
         text
-    } else {
+    }
+    else
+    {
         format!("{}\n\n{}", BUILDER_DIFF_CONFIG_PROMPT, text)
     }
 }
 
-pub fn replace_interface_abbreviations(input: &str) -> String {
-    use regex::{Regex, Captures};
+pub fn replace_interface_abbreviations(input: &str) -> String
+{
+    use regex::{Captures, Regex};
     use std::sync::OnceLock;
 
     static FA_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -421,21 +559,33 @@ pub fn replace_interface_abbreviations(input: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_replace_interface_abbreviations() {
+    fn test_replace_interface_abbreviations()
+    {
         assert_eq!(replace_interface_abbreviations("Fa0/1"), "fastethernet0/1");
-        assert_eq!(replace_interface_abbreviations("gi 1/0/2"), "gigabitethernet1/0/2");
-        assert_eq!(replace_interface_abbreviations("Te2/1"), "tengigabitethernet2/1");
-        assert_eq!(replace_interface_abbreviations("Interface Fa0/1をアクセスに"), "Interface fastethernet0/1をアクセスに");
+        assert_eq!(
+            replace_interface_abbreviations("gi 1/0/2"),
+            "gigabitethernet1/0/2"
+        );
+        assert_eq!(
+            replace_interface_abbreviations("Te2/1"),
+            "tengigabitethernet2/1"
+        );
+        assert_eq!(
+            replace_interface_abbreviations("Interface Fa0/1をアクセスに"),
+            "Interface fastethernet0/1をアクセスに"
+        );
         assert_eq!(replace_interface_abbreviations("Sofa0/1"), "Sofa0/1");
         assert_eq!(replace_interface_abbreviations("FA1"), "fastethernet1");
     }
 
     #[test]
-    fn test_prepare_builder_prompt() {
+    fn test_prepare_builder_prompt()
+    {
         let input = "Fa0/1 を設定する";
         let res = prepare_builder_prompt(input);
         assert!(res.starts_with(BUILDER_DIFF_CONFIG_PROMPT));
@@ -445,6 +595,3 @@ mod tests {
         assert_eq!(res, res_twice);
     }
 }
-
-
-

@@ -1,11 +1,12 @@
-use surge_ping::{Client, Config, PingIdentifier, PingSequence, ICMP};
-use std::net::IpAddr;
-use tokio::time::Duration;
-use serde::{Deserialize, Serialize};
 use crate::connections::resolve_host_with_mcp;
+use serde::{Deserialize, Serialize};
+use std::net::IpAddr;
+use surge_ping::{Client, Config, PingIdentifier, PingSequence, ICMP};
+use tokio::time::Duration;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct TracerouteParams {
+pub struct TracerouteParams
+{
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
@@ -13,13 +14,16 @@ pub struct TracerouteParams {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct TracerouteResult {
+pub struct TracerouteResult
+{
     pub success: bool,
     pub output: String,
 }
 
-impl From<TracerouteResult> for crate::network::CommandResult {
-    fn from(res: TracerouteResult) -> Self {
+impl From<TracerouteResult> for crate::network::CommandResult
+{
+    fn from(res: TracerouteResult) -> Self
+    {
         Self {
             success: res.success,
             output: res.output,
@@ -31,16 +35,24 @@ impl From<TracerouteResult> for crate::network::CommandResult {
 }
 
 #[cfg(test)]
-fn resolve_host(host: &str) -> Result<IpAddr, String> {
+fn resolve_host(host: &str) -> Result<IpAddr, String>
+{
     use std::net::ToSocketAddrs;
-    let addrs = format!("{}:80", host).to_socket_addrs().map_err(|e| e.to_string())?;
-    addrs.into_iter().next().map(|a| a.ip()).ok_or("Could not resolve host".to_string())
+    let addrs = format!("{}:80", host)
+        .to_socket_addrs()
+        .map_err(|e| e.to_string())?;
+    addrs
+        .into_iter()
+        .next()
+        .map(|a| a.ip())
+        .ok_or("Could not resolve host".to_string())
 }
 
 pub async fn self_network_traceroute_with_params(
     app: tauri::AppHandle,
     params: TracerouteParams,
-) -> Result<TracerouteResult, String> {
+) -> Result<TracerouteResult, String>
+{
     let target_host = crate::mcp::args::normalize_host_args(
         &app,
         params.host,
@@ -59,12 +71,17 @@ pub async fn self_network_traceroute_with_params(
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
 
-    let mut output = format!("Tracing route to {} over a maximum of 30 hops:\n\n", ip_addr);
+    let mut output = format!(
+        "Tracing route to {} over a maximum of 30 hops:\n\n",
+        ip_addr
+    );
     let mut success = false;
     let payload = vec![0u8; 32];
 
-    for ttl in 1..=30 {
-        let config = match ip_addr {
+    for ttl in 1..=30
+    {
+        let config = match ip_addr
+        {
             IpAddr::V4(_) => Config::builder().kind(ICMP::V4).ttl(ttl).build(),
             IpAddr::V6(_) => Config::builder().kind(ICMP::V6).ttl(ttl).build(),
         };
@@ -73,30 +90,32 @@ pub async fn self_network_traceroute_with_params(
         let mut pinger = client.pinger(ip_addr, PingIdentifier(ttl as u16)).await;
         pinger.timeout(Duration::from_secs(2));
 
-        match pinger.ping(PingSequence(ttl as u16), &payload).await {
-            Ok((packet, duration)) => {
-                let hop_ip: IpAddr = match packet {
+        match pinger.ping(PingSequence(ttl as u16), &payload).await
+        {
+            Ok((packet, duration)) =>
+            {
+                let hop_ip: IpAddr = match packet
+                {
                     surge_ping::IcmpPacket::V4(p) => p.get_real_dest().into(),
                     surge_ping::IcmpPacket::V6(p) => p.get_real_dest().into(),
                 };
                 output.push_str(&format!("{:2}  {:?}  {}\n", ttl, duration, hop_ip));
 
-                if hop_ip == ip_addr {
+                if hop_ip == ip_addr
+                {
                     output.push_str("\nTrace complete.\n");
                     success = true;
                     break;
                 }
             }
-            Err(_) => {
+            Err(_) =>
+            {
                 output.push_str(&format!("{:2}  *        Request timed out.\n", ttl));
             }
         }
     }
 
-    Ok(TracerouteResult {
-        success,
-        output,
-    })
+    Ok(TracerouteResult { success, output })
 }
 
 #[tauri::command]
@@ -108,7 +127,8 @@ pub async fn self_network_traceroute(
     deviceName: Option<String>,
     device_name: Option<String>,
     ip: Option<String>,
-) -> Result<TracerouteResult, String> {
+) -> Result<TracerouteResult, String>
+{
     let dev_name = deviceName.or(device_name);
     self_network_traceroute_with_params(
         app,
@@ -118,15 +138,18 @@ pub async fn self_network_traceroute(
             device_name: dev_name,
             ip,
         },
-    ).await
+    )
+    .await
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
 
     #[test]
-    fn test_traceroute_result_serialization() {
+    fn test_traceroute_result_serialization()
+    {
         let result = TracerouteResult {
             success: true,
             output: "Trace complete.".to_string(),
@@ -136,7 +159,8 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_host_ip() {
+    fn test_resolve_host_ip()
+    {
         let ip = resolve_host("127.0.0.1");
         assert!(ip.is_ok());
         assert_eq!(ip.unwrap().to_string(), "127.0.0.1");
