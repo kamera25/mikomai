@@ -14,7 +14,7 @@ pub struct RouteResult
     pub output: String,
     pub parsed: Option<crate::schema::route::UniversalRouteTable>,
     #[serde(rename = "savedPath")]
-    pub saved_path: Option<String>,
+    pub saved_path: Option<std::path::PathBuf>,
 }
 
 impl From<RouteResult> for crate::network::CommandResult

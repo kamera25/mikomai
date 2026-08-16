@@ -14,7 +14,7 @@ pub struct ArpResult
     pub output: String,
     pub parsed: Option<crate::schema::arp::UniversalArpTable>,
     #[serde(rename = "savedPath")]
-    pub saved_path: Option<String>,
+    pub saved_path: Option<std::path::PathBuf>,
 }
 
 impl From<ArpResult> for crate::network::CommandResult

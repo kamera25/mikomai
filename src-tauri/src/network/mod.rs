@@ -65,7 +65,7 @@ pub struct CommandResult
     pub success: bool,
     pub output: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub saved_path: Option<String>,
+    pub saved_path: Option<std::path::PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_cached: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

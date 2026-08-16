@@ -6,7 +6,7 @@ pub struct FileTransferResult
     pub success: bool,
     pub output: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_path: Option<String>,
+    pub file_path: Option<std::path::PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bytes_transferred: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]

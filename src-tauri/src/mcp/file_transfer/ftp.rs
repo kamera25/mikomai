@@ -170,7 +170,7 @@ pub async fn network_ftp_download_with_params(
 
     let duration_ms = start_time.elapsed().as_millis() as u64;
 
-    let saved_path_str = if let Some(local_path) = params.local_path
+    let saved_path = if let Some(local_path) = params.local_path
     {
         let path = PathBuf::from(&local_path);
         if let Some(parent) = path.parent()
@@ -183,7 +183,7 @@ pub async fn network_ftp_download_with_params(
                 local_path, e
             )
         })?;
-        local_path
+        path
     }
     else
     {
@@ -203,7 +203,7 @@ pub async fn network_ftp_download_with_params(
             .map_err(|e| format!("Failed to save artifact: {}", e))?;
 
         let _ = manager.update_current_link(path.parent().unwrap());
-        path.to_string_lossy().to_string()
+        path
     };
 
     let bytes_len = file_data.len();
@@ -213,7 +213,7 @@ pub async fn network_ftp_download_with_params(
         port,
         username,
         remote_file,
-        saved_path_str,
+        saved_path.display(),
         bytes_len,
         duration_ms
     );
@@ -221,7 +221,7 @@ pub async fn network_ftp_download_with_params(
     Ok(FileTransferResult {
         success: true,
         output,
-        file_path: Some(saved_path_str),
+        file_path: Some(saved_path),
         bytes_transferred: Some(bytes_len),
         duration_ms: Some(duration_ms),
     })
@@ -334,7 +334,7 @@ pub async fn network_ftp_upload_with_params(
     Ok(FileTransferResult {
         success: true,
         output,
-        file_path: params.local_file,
+        file_path: params.local_file.map(PathBuf::from),
         bytes_transferred: Some(bytes_len),
         duration_ms: Some(duration_ms),
     })
@@ -352,13 +352,13 @@ pub async fn network_ftp_download(
     port: Option<u16>,
     username: Option<String>,
     password: Option<String>,
-    remote_file: Option<String>,
     remoteFile: Option<String>,
+    remote_file: Option<String>,
     filename: Option<String>,
-    local_path: Option<String>,
     localPath: Option<String>,
-    timeout_secs: Option<u64>,
+    local_path: Option<String>,
     timeoutSecs: Option<u64>,
+    timeout_secs: Option<u64>,
 ) -> Result<FileTransferResult, String>
 {
     network_ftp_download_with_params(
@@ -392,14 +392,14 @@ pub async fn network_ftp_upload(
     port: Option<u16>,
     username: Option<String>,
     password: Option<String>,
-    local_file: Option<String>,
     localFile: Option<String>,
-    remote_file: Option<String>,
+    local_file: Option<String>,
     remoteFile: Option<String>,
+    remote_file: Option<String>,
     filename: Option<String>,
     content: Option<String>,
-    timeout_secs: Option<u64>,
     timeoutSecs: Option<u64>,
+    timeout_secs: Option<u64>,
 ) -> Result<FileTransferResult, String>
 {
     network_ftp_upload_with_params(
@@ -433,7 +433,7 @@ mod tests
         let res = FileTransferResult {
             success: true,
             output: "FTP OK".to_string(),
-            file_path: Some("/tmp/test.bin".to_string()),
+            file_path: Some(PathBuf::from("/tmp/test.bin")),
             bytes_transferred: Some(1024),
             duration_ms: Some(150),
         };

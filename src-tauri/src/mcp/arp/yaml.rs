@@ -50,7 +50,7 @@ pub fn save_validated_yaml(
     app: &tauri::AppHandle,
     device_name: &str,
     yaml_content: &str,
-) -> Result<String, String>
+) -> Result<std::path::PathBuf, String>
 {
     let quoted_yaml = quote_yaml_strings(yaml_content);
     let mut manager = SnapshotManager::new(app)
@@ -60,7 +60,7 @@ pub fn save_validated_yaml(
         Ok(path) =>
         {
             let _ = manager.update_current_link(path.parent().unwrap());
-            Ok(path.to_string_lossy().to_string())
+            Ok(path)
         }
         Err(e) => Err(format!("Failed to save YAML artifact: {}", e)),
     }

@@ -430,7 +430,7 @@ pub async fn network_tftp_download_with_params(
     let (file_data, duration_ms) =
         tftp_download_core(server_addr, &remote_file, mode, timeout_duration).await?;
 
-    let saved_path_str = if let Some(local_path) = params.local_path
+    let saved_path = if let Some(local_path) = params.local_path
     {
         let path = PathBuf::from(&local_path);
         if let Some(parent) = path.parent()
@@ -443,7 +443,7 @@ pub async fn network_tftp_download_with_params(
                 local_path, e
             )
         })?;
-        local_path
+        path
     }
     else
     {
@@ -463,7 +463,7 @@ pub async fn network_tftp_download_with_params(
             .map_err(|e| format!("Failed to save artifact: {}", e))?;
 
         let _ = manager.update_current_link(path.parent().unwrap());
-        path.to_string_lossy().to_string()
+        path
     };
 
     let bytes_len = file_data.len();
@@ -472,7 +472,7 @@ pub async fn network_tftp_download_with_params(
         server_addr.ip(),
         server_addr.port(),
         remote_file,
-        saved_path_str,
+        saved_path.display(),
         bytes_len,
         duration_ms
     );
@@ -480,7 +480,7 @@ pub async fn network_tftp_download_with_params(
     Ok(FileTransferResult {
         success: true,
         output,
-        file_path: Some(saved_path_str),
+        file_path: Some(saved_path),
         bytes_transferred: Some(bytes_len),
         duration_ms: Some(duration_ms),
     })
@@ -573,7 +573,7 @@ pub async fn network_tftp_upload_with_params(
     Ok(FileTransferResult {
         success: true,
         output,
-        file_path: params.local_file,
+        file_path: params.local_file.map(PathBuf::from),
         bytes_transferred: Some(bytes_len),
         duration_ms: Some(duration_ms),
     })

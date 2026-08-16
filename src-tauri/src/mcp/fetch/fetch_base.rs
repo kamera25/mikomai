@@ -224,7 +224,7 @@ pub trait McpCommandFetcher
         {
             Ok(output) =>
             {
-                let saved_path: Option<String> = if !output.trim().is_empty()
+                let saved_path: Option<std::path::PathBuf> = if !output.trim().is_empty()
                 {
                     if let Ok(mut manager) = crate::snapshot::SnapshotManager::new(app)
                     {
@@ -232,7 +232,7 @@ pub trait McpCommandFetcher
                         if let Ok(path) = manager.save_artifact(device_name, &data_type, &output)
                         {
                             let _ = manager.update_current_link(path.parent().unwrap());
-                            Some(path.to_string_lossy().to_string())
+                            Some(path)
                         }
                         else
                         {
@@ -312,7 +312,7 @@ pub fn check_yaml_cache(
     Some(CommandResult {
         success: true,
         output: yaml_content,
-        saved_path: Some(yaml_path.to_string_lossy().to_string()),
+        saved_path: Some(yaml_path),
         is_cached: Some(true),
         cache_time: Some(cache_time_str),
     })

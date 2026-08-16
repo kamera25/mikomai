@@ -128,7 +128,7 @@ pub async fn self_network_nwdiag(
     Ok(CommandResult {
         success: true,
         output: output_markdown,
-        saved_path: Some(saved_path.to_string_lossy().to_string()),
+        saved_path: Some(saved_path),
         is_cached: None,
         cache_time: None,
     })

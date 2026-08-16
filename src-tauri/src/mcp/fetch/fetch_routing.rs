@@ -136,7 +136,7 @@ pub async fn fetch_routing(
             {
                 log::info!(
                     "Background YAML normalization succeeded, saved to: {}",
-                    saved_path
+                    saved_path.display()
                 );
                 if let Err(e) = app_clone.emit(
                     "chat-event",

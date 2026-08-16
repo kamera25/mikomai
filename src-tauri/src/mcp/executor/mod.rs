@@ -102,7 +102,9 @@ pub async fn handle_mcp_message(
                     {
                         final_user_message.push_str(&format!(
                             "\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n{}",
-                            att.name, path, att.content
+                            att.name,
+                            path.display(),
+                            att.content
                         ));
                     }
                     else
@@ -128,7 +130,9 @@ pub async fn handle_mcp_message(
                     {
                         final_user_message.push_str(&format!(
                             "\n\n[添付画像: {} (ローカルパス: {})]\n{}",
-                            att.name, path, analysis.extracted_context
+                            att.name,
+                            path.display(),
+                            analysis.extracted_context
                         ));
                     }
                     else
@@ -141,9 +145,10 @@ pub async fn handle_mcp_message(
                     // Binary or large file
                     if let Some(path) = &att.path
                     {
+                        let path_str = path.display();
                         final_user_message.push_str(&format!(
                             "\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n※バイナリまたは大容量ファイルのため内容は省略されています。機器へのアップロード等のツール実行時は local_file 引数に '{}' を指定してください。",
-                            att.name, path, path
+                            att.name, path_str, path_str
                         ));
                     }
                     else

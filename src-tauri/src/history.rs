@@ -41,7 +41,7 @@ pub struct Attachment
     pub mime_type: AttachmentType,
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
+    pub path: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,7 +127,7 @@ pub enum Message
         #[serde(skip_serializing_if = "Option::is_none")]
         args: Option<serde_json::Value>,
         #[serde(rename = "saved_path", skip_serializing_if = "Option::is_none")]
-        saved_path: Option<String>,
+        saved_path: Option<PathBuf>,
         #[serde(rename = "is_cached", skip_serializing_if = "Option::is_none")]
         is_cached: Option<bool>,
         #[serde(rename = "cache_time", skip_serializing_if = "Option::is_none")]
@@ -465,7 +465,7 @@ mod tests
             name: "firmware.bin".to_string(),
             mime_type: AttachmentType::File,
             content: "[ファイル: firmware.bin (サイズ: 1.2 MB)]".to_string(),
-            path: Some("/tmp/firmware.bin".to_string()),
+            path: Some(PathBuf::from("/tmp/firmware.bin")),
         };
         let json = serde_json::to_string(&att).unwrap();
         assert!(json.contains(r#""name":"firmware.bin""#));
@@ -475,7 +475,7 @@ mod tests
         let deserialized: Attachment = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.name, "firmware.bin");
         assert_eq!(deserialized.mime_type, AttachmentType::File);
-        assert_eq!(deserialized.path, Some("/tmp/firmware.bin".to_string()));
+        assert_eq!(deserialized.path, Some(PathBuf::from("/tmp/firmware.bin")));
     }
 
     #[test]
@@ -507,13 +507,13 @@ mod tests
         assert_eq!(text_att.name, "test_text_file.txt");
         assert_eq!(text_att.mime_type, AttachmentType::Text);
         assert!(text_att.content.contains("hostname Switch1"));
-        assert_eq!(text_att.path, Some(text_path.to_string_lossy().to_string()));
+        assert_eq!(text_att.path, Some(text_path.clone()));
 
         let bin_att = &atts[1];
         assert_eq!(bin_att.name, "test_bin_file.bin");
         assert_eq!(bin_att.mime_type, AttachmentType::File);
         assert!(bin_att.content.contains("test_bin_file.bin"));
-        assert_eq!(bin_att.path, Some(bin_path.to_string_lossy().to_string()));
+        assert_eq!(bin_att.path, Some(bin_path.clone()));
 
         let _ = fs::remove_file(text_path);
         let _ = fs::remove_file(bin_path);
@@ -616,7 +616,7 @@ pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, 
                     name: file_name,
                     mime_type: AttachmentType::Image,
                     content: data_url,
-                    path: Some(path_str),
+                    path: Some(PathBuf::from(path_str)),
                 });
             }
         }
@@ -633,7 +633,7 @@ pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, 
                         name: file_name,
                         mime_type: AttachmentType::Text,
                         content: text,
-                        path: Some(path_str),
+                        path: Some(PathBuf::from(path_str)),
                     });
                     continue;
                 }
@@ -656,7 +656,7 @@ pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, 
                 name: file_name.clone(),
                 mime_type: AttachmentType::File,
                 content: format!("[ファイル: {} (サイズ: {})]", file_name, size_desc),
-                path: Some(path_str),
+                path: Some(PathBuf::from(path_str)),
             });
         }
     }

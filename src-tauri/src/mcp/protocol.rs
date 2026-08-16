@@ -31,7 +31,7 @@ pub struct ToolFinishedPayload
     pub task_id: uuid::Uuid,
     pub success: bool,
     pub output: String,
-    pub saved_path: Option<String>,
+    pub saved_path: Option<std::path::PathBuf>,
     pub is_cached: Option<bool>,
     pub cache_time: Option<String>,
 }
@@ -78,12 +78,12 @@ pub enum ChatEvent
     ArpYamlSaved
     {
         device_name: String,
-        saved_path: String,
+        saved_path: std::path::PathBuf,
     },
     RouteYamlSaved
     {
         device_name: String,
-        saved_path: String,
+        saved_path: std::path::PathBuf,
     },
     McpToolStarted(ToolStartedPayload),
     McpToolFinished(ToolFinishedPayload),
