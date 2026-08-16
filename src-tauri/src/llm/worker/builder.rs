@@ -392,8 +392,8 @@ impl LlmWorker for BuilderWorker
                 let start_payload_val = crate::mcp::protocol::ChatEvent::McpToolStarted(
                     crate::mcp::protocol::ToolStartedPayload {
                         task_id: val_task_id,
-                        tool_id: "validate_cisco_config".to_string(),
-                        tool_label: "validate_cisco_config".to_string(),
+                        tool_id: crate::mcp::ToolKind::ValidateCiscoConfig,
+                        tool_label: Some("validate_cisco_config".to_string()),
                         args: serde_json::json!({ "config": config }),
                         resolved_host: None,
                     },
@@ -422,7 +422,7 @@ impl LlmWorker for BuilderWorker
                     crate::mcp::protocol::ToolFinishedPayload {
                         task_id: val_task_id,
                         success: val_success,
-                        output: val_output,
+                        output: val_output.clone(),
                         saved_path: None,
                         is_cached: None,
                         cache_time: None,
@@ -493,8 +493,8 @@ impl LlmWorker for BuilderWorker
                         let start_payload_conv = crate::mcp::protocol::ChatEvent::McpToolStarted(
                             crate::mcp::protocol::ToolStartedPayload {
                                 task_id: conv_task_id,
-                                tool_id: "convert_cisco_config".to_string(),
-                                tool_label: format!("convert_cisco_config ({})", vendor),
+                                tool_id: crate::mcp::ToolKind::ConvertCiscoConfig,
+                                tool_label: Some(format!("convert_cisco_config ({})", vendor)),
                                 args: serde_json::json!({ "config": config.clone(), "target_vendor": vendor.clone() }),
                                 resolved_host: None,
                             },

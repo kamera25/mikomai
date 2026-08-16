@@ -124,8 +124,8 @@ pub async fn execute_mcp_tool_raw(
     // Emit started event
     let start_payload = ToolStartedPayload {
         task_id: task_id.clone(),
-        tool_id: tool_id.clone(),
-        tool_label: tool_label.clone(),
+        tool_id: kind_opt.unwrap_or(crate::mcp::ToolKind::SelfNetworkPing),
+        tool_label: Some(tool_label.clone()),
         args: processed_args.clone(),
         resolved_host: resolved_host.clone(),
     };
