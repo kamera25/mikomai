@@ -10,7 +10,6 @@ pub struct TestConnectionParams
 {
     pub host: Option<String>,
     pub device: Option<String>,
-    pub device_name: Option<String>,
     pub ip: Option<IpAddress>,
     pub computer_name: Option<String>,
     pub port: Option<Port>,
@@ -253,8 +252,8 @@ pub async fn self_network_test_connection_with_params(
                 &app,
                 None,
                 params.device,
-                params.device_name.clone(),
-                params.device_name,
+                None,
+                None,
                 params.ip,
             )
             .ok()
@@ -308,7 +307,7 @@ pub async fn self_network_test_connection(
     timeout_ms: Option<u64>,
 ) -> Result<TestConnectionResult, String>
 {
-    let dev_name = deviceName.or(device_name);
+    let target_device = device.or(deviceName).or(device_name);
     let comp_name = computer_name.or(computerName);
     let tcp_port = common_tcp_port.or(commonTcpPort);
 
@@ -316,8 +315,7 @@ pub async fn self_network_test_connection(
         app,
         TestConnectionParams {
             host,
-            device,
-            device_name: dev_name,
+            device: target_device,
             ip,
             computer_name: comp_name,
             port,

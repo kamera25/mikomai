@@ -51,15 +51,13 @@ define_tool!(PingTool, "self_network_ping", |app, args| {
 
 define_tool!(TracerouteTool, "self_network_traceroute", |app, args| {
     let host = get_str_arg(&args, &["host"]);
-    let device = get_str_arg(&args, &["device"]);
-    let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+    let device = get_str_arg(&args, &["device", "deviceName", "device_name"]);
     let ip = get_ip_arg(&args, &["ip"]);
     crate::mcp::traceroute::self_network_traceroute_with_params(
         app,
         crate::mcp::traceroute::TracerouteParams {
             host,
             device,
-            device_name,
             ip,
         },
     )
@@ -72,8 +70,7 @@ define_tool!(
     "self_network_test_connection",
     |app, args| {
         let host = get_str_arg(&args, &["host", "target"]);
-        let device = get_str_arg(&args, &["device"]);
-        let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
+        let device = get_str_arg(&args, &["device", "deviceName", "device_name"]);
         let ip = get_ip_arg(&args, &["ip"]);
         let computer_name = get_str_arg(&args, &["computer_name", "computerName"]);
         let port = get_u32_arg(&args, &["port", "remote_port", "remotePort"])
@@ -89,7 +86,6 @@ define_tool!(
             crate::mcp::test_connection::TestConnectionParams {
                 host,
                 device,
-                device_name,
                 ip,
                 computer_name,
                 port,

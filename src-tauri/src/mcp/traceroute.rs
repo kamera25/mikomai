@@ -10,7 +10,6 @@ pub struct TracerouteParams
 {
     pub host: Option<String>,
     pub device: Option<String>,
-    pub device_name: Option<String>,
     pub ip: Option<IpAddress>,
 }
 
@@ -39,8 +38,8 @@ pub async fn self_network_traceroute_with_params(
         &app,
         params.host,
         params.device,
-        params.device_name.clone(),
-        params.device_name,
+        None,
+        None,
         params.ip,
     )?;
     let resolved_host = resolve_host_with_mcp(&app, &target_host);
@@ -111,13 +110,12 @@ pub async fn self_network_traceroute(
     ip: Option<IpAddress>,
 ) -> Result<TracerouteResult, String>
 {
-    let dev_name = deviceName.or(device_name);
+    let target_device = device.or(deviceName).or(device_name);
     self_network_traceroute_with_params(
         app,
         TracerouteParams {
             host,
-            device,
-            device_name: dev_name,
+            device: target_device,
             ip,
         },
     )
