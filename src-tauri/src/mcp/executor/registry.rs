@@ -12,20 +12,19 @@ pub trait McpTool: Send + Sync
     ) -> futures::future::BoxFuture<'static, Result<crate::network::CommandResult, String>>;
 }
 
-static TOOL_LABELS: std::sync::LazyLock<HashMap<String, String>> = std::sync::LazyLock::new(|| {
-    let yaml_str = include_str!("../config/tool_labels.yaml");
-    serde_yaml::from_str(yaml_str).unwrap_or_else(|e| {
-        log::error!("Failed to parse tool_labels.yaml: {}", e);
-        HashMap::new()
-    })
-});
+use crate::mcp::ToolKind;
+use std::str::FromStr;
 
 pub fn get_tool_label(tool_name: &str) -> String
 {
-    TOOL_LABELS
-        .get(tool_name)
-        .cloned()
-        .unwrap_or_else(|| tool_name.to_string())
+    if let Ok(kind) = ToolKind::from_str(tool_name)
+    {
+        kind.label().to_string()
+    }
+    else
+    {
+        tool_name.to_string()
+    }
 }
 
 pub fn get_tool_registry() -> &'static HashMap<String, Box<dyn McpTool>>

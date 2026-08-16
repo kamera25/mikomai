@@ -80,7 +80,6 @@ pub enum ExecutionStatus
     Failed,
 }
 
-
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UserInputStatus
 {
@@ -120,8 +119,9 @@ pub enum Message
         #[serde(flatten)]
         base: BaseMessage,
         status: ExecutionStatus,
-        action_name: String,
-        tool_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        action_name: Option<String>,
+        tool_id: crate::mcp::ToolKind,
         summary_text: String,
         raw_data: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -144,7 +144,6 @@ pub enum Message
         base: BaseMessage,
     },
 }
-
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ChatSession
@@ -224,14 +223,18 @@ pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool
                             ref mut summary_text,
                             ref mut raw_data,
                             ref action_name,
+                            ref tool_id,
                             ..
                         } =>
                         {
-                            if *status == ExecutionStatus::Running || base.is_tool_loading == Some(true)
+                            if *status == ExecutionStatus::Running
+                                || base.is_tool_loading == Some(true)
                             {
                                 *status = ExecutionStatus::Failed;
                                 base.is_tool_loading = Some(false);
-                                *summary_text = format!("{} 失敗", action_name);
+                                let label =
+                                    action_name.as_deref().unwrap_or_else(|| tool_id.label());
+                                *summary_text = format!("{} 失敗", label);
                                 if raw_data.is_none()
                                     || raw_data.as_deref().unwrap_or("").trim().is_empty()
                                 {
@@ -413,8 +416,8 @@ mod tests
                     task_id: Some(uuid::Uuid::new_v4()),
                 },
                 status: ExecutionStatus::Running,
-                action_name: "ask_interface_choice".to_string(),
-                tool_id: "ask_interface_choice".to_string(),
+                action_name: Some("インターフェース選択".to_string()),
+                tool_id: crate::mcp::ToolKind::AskInterfaceChoice,
                 summary_text: "ask_interface_choice を実行中...".to_string(),
                 raw_data: None,
                 args: None,
@@ -440,7 +443,7 @@ mod tests
             {
                 assert_eq!(*status, ExecutionStatus::Failed);
                 assert_eq!(base.is_tool_loading, Some(false));
-                assert_eq!(summary_text, "ask_interface_choice 失敗");
+                assert_eq!(summary_text, "インターフェース選択 失敗");
                 assert_eq!(
                     raw_data.as_deref(),
                     Some("アプリケーションが終了したため、MCPの実行が失敗しました。")
@@ -456,7 +459,6 @@ mod tests
             panic!("Expected Session item");
         }
     }
-
 
     #[test]
     fn test_attachment_serialization_with_path()

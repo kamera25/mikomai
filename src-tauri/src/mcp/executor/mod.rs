@@ -24,12 +24,8 @@ pub async fn execute_mcp_tool(
         tool: payload.tool_id.clone(),
         args: payload.args.clone(),
     }];
-    let is_builder_caller = payload.tool_id == "ask_user_choice"
-        || payload.tool_id == "ask_interface_choice"
-        || payload.tool_id == "ask_ipaddress_choice"
-        || payload.tool_id == "validate_cisco_config"
-        || payload.tool_id == "convert_cisco_config"
-        || payload.tool_id == "self_network_nwdiag";
+    let is_builder_caller = std::str::FromStr::from_str(&payload.tool_id)
+        .map_or(false, |k: crate::mcp::ToolKind| k.is_builder_tool());
 
     execute_mcp_tools_flow(
         app,

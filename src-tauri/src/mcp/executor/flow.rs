@@ -60,9 +60,11 @@ pub async fn execute_mcp_tool_raw(
         );
     }
 
+    let kind_opt = std::str::FromStr::from_str(&tool_id).ok();
+
     // 2. Extract resolved host for recentIPs updates in the frontend
-    let resolved_host = if ["fetch_config", "fetch_routing", "fetch_arp"]
-        .contains(&tool_id.as_str())
+    let resolved_host = if kind_opt
+        .map_or(false, |k: crate::mcp::ToolKind| k.is_device_target_tool())
     {
         let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
         let device = get_str_arg(&processed_args, &["device"]);
@@ -88,17 +90,7 @@ pub async fn execute_mcp_tool_raw(
             resolved
         }
     }
-    else if [
-        "self_network_ping",
-        "self_network_traceroute",
-        "self_network_test_connection",
-        "self_network_test_net_connection",
-        "network_ftp_download",
-        "network_ftp_upload",
-        "network_tftp_download",
-        "network_tftp_upload",
-    ]
-    .contains(&tool_id.as_str())
+    else if kind_opt.map_or(false, |k: crate::mcp::ToolKind| k.is_host_target_tool())
     {
         let host = get_str_arg(&processed_args, &["host"]);
         let device = get_str_arg(&processed_args, &["device"]);
@@ -152,9 +144,7 @@ pub async fn execute_mcp_tool_raw(
     };
 
     // Run execution with timeout (bypass timeout for user choice prompts)
-    let is_choice_tool = tool_id == "ask_user_choice"
-        || tool_id == "ask_interface_choice"
-        || tool_id == "ask_ipaddress_choice";
+    let is_choice_tool = kind_opt.map_or(false, |k| k.is_choice_tool());
     let result = if is_choice_tool
     {
         match execution_future.await
@@ -171,14 +161,8 @@ pub async fn execute_mcp_tool_raw(
     }
     else
     {
-        let is_heavy_network_tool = [
-            "fetch_config",
-            "fetch_routing",
-            "fetch_arp",
-            "network_show",
-            "apply_config",
-        ]
-        .contains(&tool_id.as_str());
+        let is_heavy_network_tool =
+            kind_opt.map_or(false, |k| k.is_heavy_network_tool()) || tool_id == "apply_config";
         let effective_timeout = if is_heavy_network_tool
         {
             std::cmp::max(mcp_timeout, 120)
@@ -312,57 +296,56 @@ pub fn execute_mcp_tools_flow(
         let pending_ips = ip_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
 
         let has_choice_tool = execution_results.iter().any(|(tool_id, _, _)| {
-            *tool_id == "ask_user_choice"
-                || *tool_id == "ask_interface_choice"
-                || *tool_id == "ask_ipaddress_choice"
+            std::str::FromStr::from_str(tool_id)
+                .map_or(false, |k: crate::mcp::ToolKind| k.is_choice_tool())
         });
 
         // Generate custom labels
         let mut execution_info = Vec::new();
         for (tool_id, tool_label, result) in &execution_results
         {
-            let custom_tool_label = if *tool_id == "ask_user_choice"
+            let custom_tool_label = match std::str::FromStr::from_str(tool_id)
             {
-                let q_msg = get_str_arg(
-                    &tool_calls
-                        .iter()
-                        .find(|t| t.tool == *tool_id)
-                        .map(|t| &t.args)
-                        .unwrap_or(&Value::Null),
-                    &["message"],
-                )
-                .unwrap_or_default();
-                format!("ask_user_choice: {}", q_msg)
-            }
-            else if *tool_id == "ask_interface_choice"
-            {
-                let q_msg = get_str_arg(
-                    &tool_calls
-                        .iter()
-                        .find(|t| t.tool == *tool_id)
-                        .map(|t| &t.args)
-                        .unwrap_or(&Value::Null),
-                    &["message"],
-                )
-                .unwrap_or_default();
-                format!("ask_interface_choice: {}", q_msg)
-            }
-            else if *tool_id == "ask_ipaddress_choice"
-            {
-                let q_msg = get_str_arg(
-                    &tool_calls
-                        .iter()
-                        .find(|t| t.tool == *tool_id)
-                        .map(|t| &t.args)
-                        .unwrap_or(&Value::Null),
-                    &["message"],
-                )
-                .unwrap_or_default();
-                format!("ask_ipaddress_choice: {}", q_msg)
-            }
-            else
-            {
-                tool_label.clone()
+                Ok(crate::mcp::ToolKind::AskUserChoice) =>
+                {
+                    let q_msg = get_str_arg(
+                        &tool_calls
+                            .iter()
+                            .find(|t| t.tool == *tool_id)
+                            .map(|t| &t.args)
+                            .unwrap_or(&Value::Null),
+                        &["message"],
+                    )
+                    .unwrap_or_default();
+                    format!("ask_user_choice: {}", q_msg)
+                }
+                Ok(crate::mcp::ToolKind::AskInterfaceChoice) =>
+                {
+                    let q_msg = get_str_arg(
+                        &tool_calls
+                            .iter()
+                            .find(|t| t.tool == *tool_id)
+                            .map(|t| &t.args)
+                            .unwrap_or(&Value::Null),
+                        &["message"],
+                    )
+                    .unwrap_or_default();
+                    format!("ask_interface_choice: {}", q_msg)
+                }
+                Ok(crate::mcp::ToolKind::AskIpaddressChoice) =>
+                {
+                    let q_msg = get_str_arg(
+                        &tool_calls
+                            .iter()
+                            .find(|t| t.tool == *tool_id)
+                            .map(|t| &t.args)
+                            .unwrap_or(&Value::Null),
+                        &["message"],
+                    )
+                    .unwrap_or_default();
+                    format!("ask_ipaddress_choice: {}", q_msg)
+                }
+                _ => tool_label.clone(),
             };
             execution_info.push((tool_id.clone(), custom_tool_label, result));
         }
@@ -377,10 +360,9 @@ pub fn execute_mcp_tools_flow(
                     let mut builder = shared.builder.lock().unwrap();
                     for (tool_id, custom_label, result) in &execution_info
                     {
-                        if (*tool_id == "ask_user_choice"
-                            || *tool_id == "ask_interface_choice"
-                            || *tool_id == "ask_ipaddress_choice")
-                            && result.output.trim() != "cancelled"
+                        let is_choice = std::str::FromStr::from_str(tool_id)
+                            .map_or(false, |k: crate::mcp::ToolKind| k.is_choice_tool());
+                        if is_choice && result.output.trim() != "cancelled"
                         {
                             builder
                                 .collected_choices
@@ -399,34 +381,13 @@ pub fn execute_mcp_tools_flow(
             {
                 let answers_block = collected_choices
                     .iter()
-                    .map(|(label, val)| {
-                        if label.starts_with("ask_user_choice:")
-                        {
-                            let q_msg = label.strip_prefix("ask_user_choice:").unwrap().trim();
-                            format!("- 「{}」の回答: {}", q_msg, val)
-                        }
-                        else if label.starts_with("ask_interface_choice:")
-                        {
-                            let q_msg = label.strip_prefix("ask_interface_choice:").unwrap().trim();
-                            format!("- 「{}」の回答: {}", q_msg, val)
-                        }
-                        else if label.starts_with("ask_ipaddress_choice:")
-                        {
-                            let q_msg = label.strip_prefix("ask_ipaddress_choice:").unwrap().trim();
-                            format!("- 「{}」の回答: {}", q_msg, val)
-                        }
-                        else
-                        {
-                            format!("- {}: {}", label, val)
-                        }
-                    })
-                    .collect::<Vec<String>>()
+                    .map(|(lbl, ans)| format!("- **{}**: {}", lbl, ans))
+                    .collect::<Vec<_>>()
                     .join("\n");
-
-                let synthesized_query =
-                    format!("{}。追加の確定条件：\n{}", user_message, answers_block);
-                log::info!("Synthesized task (template): {}", synthesized_query);
-                synthesized_task = Some(synthesized_query);
+                synthesized_task = Some(format!(
+                    "ユーザーが選択肢に回答しました。以下の回答内容を踏まえて、次の処理を実行または回答を作成してください:\n{}",
+                    answers_block
+                ));
             }
         }
 
@@ -436,9 +397,8 @@ pub fn execute_mcp_tools_flow(
         let mut has_rag = false;
         for (tool_id, custom_label, result) in &execution_info
         {
-            if *tool_id == "query_nw_db"
-                || *tool_id == "network_query_nw_db"
-                || *tool_id == "query_rag"
+            let kind = std::str::FromStr::from_str(tool_id).ok();
+            if kind.map_or(false, |k: crate::mcp::ToolKind| k.is_rag_tool())
             {
                 has_rag = true;
             }
@@ -449,7 +409,8 @@ pub fn execute_mcp_tools_flow(
                 combined_output.push_str("\n\n");
             }
 
-            let formatted_result_output = if *tool_id == "self_network_nwdiag" && result.success
+            let formatted_result_output = if kind == Some(crate::mcp::ToolKind::SelfNetworkNwdiag)
+                && result.success
             {
                 "Success: Network diagram generated successfully and saved to artifact.".to_string()
             }
@@ -482,12 +443,8 @@ pub fn execute_mcp_tools_flow(
 
         let is_builder_context = is_builder_caller
             || execution_info.iter().any(|(tool_id, _, _)| {
-                *tool_id == "ask_user_choice"
-                    || *tool_id == "ask_interface_choice"
-                    || *tool_id == "ask_ipaddress_choice"
-                    || *tool_id == "validate_cisco_config"
-                    || *tool_id == "convert_cisco_config"
-                    || *tool_id == "self_network_nwdiag"
+                std::str::FromStr::from_str(tool_id)
+                    .map_or(false, |k: crate::mcp::ToolKind| k.is_builder_tool())
             });
 
         let analyze_payload = crate::llm::llm::AnalyzePayload {

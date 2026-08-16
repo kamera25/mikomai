@@ -17,6 +17,8 @@ pub mod rag;
 pub mod route;
 pub mod safe_cmd;
 pub mod test_connection;
+pub mod tool_kind;
 pub mod traceroute;
 pub use file_transfer::ftp;
 pub use file_transfer::tftp;
+pub use tool_kind::ToolKind;
