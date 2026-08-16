@@ -7,7 +7,7 @@ use tokio::net::UdpSocket;
 use tokio::time::Instant;
 
 use super::FileTransferResult;
-use crate::connections::resolve_host_with_mcp;
+use crate::connections::{resolve_host_with_mcp, Port};
 use crate::snapshot::SnapshotManager;
 
 const TFTP_DEFAULT_PORT: u16 = 69;
@@ -29,7 +29,7 @@ pub struct TftpDownloadParams
     pub device: Option<String>,
     pub device_name: Option<String>,
     pub ip: Option<String>,
-    pub port: Option<u16>,
+    pub port: Option<Port>,
     pub remote_file: Option<String>,
     pub filename: Option<String>,
     pub local_path: Option<String>,
@@ -44,7 +44,7 @@ pub struct TftpUploadParams
     pub device: Option<String>,
     pub device_name: Option<String>,
     pub ip: Option<String>,
-    pub port: Option<u16>,
+    pub port: Option<Port>,
     pub local_file: Option<String>,
     pub remote_file: Option<String>,
     pub filename: Option<String>,
@@ -416,7 +416,7 @@ pub async fn network_tftp_download_with_params(
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
 
-    let port = params.port.unwrap_or(TFTP_DEFAULT_PORT);
+    let port = params.port.map(|p| *p).unwrap_or(TFTP_DEFAULT_PORT);
     let server_addr = SocketAddr::new(ip_addr, port);
 
     let remote_file = params.remote_file.or(params.filename).ok_or_else(|| {
@@ -512,7 +512,7 @@ pub async fn network_tftp_upload_with_params(
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
 
-    let port = params.port.unwrap_or(TFTP_DEFAULT_PORT);
+    let port = params.port.map(|p| *p).unwrap_or(TFTP_DEFAULT_PORT);
     let server_addr = SocketAddr::new(ip_addr, port);
 
     let (file_data, file_source_desc, default_remote_name) = if let Some(local_path) =
@@ -588,7 +588,7 @@ pub async fn network_tftp_download(
     deviceName: Option<String>,
     device_name: Option<String>,
     ip: Option<String>,
-    port: Option<u16>,
+    port: Option<Port>,
     remote_file: Option<String>,
     remoteFile: Option<String>,
     filename: Option<String>,
@@ -626,7 +626,7 @@ pub async fn network_tftp_upload(
     deviceName: Option<String>,
     device_name: Option<String>,
     ip: Option<String>,
-    port: Option<u16>,
+    port: Option<Port>,
     local_file: Option<String>,
     localFile: Option<String>,
     remote_file: Option<String>,

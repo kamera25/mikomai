@@ -60,7 +60,7 @@ mod tests
             status: crate::connections::ConnectionStatus::try_from("active").unwrap(),
             hostname: crate::connections::Hostname::try_from("router-cisco").unwrap(),
             ip: "192.168.1.1".parse().unwrap(),
-            port: Some(22),
+            port: Some(crate::connections::Port::try_from(22).unwrap()),
             conn_type: crate::connections::ConnectionType::try_from("SSH").unwrap(),
             last_connected: crate::connections::LastConnected::try_from("2026-06-11").unwrap(),
             username: Some(crate::connections::Username::try_from("admin").unwrap()),

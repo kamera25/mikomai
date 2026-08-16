@@ -1,4 +1,4 @@
-use crate::connections::resolve_host_with_mcp;
+use crate::connections::{resolve_host_with_mcp, Port};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
@@ -13,7 +13,7 @@ pub struct TestConnectionParams
     pub device_name: Option<String>,
     pub ip: Option<String>,
     pub computer_name: Option<String>,
-    pub port: Option<u16>,
+    pub port: Option<Port>,
     pub common_tcp_port: Option<String>,
     pub timeout_ms: Option<u64>,
 }
@@ -42,7 +42,7 @@ pub struct TestConnectionResult
     pub output: String,
     pub computer_name: String,
     pub remote_address: String,
-    pub remote_port: Option<u16>,
+    pub remote_port: Option<Port>,
     pub interface_alias: Option<String>,
     pub source_address: Option<String>,
     pub ping_succeeded: bool,
@@ -65,16 +65,16 @@ impl From<TestConnectionResult> for crate::network::CommandResult
     }
 }
 
-pub fn resolve_common_tcp_port(port_str: &str) -> Option<u16>
+pub fn resolve_common_tcp_port(port_str: &str) -> Option<Port>
 {
     let key = port_str.trim().to_uppercase();
     if let Some(&port) = COMMON_TCP_PORTS.get(&key)
     {
-        Some(port)
+        Port::try_from(port).ok()
     }
     else
     {
-        port_str.trim().parse::<u16>().ok()
+        Port::try_from(port_str).ok()
     }
 }
 
@@ -104,7 +104,7 @@ fn get_local_source_info(target_ip: IpAddr, port: u16) -> (Option<String>, Optio
 pub async fn network_test_connection_core(
     target_host: String,
     ip_addr: IpAddr,
-    port: Option<u16>,
+    port: Option<Port>,
     common_tcp_port: Option<String>,
     timeout_ms: Option<u64>,
 ) -> Result<TestConnectionResult, String>
@@ -113,7 +113,7 @@ pub async fn network_test_connection_core(
 
     let timeout_duration = Duration::from_millis(timeout_ms.unwrap_or(2000));
     let (source_address, interface_alias) =
-        get_local_source_info(ip_addr, target_port.unwrap_or(80));
+        get_local_source_info(ip_addr, target_port.map(|p| *p).unwrap_or(80));
 
     // 1. ICMP Ping test
     let ping_res =
@@ -144,7 +144,7 @@ pub async fn network_test_connection_core(
     // 2. TCP Port connection test (if port is requested)
     let (tcp_test_succeeded, tcp_latency_ms) = if let Some(p) = target_port
     {
-        let addr = SocketAddr::new(ip_addr, p);
+        let addr = SocketAddr::new(ip_addr, *p);
         let start = Instant::now();
         match timeout(timeout_duration, tokio::net::TcpStream::connect(addr)).await
         {
@@ -302,7 +302,7 @@ pub async fn self_network_test_connection(
     ip: Option<String>,
     computer_name: Option<String>,
     computerName: Option<String>,
-    port: Option<u16>,
+    port: Option<Port>,
     common_tcp_port: Option<String>,
     commonTcpPort: Option<String>,
     timeout_ms: Option<u64>,
@@ -336,10 +336,22 @@ mod tests
     #[test]
     fn test_resolve_common_tcp_port()
     {
-        assert_eq!(resolve_common_tcp_port("HTTP"), Some(80));
-        assert_eq!(resolve_common_tcp_port("https"), Some(443));
-        assert_eq!(resolve_common_tcp_port("ssh"), Some(22));
-        assert_eq!(resolve_common_tcp_port("8080"), Some(8080));
+        assert_eq!(
+            resolve_common_tcp_port("HTTP"),
+            Some(Port::try_from(80).unwrap())
+        );
+        assert_eq!(
+            resolve_common_tcp_port("https"),
+            Some(Port::try_from(443).unwrap())
+        );
+        assert_eq!(
+            resolve_common_tcp_port("ssh"),
+            Some(Port::try_from(22).unwrap())
+        );
+        assert_eq!(
+            resolve_common_tcp_port("8080"),
+            Some(Port::try_from(8080).unwrap())
+        );
         assert_eq!(resolve_common_tcp_port("invalid_service"), None);
     }
 
@@ -351,7 +363,7 @@ mod tests
             output: "Connection test successful".to_string(),
             computer_name: "localhost".to_string(),
             remote_address: "127.0.0.1".to_string(),
-            remote_port: Some(80),
+            remote_port: Some(Port::try_from(80).unwrap()),
             interface_alias: None,
             source_address: Some("127.0.0.1".to_string()),
             ping_succeeded: true,

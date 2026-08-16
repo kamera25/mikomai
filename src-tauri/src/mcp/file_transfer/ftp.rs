@@ -7,7 +7,7 @@ use suppaftp::tokio::AsyncFtpStream;
 use tokio::time::Instant;
 
 use super::FileTransferResult;
-use crate::connections::resolve_host_with_mcp;
+use crate::connections::{resolve_host_with_mcp, Port};
 use crate::crypto::decrypt;
 use crate::snapshot::SnapshotManager;
 
@@ -21,7 +21,7 @@ pub struct FtpDownloadParams
     pub device: Option<String>,
     pub device_name: Option<String>,
     pub ip: Option<String>,
-    pub port: Option<u16>,
+    pub port: Option<Port>,
     pub username: Option<String>,
     pub password: Option<String>,
     pub remote_file: Option<String>,
@@ -37,7 +37,7 @@ pub struct FtpUploadParams
     pub device: Option<String>,
     pub device_name: Option<String>,
     pub ip: Option<String>,
-    pub port: Option<u16>,
+    pub port: Option<Port>,
     pub username: Option<String>,
     pub password: Option<String>,
     pub local_file: Option<String>,
@@ -119,7 +119,7 @@ pub async fn network_ftp_download_with_params(
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
 
-    let port = params.port.unwrap_or(FTP_DEFAULT_PORT);
+    let port = params.port.map(|p| *p).unwrap_or(FTP_DEFAULT_PORT);
     let (username, password) =
         resolve_credentials(&app, &target_host, params.username, params.password);
 
@@ -253,7 +253,7 @@ pub async fn network_ftp_upload_with_params(
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
 
-    let port = params.port.unwrap_or(FTP_DEFAULT_PORT);
+    let port = params.port.map(|p| *p).unwrap_or(FTP_DEFAULT_PORT);
     let (username, password) =
         resolve_credentials(&app, &target_host, params.username, params.password);
 
@@ -349,7 +349,7 @@ pub async fn network_ftp_download(
     deviceName: Option<String>,
     device_name: Option<String>,
     ip: Option<String>,
-    port: Option<u16>,
+    port: Option<Port>,
     username: Option<String>,
     password: Option<String>,
     remoteFile: Option<String>,
@@ -389,7 +389,7 @@ pub async fn network_ftp_upload(
     deviceName: Option<String>,
     device_name: Option<String>,
     ip: Option<String>,
-    port: Option<u16>,
+    port: Option<Port>,
     username: Option<String>,
     password: Option<String>,
     localFile: Option<String>,

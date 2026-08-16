@@ -76,7 +76,8 @@ define_tool!(
         let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
         let ip = get_str_arg(&args, &["ip"]);
         let computer_name = get_str_arg(&args, &["computer_name", "computerName"]);
-        let port = get_u32_arg(&args, &["port", "remote_port", "remotePort"]).map(|p| p as u16);
+        let port = get_u32_arg(&args, &["port", "remote_port", "remotePort"])
+            .and_then(|p| crate::connections::Port::try_from(p).ok());
         let common_tcp_port = get_str_arg(&args, &["common_tcp_port", "commonTcpPort", "service"]);
         let timeout_ms = args
             .get("timeout_ms")
@@ -375,7 +376,7 @@ define_tool!(FtpDownloadTool, "network_ftp_download", |app, args| {
     let device = get_str_arg(&args, &["device"]);
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
     let ip = get_str_arg(&args, &["ip"]);
-    let port = get_u32_arg(&args, &["port"]).map(|p| p as u16);
+    let port = get_u32_arg(&args, &["port"]).and_then(|p| crate::connections::Port::try_from(p).ok());
     let username = get_str_arg(&args, &["username", "user"]);
     let password = get_str_arg(&args, &["password", "pass"]);
     let remote_file = get_str_arg(&args, &["remote_file", "remoteFile"]);
@@ -409,7 +410,7 @@ define_tool!(FtpUploadTool, "network_ftp_upload", |app, args| {
     let device = get_str_arg(&args, &["device"]);
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
     let ip = get_str_arg(&args, &["ip"]);
-    let port = get_u32_arg(&args, &["port"]).map(|p| p as u16);
+    let port = get_u32_arg(&args, &["port"]).and_then(|p| crate::connections::Port::try_from(p).ok());
     let username = get_str_arg(&args, &["username", "user"]);
     let password = get_str_arg(&args, &["password", "pass"]);
     let local_file = get_str_arg(&args, &["local_file", "localFile"]);
@@ -445,7 +446,7 @@ define_tool!(TftpDownloadTool, "network_tftp_download", |app, args| {
     let device = get_str_arg(&args, &["device"]);
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
     let ip = get_str_arg(&args, &["ip"]);
-    let port = get_u32_arg(&args, &["port"]).map(|p| p as u16);
+    let port = get_u32_arg(&args, &["port"]).and_then(|p| crate::connections::Port::try_from(p).ok());
     let remote_file = get_str_arg(&args, &["remote_file", "remoteFile"]);
     let filename = get_str_arg(&args, &["filename", "file"]);
     let local_path = get_str_arg(&args, &["local_path", "localPath"]);
@@ -477,7 +478,7 @@ define_tool!(TftpUploadTool, "network_tftp_upload", |app, args| {
     let device = get_str_arg(&args, &["device"]);
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
     let ip = get_str_arg(&args, &["ip"]);
-    let port = get_u32_arg(&args, &["port"]).map(|p| p as u16);
+    let port = get_u32_arg(&args, &["port"]).and_then(|p| crate::connections::Port::try_from(p).ok());
     let local_file = get_str_arg(&args, &["local_file", "localFile"]);
     let remote_file = get_str_arg(&args, &["remote_file", "remoteFile"]);
     let filename = get_str_arg(&args, &["filename", "file"]);

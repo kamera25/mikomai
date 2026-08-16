@@ -6,6 +6,7 @@ pub mod hostname;
 pub mod id;
 pub mod last_connected;
 pub mod password;
+pub mod port;
 pub mod status;
 pub mod username;
 pub mod vendor_type;
@@ -18,6 +19,7 @@ pub use hostname::Hostname;
 pub use id::ConnectionId;
 pub use last_connected::LastConnected;
 pub use password::Password;
+pub use port::Port;
 pub use status::ConnectionStatus;
 pub use username::Username;
 pub use vendor_type::VendorType;
@@ -90,8 +92,7 @@ pub struct Connection
     pub hostname: Hostname,
     pub ip: String,
     #[serde(default)]
-    #[validate(range(min = 1, max = 65535))]
-    pub port: Option<u16>,
+    pub port: Option<Port>,
     #[serde(rename = "type")]
     pub conn_type: ConnectionType,
     pub last_connected: LastConnected,
@@ -585,7 +586,7 @@ mod tests
             status: ConnectionStatus::try_from("active").unwrap(),
             hostname: Hostname::try_from("router-1").unwrap(),
             ip: "10.0.0.1".to_string(),
-            port: Some(22),
+            port: Some(Port::try_from(22).unwrap()),
             conn_type: ConnectionType::try_from("SSH").unwrap(),
             last_connected: LastConnected::try_from("2023-10-27").unwrap(),
             username: None,
