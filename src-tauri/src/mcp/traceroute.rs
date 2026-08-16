@@ -34,15 +34,13 @@ pub async fn self_network_traceroute_with_params(
     params: TracerouteParams,
 ) -> Result<TracerouteResult, String>
 {
-    let target_host = crate::mcp::args::normalize_host_args(
-        &app,
-        params.host,
-        params.device,
-        None,
-        None,
-        params.ip,
-    )?;
-    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
+    let host_args = crate::mcp::args::HostArgs {
+        host: params.host,
+        device: params.device,
+        device_name: None,
+        ip: params.ip,
+    };
+    let (_target_host, ip_addr) = crate::mcp::args::resolve_host_args(&app, &host_args).await?;
 
     let mut output = format!(
         "Tracing route to {} over a maximum of 30 hops:\n\n",

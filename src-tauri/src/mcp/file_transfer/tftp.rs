@@ -396,16 +396,13 @@ pub async fn network_tftp_download_with_params(
     params: TftpDownloadParams,
 ) -> Result<FileTransferResult, String>
 {
-    let target_host = crate::mcp::args::normalize_host_args(
-        &app,
-        params.host,
-        params.device,
-        params.device_name.clone(),
-        params.device_name,
-        params.ip,
-    )?;
-
-    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
+    let host_args = crate::mcp::args::HostArgs {
+        host: params.host,
+        device: params.device,
+        device_name: params.device_name,
+        ip: params.ip,
+    };
+    let (target_host, ip_addr) = crate::mcp::args::resolve_host_args(&app, &host_args).await?;
 
     let port = params.port.map(|p| *p).unwrap_or(TFTP_DEFAULT_PORT);
     let server_addr = SocketAddr::new(ip_addr, port);
@@ -478,23 +475,19 @@ pub async fn network_tftp_download_with_params(
     })
 }
 
-
 /// Upload a file via TFTP.
 pub async fn network_tftp_upload_with_params(
     app: tauri::AppHandle,
     params: TftpUploadParams,
 ) -> Result<FileTransferResult, String>
 {
-    let target_host = crate::mcp::args::normalize_host_args(
-        &app,
-        params.host,
-        params.device,
-        params.device_name.clone(),
-        params.device_name,
-        params.ip,
-    )?;
-
-    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
+    let host_args = crate::mcp::args::HostArgs {
+        host: params.host,
+        device: params.device,
+        device_name: params.device_name,
+        ip: params.ip,
+    };
+    let (_target_host, ip_addr) = crate::mcp::args::resolve_host_args(&app, &host_args).await?;
 
     let port = params.port.map(|p| *p).unwrap_or(TFTP_DEFAULT_PORT);
     let server_addr = SocketAddr::new(ip_addr, port);

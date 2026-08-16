@@ -47,6 +47,33 @@ pub fn normalize_device_args<R: Runtime>(
     })
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct HostArgs
+{
+    pub host: Option<String>,
+    pub device: Option<String>,
+    pub device_name: Option<String>,
+    pub ip: Option<IpAddress>,
+}
+
+impl HostArgs
+{
+    pub fn new(
+        host: Option<String>,
+        device: Option<String>,
+        device_name: Option<String>,
+        ip: Option<IpAddress>,
+    ) -> Self
+    {
+        Self {
+            host,
+            device,
+            device_name,
+            ip,
+        }
+    }
+}
+
 pub fn normalize_host_args<R: Runtime>(
     app: &AppHandle<R>,
     host: Option<String>,
@@ -56,11 +83,30 @@ pub fn normalize_host_args<R: Runtime>(
     ip: Option<IpAddress>,
 ) -> Result<String, String>
 {
-    let mut target = host
-        .or(device)
-        .or(device_name_camel)
-        .or(device_name)
-        .or_else(|| ip.map(|i| i.to_string()));
+    let dev_name = device_name.or(device_name_camel);
+    normalize_host_args_struct(
+        app,
+        &HostArgs {
+            host,
+            device,
+            device_name: dev_name,
+            ip,
+        },
+    )
+}
+
+pub fn normalize_host_args_struct<R: Runtime>(
+    app: &AppHandle<R>,
+    args: &HostArgs,
+) -> Result<String, String>
+{
+    let mut target = args
+        .host
+        .as_deref()
+        .or(args.device.as_deref())
+        .or(args.device_name.as_deref())
+        .map(|s| s.to_string())
+        .or_else(|| args.ip.as_ref().map(|i| i.to_string()));
 
     if target.as_ref().map_or(true, |t| t.trim().is_empty())
     {
@@ -76,6 +122,16 @@ pub fn normalize_host_args<R: Runtime>(
     target
         .filter(|t| !t.trim().is_empty())
         .ok_or_else(|| "Error: host is required but was not provided or is empty.".to_string())
+}
+
+pub async fn resolve_host_args<R: Runtime>(
+    app: &AppHandle<R>,
+    args: &HostArgs,
+) -> Result<(String, std::net::IpAddr), String>
+{
+    let target_host = normalize_host_args_struct(app, args)?;
+    let ip_addr = resolve_target_ip(app, &target_host).await?;
+    Ok((target_host, ip_addr))
 }
 
 pub async fn resolve_target_ip<R: Runtime>(
@@ -183,6 +239,13 @@ mod tests
 
         let res = normalize_host_args(handle, None, None, None, None, None);
         assert!(res.is_err());
+
+        let host_args = HostArgs {
+            host: Some("10.0.0.1".to_string()),
+            ..Default::default()
+        };
+        let res2 = normalize_host_args_struct(handle, &host_args);
+        assert_eq!(res2.unwrap(), "10.0.0.1");
     }
 
     #[tokio::test]
@@ -198,5 +261,17 @@ mod tests
         let str_res = resolve_target_host_string(handle, "127.0.0.1").await;
         assert!(str_res.is_ok());
         assert_eq!(str_res.unwrap(), "127.0.0.1");
+
+        let (target, ip) = resolve_host_args(
+            handle,
+            &HostArgs {
+                host: Some("127.0.0.1".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(target, "127.0.0.1");
+        assert_eq!(ip.to_string(), "127.0.0.1");
     }
 }

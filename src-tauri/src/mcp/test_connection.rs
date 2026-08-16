@@ -244,33 +244,15 @@ pub async fn self_network_test_connection_with_params(
     params: TestConnectionParams,
 ) -> Result<TestConnectionResult, String>
 {
-    let target_host = params
-        .host
-        .or(params.computer_name)
-        .or_else(|| {
-            crate::mcp::args::normalize_host_args(
-                &app,
-                None,
-                params.device,
-                None,
-                None,
-                params.ip,
-            )
-            .ok()
-        })
-        .or_else(|| {
-            if let Ok(settings) = crate::settings::load_settings(app.clone())
-            {
-                settings.recent_ips.first().cloned()
-            }
-            else
-            {
-                None
-            }
-        })
-        .ok_or_else(|| "Target host or computer_name is required".to_string())?;
-
-    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
+    let host_args = crate::mcp::args::HostArgs {
+        host: params.host.or(params.computer_name),
+        device: params.device,
+        device_name: None,
+        ip: params.ip,
+    };
+    let (target_host, ip_addr) = crate::mcp::args::resolve_host_args(&app, &host_args)
+        .await
+        .map_err(|_| "Target host or computer_name is required".to_string())?;
 
     network_test_connection_core(
         target_host,

@@ -99,16 +99,13 @@ pub async fn network_ftp_download_with_params(
     params: FtpDownloadParams,
 ) -> Result<FileTransferResult, String>
 {
-    let target_host = crate::mcp::args::normalize_host_args(
-        &app,
-        params.host,
-        params.device,
-        params.device_name.clone(),
-        params.device_name,
-        params.ip,
-    )?;
-
-    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
+    let host_args = crate::mcp::args::HostArgs {
+        host: params.host,
+        device: params.device,
+        device_name: params.device_name,
+        ip: params.ip,
+    };
+    let (target_host, ip_addr) = crate::mcp::args::resolve_host_args(&app, &host_args).await?;
 
     let port = params.port.map(|p| *p).unwrap_or(FTP_DEFAULT_PORT);
     let (username, password) =
@@ -150,7 +147,6 @@ pub async fn network_ftp_download_with_params(
         })?;
 
         let _ = ftp_stream.finalize_retr_stream(data_stream).await;
-
         let _ = ftp_stream.quit().await;
         Ok::<Vec<u8>, String>(file_data)
     };
@@ -224,16 +220,13 @@ pub async fn network_ftp_upload_with_params(
     params: FtpUploadParams,
 ) -> Result<FileTransferResult, String>
 {
-    let target_host = crate::mcp::args::normalize_host_args(
-        &app,
-        params.host,
-        params.device,
-        params.device_name.clone(),
-        params.device_name,
-        params.ip,
-    )?;
-
-    let ip_addr = crate::mcp::args::resolve_target_ip(&app, &target_host).await?;
+    let host_args = crate::mcp::args::HostArgs {
+        host: params.host,
+        device: params.device,
+        device_name: params.device_name,
+        ip: params.ip,
+    };
+    let (target_host, ip_addr) = crate::mcp::args::resolve_host_args(&app, &host_args).await?;
 
     let port = params.port.map(|p| *p).unwrap_or(FTP_DEFAULT_PORT);
     let (username, password) =

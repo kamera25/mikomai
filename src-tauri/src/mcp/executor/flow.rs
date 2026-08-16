@@ -97,15 +97,14 @@ pub async fn execute_mcp_tool_raw(
         let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
         let ip = get_ip_arg(&processed_args, &["ip"]);
 
-        let resolved = crate::mcp::args::normalize_host_args(
-            &app,
+        let host_args = crate::mcp::args::HostArgs {
             host,
             device,
-            device_name.clone(),
-            device_name.clone(),
+            device_name,
             ip,
-        )
-        .ok();
+        };
+
+        let resolved = crate::mcp::args::normalize_host_args_struct(&app, &host_args).ok();
 
         if resolved.as_ref().map_or(true, |r| r.trim().is_empty())
         {
