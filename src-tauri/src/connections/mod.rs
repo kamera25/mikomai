@@ -4,6 +4,7 @@ pub mod device_types_data;
 pub mod enable_password;
 pub mod hostname;
 pub mod id;
+pub mod ip_address;
 pub mod last_connected;
 pub mod password;
 pub mod port;
@@ -17,6 +18,7 @@ pub use device_types_data::*;
 pub use enable_password::EnablePassword;
 pub use hostname::Hostname;
 pub use id::ConnectionId;
+pub use ip_address::IpAddress;
 pub use last_connected::LastConnected;
 pub use password::Password;
 pub use port::Port;
@@ -28,7 +30,6 @@ use crate::crypto::{decrypt, encrypt};
 use crate::error::TauriError;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::net::IpAddr;
 use std::path::PathBuf;
 use tauri::Manager;
 use validator::Validate;
@@ -90,7 +91,7 @@ pub struct Connection
     pub id: ConnectionId,
     pub status: ConnectionStatus,
     pub hostname: Hostname,
-    pub ip: String,
+    pub ip: IpAddress,
     #[serde(default)]
     pub port: Option<Port>,
     #[serde(rename = "type")]
@@ -135,7 +136,7 @@ pub struct Connection
 pub struct McpHost
 {
     pub hostname: Hostname,
-    pub ip: IpAddr,
+    pub ip: IpAddress,
     pub device_type: DeviceType,
     pub username: Username,
 }
@@ -585,7 +586,7 @@ mod tests
             id: ConnectionId::try_from("test-1").unwrap(),
             status: ConnectionStatus::try_from("active").unwrap(),
             hostname: Hostname::try_from("router-1").unwrap(),
-            ip: "10.0.0.1".to_string(),
+            ip: IpAddress::try_from("10.0.0.1").unwrap(),
             port: Some(Port::try_from(22).unwrap()),
             conn_type: ConnectionType::try_from("SSH").unwrap(),
             last_connected: LastConnected::try_from("2023-10-27").unwrap(),
@@ -609,6 +610,7 @@ mod tests
 
         let serialized = serde_json::to_string(&conn).unwrap();
         assert!(serialized.contains(r#""id":"test-1""#));
+        assert!(serialized.contains(r#""ip":"10.0.0.1""#));
         assert!(serialized.contains(r#""port":22"#));
         assert!(serialized.contains(r#""type":"SSH""#));
     }
@@ -618,13 +620,14 @@ mod tests
     {
         let host = McpHost {
             hostname: Hostname::try_from("switch-1").unwrap(),
-            ip: "10.0.0.2".parse().unwrap(),
+            ip: IpAddress::try_from("10.0.0.2").unwrap(),
             device_type: DeviceType::try_from("Telnet").unwrap(),
             username: Username::try_from("admin").unwrap(),
         };
 
         let serialized = serde_json::to_string(&host).unwrap();
         assert!(serialized.contains(r#""hostname":"switch-1""#));
+        assert!(serialized.contains(r#""ip":"10.0.0.2""#));
         assert!(serialized.contains(r#""deviceType":"Telnet""#));
     }
 }

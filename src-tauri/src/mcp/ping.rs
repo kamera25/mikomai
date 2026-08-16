@@ -1,4 +1,4 @@
-use crate::connections::resolve_host_with_mcp;
+use crate::connections::{resolve_host_with_mcp, IpAddress};
 use crate::mcp::protocol::McpToolResult;
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, ToSocketAddrs};
@@ -11,7 +11,7 @@ pub struct PingParams
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
-    pub ip: Option<String>,
+    pub ip: Option<IpAddress>,
     pub size: Option<usize>,
     pub count: Option<u32>,
     pub df: Option<bool>,
@@ -139,7 +139,7 @@ pub async fn self_network_ping(
     device: Option<String>,
     deviceName: Option<String>,
     device_name: Option<String>,
-    ip: Option<String>,
+    ip: Option<IpAddress>,
     size: Option<usize>,
     count: Option<u32>,
     df: Option<bool>,

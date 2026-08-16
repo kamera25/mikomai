@@ -1,4 +1,4 @@
-use crate::connections::resolve_host_with_mcp;
+use crate::connections::{resolve_host_with_mcp, IpAddress};
 use crate::mcp::protocol::McpToolResult;
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
@@ -11,7 +11,7 @@ pub struct TracerouteParams
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
-    pub ip: Option<String>,
+    pub ip: Option<IpAddress>,
 }
 
 pub type TracerouteResult = McpToolResult;
@@ -108,7 +108,7 @@ pub async fn self_network_traceroute(
     device: Option<String>,
     deviceName: Option<String>,
     device_name: Option<String>,
-    ip: Option<String>,
+    ip: Option<IpAddress>,
 ) -> Result<TracerouteResult, String>
 {
     let dev_name = deviceName.or(device_name);

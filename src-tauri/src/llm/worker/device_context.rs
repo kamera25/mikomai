@@ -42,7 +42,7 @@ pub fn resolve_device_contexts<R: tauri::Runtime>(
 
                 matched.push(DeviceContext {
                     hostname: conn.hostname.as_str().to_string(),
-                    ip: conn.ip,
+                    ip: conn.ip.to_string(),
                     vendor,
                     device_type,
                     conn_type,

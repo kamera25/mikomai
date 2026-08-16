@@ -7,7 +7,7 @@ use tokio::net::UdpSocket;
 use tokio::time::Instant;
 
 use super::FileTransferResult;
-use crate::connections::{resolve_host_with_mcp, Port};
+use crate::connections::{resolve_host_with_mcp, IpAddress, Port};
 use crate::snapshot::SnapshotManager;
 
 const TFTP_DEFAULT_PORT: u16 = 69;
@@ -28,7 +28,7 @@ pub struct TftpDownloadParams
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
-    pub ip: Option<String>,
+    pub ip: Option<IpAddress>,
     pub port: Option<Port>,
     pub remote_file: Option<String>,
     pub filename: Option<String>,
@@ -43,7 +43,7 @@ pub struct TftpUploadParams
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
-    pub ip: Option<String>,
+    pub ip: Option<IpAddress>,
     pub port: Option<Port>,
     pub local_file: Option<String>,
     pub remote_file: Option<String>,
@@ -587,7 +587,7 @@ pub async fn network_tftp_download(
     device: Option<String>,
     deviceName: Option<String>,
     device_name: Option<String>,
-    ip: Option<String>,
+    ip: Option<IpAddress>,
     port: Option<Port>,
     remote_file: Option<String>,
     remoteFile: Option<String>,
@@ -625,7 +625,7 @@ pub async fn network_tftp_upload(
     device: Option<String>,
     deviceName: Option<String>,
     device_name: Option<String>,
-    ip: Option<String>,
+    ip: Option<IpAddress>,
     port: Option<Port>,
     local_file: Option<String>,
     localFile: Option<String>,

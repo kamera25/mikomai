@@ -7,7 +7,7 @@ use suppaftp::tokio::AsyncFtpStream;
 use tokio::time::Instant;
 
 use super::FileTransferResult;
-use crate::connections::{resolve_host_with_mcp, Port};
+use crate::connections::{resolve_host_with_mcp, IpAddress, Port};
 use crate::crypto::decrypt;
 use crate::snapshot::SnapshotManager;
 
@@ -20,7 +20,7 @@ pub struct FtpDownloadParams
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
-    pub ip: Option<String>,
+    pub ip: Option<IpAddress>,
     pub port: Option<Port>,
     pub username: Option<String>,
     pub password: Option<String>,
@@ -36,7 +36,7 @@ pub struct FtpUploadParams
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
-    pub ip: Option<String>,
+    pub ip: Option<IpAddress>,
     pub port: Option<Port>,
     pub username: Option<String>,
     pub password: Option<String>,
@@ -348,7 +348,7 @@ pub async fn network_ftp_download(
     device: Option<String>,
     deviceName: Option<String>,
     device_name: Option<String>,
-    ip: Option<String>,
+    ip: Option<IpAddress>,
     port: Option<Port>,
     username: Option<String>,
     password: Option<String>,
@@ -388,7 +388,7 @@ pub async fn network_ftp_upload(
     device: Option<String>,
     deviceName: Option<String>,
     device_name: Option<String>,
-    ip: Option<String>,
+    ip: Option<IpAddress>,
     port: Option<Port>,
     username: Option<String>,
     password: Option<String>,

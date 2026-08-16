@@ -1,3 +1,4 @@
+use crate::connections::IpAddress;
 use tauri::{AppHandle, Runtime};
 
 pub fn normalize_device_args<R: Runtime>(
@@ -52,10 +53,14 @@ pub fn normalize_host_args<R: Runtime>(
     device: Option<String>,
     device_name_camel: Option<String>,
     device_name: Option<String>,
-    ip: Option<String>,
+    ip: Option<IpAddress>,
 ) -> Result<String, String>
 {
-    let mut target = host.or(device).or(device_name_camel).or(device_name).or(ip);
+    let mut target = host
+        .or(device)
+        .or(device_name_camel)
+        .or(device_name)
+        .or_else(|| ip.map(|i| i.to_string()));
 
     if target.as_ref().map_or(true, |t| t.trim().is_empty())
     {

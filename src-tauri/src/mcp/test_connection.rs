@@ -1,4 +1,4 @@
-use crate::connections::{resolve_host_with_mcp, Port};
+use crate::connections::{resolve_host_with_mcp, IpAddress, Port};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
@@ -11,7 +11,7 @@ pub struct TestConnectionParams
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
-    pub ip: Option<String>,
+    pub ip: Option<IpAddress>,
     pub computer_name: Option<String>,
     pub port: Option<Port>,
     pub common_tcp_port: Option<String>,
@@ -299,7 +299,7 @@ pub async fn self_network_test_connection(
     device: Option<String>,
     deviceName: Option<String>,
     device_name: Option<String>,
-    ip: Option<String>,
+    ip: Option<IpAddress>,
     computer_name: Option<String>,
     computerName: Option<String>,
     port: Option<Port>,

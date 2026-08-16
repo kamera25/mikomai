@@ -1,3 +1,4 @@
+use crate::connections::IpAddress;
 use serde_json::Value;
 
 pub fn get_str_arg(args: &Value, keys: &[&str]) -> Option<String>
@@ -16,6 +17,11 @@ pub fn get_str_arg(args: &Value, keys: &[&str]) -> Option<String>
         }
     }
     None
+}
+
+pub fn get_ip_arg(args: &Value, keys: &[&str]) -> Option<IpAddress>
+{
+    get_str_arg(args, keys).and_then(|s| IpAddress::try_from(s.as_str()).ok())
 }
 
 pub fn get_usize_arg(args: &Value, keys: &[&str]) -> Option<usize>
@@ -195,6 +201,26 @@ mod tests
         assert_eq!(get_usize_arg(&args, &["size"]), Some(64));
         assert_eq!(get_usize_arg(&args, &["size_str"]), Some(128));
         assert_eq!(get_usize_arg(&args, &["nonexistent"]), None);
+    }
+
+    #[test]
+    fn test_get_ip_arg()
+    {
+        let args = json!({
+            "ip": "192.168.1.1",
+            "ip_v6": "::1",
+            "invalid_ip": "999.999.999.999"
+        });
+        assert_eq!(
+            get_ip_arg(&args, &["ip"]),
+            Some(IpAddress::try_from("192.168.1.1").unwrap())
+        );
+        assert_eq!(
+            get_ip_arg(&args, &["ip_v6"]),
+            Some(IpAddress::try_from("::1").unwrap())
+        );
+        assert_eq!(get_ip_arg(&args, &["invalid_ip"]), None);
+        assert_eq!(get_ip_arg(&args, &["nonexistent"]), None);
     }
 
     #[test]

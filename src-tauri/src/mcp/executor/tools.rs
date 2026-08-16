@@ -29,7 +29,7 @@ define_tool!(PingTool, "self_network_ping", |app, args| {
     let host = get_str_arg(&args, &["host"]);
     let device = get_str_arg(&args, &["device"]);
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
-    let ip = get_str_arg(&args, &["ip"]);
+    let ip = get_ip_arg(&args, &["ip"]);
     let size = get_usize_arg(&args, &["size"]);
     let count = get_u32_arg(&args, &["count"]);
     let df = get_bool_arg(&args, &["df"]);
@@ -53,7 +53,7 @@ define_tool!(TracerouteTool, "self_network_traceroute", |app, args| {
     let host = get_str_arg(&args, &["host"]);
     let device = get_str_arg(&args, &["device"]);
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
-    let ip = get_str_arg(&args, &["ip"]);
+    let ip = get_ip_arg(&args, &["ip"]);
     crate::mcp::traceroute::self_network_traceroute_with_params(
         app,
         crate::mcp::traceroute::TracerouteParams {
@@ -74,7 +74,7 @@ define_tool!(
         let host = get_str_arg(&args, &["host", "target"]);
         let device = get_str_arg(&args, &["device"]);
         let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
-        let ip = get_str_arg(&args, &["ip"]);
+        let ip = get_ip_arg(&args, &["ip"]);
         let computer_name = get_str_arg(&args, &["computer_name", "computerName"]);
         let port = get_u32_arg(&args, &["port", "remote_port", "remotePort"])
             .and_then(|p| crate::connections::Port::try_from(p).ok());
@@ -375,7 +375,7 @@ define_tool!(FtpDownloadTool, "network_ftp_download", |app, args| {
     let host = get_str_arg(&args, &["host"]);
     let device = get_str_arg(&args, &["device"]);
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
-    let ip = get_str_arg(&args, &["ip"]);
+    let ip = get_ip_arg(&args, &["ip"]);
     let port = get_u32_arg(&args, &["port"]).and_then(|p| crate::connections::Port::try_from(p).ok());
     let username = get_str_arg(&args, &["username", "user"]);
     let password = get_str_arg(&args, &["password", "pass"]);
@@ -409,7 +409,7 @@ define_tool!(FtpUploadTool, "network_ftp_upload", |app, args| {
     let host = get_str_arg(&args, &["host"]);
     let device = get_str_arg(&args, &["device"]);
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
-    let ip = get_str_arg(&args, &["ip"]);
+    let ip = get_ip_arg(&args, &["ip"]);
     let port = get_u32_arg(&args, &["port"]).and_then(|p| crate::connections::Port::try_from(p).ok());
     let username = get_str_arg(&args, &["username", "user"]);
     let password = get_str_arg(&args, &["password", "pass"]);
@@ -445,7 +445,7 @@ define_tool!(TftpDownloadTool, "network_tftp_download", |app, args| {
     let host = get_str_arg(&args, &["host"]);
     let device = get_str_arg(&args, &["device"]);
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
-    let ip = get_str_arg(&args, &["ip"]);
+    let ip = get_ip_arg(&args, &["ip"]);
     let port = get_u32_arg(&args, &["port"]).and_then(|p| crate::connections::Port::try_from(p).ok());
     let remote_file = get_str_arg(&args, &["remote_file", "remoteFile"]);
     let filename = get_str_arg(&args, &["filename", "file"]);
@@ -477,7 +477,7 @@ define_tool!(TftpUploadTool, "network_tftp_upload", |app, args| {
     let host = get_str_arg(&args, &["host"]);
     let device = get_str_arg(&args, &["device"]);
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
-    let ip = get_str_arg(&args, &["ip"]);
+    let ip = get_ip_arg(&args, &["ip"]);
     let port = get_u32_arg(&args, &["port"]).and_then(|p| crate::connections::Port::try_from(p).ok());
     let local_file = get_str_arg(&args, &["local_file", "localFile"]);
     let remote_file = get_str_arg(&args, &["remote_file", "remoteFile"]);

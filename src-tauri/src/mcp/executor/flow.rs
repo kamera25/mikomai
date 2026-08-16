@@ -95,7 +95,7 @@ pub async fn execute_mcp_tool_raw(
         let host = get_str_arg(&processed_args, &["host"]);
         let device = get_str_arg(&processed_args, &["device"]);
         let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
-        let ip = get_str_arg(&processed_args, &["ip"]);
+        let ip = get_ip_arg(&processed_args, &["ip"]);
 
         let resolved = crate::mcp::args::normalize_host_args(
             &app,
