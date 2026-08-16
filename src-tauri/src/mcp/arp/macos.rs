@@ -110,7 +110,7 @@ pub fn parse_macos_arp(stdout: &str) -> Result<UniversalArpTable, String>
     Ok(UniversalArpTable {
         version: "1.0".to_string(),
         metadata: ArpMetadata {
-            generated_at: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            generated_at: Utc::now(),
             source_device: "localhost".to_string(),
             os_type: "macos".to_string(),
         },

@@ -28,29 +28,18 @@ fn validate_version(val: &str) -> Result<(), ValidationError>
     }
 }
 
+use chrono::{DateTime, Utc};
+
 #[derive(Debug, Serialize, Deserialize, Validate, Clone, PartialEq)]
 pub struct ArpMetadata
 {
-    #[validate(custom(function = "validate_iso8601"))]
-    pub generated_at: String,
+    pub generated_at: DateTime<Utc>,
 
     #[validate(length(min = 1))]
     pub source_device: String,
 
     #[validate(length(min = 1))]
     pub os_type: String,
-}
-
-fn validate_iso8601(val: &str) -> Result<(), ValidationError>
-{
-    if chrono::DateTime::parse_from_rfc3339(val).is_ok()
-    {
-        Ok(())
-    }
-    else
-    {
-        Err(ValidationError::new("invalid_iso8601"))
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone, PartialEq)]
@@ -235,8 +224,7 @@ arp_table:
     type: "dynamic"
     interface: "Ethernet1"
 "#;
-        let parsed: UniversalArpTable = serde_yaml::from_str(yaml_content).unwrap();
-        let validation_res = parsed.validate();
-        assert!(validation_res.is_err());
+        let parsed_res: Result<UniversalArpTable, _> = serde_yaml::from_str(yaml_content);
+        assert!(parsed_res.is_err());
     }
 }
