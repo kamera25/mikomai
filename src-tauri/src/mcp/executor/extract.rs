@@ -228,11 +228,15 @@ mod tests
     {
         let items = vec![
             crate::history::SummaryItem {
-                timestamp: "2023-10-27".to_string(),
+                timestamp: "2023-10-27T00:00:00Z"
+                    .parse::<chrono::DateTime<chrono::Utc>>()
+                    .unwrap(),
                 content: "First summary".to_string(),
             },
             crate::history::SummaryItem {
-                timestamp: "2023-10-28".to_string(),
+                timestamp: "2023-10-28T00:00:00Z"
+                    .parse::<chrono::DateTime<chrono::Utc>>()
+                    .unwrap(),
                 content: "Second summary".to_string(),
             },
         ];

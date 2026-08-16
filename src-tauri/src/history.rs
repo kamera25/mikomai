@@ -132,7 +132,7 @@ pub struct ChatSession
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SummaryItem
 {
-    pub timestamp: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
     pub content: String,
 }
 
@@ -361,7 +361,9 @@ mod tests
     fn test_summary_item_serialization()
     {
         let summary = SummaryItem {
-            timestamp: "2023-10-27T10:00:00Z".to_string(),
+            timestamp: "2023-10-27T10:00:00Z"
+                .parse::<chrono::DateTime<chrono::Utc>>()
+                .unwrap(),
             content: "Test summary".to_string(),
         };
         let serialized = serde_json::to_string(&summary).unwrap();

@@ -540,7 +540,7 @@ pub fn execute_mcp_tools_flow(
                 task_id: analysis_task_id.clone(),
                 summary_text: "".to_string(),
                 summary: crate::history::SummaryItem {
-                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    timestamp: chrono::Utc::now(),
                     content: "PENDING_DECISION".to_string(),
                 },
                 content: response_str.clone(),
@@ -561,7 +561,7 @@ pub fn execute_mcp_tools_flow(
             .await
             {
                 let new_summary = crate::history::SummaryItem {
-                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    timestamp: chrono::Utc::now(),
                     content: summary_text.clone(),
                 };
                 let _ = crate::history::save_summary(app.clone(), new_summary.clone());

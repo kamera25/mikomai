@@ -263,7 +263,7 @@ pub async fn handle_mcp_message(
                     .await
             {
                 let new_summary = crate::history::SummaryItem {
-                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    timestamp: chrono::Utc::now(),
                     content: summary_text.clone(),
                 };
                 let _ = crate::history::save_summary(app_c.clone(), new_summary.clone());
