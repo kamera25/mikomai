@@ -1,25 +1,6 @@
-use serde::{Deserialize, Serialize};
+use crate::mcp::protocol::McpToolResult;
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct HostListResult
-{
-    pub success: bool,
-    pub output: String,
-}
-
-impl From<HostListResult> for crate::network::CommandResult
-{
-    fn from(res: HostListResult) -> Self
-    {
-        Self {
-            success: res.success,
-            output: res.output,
-            saved_path: None,
-            is_cached: None,
-            cache_time: None,
-        }
-    }
-}
+pub type HostListResult = McpToolResult;
 
 #[tauri::command]
 pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, String>

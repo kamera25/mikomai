@@ -1,3 +1,4 @@
+use crate::mcp::protocol::McpToolResult;
 use serde::{Deserialize, Serialize};
 use serialport::SerialPortType;
 use std::io::{Read, Write};
@@ -11,26 +12,7 @@ pub struct SerialPortInfo
     pub port_type: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ConsoleResult
-{
-    pub success: bool,
-    pub output: String,
-}
-
-impl From<ConsoleResult> for crate::network::CommandResult
-{
-    fn from(res: ConsoleResult) -> Self
-    {
-        Self {
-            success: res.success,
-            output: res.output,
-            saved_path: None,
-            is_cached: None,
-            cache_time: None,
-        }
-    }
-}
+pub type ConsoleResult = McpToolResult;
 
 #[tauri::command]
 pub fn network_list_serial_ports() -> Result<ConsoleResult, String>

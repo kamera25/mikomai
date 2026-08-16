@@ -1,6 +1,27 @@
 use crate::history::SummaryItem;
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct McpToolResult
+{
+    pub success: bool,
+    pub output: String,
+}
+
+impl From<McpToolResult> for crate::network::CommandResult
+{
+    fn from(res: McpToolResult) -> Self
+    {
+        Self {
+            success: res.success,
+            output: res.output,
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatRequest

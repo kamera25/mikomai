@@ -143,26 +143,9 @@ pub async fn ingest_document(_path: String) -> Result<String, String>
     Ok("Document ingested successfully (stub)".to_string())
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct RagResult
-{
-    pub success: bool,
-    pub output: String,
-}
+use crate::mcp::protocol::McpToolResult;
 
-impl From<RagResult> for crate::network::CommandResult
-{
-    fn from(res: RagResult) -> Self
-    {
-        Self {
-            success: res.success,
-            output: res.output,
-            saved_path: None,
-            is_cached: None,
-            cache_time: None,
-        }
-    }
-}
+pub type RagResult = McpToolResult;
 
 #[tauri::command]
 pub async fn query_nw_db(

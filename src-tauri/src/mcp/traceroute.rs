@@ -1,4 +1,5 @@
 use crate::connections::resolve_host_with_mcp;
+use crate::mcp::protocol::McpToolResult;
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use surge_ping::{Client, Config, PingIdentifier, PingSequence, ICMP};
@@ -13,26 +14,7 @@ pub struct TracerouteParams
     pub ip: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct TracerouteResult
-{
-    pub success: bool,
-    pub output: String,
-}
-
-impl From<TracerouteResult> for crate::network::CommandResult
-{
-    fn from(res: TracerouteResult) -> Self
-    {
-        Self {
-            success: res.success,
-            output: res.output,
-            saved_path: None,
-            is_cached: None,
-            cache_time: None,
-        }
-    }
-}
+pub type TracerouteResult = McpToolResult;
 
 #[cfg(test)]
 fn resolve_host(host: &str) -> Result<IpAddr, String>
