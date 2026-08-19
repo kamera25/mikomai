@@ -144,6 +144,53 @@ mod tests {
         assert_eq!(action.target.as_deref(), Some("R1"));
         assert_eq!(action.parameters.get("command").and_then(|v| v.as_str()), Some("show ip route"));
     }
+
+    #[test]
+    fn test_rag_fallback_on_command_error() {
+        let mut state = NetworkState::with_goal("Show config on RTX1210".to_string());
+
+        let error_obs = Observation {
+            id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            raw: "エラー: コマンドが見つかりません\n# show running-config\n  ^".to_string(),
+            parsed: None,
+            source: ObservationSource {
+                device: Some("RTX1210".to_string()),
+                command: Some("show running-config".to_string()),
+                tool_name: Some("network_show".to_string()),
+                tool_kind: None,
+                parameters: Some(serde_json::json!({"command": "show running-config"})),
+            },
+            provenance: Provenance {
+                origin: ProvenanceOrigin::Tool,
+                confidence: Some(1.0),
+            },
+        };
+
+        state.apply_observation(error_obs);
+        let context_str = state.to_prompt_context();
+        assert!(context_str.contains("コマンド不一致/構文エラーの兆候"));
+        assert!(context_str.contains("query_nw_db"));
+
+        // Next Decision can be query_nw_db to search Yamaha command documentation
+        let raw_rag_decision = r#"{
+            "action_type": "OBSERVE",
+            "objective": "Search documentation for Yamaha config show command",
+            "tool": "query_nw_db",
+            "parameters": {
+                "query": "[Context: Yamaha] 設定 表示"
+            },
+            "reason": ["show running-config failed on Yamaha, query RAG for proper command"],
+            "expected_observation": ["show config"]
+        }"#;
+
+        let rag_decision = parse_decision_from_json(raw_rag_decision).expect("RAG Decision parse failed");
+        let rag_action = SchemaValidator::validate_decision(&rag_decision).expect("RAG Action validation failed");
+        assert_eq!(rag_action.tool.as_deref(), Some("query_nw_db"));
+        assert_eq!(rag_action.parameters.get("query").and_then(|v| v.as_str()), Some("[Context: Yamaha] 設定 表示"));
+    }
 }
+
+
 
 

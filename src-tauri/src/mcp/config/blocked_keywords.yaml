@@ -1,0 +1,19 @@
+# ==============================================================================
+# Blocked Keywords for Show Commands
+# ==============================================================================
+# network_show など、読み取り専用コマンド実行時に先頭（第1ワード）にある場合に禁止するキーワード
+blocked_keywords:
+  - "config"
+  - "configure"
+  - "write"
+  - "reload"
+  - "reboot"
+  - "erase"
+  - "delete"
+  - "copy"
+  - "format"
+  - "sysreq"
+  - "terminal"
+  - "enable"
+  - "disable"
+  - "configuration"

@@ -400,6 +400,28 @@ impl NetworkInterface for SidecarNetmikoWrapper
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct BlockedKeywordsYaml
+{
+    blocked_keywords: Vec<String>,
+}
+
+static BLOCKED_KEYWORDS: std::sync::LazyLock<std::collections::HashSet<String>> =
+    std::sync::LazyLock::new(|| {
+        let yaml_str = include_str!("../mcp/config/blocked_keywords.yaml");
+        let parsed: BlockedKeywordsYaml = serde_yaml::from_str(yaml_str).unwrap_or_else(|e| {
+            log::error!("Failed to parse blocked_keywords.yaml: {}", e);
+            BlockedKeywordsYaml {
+                blocked_keywords: Vec::new(),
+            }
+        });
+        parsed
+            .blocked_keywords
+            .into_iter()
+            .map(|k| k.to_lowercase())
+            .collect()
+    });
+
 pub fn sanitize_network_command(cmd: &str) -> Result<(), String>
 {
     let trimmed = cmd.trim();
@@ -430,7 +452,7 @@ pub fn sanitize_network_command(cmd: &str) -> Result<(), String>
         }
     }
 
-    // 3. For show commands, ensure they don't contain config keywords or destructive commands
+    // 3. For show commands, ensure they don't start with forbidden keywords (e.g., config, configure, reload)
     let lower = trimmed.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
     if words.is_empty()
@@ -438,27 +460,11 @@ pub fn sanitize_network_command(cmd: &str) -> Result<(), String>
         return Err("Command cannot be empty".to_string());
     }
 
-    let blocked_keywords = [
-        "config",
-        "configure",
-        "write",
-        "reload",
-        "reboot",
-        "erase",
-        "delete",
-        "copy",
-        "format",
-        "sysreq",
-        "terminal",
-        "enable",
-        "disable",
-        "configuration",
-    ];
-    for word in &words
+    if let Some(first_word) = words.first()
     {
-        if blocked_keywords.contains(word)
+        if BLOCKED_KEYWORDS.contains(*first_word)
         {
-            return Err(format!("Command contains forbidden keyword: '{}'", word));
+            return Err(format!("Command contains forbidden keyword: '{}'", first_word));
         }
     }
 
@@ -691,7 +697,13 @@ mod tests
         assert!(sanitize_network_command("show ip interface brief").is_ok());
         assert!(sanitize_network_command("show version").is_ok());
         assert!(sanitize_network_command("show run").is_ok());
+        assert!(sanitize_network_command("show config").is_ok());
+        assert!(sanitize_network_command("show configuration").is_ok());
+        assert!(sanitize_network_command("show running-config").is_ok());
+        assert!(sanitize_network_command("config terminal").is_err());
         assert!(sanitize_network_command("configure terminal").is_err());
+        assert!(sanitize_network_command("write memory").is_err());
+        assert!(sanitize_network_command("reload").is_err());
         assert!(sanitize_network_command("show run; rm -rf /").is_err()); // contains semicolon
         assert!(sanitize_network_command("show version | include 12.4").is_err()); // contains pipe
         assert!(sanitize_network_command("").is_err()); // empty

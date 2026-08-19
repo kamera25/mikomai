@@ -98,15 +98,32 @@ impl NetworkState {
                 let target_info = obs.source.device.as_deref().unwrap_or("localhost/default");
                 let params_info = obs.source.parameters.as_ref().map(|p| p.to_string()).unwrap_or_default();
                 
+                let is_error_indication = obs.raw.contains("% Invalid")
+                    || obs.raw.contains("Syntax error")
+                    || obs.raw.contains("unknown command")
+                    || obs.raw.contains("エラー: コマンド")
+                    || obs.raw.contains("エラー:不正なコマンド")
+                    || obs.raw.contains("Invalid input")
+                    || obs.raw.contains("command not found")
+                    || obs.raw.contains("unrecognized command");
+
+                let error_hint = if is_error_indication {
+                    "\n> ⚠️ **[コマンド不一致/構文エラーの兆候]**: この機器OS・メーカー（Yamaha等）ではコマンド構文が異なる可能性があります。`query_nw_db` (RAG検索) を使って正しいコマンドを調査してください。\n"
+                } else {
+                    ""
+                };
+
                 out.push_str(&format!(
-                    "### [{}] ツール: `{}` (対象: {}, 引数: {})\n**実行結果 (Raw Output)**:\n```\n{}\n```\n\n",
+                    "### [{}] ツール: `{}` (対象: {}, 引数: {})\n**実行結果 (Raw Output)**:{}\n```\n{}\n```\n\n",
                     idx + 1,
                     tool_info,
                     target_info,
                     params_info,
+                    error_hint,
                     obs.raw.trim()
                 ));
             }
+
         }
 
         if !self.hypotheses.is_empty() {
