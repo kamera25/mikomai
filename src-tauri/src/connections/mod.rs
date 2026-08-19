@@ -91,7 +91,8 @@ pub struct Connection
     pub id: ConnectionId,
     pub status: ConnectionStatus,
     pub hostname: Hostname,
-    pub ip: IpAddress,
+    #[serde(default, deserialize_with = "deserialize_empty_as_none")]
+    pub ip: Option<IpAddress>,
     #[serde(default)]
     pub port: Option<Port>,
     #[serde(rename = "type")]
@@ -129,6 +130,20 @@ pub struct Connection
     pub enable_password_changed: Option<bool>,
     #[serde(default, skip_serializing)]
     pub passphrase_changed: Option<bool>,
+}
+
+impl Connection
+{
+    pub fn ip_string(&self) -> String
+    {
+        self.ip.as_ref().map(|i| i.to_string()).unwrap_or_default()
+    }
+
+    pub fn matches_host_or_ip(&self, target: &str) -> bool
+    {
+        self.hostname.eq_ignore_ascii_case(target)
+            || self.ip.as_ref().map(|i| i.to_string()).as_deref() == Some(target)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -384,7 +399,11 @@ pub fn resolve_host_with_mcp<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host:
             .iter()
             .find(|c| c.hostname.eq_ignore_ascii_case(host))
         {
-            return conn.ip.to_string();
+            let ip_str = conn.ip_string();
+            if !ip_str.is_empty()
+            {
+                return ip_str;
+            }
         }
     }
 
@@ -404,7 +423,7 @@ pub fn get_device_config(
     {
         if let Some(conn) = connections
             .iter()
-            .find(|c| c.hostname.eq_ignore_ascii_case(host) || c.ip.to_string() == host)
+            .find(|c| c.matches_host_or_ip(host))
         {
             let mut dtype = if let Some(dt) = &conn.device_type
             {
@@ -502,7 +521,7 @@ pub fn get_device_config(
             });
 
             return Some((
-                conn.ip.to_string(),
+                conn.ip_string(),
                 user,
                 decrypted_password,
                 decrypted_enable_password,
@@ -586,7 +605,7 @@ mod tests
             id: ConnectionId::try_from("test-1").unwrap(),
             status: ConnectionStatus::try_from("active").unwrap(),
             hostname: Hostname::try_from("router-1").unwrap(),
-            ip: IpAddress::try_from("10.0.0.1").unwrap(),
+            ip: Some(IpAddress::try_from("10.0.0.1").unwrap()),
             port: Some(Port::try_from(22).unwrap()),
             conn_type: ConnectionType::try_from("SSH").unwrap(),
             last_connected: LastConnected::try_from("2023-10-27").unwrap(),
@@ -629,5 +648,92 @@ mod tests
         assert!(serialized.contains(r#""hostname":"switch-1""#));
         assert!(serialized.contains(r#""ip":"10.0.0.2""#));
         assert!(serialized.contains(r#""deviceType":"Telnet""#));
+    }
+
+    #[test]
+    fn test_multiple_connections_deserialization_roundtrip()
+    {
+        let json_input = r#"[
+            {
+                "id": "conn-1",
+                "status": "offline",
+                "hostname": "host-1",
+                "ip": "192.168.1.1",
+                "port": 22,
+                "type": "SSH (Password)",
+                "lastConnected": "Never",
+                "username": "root",
+                "password": "long_encrypted_ciphertext_base64_string_that_exceeds_128_characters_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "enablePassword": null,
+                "deviceType": "cisco_ios",
+                "vendorType": "Cisco",
+                "authMethod": "plain"
+            },
+            {
+                "id": "conn-2",
+                "status": "offline",
+                "hostname": "host-2",
+                "ip": "192.168.1.2",
+                "port": 23,
+                "type": "Telnet",
+                "lastConnected": "Never",
+                "username": "admin",
+                "password": null,
+                "enablePassword": null,
+                "deviceType": "cisco_ios",
+                "vendorType": "Cisco",
+                "authMethod": "plain"
+            }
+        ]"#;
+
+        let connections: Vec<Connection> = serde_json::from_str(json_input).unwrap();
+        assert_eq!(connections.len(), 2);
+        assert_eq!(connections[0].hostname.as_str(), "host-1");
+        assert_eq!(connections[1].hostname.as_str(), "host-2");
+        assert_eq!(connections[0].ip_string(), "192.168.1.1");
+        assert_eq!(connections[1].ip_string(), "192.168.1.2");
+
+        let serialized = serde_json::to_string(&connections).unwrap();
+        let deserialized_again: Vec<Connection> = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized_again.len(), 2);
+    }
+
+    #[test]
+    fn test_console_connection_without_ip()
+    {
+        let json_input = r#"[
+            {
+                "id": "console-conn-1",
+                "status": "offline",
+                "hostname": "Console-Router",
+                "ip": "",
+                "type": "Console (Serial)",
+                "lastConnected": "Never",
+                "deviceType": "cisco_ios"
+            },
+            {
+                "id": "console-conn-2",
+                "status": "offline",
+                "hostname": "Console-Switch",
+                "ip": null,
+                "type": "Console (Serial)",
+                "lastConnected": "Never"
+            }
+        ]"#;
+
+        let connections: Vec<Connection> = serde_json::from_str(json_input).unwrap();
+        assert_eq!(connections.len(), 2);
+        assert_eq!(connections[0].hostname.as_str(), "Console-Router");
+        assert_eq!(connections[0].ip, None);
+        assert_eq!(connections[0].ip_string(), "");
+        assert_eq!(connections[1].hostname.as_str(), "Console-Switch");
+        assert_eq!(connections[1].ip, None);
+        assert_eq!(connections[1].ip_string(), "");
+
+        let serialized = serde_json::to_string(&connections).unwrap();
+        let deserialized_again: Vec<Connection> = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized_again.len(), 2);
+        assert_eq!(deserialized_again[0].ip, None);
+        assert_eq!(deserialized_again[1].ip, None);
     }
 }

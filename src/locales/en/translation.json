@@ -121,6 +121,8 @@
     "btn_add_host": "Add Host",
     "btn_delete_selected": "Delete",
     "err_ip_required": "Please enter an IP address or hostname",
+    "err_ip_invalid": "Please enter a valid IPv4 or IPv6 address",
+    "save_failed": "Failed to save host settings: {{error}}",
     "msg_mcp_found": "Retrieved info for \"{{hostname}}\" from MCP.",
     "msg_mcp_not_found": "\"{{hostname}}\" was not found in MCP registry.",
     "msg_csv_imported": "{{count}} hosts imported."

@@ -17,11 +17,15 @@ pub fn get_registered_device_info_from_lists(
     // Check local connections
     if let Some(conn) = connections
         .iter()
-        .find(|c| c.hostname.eq_ignore_ascii_case(&target) || c.ip.to_string() == target)
+        .find(|c| c.matches_host_or_ip(&target))
     {
         let mut info = format!("登録済み機器 '{}' の接続情報:\n\n", conn.hostname);
         info.push_str(&format!("- ホスト名: {}\n", conn.hostname));
-        info.push_str(&format!("- IPアドレス: {}\n", conn.ip));
+        let ip_str = conn.ip_string();
+        if !ip_str.is_empty()
+        {
+            info.push_str(&format!("- IPアドレス: {}\n", ip_str));
+        }
         if let Some(port) = conn.port
         {
             info.push_str(&format!("- ポート番号: {}\n", port));
@@ -59,7 +63,7 @@ mod tests
             id: crate::connections::ConnectionId::try_from("1").unwrap(),
             status: crate::connections::ConnectionStatus::try_from("active").unwrap(),
             hostname: crate::connections::Hostname::try_from("router-cisco").unwrap(),
-            ip: "192.168.1.1".parse().unwrap(),
+            ip: "192.168.1.1".parse().ok(),
             port: Some(crate::connections::Port::try_from(22).unwrap()),
             conn_type: crate::connections::ConnectionType::try_from("SSH").unwrap(),
             last_connected: crate::connections::LastConnected::try_from("2026-06-11").unwrap(),

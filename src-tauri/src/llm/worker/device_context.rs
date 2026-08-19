@@ -24,9 +24,10 @@ pub fn resolve_device_contexts<R: tauri::Runtime>(
         for conn in connections
         {
             let hostname = conn.hostname.as_str().to_lowercase();
-            let ip = conn.ip.to_string();
+            let ip = conn.ip_string();
             // Check if either hostname (if not empty) or IP is mentioned in the text
-            if (!hostname.is_empty() && text_lower.contains(&hostname)) || text_lower.contains(&ip)
+            if (!hostname.is_empty() && text_lower.contains(&hostname))
+                || (!ip.is_empty() && text_lower.contains(&ip))
             {
                 let vendor = conn
                     .vendor_type
@@ -42,7 +43,7 @@ pub fn resolve_device_contexts<R: tauri::Runtime>(
 
                 matched.push(DeviceContext {
                     hostname: conn.hostname.as_str().to_string(),
-                    ip: conn.ip.to_string(),
+                    ip: conn.ip_string(),
                     vendor,
                     device_type,
                     conn_type,

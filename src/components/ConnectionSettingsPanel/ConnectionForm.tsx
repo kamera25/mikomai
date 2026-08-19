@@ -310,13 +310,23 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
                       className={errors.ip ? "error" : ""}
                       {...register("ip", {
                         validate: (val) => {
-                          if (connectionType !== "Console" && !val?.trim()) {
-                            return t("connection_panel.err_ip_required");
+                          if (connectionType !== "Console") {
+                            const trimmed = val?.trim();
+                            if (!trimmed) {
+                              return t("connection_panel.err_ip_required");
+                            }
+                            const ipv4Regex =
+                              /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+                            const ipv6Regex =
+                              /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
+                            if (!ipv4Regex.test(trimmed) && !ipv6Regex.test(trimmed)) {
+                              return t("connection_panel.err_ip_invalid");
+                            }
                           }
                           return true;
                         },
                       })}
-                      placeholder="192.168.1.1 or router.local"
+                      placeholder="192.168.1.1 or 2001:db8::1"
                     />
                     {errors.ip && <span className="error-message">{errors.ip.message}</span>}
                   </div>

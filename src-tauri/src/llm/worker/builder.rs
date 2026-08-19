@@ -438,9 +438,7 @@ impl LlmWorker for BuilderWorker
                 {
                     if let Ok(connections) = crate::connections::load_connections_raw(app_handle)
                     {
-                        if let Some(conn) = connections.iter().find(|c| {
-                            c.hostname.eq_ignore_ascii_case(&host) || c.ip.to_string() == host
-                        })
+                        if let Some(conn) = connections.iter().find(|c| c.matches_host_or_ip(&host))
                         {
                             let device_type_str = conn
                                 .device_type

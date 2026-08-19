@@ -169,9 +169,10 @@ fn resolve_device_from_connections<R: Runtime>(
     {
         for conn in connections
         {
+            let ip_str = conn.ip_string();
             if (!conn.hostname.as_str().is_empty()
                 && lower_msg.contains(&conn.hostname.to_lowercase()))
-                || lower_msg.contains(&conn.ip.to_string())
+                || (!ip_str.is_empty() && lower_msg.contains(&ip_str))
             {
                 return Some(conn.hostname.to_string());
             }

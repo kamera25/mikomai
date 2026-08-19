@@ -106,15 +106,15 @@ export const ConnectionTable: React.FC<ConnectionTableProps> = ({
                     )}
                   </div>
                 </td>
-                <td className="col-ip">{conn.ip}</td>
+                <td className="col-ip">{conn.ip || "-"}</td>
                 <td className="col-vendor">{conn.vendorType || "-"}</td>
                 <td className="col-device-type">
                   {conn.deviceType ? getDeviceTypeAlias(conn.deviceType) : "-"}
                 </td>
                 <td className="col-type">
-                  <div className="type-badge">{conn.type.split(" ")[0]}</div>
+                  <div className="type-badge">{(conn.type || "").split(" ")[0]}</div>
                   <span className="type-detail">
-                    {conn.type.split(" ").slice(1).join(" ") || ""}
+                    {(conn.type || "").split(" ").slice(1).join(" ") || ""}
                   </span>
                 </td>
                 <td className="col-last">{conn.lastConnected}</td>

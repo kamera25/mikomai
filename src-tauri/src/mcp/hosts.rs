@@ -19,9 +19,14 @@ pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, 
     {
         for conn in connections
         {
+            let ip_str = if conn.ip_string().is_empty() {
+                "-".to_string()
+            } else {
+                conn.ip_string()
+            };
             output.push_str(&format!(
                 "| {} | {} | {} | ローカル設定 |\n",
-                conn.hostname, conn.ip, conn.conn_type
+                conn.hostname, ip_str, conn.conn_type
             ));
             count += 1;
         }

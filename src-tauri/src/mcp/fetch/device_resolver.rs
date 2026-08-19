@@ -49,9 +49,7 @@ pub fn detect_connection_type(app: &tauri::AppHandle, resolved_name: &str) -> Co
 {
     if let Ok(connections) = load_connections(app.clone())
     {
-        if let Some(conn) = connections.iter().find(|c| {
-            c.hostname.eq_ignore_ascii_case(resolved_name) || c.ip.to_string() == resolved_name
-        })
+        if let Some(conn) = connections.iter().find(|c| c.matches_host_or_ip(resolved_name))
         {
             return conn.conn_type;
         }

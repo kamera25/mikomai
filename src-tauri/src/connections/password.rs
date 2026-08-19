@@ -15,9 +15,9 @@ impl Password
         {
             return Err("Password cannot be empty".to_string());
         }
-        if trimmed.len() > 128
+        if trimmed.len() > 2048
         {
-            return Err("Password cannot exceed 128 characters".to_string());
+            return Err("Password cannot exceed 2048 characters".to_string());
         }
         Ok(Self(trimmed.to_string()))
     }
@@ -103,7 +103,7 @@ mod tests
     #[test]
     fn test_too_long_password()
     {
-        let long_p = "a".repeat(129);
+        let long_p = "a".repeat(2049);
         assert!(Password::try_from(long_p.as_str()).is_err());
     }
 }

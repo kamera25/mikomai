@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { message } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import "./ConnectionSettingsPanel.css";
 import { Connection, McpHost } from "../../types";
@@ -113,9 +114,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
   const filteredConnections = connections.filter(
     (conn) =>
-      conn.hostname.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      conn.ip.includes(searchQuery) ||
-      conn.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (conn.hostname && conn.hostname.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (conn.ip && conn.ip.includes(searchQuery)) ||
+      (conn.type && conn.type.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (conn.vendorType && conn.vendorType.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (conn.deviceType && conn.deviceType.toLowerCase().includes(searchQuery.toLowerCase()))
   );
@@ -143,8 +144,11 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
         conn.id === editingId
           ? {
               ...conn,
-              hostname: formData.hostname || formData.ip,
-              ip: formData.ip,
+              hostname:
+                formData.hostname ||
+                formData.ip ||
+                (formData.type === "Console" ? "Console" : ""),
+              ip: formData.ip || "",
               port: formData.port ? parseInt(formData.port, 10) : undefined,
               type:
                 formData.type === "Console"
@@ -170,8 +174,11 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       const newConnection: Connection = {
         id: Date.now().toString(),
         status: "offline",
-        hostname: formData.hostname || formData.ip,
-        ip: formData.ip,
+        hostname:
+          formData.hostname ||
+          formData.ip ||
+          (formData.type === "Console" ? "Console" : ""),
+        ip: formData.ip || "",
         port: formData.port ? parseInt(formData.port, 10) : undefined,
         type:
           formData.type === "Console"
@@ -195,16 +202,18 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       updatedConnections = [...connections, newConnection];
     }
 
-    setConnections(updatedConnections);
-
     try {
       await invoke("save_connections", { connections: updatedConnections });
+      setConnections(updatedConnections);
       onConnectionsChanged?.();
+      setIsEditing(false);
     } catch (e) {
       console.error("Failed to save connections:", e);
+      await message(t("connection_panel.save_failed", { error: String(e) }), {
+        title: t("common.error"),
+        kind: "error",
+      });
     }
-
-    setIsEditing(false);
   };
 
   const handleDeleteCurrent = async () => {

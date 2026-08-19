@@ -406,12 +406,11 @@ pub async fn validate_cisco_config_impl(
             {
                 if let Ok(connections) = crate::connections::load_connections_raw(&app_handle)
                 {
-                    if let Some(conn) = connections.iter().find(|c| {
-                        c.hostname.eq_ignore_ascii_case(&host) || c.ip.to_string() == host
-                    })
+                    if let Some(conn) = connections.iter().find(|c| c.matches_host_or_ip(&host))
                     {
                         hostname = Some(conn.hostname.as_str().to_string());
-                        ip = Some(conn.ip.to_string());
+                        let ip_s = conn.ip_string();
+                        ip = if ip_s.is_empty() { None } else { Some(ip_s) };
                     }
                 }
             }

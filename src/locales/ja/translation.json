@@ -121,6 +121,8 @@
     "btn_add_host": "ホスト追加",
     "btn_delete_selected": "削除",
     "err_ip_required": "IPアドレスまたはホスト名を入力してください",
+    "err_ip_invalid": "有効なIPv4またはIPv6アドレスを入力してください",
+    "save_failed": "ホスト設定の保存に失敗しました: {{error}}",
     "msg_mcp_found": "MCPから「{{hostname}}」の情報を取得しました。",
     "msg_mcp_not_found": "MCPレジストリに「{{hostname}}」は見つかりませんでした。",
     "msg_csv_imported": "{{count}}件 of hosts imported."

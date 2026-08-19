@@ -15,9 +15,9 @@ impl EnablePassword
         {
             return Err("EnablePassword cannot be empty".to_string());
         }
-        if trimmed.len() > 128
+        if trimmed.len() > 2048
         {
-            return Err("EnablePassword cannot exceed 128 characters".to_string());
+            return Err("EnablePassword cannot exceed 2048 characters".to_string());
         }
         Ok(Self(trimmed.to_string()))
     }
@@ -103,7 +103,7 @@ mod tests
     #[test]
     fn test_too_long_enable_password()
     {
-        let long_ep = "a".repeat(129);
+        let long_ep = "a".repeat(2049);
         assert!(EnablePassword::try_from(long_ep.as_str()).is_err());
     }
 }

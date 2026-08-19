@@ -118,8 +118,7 @@ impl TargetDeviceBuilder
             if let Ok(connections) = load_connections(self.app.clone())
             {
                 if let Some(conn) = connections.iter().find(|c| {
-                    c.hostname.eq_ignore_ascii_case(&target_device.host)
-                        || c.ip.to_string() == target_device.host
+                    c.matches_host_or_ip(&target_device.host)
                 })
                 {
                     if conn.conn_type == ConnectionType::Console

@@ -27,9 +27,7 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
 
     if let Ok(connections) = load_connections_raw(app)
     {
-        if let Some(conn) = connections.iter().find(|c| {
-            c.hostname.eq_ignore_ascii_case(resolved_name) || c.ip.to_string() == resolved_name
-        })
+        if let Some(conn) = connections.iter().find(|c| c.matches_host_or_ip(resolved_name))
         {
             let dtype = if let Some(dt) = &conn.device_type
             {
@@ -47,7 +45,7 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
             let user = conn
                 .username
                 .as_ref()
-                .map(|u| u.to_string())
+                .map(|u| u.as_str().to_string())
                 .unwrap_or_else(|| "admin".to_string());
 
             // Decrypt password on-demand for connection
@@ -64,7 +62,7 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
                         Err(e) =>
                         {
                             log::error!(
-                                "Failed to decrypt password for connection {} in find_device: {}",
+                                "Failed to decrypt password for connection {}: {}",
                                 conn.id,
                                 e
                             );
@@ -81,7 +79,7 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
                     match decrypt(app, ep.as_str()) {
                         Ok(decrypted) => Some(decrypted),
                         Err(e) => {
-                            log::error!("Failed to decrypt enable password for connection {} in find_device: {}", conn.id, e);
+                            log::error!("Failed to decrypt enable password for connection {}: {}", conn.id, e);
                             None
                         }
                     }
@@ -101,7 +99,7 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
                         Err(e) =>
                         {
                             log::error!(
-                                "Failed to decrypt passphrase for connection {} in find_device: {}",
+                                "Failed to decrypt passphrase for connection {}: {}",
                                 conn.id,
                                 e
                             );
@@ -112,7 +110,7 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
             });
 
             resolved_device = Some(ResolvedDevice {
-                ip: conn.ip.to_string(),
+                ip: conn.ip_string(),
                 username: user,
                 password: decrypted_password,
                 enable_password: decrypted_enable_password,

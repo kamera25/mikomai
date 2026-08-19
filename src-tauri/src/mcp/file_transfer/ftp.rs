@@ -65,9 +65,7 @@ fn resolve_credentials(
 
     if let Ok(connections) = crate::connections::load_connections_raw(app)
     {
-        if let Some(conn) = connections.iter().find(|c| {
-            c.hostname.eq_ignore_ascii_case(target_host) || c.ip.to_string() == target_host
-        })
+        if let Some(conn) = connections.iter().find(|c| c.matches_host_or_ip(target_host))
         {
             let user = param_user
                 .filter(|u| !u.trim().is_empty())

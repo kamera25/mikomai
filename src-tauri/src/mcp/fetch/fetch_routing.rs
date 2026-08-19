@@ -48,7 +48,7 @@ pub async fn fetch_routing(
         if let Ok(connections) = crate::connections::load_connections(app.clone())
         {
             if let Some(conn) = connections.iter().find(|c| {
-                c.hostname.eq_ignore_ascii_case(&resolved_name) || c.ip.to_string() == resolved_name
+                c.matches_host_or_ip(&resolved_name)
             })
             {
                 conn.hostname.as_str().to_string()

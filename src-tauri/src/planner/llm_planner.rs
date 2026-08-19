@@ -98,12 +98,19 @@ impl LlmPlanner {
         if !connections.is_empty() {
             devices_context.push_str("【登録機器情報 (Registered Devices)】\n");
             for conn in &connections {
-                let vendor = conn.vendor_type.as_ref().map(|v| v.as_str()).unwrap_or("不明");
                 let dev_type = conn.device_type.as_ref().map(|d| d.as_str()).unwrap_or("不明");
-                devices_context.push_str(&format!(
-                    "- {}(ベンダー : {}, IP: {}, 機器タイプ: {})\n",
-                    conn.hostname, vendor, conn.ip, dev_type
-                ));
+                if conn.conn_type == crate::connections::ConnectionType::Console {
+                    devices_context.push_str(&format!(
+                        "- {}(コンソール接続, ベンダー: {})\n",
+                        conn.hostname, dev_type
+                    ));
+                } else {
+                    let ip_str = if conn.ip_string().is_empty() { "なし" } else { &conn.ip_string() };
+                    devices_context.push_str(&format!(
+                        "- {}(IP: {}, ベンダー: {})\n",
+                        conn.hostname, ip_str, dev_type
+                    ));
+                }
             }
             devices_context.push('\n');
         }

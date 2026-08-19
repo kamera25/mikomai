@@ -56,10 +56,7 @@ pub fn parse_vendor_context_with_connections(
             // 1-b. Check if candidate matches registered device hostname/ip
             else if let Some(conns) = connections
             {
-                if let Some(conn) = conns.iter().find(|c| {
-                    c.hostname.eq_ignore_ascii_case(candidate)
-                        || c.ip.to_string() == candidate
-                }) {
+                if let Some(conn) = conns.iter().find(|c| c.matches_host_or_ip(candidate)) {
                     if let Some(ref v_type) = conn.vendor_type {
                         let v_str = v_type.as_str();
                         let matched_brand = brands::get_brand(v_str).unwrap_or(v_str);
@@ -155,7 +152,7 @@ mod tests
                 id: ConnectionId::try_from("1").unwrap(),
                 status: ConnectionStatus::try_from("active").unwrap(),
                 hostname: Hostname::try_from("NakaokuGW").unwrap(),
-                ip: IpAddress::try_from("192.168.50.1").unwrap(),
+                ip: Some(IpAddress::try_from("192.168.50.1").unwrap()),
                 port: None,
                 conn_type: ConnectionType::try_from("ssh").unwrap(),
                 last_connected: LastConnected::try_from("2026-08-20 00:00:00").unwrap(),
