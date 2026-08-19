@@ -39,7 +39,7 @@ impl RagSearcher for FullTextSearcher
         }
 
         log::info!(
-            "Executing LanceDB Full-Text Search (FTS) [Primary] for query: {}",
+            "Executing LanceDB Full-Text Search (FTS) [Fallback] for query: {}",
             query
         );
         let fts_query = lancedb::index::scalar::FullTextSearchQuery::new(query.to_string());

@@ -42,6 +42,7 @@ impl AgentLoop {
         );
 
         let mut final_report = String::new();
+        let mut initial_objective: Option<String> = None;
 
         loop {
             let current_step = self.state_machine.step_count() + 1;
@@ -60,7 +61,7 @@ impl AgentLoop {
                 ChatEvent::LlmChunk(format!("\n\n🤖 **[Step {}: Planning]** 思考中...\n", self.state_machine.step_count())),
             );
 
-            let decision: Decision = match LlmPlanner::plan(&self.app, llama_state, &self.network_state).await {
+            let mut decision: Decision = match LlmPlanner::plan(&self.app, llama_state, &self.network_state).await {
                 Ok(d) => d,
                 Err(e) => {
                     log::warn!("[AgentLoop] Planner failed at step {}: {}", self.state_machine.step_count(), e);
@@ -68,7 +69,7 @@ impl AgentLoop {
                         id: uuid::Uuid::new_v4(),
                         timestamp: chrono::Utc::now(),
                         action_type: ActionType::Finish,
-                        objective: "目標達成または計画停止".to_string(),
+                        objective: initial_objective.clone().unwrap_or_else(|| "目標達成または計画停止".to_string()),
                         tool: None,
                         target: None,
                         parameters: serde_json::Value::Null,
@@ -78,6 +79,19 @@ impl AgentLoop {
                     }
                 }
             };
+
+            // STEP 1のobjectiveをキャプチャし、STEP 2以降は当初のobjectiveを強制的に継承・挿入
+            if initial_objective.is_none() {
+                let captured = if !decision.objective.trim().is_empty() {
+                    decision.objective.clone()
+                } else {
+                    goal.clone()
+                };
+                initial_objective = Some(captured);
+            } else if let Some(ref init_obj) = initial_objective {
+                // Step 2以降: LLMが生成したobjectiveが乖離するのを防ぐため、STEP1の当初objectiveを強制固定/継承
+                decision.objective = init_obj.clone();
+            }
 
             log::info!(
                 "[AgentLoop] Step {}: Decision proposed -> action_type={:?}, objective='{}', tool={:?}, target={:?}, params={}",
@@ -162,6 +176,13 @@ impl AgentLoop {
                     if !map.contains_key("device") {
                         map.insert("device".to_string(), serde_json::Value::String(target.clone()));
                     }
+                }
+            }
+
+            // MCPツールの引数にも強制的にSTEP 1の当初objectiveを挿入
+            if let Some(ref init_obj) = initial_objective {
+                if let serde_json::Value::Object(ref mut map) = tool_args {
+                    map.insert("objective".to_string(), serde_json::Value::String(init_obj.clone()));
                 }
             }
 

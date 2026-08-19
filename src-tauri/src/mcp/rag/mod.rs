@@ -11,7 +11,6 @@ use arrow_array::{Array, Float32Array, LargeStringArray, RecordBatch, StringArra
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::connect;
 use lancedb::connection::Connection;
-use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
@@ -175,23 +174,42 @@ pub async fn query_nw_db(
         .await
         .map_err(|e| format!("Failed to open table: {}", e))?;
 
-    // 1. 全文検索（FTS: Full-Text Search）をプライマリ検索として実行
-    let fts_searcher = FullTextSearcher::new();
-    let mut batches = fts_searcher
+    // 1. ベクトル検索（E5 Embeddings）をプライマリ検索として実行
+    let model = state.get_model()?;
+    let vector_searcher = VectorSearcher::new(model, vendor::get_vector_search_instruction());
+    let mut batches = vector_searcher
         .search(&table, &vendor_context.query, final_filter.as_deref(), 3)
         .await?;
 
-    // 2. FTSで結果が得られなかった場合、ベクトル検索（E5 Embeddings）をフォールバックとして実行
-    if batches.is_empty()
+    // 2. ベクトル検索で有効な結果が得られなかった場合、全文検索（FTS: Full-Text Search）をフォールバックとして実行
+    if !has_valid_results(&batches)
     {
-        let model = state.get_model()?;
-        let vector_searcher = VectorSearcher::new(model, vendor::get_vector_search_instruction());
-        batches = vector_searcher
+        let fts_searcher = FullTextSearcher::new();
+        batches = fts_searcher
             .search(&table, &vendor_context.query, final_filter.as_deref(), 3)
             .await?;
     }
 
     format_search_results(batches)
+}
+
+fn has_valid_results(batches: &[RecordBatch]) -> bool
+{
+    for batch in batches
+    {
+        let dist_col = batch.column_by_name("_distance");
+        let dist_array = dist_col.and_then(|col| col.as_any().downcast_ref::<Float32Array>());
+
+        for i in 0..batch.num_rows()
+        {
+            let distance = dist_array.map(|arr| arr.value(i)).unwrap_or(0.0);
+            if distance <= 1.2
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn format_search_results(batches: Vec<RecordBatch>) -> Result<RagResult, String>
@@ -319,5 +337,60 @@ mod tests
         let state = RagState::new();
         assert!(state.db.lock().unwrap().is_none());
         assert!(state.model.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_has_valid_results()
+    {
+        use arrow::datatypes::{DataType, Field, Schema};
+        use std::sync::Arc;
+
+        // Empty batches
+        assert!(!has_valid_results(&[]));
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("text", DataType::Utf8, false),
+            Field::new("path", DataType::Utf8, false),
+            Field::new("_distance", DataType::Float32, false),
+        ]));
+
+        // Batch with distance <= 1.2 (valid)
+        let batch_valid = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(StringArray::from(vec!["sample text"])),
+                Arc::new(StringArray::from(vec!["sample path"])),
+                Arc::new(Float32Array::from(vec![0.8])),
+            ],
+        )
+        .unwrap();
+        assert!(has_valid_results(&[batch_valid]));
+
+        // Batch with distance > 1.2 (invalid / low similarity)
+        let batch_invalid = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(StringArray::from(vec!["sample text"])),
+                Arc::new(StringArray::from(vec!["sample path"])),
+                Arc::new(Float32Array::from(vec![1.5])),
+            ],
+        )
+        .unwrap();
+        assert!(!has_valid_results(&[batch_invalid]));
+
+        // Batch without distance column (e.g. FTS result)
+        let schema_no_dist = Arc::new(Schema::new(vec![
+            Field::new("text", DataType::Utf8, false),
+            Field::new("path", DataType::Utf8, false),
+        ]));
+        let batch_no_dist = RecordBatch::try_new(
+            schema_no_dist,
+            vec![
+                Arc::new(StringArray::from(vec!["sample text"])),
+                Arc::new(StringArray::from(vec!["sample path"])),
+            ],
+        )
+        .unwrap();
+        assert!(has_valid_results(&[batch_no_dist]));
     }
 }

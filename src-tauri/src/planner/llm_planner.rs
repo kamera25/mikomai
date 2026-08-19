@@ -109,9 +109,15 @@ impl LlmPlanner {
         }
 
         let state_prompt = network_state.to_prompt_context();
+        let initial_goal = network_state.desired.as_ref().map(|d| d.raw_goal.as_str()).unwrap_or("（未設定）");
         let full_prompt = format!(
-            "{}{}\n\n上記の状態を踏まえ、目標を達成するために次に行うべき最善の Decision をJSONで出力してください。",
-            devices_context, state_prompt
+            r#"{}{}
+--------------------------------------------------
+【重要：当初の達成目標 (Initial Goal)】
+{}
+
+上記の状態および当初の達成目標を踏まえ、目標から乖離することなく目標を達成するために次に行うべき最善の Decision をJSONで出力してください。"#,
+            devices_context, state_prompt, initial_goal
         );
 
         let response = crate::llm::llm::ask_llm_internal_with_schema(

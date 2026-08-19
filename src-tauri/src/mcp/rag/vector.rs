@@ -34,7 +34,7 @@ impl RagSearcher for VectorSearcher
         limit: usize,
     ) -> Result<Vec<RecordBatch>, String>
     {
-        log::info!("Executing Vector Search fallback for query: {}", query);
+        log::info!("Executing LanceDB Vector Search (E5) [Primary] for query: {}", query);
 
         let instructional_query = format!("Instruct: {}\nQuery: {}", self.task_description, query);
         let embeddings = self
