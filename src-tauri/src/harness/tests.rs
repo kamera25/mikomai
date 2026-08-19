@@ -123,5 +123,27 @@ mod tests {
         assert!(context_str.contains("self_network_ping"));
         assert!(context_str.contains("64 bytes from 192.168.1.1"));
     }
+
+    #[test]
+    fn test_network_show_decision_resolution() {
+        let raw_json = r#"{
+            "action_type": "OBSERVE",
+            "objective": "Show ip route on R1",
+            "tool": "network_show",
+            "target": "R1",
+            "parameters": {
+                "command": "show ip route"
+            },
+            "reason": ["Check routing table"],
+            "expected_observation": ["Routing table entries"]
+        }"#;
+
+        let decision = parse_decision_from_json(raw_json).expect("Parse failed");
+        let action = SchemaValidator::validate_decision(&decision).expect("Validation failed");
+        assert_eq!(action.tool.as_deref(), Some("network_show"));
+        assert_eq!(action.target.as_deref(), Some("R1"));
+        assert_eq!(action.parameters.get("command").and_then(|v| v.as_str()), Some("show ip route"));
+    }
 }
+
 

@@ -44,9 +44,14 @@ impl AgentLoop {
         let mut final_report = String::new();
 
         loop {
+            let current_step = self.state_machine.step_count() + 1;
+            log::info!("[AgentLoop] === Step {}: Starting Cycle ===", current_step);
+
             // 1. Deciding Phase (LLM Planner)
             if self.state_machine.transition(HarnessState::Deciding).is_err() {
-                final_report = format!("最大ステップ数（{}回）に達したため、ループを安全に停止しました。", self.state_machine.step_count());
+                let msg = format!("最大ステップ数（{}回）に達したため、ループを安全に停止しました。", self.state_machine.step_count());
+                log::warn!("[AgentLoop] {}", msg);
+                final_report = msg;
                 break;
             }
 
@@ -58,8 +63,7 @@ impl AgentLoop {
             let decision: Decision = match LlmPlanner::plan(&self.app, llama_state, &self.network_state).await {
                 Ok(d) => d,
                 Err(e) => {
-                    log::warn!("Planner failed, attempting fallback observe decision: {}", e);
-                    // Fallback to finish if planning fails repeatedly
+                    log::warn!("[AgentLoop] Planner failed at step {}: {}", self.state_machine.step_count(), e);
                     Decision {
                         id: uuid::Uuid::new_v4(),
                         timestamp: chrono::Utc::now(),
@@ -74,6 +78,16 @@ impl AgentLoop {
                     }
                 }
             };
+
+            log::info!(
+                "[AgentLoop] Step {}: Decision proposed -> action_type={:?}, objective='{}', tool={:?}, target={:?}, params={}",
+                self.state_machine.step_count(),
+                decision.action_type,
+                decision.objective,
+                decision.tool,
+                decision.target,
+                decision.parameters
+            );
 
             self.network_state.event_log.push(HarnessEvent::Decision(decision.clone()));
 
@@ -91,13 +105,14 @@ impl AgentLoop {
                 } else {
                     "目標が達成されました。".to_string()
                 };
+                log::info!("[AgentLoop] Step {}: Goal reached / Completed: {}", self.state_machine.step_count(), summary_text);
                 final_report = format!("### 🎯 目標達成・調査完了\n\n{}\n", summary_text);
                 break;
             }
 
-
             if decision.action_type == ActionType::AskHuman {
                 self.state_machine.transition(HarnessState::AskingHuman)?;
+                log::info!("[AgentLoop] Step {}: Asking human -> '{}'", self.state_machine.step_count(), decision.objective);
                 final_report = format!("### ❓ 確認要求\n\n{}\n", decision.objective);
                 break;
             }
@@ -107,13 +122,13 @@ impl AgentLoop {
             let action: Action = match SchemaValidator::validate_decision(&decision) {
                 Ok(a) => a,
                 Err(err_msg) => {
-                    log::warn!("Schema validation failed: {}", err_msg);
+                    log::warn!("[AgentLoop] Step {}: Schema validation failed: {}", self.state_machine.step_count(), err_msg);
                     continue;
                 }
             };
 
             if let Err(policy_err) = PolicyValidator::validate_action(&action) {
-                log::warn!("Policy violation: {}", policy_err);
+                log::warn!("[AgentLoop] Step {}: Policy violation: {}", self.state_machine.step_count(), policy_err);
                 let _ = self.window.emit(
                     "chat-event",
                     ChatEvent::LlmChunk(format!("⚠️ **ポリシー違反により中断**: {}\n", policy_err)),
@@ -127,8 +142,41 @@ impl AgentLoop {
             self.state_machine.transition(HarnessState::Acting)?;
             let tool_name = action.tool.clone().unwrap_or_else(|| "network_show".to_string());
             let tool_kind_opt = ToolKind::from_str(&tool_name).ok();
-
             let tool_task_id = uuid::Uuid::new_v4();
+
+            let mut tool_args = action.parameters.clone();
+            if let Some(target) = &action.target {
+                if let serde_json::Value::Object(ref mut map) = tool_args {
+                    if !map.contains_key("target") {
+                        map.insert("target".to_string(), serde_json::Value::String(target.clone()));
+                    }
+                    if !map.contains_key("device_name") && !map.contains_key("deviceName") {
+                        map.insert("device_name".to_string(), serde_json::Value::String(target.clone()));
+                    }
+                    if !map.contains_key("host") {
+                        map.insert("host".to_string(), serde_json::Value::String(target.clone()));
+                    }
+                    if !map.contains_key("device") {
+                        map.insert("device".to_string(), serde_json::Value::String(target.clone()));
+                    }
+                }
+            }
+
+            log::info!(
+                "[AgentLoop] Step {}: [MCP EXECUTE] tool='{}', target={:?}, params={}",
+                self.state_machine.step_count(),
+                tool_name,
+                action.target,
+                tool_args
+            );
+
+            let _ = self.window.emit(
+                "commit-log",
+                serde_json::json!({
+                    "line": format!("[AgentLoop Step {}] 🚀 MCP Tool 実行開始: {} (対象: {:?}, 引数: {})", self.state_machine.step_count(), tool_name, action.target.as_deref().unwrap_or("localhost"), tool_args),
+                    "stream": "stdout"
+                }),
+            );
 
             // Execute via existing tool executor (it emits McpToolStarted and McpToolFinished internally)
             let cmd_result = crate::mcp::executor::flow::execute_mcp_tool_raw(
@@ -138,10 +186,11 @@ impl AgentLoop {
                 tool_name.clone(),
                 tool_kind_opt.map_or(tool_name.clone(), |k| k.label().to_string()),
                 goal.clone(),
-                action.parameters.clone(),
+                tool_args.clone(),
                 vec![],
                 120,
             )
+
             .await
             .unwrap_or_else(|e| crate::network::CommandResult {
                 success: false,
@@ -151,6 +200,21 @@ impl AgentLoop {
                 cache_time: None,
             });
 
+            log::info!(
+                "[AgentLoop] Step {}: [MCP FINISHED] tool='{}', success={}, output_len={} chars",
+                self.state_machine.step_count(),
+                tool_name,
+                cmd_result.success,
+                cmd_result.output.len()
+            );
+
+            let _ = self.window.emit(
+                "commit-log",
+                serde_json::json!({
+                    "line": format!("[AgentLoop Step {}] ✅ MCP Tool 実行完了: {} (成否: {})", self.state_machine.step_count(), tool_name, if cmd_result.success { "成功" } else { "失敗" }),
+                    "stream": "stdout"
+                }),
+            );
 
             // 4. Observing Phase (Wrap raw output into Observation)
             self.state_machine.transition(HarnessState::Observing)?;
@@ -172,11 +236,11 @@ impl AgentLoop {
                 },
             };
 
-
             // 5. State Update & Evaluation Phase
             self.network_state.apply_observation(observation);
             self.state_machine.transition(HarnessState::Evaluating)?;
         }
+
 
         let _ = self.window.emit(
             "chat-event",

@@ -210,13 +210,86 @@ define_tool!(
     }
 );
 
+fn resolve_device_config_from_args(
+    app: &tauri::AppHandle,
+    args: &serde_json::Value,
+) -> Result<crate::network::NetmikoDeviceConfig, String>
+{
+    // 1. Direct device object in args.device
+    if let Some(device_val) = args.get("device")
+    {
+        if device_val.is_object()
+        {
+            if let Ok(config) = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(device_val.clone())
+            {
+                if !config.host.trim().is_empty()
+                {
+                    return Ok(config);
+                }
+            }
+        }
+    }
+
+    // 2. Direct device config in root args
+    if let Ok(config) = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(args.clone())
+    {
+        if !config.host.trim().is_empty()
+        {
+            return Ok(config);
+        }
+    }
+
+    // 3. Resolve by device name / target / host string
+    let device_name = get_str_arg(args, &["target", "deviceName", "device_name", "device", "host"]);
+    let user_msg = get_str_arg(args, &["userMessage", "user_message"]);
+
+    let resolved_name = crate::mcp::args::normalize_device_args(
+        app,
+        device_name.clone(),
+        device_name.clone(),
+        device_name.clone(),
+        device_name,
+        user_msg.clone(),
+        user_msg,
+    )?;
+
+    if let Some((ip, user, password, enable_password, dtype)) = crate::connections::get_device_config(app, &resolved_name)
+    {
+        Ok(crate::network::NetmikoDeviceConfig {
+            host: ip,
+            username: user,
+            password,
+            enable_password,
+            device_type: dtype,
+            console_port: None,
+            console_baud_rate: None,
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
+        })
+    }
+
+    else
+    {
+        Ok(crate::network::NetmikoDeviceConfig {
+            host: resolved_name,
+            username: "admin".to_string(),
+            password: None,
+            enable_password: None,
+            device_type: "cisco_ios".to_string(),
+            console_port: None,
+            console_baud_rate: None,
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
+        })
+    }
+}
+
 define_tool!(NetworkShowTool, "network_show", |app, args| {
-    let device = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(
-        args.get("device")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null),
-    )
-    .map_err(|e| e.to_string())?;
+    let device = resolve_device_config_from_args(&app, &args)?;
     let command = get_str_arg(&args, &["command"]).unwrap_or_default();
     crate::network::network_show(app, device, command)
         .await
@@ -224,22 +297,25 @@ define_tool!(NetworkShowTool, "network_show", |app, args| {
 });
 
 define_tool!(NetworkConfigTool, "network_config", |app, args| {
-    let device = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(
-        args.get("device")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null),
-    )
-    .map_err(|e| e.to_string())?;
-    let commands = serde_json::from_value::<Vec<String>>(
-        args.get("commands")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null),
-    )
-    .map_err(|e| e.to_string())?;
+    let device = resolve_device_config_from_args(&app, &args)?;
+    let commands: Vec<String> = if let Some(cmds_val) = args.get("commands")
+    {
+        serde_json::from_value::<Vec<String>>(cmds_val.clone()).unwrap_or_default()
+    }
+    else if let Some(cmd) = get_str_arg(&args, &["command"])
+    {
+        vec![cmd]
+    }
+    else
+    {
+        Vec::new()
+    };
+
     crate::network::network_config(app, device, commands)
         .await
         .map_err(|e| e.to_string())
 });
+
 
 define_tool!(NwDiagTool, "self_network_nwdiag", |app, args| {
     let schema = get_str_arg(&args, &["schema"]).unwrap_or_default();
