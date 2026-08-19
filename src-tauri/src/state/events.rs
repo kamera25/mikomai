@@ -48,8 +48,11 @@ pub struct Provenance {
 pub struct ObservationSource {
     pub device: Option<String>,
     pub command: Option<String>,
+    pub tool_name: Option<String>,
     pub tool_kind: Option<ToolKind>,
+    pub parameters: Option<serde_json::Value>,
 }
+
 
 /// Fact acquired by the harness from the network or environment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,7 +77,9 @@ pub struct Decision {
     pub parameters: serde_json::Value,
     pub reason: Vec<String>,
     pub expected_observation: Vec<String>,
+    pub final_answer: Option<String>,
 }
+
 
 /// Executable action validated and prepared by the harness
 #[derive(Debug, Clone, Serialize, Deserialize)]

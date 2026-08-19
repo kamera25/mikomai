@@ -1,8 +1,9 @@
 use tauri::{AppHandle, Emitter, Window};
 use crate::harness::state_machine::{HarnessState, HarnessStateMachine};
 use crate::llm::llm::LlamaState;
-use crate::mcp::protocol::{ChatEvent, InitialFinishedPayload, InitialStartedPayload, ToolFinishedPayload, ToolStartedPayload};
+use crate::mcp::protocol::{ChatEvent, InitialFinishedPayload, InitialStartedPayload};
 use crate::mcp::ToolKind;
+
 use crate::planner::llm_planner::LlmPlanner;
 use crate::state::events::{Action, ActionType, Decision, HarnessEvent, Observation, ObservationSource, Provenance, ProvenanceOrigin};
 use crate::state::network_state::NetworkState;
@@ -69,6 +70,7 @@ impl AgentLoop {
                         parameters: serde_json::Value::Null,
                         reason: vec![format!("Planning encountered error: {}", e)],
                         expected_observation: vec![],
+                        final_answer: Some(format!("計画処理中にエラーが発生したため停止しました: {}", e)),
                     }
                 }
             };
@@ -82,7 +84,9 @@ impl AgentLoop {
 
             if decision.action_type == ActionType::Finish {
                 self.state_machine.transition(HarnessState::Finished)?;
-                let summary_text = if !decision.reason.is_empty() {
+                let summary_text = if let Some(ref ans) = decision.final_answer {
+                    ans.clone()
+                } else if !decision.reason.is_empty() {
                     decision.reason.join("\n")
                 } else {
                     "目標が達成されました。".to_string()
@@ -90,6 +94,7 @@ impl AgentLoop {
                 final_report = format!("### 🎯 目標達成・調査完了\n\n{}\n", summary_text);
                 break;
             }
+
 
             if decision.action_type == ActionType::AskHuman {
                 self.state_machine.transition(HarnessState::AskingHuman)?;
@@ -124,17 +129,8 @@ impl AgentLoop {
             let tool_kind_opt = ToolKind::from_str(&tool_name).ok();
 
             let tool_task_id = uuid::Uuid::new_v4();
-            let _ = self.window.emit(
-                "chat-event",
-                ChatEvent::McpToolStarted(ToolStartedPayload {
-                    task_id: tool_task_id,
-                    tool_id: tool_kind_opt.unwrap_or(ToolKind::SelfNetworkPing),
-                    args: action.parameters.clone(),
-                    resolved_host: action.target.clone(),
-                }),
-            );
 
-            // Execute via existing tool executor
+            // Execute via existing tool executor (it emits McpToolStarted and McpToolFinished internally)
             let cmd_result = crate::mcp::executor::flow::execute_mcp_tool_raw(
                 self.app.clone(),
                 self.window.clone(),
@@ -155,17 +151,6 @@ impl AgentLoop {
                 cache_time: None,
             });
 
-            let _ = self.window.emit(
-                "chat-event",
-                ChatEvent::McpToolFinished(ToolFinishedPayload {
-                    task_id: tool_task_id,
-                    success: cmd_result.success,
-                    output: cmd_result.output.clone(),
-                    saved_path: cmd_result.saved_path.clone(),
-                    is_cached: cmd_result.is_cached,
-                    cache_time: cmd_result.cache_time.clone(),
-                }),
-            );
 
             // 4. Observing Phase (Wrap raw output into Observation)
             self.state_machine.transition(HarnessState::Observing)?;
@@ -177,13 +162,16 @@ impl AgentLoop {
                 source: ObservationSource {
                     device: action.target.clone(),
                     command: action.parameters.get("command").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    tool_name: Some(tool_name.clone()),
                     tool_kind: tool_kind_opt,
+                    parameters: Some(action.parameters.clone()),
                 },
                 provenance: Provenance {
                     origin: ProvenanceOrigin::Tool,
                     confidence: Some(1.0),
                 },
             };
+
 
             // 5. State Update & Evaluation Phase
             self.network_state.apply_observation(observation);

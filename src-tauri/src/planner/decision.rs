@@ -50,5 +50,7 @@ pub fn parse_decision_from_json(raw_json: &str) -> Result<Decision, String> {
         parameters: parsed.parameters,
         reason: parsed.reason,
         expected_observation: parsed.expected_observation,
+        final_answer: parsed.final_answer,
     })
 }
+

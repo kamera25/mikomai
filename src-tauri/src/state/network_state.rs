@@ -59,6 +59,7 @@ impl NetworkState {
             }
         }
 
+        self.observed.observations.push(obs.clone());
         self.event_log.push(HarnessEvent::Observation(obs));
     }
 
@@ -88,30 +89,35 @@ impl NetworkState {
             out.push_str(&format!("【Goal / 達成目標】\n{}\n\n", desired.raw_goal));
         }
 
-        out.push_str("【Observed Facts / 観察された事実】\n");
-        if self.observed.devices.is_empty() && self.observed.facts.is_empty() {
-            out.push_str("（まだ観察された機器情報はありません）\n");
+        out.push_str("【Tool Execution History & Observed Facts / これまでに実行したツールとその結果】\n");
+        if self.observed.observations.is_empty() {
+            out.push_str("（まだ実行されたツール・観察された情報はありません）\n");
         } else {
-            for (dev, fact) in &self.observed.devices {
-                out.push_str(&format!("- 機器: {}\n", dev));
-                for (cmd, raw) in &fact.raw_snapshots {
-                    let truncated = if raw.len() > 1000 {
-                        format!("{}... (truncated)", &raw[..1000])
-                    } else {
-                        raw.clone()
-                    };
-                    out.push_str(&format!("  * コマンド `{}` 結果:\n    {}\n", cmd, truncated.replace('\n', "\n    ")));
-                }
+            for (idx, obs) in self.observed.observations.iter().enumerate() {
+                let tool_info = obs.source.tool_name.as_deref().unwrap_or("unknown_tool");
+                let target_info = obs.source.device.as_deref().unwrap_or("localhost/default");
+                let params_info = obs.source.parameters.as_ref().map(|p| p.to_string()).unwrap_or_default();
+                
+                out.push_str(&format!(
+                    "### [{}] ツール: `{}` (対象: {}, 引数: {})\n**実行結果 (Raw Output)**:\n```\n{}\n```\n\n",
+                    idx + 1,
+                    tool_info,
+                    target_info,
+                    params_info,
+                    obs.raw.trim()
+                ));
             }
         }
 
         if !self.hypotheses.is_empty() {
-            out.push_str("\n【Hypotheses / 検証中の仮説】\n");
+            out.push_str("【Hypotheses / 検証中の仮説】\n");
             for h in &self.hypotheses {
                 out.push_str(&format!("- [{}] {} (確信度: {:.2})\n", h.id, h.description, h.confidence));
             }
+            out.push('\n');
         }
 
         out
     }
+
 }

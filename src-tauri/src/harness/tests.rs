@@ -18,8 +18,11 @@ mod tests {
             source: ObservationSource {
                 device: Some("R1".to_string()),
                 command: Some("show ip route 10.0.20.0".to_string()),
+                tool_name: Some("network_show".to_string()),
                 tool_kind: None,
+                parameters: Some(serde_json::json!({"command": "show ip route 10.0.20.0"})),
             },
+
             provenance: Provenance {
                 origin: ProvenanceOrigin::Tool,
                 confidence: Some(1.0),
@@ -83,10 +86,42 @@ mod tests {
             }),
             reason: vec![],
             expected_observation: vec![],
+            final_answer: None,
         };
 
         let action = SchemaValidator::validate_decision(&decision).unwrap();
         let policy_res = PolicyValidator::validate_action(&action);
         assert!(policy_res.is_err());
     }
+
+    #[test]
+    fn test_ping_observation_retained_in_context() {
+        let mut state = NetworkState::with_goal("Ping 192.168.1.1".to_string());
+
+        let ping_obs = Observation {
+            id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            raw: "64 bytes from 192.168.1.1: icmp_seq=0 ttl=64 time=1.23 ms".to_string(),
+            parsed: None,
+            source: ObservationSource {
+                device: None,
+                command: None,
+                tool_name: Some("self_network_ping".to_string()),
+                tool_kind: None,
+                parameters: Some(serde_json::json!({"host": "192.168.1.1"})),
+            },
+            provenance: Provenance {
+                origin: ProvenanceOrigin::Tool,
+                confidence: Some(1.0),
+            },
+        };
+
+        state.apply_observation(ping_obs);
+        assert_eq!(state.observed.observations.len(), 1);
+
+        let context_str = state.to_prompt_context();
+        assert!(context_str.contains("self_network_ping"));
+        assert!(context_str.contains("64 bytes from 192.168.1.1"));
+    }
 }
+
