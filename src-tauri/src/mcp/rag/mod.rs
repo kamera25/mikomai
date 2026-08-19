@@ -164,8 +164,8 @@ pub async fn query_nw_db(
         });
     }
 
-    // Parse vendor-specific context & brand filters
-    let vendor_context = vendor::parse_vendor_context(&query);
+    // Parse vendor-specific context & brand filters (resolving registered devices to vendor)
+    let vendor_context = vendor::parse_vendor_context_with_app(&query, &app);
     let final_filter = vendor_context.brand_filter.or(filter);
 
     let db = state.get_db(&app).await?;

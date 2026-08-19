@@ -88,6 +88,9 @@ impl AgentLoop {
                 decision.target,
                 decision.parameters
             );
+            if let Ok(decision_json) = serde_json::to_string_pretty(&decision) {
+                log::info!("[AgentLoop] Step {}: Decision JSON:\n{}", self.state_machine.step_count(), decision_json);
+            }
 
             self.network_state.event_log.push(HarnessEvent::Decision(decision.clone()));
 

@@ -5,10 +5,11 @@ use crate::state::network_state::NetworkState;
 use tauri::AppHandle;
 
 const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中核を担う LLM Planner です。
-与えられた Network State（これまでに実行したツールとその結果、観察された事実、目標）をもとに、目標達成のために次に実行すべきアクション（Decision）を構造化されたJSONフォーマットで提案してください。
+与えられた Network State（登録機器情報、これまでに実行したツールとその結果、観察された事実、目標）をもとに、目標達成のために次に実行すべきアクション（Decision）を構造化されたJSONフォーマットで提案してください。
 
 【重要な行動指針】
-1. 「これまでに実行したツールとその結果」を必ず確認してください。
+1. 「登録機器情報」および「これまでに実行したツールとその結果」を必ず確認してください。
+   - 対象機器（例: NakaokuGW）が登録されている場合、そのベンダー名（例: yamaha）を把握し、その機種に応じた適切なコマンドや検索を行ってください。
 2. 既にツールを実行し結果が得られている場合：
    - 【成功時】その結果をもってユーザーの目標（質問や調査）に回答できる場合は、直ちに action_type: "FINISH" を選択し、final_answer に分かりやすい分析・結果サマリーを記述してください。
    - 【コマンドエラー／失敗時】実行したコマンドが「無効なコマンド」「構文エラー」「エラー: コマンドが見つかりません」「% Invalid input」「unknown command」等で失敗した、または機器のOSやメーカー（Yamaha, Cisco, Juniper, Fortinet等）でコマンドが異なる疑いがある場合：
@@ -17,8 +18,8 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
      * RAG検索で正しいコマンド（例: Yamahaなら `show config`）が判明したら、その次のステップでその正しいコマンドを `network_show` で再実行してください。
    - 同じツール・同じ引数の無意味な再実行ループは絶対に避けてください。
 3. 【RAG検索（query_nw_db）の必須規則】
-   - 検索クエリ（`query` 引数）は英語の文章ではなく、必ず**日本語のキーワードベース**（例: `[Context: Cisco] ルーティング 確認`）で出力してください。
-   - **特定のメーカーや機種が判明している場合は、必ず `query` 引数の冒頭に `[Context: メーカー名]` （例: `[Context: Cisco] ルーティング 確認`、`[Context: Yamaha] 設定 表示`、`[Context: Juniper] インターフェース 状態`）を付与してください。**
+   - 検索クエリ（`query` 引数）は英語の文章ではなく、必ず**日本語のキーワードベース**（例: `[Context: Yamaha] NTP 設定 確認`）で出力してください。
+   - **特定のメーカーまたは登録機器が判明している場合は、必ず `query` 引数の冒頭に `[Context: メーカー名または機器名]` （例: `[Context: Yamaha] NTP 設定 確認`、`[Context: Cisco] ルーティング 確認`、`[Context: NakaokuGW] 設定 表示`）を付与してください。**
 4. アクションスペースは以下のいずれかを選択すること:
    - "OBSERVE": 調査コマンド(network_show)、ドキュメント検索(query_nw_db)、Ping/Traceroute等のToolを実行して状態を確認
    - "VERIFY": 設定変更後や問題解消後の検証確認
@@ -60,6 +61,30 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
 
 
 
+const DECISION_JSON_SCHEMA: &str = r#"{
+  "type": "object",
+  "properties": {
+    "action_type": {
+      "type": "string",
+      "enum": ["OBSERVE", "VERIFY", "CONFIGURE", "ROLLBACK", "ASK_HUMAN", "FINISH"]
+    },
+    "objective": { "type": "string" },
+    "tool": { "type": ["string", "null"] },
+    "target": { "type": ["string", "null"] },
+    "parameters": {},
+    "reason": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "expected_observation": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "final_answer": { "type": ["string", "null"] }
+  },
+  "required": ["action_type", "objective", "reason"]
+}"#;
+
 pub struct LlmPlanner;
 
 impl LlmPlanner {
@@ -68,22 +93,38 @@ impl LlmPlanner {
         llama_state: &LlamaState,
         network_state: &NetworkState,
     ) -> Result<Decision, String> {
+        let connections = crate::connections::load_connections(app.clone()).unwrap_or_default();
+        let mut devices_context = String::new();
+        if !connections.is_empty() {
+            devices_context.push_str("【登録機器情報 (Registered Devices)】\n");
+            for conn in &connections {
+                let vendor = conn.vendor_type.as_ref().map(|v| v.as_str()).unwrap_or("不明");
+                let dev_type = conn.device_type.as_ref().map(|d| d.as_str()).unwrap_or("不明");
+                devices_context.push_str(&format!(
+                    "- {}(ベンダー : {}, IP: {}, 機器タイプ: {})\n",
+                    conn.hostname, vendor, conn.ip, dev_type
+                ));
+            }
+            devices_context.push('\n');
+        }
+
         let state_prompt = network_state.to_prompt_context();
         let full_prompt = format!(
-            "{}\n\n上記の状態を踏まえ、目標を達成するために次に行うべき最善の Decision をJSONで出力してください。",
-            state_prompt
+            "{}{}\n\n上記の状態を踏まえ、目標を達成するために次に行うべき最善の Decision をJSONで出力してください。",
+            devices_context, state_prompt
         );
 
-        let response = crate::llm::llm::ask_llm_internal(
+        let response = crate::llm::llm::ask_llm_internal_with_schema(
             &full_prompt,
             PLANNER_SYSTEM_PROMPT,
+            Some(DECISION_JSON_SCHEMA),
             app,
             llama_state,
         )
         .await
         .map_err(|e| format!("Planner inference failed: {}", e))?;
 
-        log::info!("LLM Planner Raw Response:\n{}", response);
+        log::info!("================ [LLM Planner JSON Output] ================\n{}\n===========================================================", response);
 
         parse_decision_from_json(&response)
     }

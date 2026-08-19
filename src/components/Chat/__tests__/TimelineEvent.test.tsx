@@ -168,7 +168,49 @@ describe("TimelineEvent Component", () => {
       destPath: "/Users/test/Downloads/Router1_config.txt",
     });
   });
+
+  it("renders open in finder/explorer and action buttons for network_show results with saved_path", async () => {
+    const msg: Message = {
+      role: "ai",
+      content: "Show command executed",
+      timestamp: new Date().toISOString(),
+      event_type: "ToolExecution",
+      tool_id: "network_show",
+      action_name: "Show Command",
+      summary_text: "Executed show ip route",
+      status: "Success",
+      raw_data: "Codes: C - connected, S - static...",
+      saved_path: "/Users/test/storage/current/Router1_show_ip_route.txt",
+    };
+
+    vi.mocked(invoke).mockResolvedValue(undefined as any);
+
+    render(
+      <TimelineEvent
+        msg={msg}
+        formatMessageTime={formatMessageTime}
+      />
+    );
+
+    const openBtn = screen.getByRole("button", { name: /(Finder|Explorer)で開く/i });
+    expect(openBtn).toBeInTheDocument();
+
+    const fetchBtn = screen.getByRole("button", { name: /ファイルを取得/i });
+    expect(fetchBtn).toBeInTheDocument();
+
+    const copyBtn = screen.getByRole("button", { name: /保存先パスをコピー/i });
+    expect(copyBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(openBtn);
+    });
+
+    expect(invoke).toHaveBeenCalledWith("open_path_in_file_manager", {
+      path: "/Users/test/storage/current/Router1_show_ip_route.txt",
+    });
+  });
 });
+
 
 
 

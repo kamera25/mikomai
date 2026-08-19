@@ -507,6 +507,53 @@ pub fn sanitize_config_command(cmd: &str) -> Result<(), String>
     Ok(())
 }
 
+pub fn sanitize_command_for_filename(command: &str) -> String
+{
+    let sanitized: String = command
+        .trim()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_'
+            {
+                c
+            }
+            else
+            {
+                '_'
+            }
+        })
+        .collect();
+
+    let mut result = String::new();
+    let mut last_was_underscore = false;
+    for c in sanitized.chars()
+    {
+        if c == '_'
+        {
+            if !last_was_underscore
+            {
+                result.push(c);
+                last_was_underscore = true;
+            }
+        }
+        else
+        {
+            result.push(c);
+            last_was_underscore = false;
+        }
+    }
+
+    let trimmed = result.trim_matches('_');
+    if trimmed.is_empty()
+    {
+        "show".to_string()
+    }
+    else
+    {
+        trimmed.to_string()
+    }
+}
+
 #[tauri::command]
 pub async fn network_show(
     app: AppHandle,
@@ -546,13 +593,41 @@ pub async fn network_show(
         .execute_show(&target_device.to_netmiko_config(), &command)
         .await
     {
-        Ok(output) => Ok(CommandResult {
-            success: true,
-            output,
-            saved_path: None,
-            is_cached: None,
-            cache_time: None,
-        }),
+        Ok(output) =>
+        {
+            let saved_path: Option<std::path::PathBuf> = if !output.trim().is_empty()
+            {
+                if let Ok(mut manager) = crate::snapshot::SnapshotManager::new(&app)
+                {
+                    let data_type = sanitize_command_for_filename(&command);
+                    if let Ok(path) = manager.save_artifact(target_device.host(), &data_type, &output)
+                    {
+                        let _ = manager.update_current_link(path.parent().unwrap());
+                        Some(path)
+                    }
+                    else
+                    {
+                        None
+                    }
+                }
+                else
+                {
+                    None
+                }
+            }
+            else
+            {
+                None
+            };
+
+            Ok(CommandResult {
+                success: true,
+                output,
+                saved_path,
+                is_cached: None,
+                cache_time: None,
+            })
+        }
         Err(err) => Ok(CommandResult {
             success: false,
             output: err.to_string(),
@@ -717,5 +792,22 @@ mod tests
         assert!(sanitize_config_command("no shutdown").is_ok());
         assert!(sanitize_config_command("interface GigabitEthernet1/1; rm -rf /").is_err());
         // contains semicolon
+    }
+
+    #[test]
+    fn test_sanitize_command_for_filename()
+    {
+        assert_eq!(sanitize_command_for_filename("show ip route"), "show_ip_route");
+        assert_eq!(
+            sanitize_command_for_filename("show interface GigabitEthernet0/1"),
+            "show_interface_GigabitEthernet0_1"
+        );
+        assert_eq!(
+            sanitize_command_for_filename("show mac address-table"),
+            "show_mac_address-table"
+        );
+        assert_eq!(sanitize_command_for_filename("   show version   "), "show_version");
+        assert_eq!(sanitize_command_for_filename(""), "show");
+        assert_eq!(sanitize_command_for_filename("   "), "show");
     }
 }

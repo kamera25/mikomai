@@ -44,6 +44,7 @@ pub enum InferenceRequest
     {
         prompt: String,
         system_prompt: String,
+        schema: Option<String>,
         app: tauri::AppHandle,
         respond_to: tokio::sync::oneshot::Sender<Result<String, LlmError>>,
     },
@@ -131,11 +132,12 @@ impl InferenceRequestHandler for InferenceRequest
             InferenceRequest::Internal {
                 prompt,
                 system_prompt,
+                schema,
                 app,
                 respond_to,
             } =>
             {
-                let res = handle_internal(shared_model, app, prompt, system_prompt);
+                let res = handle_internal(shared_model, app, prompt, system_prompt, schema);
                 let _ = respond_to.send(res);
             }
         }
@@ -570,6 +572,7 @@ fn handle_internal(
     app: tauri::AppHandle,
     prompt: String,
     system_prompt: String,
+    schema: Option<String>,
 ) -> Result<String, LlmError>
 {
     let formatted_prompt = format!(
@@ -621,10 +624,21 @@ fn handle_internal(
 
     let mut result_string = String::new();
     let mut n_cur = batch.n_tokens();
-    let mut sampler = LlamaSampler::chain_simple([
+
+    let mut samplers = vec![
         LlamaSampler::penalties(64, settings.repetition_penalty, 0.0, 0.0),
-        LlamaSampler::greedy(),
-    ]);
+    ];
+
+    if let Some(ref schema_str) = schema {
+        let grammar_str = llama_cpp_2::json_schema_to_grammar(schema_str)
+            .map_err(|e| LlmError::Worker(format!("Failed to convert schema to grammar: {:?}", e)))?;
+        let grammar_sampler = LlamaSampler::grammar(&shared_model.model, &grammar_str, "root")
+            .map_err(|e| LlmError::Worker(format!("Failed to create grammar sampler: {:?}", e)))?;
+        samplers.push(grammar_sampler);
+    }
+
+    samplers.push(LlamaSampler::greedy());
+    let mut sampler = LlamaSampler::chain_simple(samplers);
 
     let turn_end_tokens = shared_model
         .model

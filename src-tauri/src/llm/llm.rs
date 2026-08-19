@@ -463,12 +463,24 @@ pub async fn ask_llm_internal(
     state: &LlamaState,
 ) -> Result<String, LlmError>
 {
+    ask_llm_internal_with_schema(prompt, system_prompt, None, app, state).await
+}
+
+pub async fn ask_llm_internal_with_schema(
+    prompt: &str,
+    system_prompt: &str,
+    schema: Option<&str>,
+    app: &tauri::AppHandle,
+    state: &LlamaState,
+) -> Result<String, LlmError>
+{
     let (tx, rx) = tokio::sync::oneshot::channel();
     state
         .inference_tx
         .send(InferenceRequest::Internal {
             prompt: prompt.to_string(),
             system_prompt: system_prompt.to_string(),
+            schema: schema.map(|s| s.to_string()),
             app: app.clone(),
             respond_to: tx,
         })
