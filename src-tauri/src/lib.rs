@@ -1,15 +1,20 @@
 mod connections;
 pub(crate) mod crypto;
 pub(crate) mod error;
+pub mod harness;
 mod history;
 mod llm;
 mod logger;
 pub(crate) mod mcp;
 mod network;
+pub mod planner;
 pub(crate) mod scheduled_tasks;
 pub(crate) mod schema;
 pub(crate) mod settings;
 pub(crate) mod snapshot;
+pub mod state;
+pub mod validator;
+
 
 use tauri::Manager;
 
