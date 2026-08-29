@@ -34,6 +34,7 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
    - self_network_traceroute: {"host": "192.168.1.1"}
    - self_network_route: {}
    - self_network_arp: {}
+   - get_operation_plan: {"id": "変更計画ID"}（変更計画を読み出すだけで、実行権限は与えない）
 6. 必ず以下のJSON構造のみを出力してください（Markdownコードブロック```json ... ```で囲むこと）。
 
 ```json

@@ -27,6 +27,7 @@ pub enum ToolKind
     SelfNetworkNwdiag,
     ValidateCiscoConfig,
     ConvertCiscoConfig,
+    GetOperationPlan,
     AskUserChoice,
     AskInterfaceChoice,
     AskIpaddressChoice,
@@ -64,6 +65,7 @@ impl ToolKind
             Self::SelfNetworkNwdiag => "self_network_nwdiag",
             Self::ValidateCiscoConfig => "validate_cisco_config",
             Self::ConvertCiscoConfig => "convert_cisco_config",
+            Self::GetOperationPlan => "get_operation_plan",
             Self::AskUserChoice => "ask_user_choice",
             Self::AskInterfaceChoice => "ask_interface_choice",
             Self::AskIpaddressChoice => "ask_ipaddress_choice",
@@ -100,6 +102,7 @@ impl ToolKind
             Self::SelfNetworkNwdiag => "ネットワーク図生成",
             Self::ValidateCiscoConfig => "Cisco設定検証",
             Self::ConvertCiscoConfig => "Cisco設定変換",
+            Self::GetOperationPlan => "変更計画照会",
             Self::AskUserChoice => "ユーザ選択",
             Self::AskInterfaceChoice => "インターフェース選択",
             Self::AskIpaddressChoice => "IPアドレス選択",
@@ -127,6 +130,7 @@ impl ToolKind
                 | Self::AskIpaddressChoice
                 | Self::ValidateCiscoConfig
                 | Self::ConvertCiscoConfig
+                | Self::GetOperationPlan
                 | Self::SelfNetworkNwdiag
         )
     }
@@ -233,6 +237,7 @@ impl std::str::FromStr for ToolKind
             "self_network_nwdiag" => Ok(Self::SelfNetworkNwdiag),
             "validate_cisco_config" => Ok(Self::ValidateCiscoConfig),
             "convert_cisco_config" => Ok(Self::ConvertCiscoConfig),
+            "get_operation_plan" => Ok(Self::GetOperationPlan),
             "ask_user_choice" => Ok(Self::AskUserChoice),
             "ask_interface_choice" => Ok(Self::AskInterfaceChoice),
             "ask_ipaddress_choice" => Ok(Self::AskIpaddressChoice),

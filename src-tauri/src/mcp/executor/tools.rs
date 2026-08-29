@@ -322,6 +322,21 @@ define_tool!(NwDiagTool, "self_network_nwdiag", |app, args| {
     crate::mcp::nwdiag::self_network_nwdiag(app, schema).await
 });
 
+define_tool!(GetOperationPlanTool, "get_operation_plan", |app, args| {
+    let id = get_str_arg(&args, &["id", "plan_id", "planId"])
+        .ok_or("plan id is required")?;
+    let id = uuid::Uuid::parse_str(&id).map_err(|_| "invalid plan id")?;
+    let plan = app.state::<crate::operations::OperationStore>().get(id)?;
+    Ok(CommandResult {
+        success: true,
+        output: serde_json::to_string_pretty(&plan)
+            .map_err(|error| format!("failed to serialize change plan: {error}"))?,
+        saved_path: None,
+        is_cached: None,
+        cache_time: None,
+    })
+});
+
 define_tool!(
     ValidateCiscoConfigTool,
     "validate_cisco_config",
@@ -642,6 +657,7 @@ pub fn init_tool_registry() -> HashMap<String, Box<dyn McpTool>>
     reg!(NetworkShowTool);
     reg!(NetworkConfigTool);
     reg!(NwDiagTool);
+    reg!(GetOperationPlanTool);
     reg!(ValidateCiscoConfigTool);
     reg!(ConvertCiscoConfigTool);
     reg!(AskUserChoiceTool);
