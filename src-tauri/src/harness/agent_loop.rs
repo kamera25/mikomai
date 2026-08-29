@@ -18,6 +18,22 @@ pub struct AgentLoop {
     pub network_state: NetworkState,
 }
 
+fn is_configuration_change_goal(goal: &str) -> bool {
+    let goal = goal.to_lowercase();
+    [
+        "設定する",
+        "設定して",
+        "設定を変更",
+        "変更する",
+        "追加する",
+        "削除する",
+        "投入する",
+        "hostname",
+    ]
+    .iter()
+    .any(|marker| goal.contains(marker))
+}
+
 impl AgentLoop {
     pub fn new(app: AppHandle, window: Window, max_steps: usize) -> Self {
         Self {
@@ -215,6 +231,37 @@ impl AgentLoop {
                 }),
             );
 
+            // A RAG lookup for a configuration request is a hand-off point:
+            // Builder owns config generation and its approval UI.  Continuing
+            // the harness planner here used to make it issue a show command
+            // after RAG, instead of presenting the generated change for
+            // review.
+            if tool_kind_opt.map_or(false, |kind| kind.is_rag_tool())
+                && is_configuration_change_goal(&goal)
+            {
+                let builder_result = crate::mcp::executor::flow::execute_mcp_tools_flow(
+                    self.app.clone(),
+                    self.window.clone(),
+                    goal.clone(),
+                    vec![crate::mcp::executor::flow::ToolCall {
+                        tool: tool_name.clone(),
+                        args: tool_args,
+                    }],
+                    vec![],
+                    vec![],
+                    0,
+                    120,
+                    0,
+                    true,
+                )
+                .await
+                .unwrap_or_else(|error| format!("Builderへの引き継ぎに失敗しました: {}", error));
+
+                final_report = builder_result;
+                self.state_machine.transition(HarnessState::Finished)?;
+                break;
+            }
+
             // Execute via existing tool executor (it emits McpToolStarted and McpToolFinished internally)
             let cmd_result = crate::mcp::executor::flow::execute_mcp_tool_raw(
                 self.app.clone(),
@@ -288,5 +335,16 @@ impl AgentLoop {
         );
 
         Ok(final_report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_configuration_change_goal;
+
+    #[test]
+    fn only_change_requests_handoff_rag_to_builder() {
+        assert!(is_configuration_change_goal("F220 に hostname aaa を設定する"));
+        assert!(!is_configuration_change_goal("F220 の設定を確認する"));
     }
 }

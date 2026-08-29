@@ -375,15 +375,12 @@ pub async fn validate_cisco_config_impl(
         }
     }
 
-    // Validation is a Builder/ChangePlanner concern. It must not transition
-    // into a device write merely because a UI event or an LLM tool call
-    // completed successfully. Config application is only available through
-    // operations::execute_approved_operation_plan.
-    if res.success
+    // Without a desktop app there is no approval UI, so validation remains
+    // read-only (this path is also used by unit tests).
+    if !res.success || app.is_none()
     {
-        md.push_str("\nConfig was validated only; it has not been applied. Create a ChangePlan, review its hash-bound diff and dry-run result, then approve that plan to execute it.\n");
         return Ok(CommandResult {
-            success: true,
+            success: res.success,
             output: md,
             saved_path: None,
             is_cached: None,

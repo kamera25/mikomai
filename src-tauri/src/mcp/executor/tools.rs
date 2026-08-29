@@ -348,7 +348,9 @@ define_tool!(
             .get("config")
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .ok_or("config is required")?;
-        crate::mcp::config_helper::validate_cisco_config_impl(Some(app), id, config, None).await
+        let target = get_str_arg(&args, &["device_name", "deviceName", "target", "host"]);
+        let target_device = target.map(|name| (name.clone(), name));
+        crate::mcp::config_helper::validate_cisco_config_impl(Some(app), id, config, target_device).await
     }
 );
 
