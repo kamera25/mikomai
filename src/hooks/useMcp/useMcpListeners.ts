@@ -47,6 +47,8 @@ export function useMcpListeners({
           : activeAnalysisContentRef.current;
 
         if (targetTaskId) {
+          const isAgent =
+            targetContent.includes("agent-step") || targetContent.includes("agent-decision");
           setMessagesRef.current((prev) =>
             prev.map((msg) =>
               msg.task_id === targetTaskId
@@ -54,6 +56,7 @@ export function useMcpListeners({
                     ...msg,
                     content: targetContent,
                     isHidden: false,
+                    summary_text: isAgent ? "エージェントによる解析を開始" : msg.summary_text,
                   }
                 : msg
             )
@@ -241,9 +244,12 @@ export function useMcpListeners({
                   msg.task_id === targetTaskId
                     ? ({
                         ...msg,
-                        summary_text: isAnalysis
-                          ? i18n.t("chat.agent_analyzing", { agentName })
-                          : i18n.t("chat.agent_processing", { agentName }),
+                        summary_text:
+                          agentName === "エージェントによる解析を開始"
+                            ? agentName
+                            : isAnalysis
+                              ? i18n.t("chat.agent_analyzing", { agentName })
+                              : i18n.t("chat.agent_processing", { agentName }),
                         isHidden: false,
                       } as Message)
                     : msg
@@ -284,6 +290,8 @@ export function useMcpListeners({
                 ? `${currentAccumulated}\n\n${content}`
                 : currentAccumulated
               : content;
+            const isAgent =
+              mergedContent?.includes("agent-step") || mergedContent?.includes("agent-decision");
 
             setMessagesRef.current((prev) =>
               prev.map((msg) =>
@@ -293,6 +301,9 @@ export function useMcpListeners({
                       content: mergedContent,
                       isHidden: false,
                       isToolLoading: false,
+                      summary_text: isAgent
+                        ? "エージェントによる解析を開始"
+                        : msg.summary_text,
                     } as Message)
                   : msg
               )

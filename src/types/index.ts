@@ -50,7 +50,7 @@ export interface AgentResponseMessage extends BaseMessage {
   status?: undefined;
   action_name?: undefined;
   tool_id?: undefined;
-  summary_text?: undefined;
+  summary_text?: string;
   raw_data?: undefined;
   args?: undefined;
   saved_path?: undefined;

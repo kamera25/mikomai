@@ -40,6 +40,10 @@ impl AgentLoop {
                 has_image: false,
             }),
         );
+        let _ = self.window.emit(
+            "chat-event",
+            ChatEvent::AgentSelected("エージェントによる解析を開始".to_string()),
+        );
 
         let mut final_report = String::new();
         let mut initial_objective: Option<String> = None;

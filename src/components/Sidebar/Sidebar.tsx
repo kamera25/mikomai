@@ -101,7 +101,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                       )}
                     </>
                   ) : (
-                    m.summary_text || m.content
+                    m.summary_text ||
+                    (m.content?.includes("agent-step") || m.content?.includes("agent-decision")
+                      ? "エージェントによる解析を開始"
+                      : m.content)
                   )}
                 </span>
               </div>
