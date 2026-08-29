@@ -17,7 +17,7 @@ impl RoutingPipeline
     /// Clarification message to ask the user for intent
     pub fn build_clarification_message() -> String
     {
-        "ご質問の意図を確認させてください。\n\n```json\n{\n  \"tool_name\": \"ask_user_choice\",\n  \"params\": {\n    \"title\": \"ご質問の意図の確認\",\n    \"message\": \"ご質問の意図を確認させてください。以下のどれに該当しますか？\",\n    \"options\": [\n      \"1. ネットワーク機器の調査 (INVESTIGATE)\",\n      \"2. 技術知識の解説 (KNOWLEDGE)\",\n      \"3. Config作成 (BUILDER)\"\n    ]\n  }\n}\n```".to_string()
+        "ご質問の意図を確認させてください。\n\n```json\n{\n  \"tool_name\": \"ask_user_choice\",\n  \"params\": {\n    \"title\": \"ご質問の意図の確認\",\n    \"message\": \"ご質問の意図を確認させてください。以下のどれに該当しますか？\",\n    \"options\": [\n      \"1. ネットワーク機器の調査 (AGENT)\",\n      \"2. 技術知識の解説 (KNOWLEDGE)\",\n      \"3. Config作成 (BUILDER)\"\n    ]\n  }\n}\n```".to_string()
     }
 
     /// Primary routing method executing Shortcut -> LLM Router pipeline
@@ -92,7 +92,7 @@ impl RoutingPipeline
             .routes
             .first()
             .copied()
-            .unwrap_or(Route::Investigate);
+            .unwrap_or(Route::Agent);
         let subsequent_route = route_result.routes.get(1).copied();
 
         Ok(RoutingDecision {

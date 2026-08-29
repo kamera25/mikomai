@@ -53,8 +53,8 @@ impl Router
         let schema = r#"{
             "type": "object",
             "properties": {
-                "first_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "PLOTTER", "BUILDER"] },
-                "subsequent_route": { "type": "string", "enum": ["INVESTIGATE", "KNOWLEDGE", "ANALYSIS", "PLOTTER", "BUILDER", "NONE"] },
+                "first_route": { "type": "string", "enum": ["AGENT", "KNOWLEDGE", "ANALYSIS", "PLOTTER", "BUILDER"] },
+                "subsequent_route": { "type": "string", "enum": ["AGENT", "KNOWLEDGE", "ANALYSIS", "PLOTTER", "BUILDER", "NONE"] },
                 "subsequent_task": { "type": "string" },
                 "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
             },
@@ -199,14 +199,14 @@ mod tests
     {
         let markdown_input = r#"```json
         {
-            "first_route": "INVESTIGATE",
+            "first_route": "AGENT",
             "subsequent_route": "NONE",
             "subsequent_task": "NONE",
             "confidence": 0.8
         }
         ```"#;
         let res = parse_route_output(markdown_input);
-        assert_eq!(res.routes, vec![Route::Investigate]);
+        assert_eq!(res.routes, vec![Route::Agent]);
         assert_eq!(res.subsequent_task, None);
         assert!((res.confidence - 0.8).abs() < f32::EPSILON);
     }
@@ -216,12 +216,12 @@ mod tests
     {
         let fallback_input = r#"{
             'first_route': 'ANALYSIS',
-            'subsequent_route': 'INVESTIGATE',
+            'subsequent_route': 'AGENT',
             'subsequent_task': 'Troubleshoot OSPF',
             'confidence': 0.7,
         "#;
         let res = parse_route_output(fallback_input);
-        assert_eq!(res.routes, vec![Route::Analysis, Route::Investigate]);
+        assert_eq!(res.routes, vec![Route::Analysis, Route::Agent]);
         assert_eq!(res.subsequent_task, Some("Troubleshoot OSPF".to_string()));
         assert!((res.confidence - 0.7).abs() < f32::EPSILON);
     }

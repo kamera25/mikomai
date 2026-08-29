@@ -17,7 +17,7 @@ pub use summarization::SummarizationWorker;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route
 {
-    Investigate,
+    Agent,
     Knowledge,
     Analysis,
     Plotter,
@@ -32,7 +32,13 @@ impl std::str::FromStr for Route
     fn from_str(s: &str) -> Result<Self, Self::Err>
     {
         let upper = s.to_uppercase();
-        let route = if upper.contains("KNOWLEDGE")
+        let route = if upper.contains("AGENT") || upper.contains("INVESTIGATE")
+        {
+            // INVESTIGATE is accepted for router-output compatibility with
+            // older persisted prompts, but AGENT is the canonical route.
+            Route::Agent
+        }
+        else if upper.contains("KNOWLEDGE")
         {
             Route::Knowledge
         }
@@ -54,7 +60,7 @@ impl std::str::FromStr for Route
         }
         else
         {
-            Route::Investigate
+            Route::Agent
         };
         Ok(route)
     }
