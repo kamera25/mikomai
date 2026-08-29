@@ -7,7 +7,7 @@ pub use extract::*;
 pub use flow::*;
 pub use registry::*;
 
-use tauri::{AppHandle, State, Window};
+use tauri::{AppHandle, Emitter, State, Window};
 
 use crate::mcp::protocol::ChatRequest;
 
@@ -54,9 +54,9 @@ pub async fn handle_mcp_message(
 
     let ChatRequest {
         user_message,
-        summaries: _,
+        summaries,
         recent_ips: _,
-        history_limit: _,
+        history_limit,
         mcp_timeout: _,
         attachments,
     } = payload;
@@ -146,10 +146,72 @@ pub async fn handle_mcp_message(
         return Ok(());
     }
 
-    // Execute via AgentLoop (Network Agent Harness Core)
-    let mut agent_loop = crate::harness::agent_loop::AgentLoop::new(app, window, 10);
-    agent_loop.run(final_user_message, &*llama_state).await?;
+    // Select from the user's request, never from attachment contents. An
+    // attached command example must not by itself escalate a documentation
+    // question into an autonomous device investigation.
+    match crate::harness::dispatch::select_dispatch_mode(&user_message)
+    {
+        crate::harness::dispatch::DispatchMode::Agent =>
+        {
+            // AgentLoop owns live network observation and tool execution.
+            // Its policy validator remains the only route to side effects.
+            let mut agent_loop = crate::harness::agent_loop::AgentLoop::new(app, window, 10);
+            agent_loop.run(final_user_message, &*llama_state).await?;
+        }
+        crate::harness::dispatch::DispatchMode::Worker =>
+        {
+            run_worker_request(
+                window,
+                final_user_message,
+                &*llama_state,
+                crate::mcp::executor::extract::get_history_block_rust(&summaries, history_limit),
+                attachments.as_ref().map_or(false, |items| items.iter().any(|item| {
+                    matches!(item.mime_type, crate::history::AttachmentType::Image)
+                })),
+            )
+            .await?;
+        }
+    }
 
     Ok(())
 }
 
+/// Runs the existing Router -> specialised Worker pipeline for bounded work.
+/// Workers may provide guidance or a draft, but they do not execute MCP tools
+/// from this entry point. Device I/O must enter through `AgentLoop` above.
+async fn run_worker_request(
+    window: Window,
+    user_message: String,
+    llama_state: &crate::llm::llm::LlamaState,
+    history_block: String,
+    has_attachments: bool,
+) -> Result<(), String>
+{
+    let task_id = uuid::Uuid::new_v4();
+    let _ = window.emit(
+        "chat-event",
+        crate::mcp::protocol::ChatEvent::McpInitialStarted(
+            crate::mcp::protocol::InitialStartedPayload {
+                task_id,
+                has_image: has_attachments,
+            },
+        ),
+    );
+
+    let prompt = format!("【ユーザー入力】\n{}{}", user_message, history_block);
+    let response = crate::llm::llm::ask_llm_initial_internal(window.clone(), prompt, llama_state)
+        .await
+        .map(|(response, _route)| response)
+        .unwrap_or_else(|error| format!("回答の生成に失敗しました: {}", error));
+
+    let _ = window.emit(
+        "chat-event",
+        crate::mcp::protocol::ChatEvent::McpInitialFinished(
+            crate::mcp::protocol::InitialFinishedPayload {
+                task_id,
+                content: response,
+            },
+        ),
+    );
+    Ok(())
+}
