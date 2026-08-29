@@ -20,6 +20,8 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
 3. 【RAG検索（query_nw_db）の必須規則】
    - 検索クエリ（`query` 引数）は英語の文章ではなく、必ず**日本語のキーワードベース**（例: `[Context: Yamaha] NTP 設定 確認`）で出力してください。
    - **特定のメーカーまたは登録機器が判明している場合は、必ず `query` 引数の冒頭に `[Context: メーカー名または機器名]` （例: `[Context: Yamaha] NTP 設定 確認`、`[Context: Cisco] ルーティング 確認`、`[Context: NakaokuGW] 設定 表示`）を付与してください。**
+   - **登録済み機器のベンダーが判明しており、設定・確認コマンドの構文や手順が不明な場合は、コマンドを実行する前であっても必ず `query_nw_db` を実行してください。** この場合は `ASK_HUMAN` を選択してはいけません。
+   - コマンド仕様が不明であることだけを理由に、ユーザーへCLIコマンドを質問してはいけません。まずNW-DBを検索し、検索結果が不足して初めて必要最小限の情報を `ASK_HUMAN` で確認してください。
 4. アクションスペースは以下のいずれかを選択すること:
    - "OBSERVE": 調査コマンド(network_show)、ドキュメント検索(query_nw_db)、Ping/Traceroute等のToolを実行して状態を確認
    - "VERIFY": 設定変更後や問題解消後の検証確認
@@ -88,6 +90,63 @@ const DECISION_JSON_SCHEMA: &str = r#"{
 
 pub struct LlmPlanner;
 
+/// Convert command-specification questions into a vendor-scoped RAG lookup.
+/// This is a deterministic backstop for cases where the model ignores the
+/// planner prompt and asks the user for a command that NW-DB may already have.
+fn fallback_to_rag_for_known_vendor(
+    decision: &mut Decision,
+    device_vendors: &[(String, String)],
+    goal: &str,
+) {
+    if decision.action_type != crate::state::events::ActionType::AskHuman {
+        return;
+    }
+
+    let command_question = format!(
+        "{} {}",
+        decision.objective,
+        decision.reason.join(" ")
+    )
+    .to_lowercase();
+    let is_command_question = ["コマンド", "command", "構文", "仕様", "cli", "hostname"]
+        .iter()
+        .any(|term| command_question.contains(term));
+    if !is_command_question {
+        return;
+    }
+
+    let target = decision.target.as_deref().or_else(|| {
+        device_vendors
+            .iter()
+            .find(|(hostname, _)| {
+                let hostname = hostname.to_lowercase();
+                command_question.contains(&hostname) || goal.to_lowercase().contains(&hostname)
+            })
+            .map(|(hostname, _)| hostname.as_str())
+    });
+    let Some(target) = target else { return };
+    let Some((hostname, vendor)) = device_vendors
+        .iter()
+        .find(|(hostname, _)| hostname.eq_ignore_ascii_case(target))
+    else {
+        return;
+    };
+
+    let brand = crate::mcp::brands::get_brand(vendor).unwrap_or(vendor);
+    decision.action_type = crate::state::events::ActionType::Observe;
+    decision.objective = format!("{} ({}) のコマンド仕様をNW-DBで調査する", hostname, brand);
+    decision.tool = Some("query_nw_db".to_string());
+    decision.target = Some(hostname.clone());
+    decision.parameters = serde_json::json!({
+        "query": format!("[Context: {}] {} コマンド 設定", brand, goal),
+    });
+    decision.reason = vec![
+        format!("{} のベンダーは {} と判明しているため、ユーザーにコマンドを確認する前にNW-DBを検索する。", hostname, brand),
+    ];
+    decision.expected_observation = vec!["対象機器で使える設定コマンドと手順".to_string()];
+    decision.final_answer = None;
+}
+
 impl LlmPlanner {
     pub async fn plan(
         app: &AppHandle,
@@ -95,6 +154,14 @@ impl LlmPlanner {
         network_state: &NetworkState,
     ) -> Result<Decision, String> {
         let connections = crate::connections::load_connections(app.clone()).unwrap_or_default();
+        let device_vendors: Vec<(String, String)> = connections
+            .iter()
+            .filter_map(|conn| {
+                conn.vendor_type
+                    .as_ref()
+                    .map(|vendor| (conn.hostname.to_string(), vendor.to_string()))
+            })
+            .collect();
         let mut devices_context = String::new();
         if !connections.is_empty() {
             devices_context.push_str("【登録機器情報 (Registered Devices)】\n");
@@ -140,6 +207,56 @@ impl LlmPlanner {
 
         log::info!("================ [LLM Planner JSON Output] ================\n{}\n===========================================================", response);
 
-        parse_decision_from_json(&response)
+        let mut decision = parse_decision_from_json(&response)?;
+        fallback_to_rag_for_known_vendor(&mut decision, &device_vendors, initial_goal);
+        Ok(decision)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::planner::decision::parse_decision_from_json;
+
+    #[test]
+    fn known_vendor_command_question_falls_back_to_rag() {
+        let mut decision = parse_decision_from_json(r#"{
+            "action_type": "ASK_HUMAN",
+            "objective": "F220 の hostname 設定コマンドを確認する",
+            "target": "F220",
+            "reason": ["FITELnet のコマンド仕様が不明"]
+        }"#).unwrap();
+
+        fallback_to_rag_for_known_vendor(
+            &mut decision,
+            &[("F220".to_string(), "furukawa_fitelnet".to_string())],
+            "F220 に hostname aaa を設定する",
+        );
+
+        assert_eq!(decision.action_type, crate::state::events::ActionType::Observe);
+        assert_eq!(decision.tool.as_deref(), Some("query_nw_db"));
+        assert_eq!(decision.target.as_deref(), Some("F220"));
+        assert_eq!(
+            decision.parameters.get("query").and_then(|value| value.as_str()),
+            Some("[Context: furukawa_fitelnet] F220 に hostname aaa を設定する コマンド 設定")
+        );
+    }
+
+    #[test]
+    fn non_command_question_remains_ask_human() {
+        let mut decision = parse_decision_from_json(r#"{
+            "action_type": "ASK_HUMAN",
+            "objective": "変更実施の承認を確認する",
+            "target": "F220",
+            "reason": ["設定変更にはユーザー承認が必要"]
+        }"#).unwrap();
+
+        fallback_to_rag_for_known_vendor(
+            &mut decision,
+            &[("F220".to_string(), "furukawa_fitelnet".to_string())],
+            "F220 に hostname aaa を設定する",
+        );
+
+        assert_eq!(decision.action_type, crate::state::events::ActionType::AskHuman);
     }
 }
