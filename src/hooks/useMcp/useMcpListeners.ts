@@ -53,7 +53,6 @@ export function useMcpListeners({
                 ? {
                     ...msg,
                     content: targetContent,
-                    isToolLoading: false,
                     isHidden: false,
                   }
                 : msg
