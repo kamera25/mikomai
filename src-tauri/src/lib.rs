@@ -1,4 +1,5 @@
 mod connections;
+pub mod audit;
 pub(crate) mod crypto;
 pub(crate) mod error;
 pub mod harness;
@@ -7,6 +8,7 @@ mod llm;
 mod logger;
 pub(crate) mod mcp;
 mod network;
+pub mod operations;
 pub mod planner;
 pub(crate) mod scheduled_tasks;
 pub(crate) mod schema;
@@ -41,6 +43,7 @@ pub fn run()
         .manage(llama_state)
         .manage(rag_state)
         .manage(mcp::config_helper::ChoiceManager::new())
+        .manage(operations::OperationStore::new())
         .manage(mcp::config_helper::InterfaceChoiceManager::new())
         .manage(mcp::config_helper::IpAddressChoiceManager::new())
         .invoke_handler(tauri::generate_handler![
@@ -97,6 +100,8 @@ pub fn run()
             mcp::config_helper::validate_cisco_config,
             mcp::config_helper::convert_cisco_config,
             mcp::config_helper::submit_user_choice,
+            operations::create_operation_plan,
+            operations::approve_operation_plan,
             mcp::config_helper::ask_user_choice,
             mcp::config_helper::submit_interface_choice,
             mcp::config_helper::ask_interface_choice,

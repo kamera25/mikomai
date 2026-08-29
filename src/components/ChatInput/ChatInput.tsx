@@ -75,6 +75,7 @@ export const ChatInput = memo(
     const [isDragging, setIsDragging] = useState(false);
     const [showVisionWarning, setShowVisionWarning] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const processDroppedPathsRef = useRef<(paths: string[]) => Promise<void>>(async () => {});
 
     const isImageFile = (file: File): boolean => {
       if (file.type && file.type.startsWith("image/")) return true;
@@ -152,7 +153,7 @@ export const ChatInput = memo(
         });
         if (selected) {
           const paths = Array.isArray(selected) ? selected : [selected];
-          await processDroppedPaths(paths);
+          await processDroppedPathsRef.current(paths);
         }
       } catch (err) {
         console.error("Failed to open file dialog, falling back to input:", err);
@@ -223,6 +224,7 @@ export const ChatInput = memo(
           console.error("Failed to read dropped files as attachments:", err);
         }
       };
+      processDroppedPathsRef.current = processDroppedPaths;
 
       const setupTauriDnd = async () => {
         try {
@@ -252,6 +254,7 @@ export const ChatInput = memo(
       setupTauriDnd();
 
       return () => {
+        processDroppedPathsRef.current = async () => {};
         window.removeEventListener("dragover", handleWindowDragOver);
         window.removeEventListener("drop", handleWindowDrop);
         if (unlistenDrop) unlistenDrop();
@@ -653,4 +656,3 @@ export const ChatInput = memo(
 );
 
 ChatInput.displayName = "ChatInput";
-

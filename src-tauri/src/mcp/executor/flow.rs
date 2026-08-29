@@ -42,6 +42,22 @@ pub async fn execute_mcp_tool_raw(
     mcp_timeout: u64,
 ) -> Result<crate::network::CommandResult, String>
 {
+    // Enforce the safety boundary before adding user-controlled arguments or
+    // dispatching to an adapter.  The approval/audit route for Change tools is
+    // introduced separately; direct calls must never bypass it.
+    let operation_class = crate::operations::classify_tool(&tool_id);
+    if let Err(error) = crate::operations::allow_unattended_execution(&tool_id) {
+        crate::audit::record(
+            &app,
+            &tool_id,
+            None,
+            operation_class,
+            "blocked",
+            &serde_json::json!({ "reason": error, "args": args }),
+        );
+        return Err(error);
+    }
+
     // 1. Normalize arguments by injecting userMessage/user_message
     let mut processed_args = args.clone();
     if let serde_json::Value::Object(ref mut map) = processed_args
@@ -129,6 +145,15 @@ pub async fn execute_mcp_tool_raw(
         None => None,
     };
 
+    crate::audit::record(
+        &app,
+        &tool_id,
+        resolved_host.clone(),
+        operation_class,
+        "started",
+        &processed_args,
+    );
+
     // Emit started event
     let start_payload = ToolStartedPayload {
         task_id: task_id.clone(),
@@ -209,6 +234,19 @@ pub async fn execute_mcp_tool_raw(
         cache_time: result.cache_time.clone(),
     };
     let _ = window.emit("chat-event", ChatEvent::McpToolFinished(finished_payload));
+
+    crate::audit::record(
+        &app,
+        &tool_id,
+        resolved_host,
+        operation_class,
+        if result.success { "succeeded" } else { "failed" },
+        &serde_json::json!({
+            "args": processed_args,
+            "saved_path": result.saved_path,
+            "is_cached": result.is_cached,
+        }),
+    );
 
     Ok(result)
 }

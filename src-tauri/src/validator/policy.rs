@@ -4,6 +4,14 @@ pub struct PolicyValidator;
 
 impl PolicyValidator {
     pub fn validate_action(action: &Action) -> Result<(), String> {
+        if let Some(tool) = &action.tool {
+            crate::operations::allow_unattended_execution(tool)?;
+        }
+
+        if matches!(action.action_type, ActionType::Configure | ActionType::Rollback) {
+            return Err("Change actions require an approved operation plan; direct agent execution is disabled.".to_string());
+        }
+
         if let Some(ref tool) = action.tool {
             if tool == "network_config" || action.action_type == ActionType::Configure {
                 // Check for high-risk commands if command parameter is present

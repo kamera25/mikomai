@@ -11,6 +11,7 @@ use arrow_array::{Array, Float32Array, LargeStringArray, RecordBatch, StringArra
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::connect;
 use lancedb::connection::Connection;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
@@ -145,6 +146,15 @@ pub async fn ingest_document(_path: String) -> Result<String, String>
 use crate::mcp::protocol::McpToolResult;
 
 pub type RagResult = McpToolResult;
+
+/// Stable provenance for a retrieved knowledge chunk. Answers that rely on
+/// RAG must expose this information to the user before it can inform changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RagCitation {
+    pub source_path: String,
+    pub similarity_score: f32,
+    pub rank: usize,
+}
 
 #[tauri::command]
 pub async fn query_nw_db(
@@ -288,10 +298,12 @@ fn format_search_results(batches: Vec<RecordBatch>) -> Result<RagResult, String>
             };
 
             let score = (1.0 - distance).max(0.0);
-            context.push_str(&format!(
-                "\n--- 検索結果 {} (ソース: {}, 類似度スコア: {:.2}) ---\n{}\n",
-                count, path, score, text
-            ));
+            let citation = RagCitation {
+                source_path: path.to_string(),
+                similarity_score: score,
+                rank: count,
+            };
+            context.push_str(&format_citation(&citation, text));
             count += 1;
         }
     }
@@ -310,6 +322,14 @@ fn format_search_results(batches: Vec<RecordBatch>) -> Result<RagResult, String>
             output: context,
         })
     }
+}
+
+fn format_citation(citation: &RagCitation, text: &str) -> String
+{
+    format!(
+        "\n--- 根拠 [{}] (ソース: {}, 類似度スコア: {:.2}) ---\n{}\n",
+        citation.rank, citation.source_path, citation.similarity_score, text
+    )
 }
 
 #[cfg(test)]
@@ -392,5 +412,18 @@ mod tests
         )
         .unwrap();
         assert!(has_valid_results(&[batch_no_dist]));
+    }
+
+    #[test]
+    fn citation_keeps_source_and_rank_visible_to_callers()
+    {
+        let citation = RagCitation {
+            source_path: "nw-docs/cisco/show_version.md".to_string(),
+            similarity_score: 0.82,
+            rank: 1,
+        };
+        let result = format_citation(&citation, "show version の説明");
+        assert!(result.contains("根拠 [1]"));
+        assert!(result.contains("nw-docs/cisco/show_version.md"));
     }
 }

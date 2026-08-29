@@ -1,4 +1,3 @@
-import React from "react";
 import { QuestionItem } from "../../hooks/useQuestionQueue";
 import { ChoicePanel } from "./ChoicePanel";
 import { InterfaceChoicePanel } from "./InterfaceChoicePanel";

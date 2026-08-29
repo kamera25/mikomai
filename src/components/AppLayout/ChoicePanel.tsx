@@ -1,4 +1,3 @@
-import React from "react";
 import { ChoiceConfig } from "../../hooks/useQuestionQueue";
 
 interface ChoicePanelProps {

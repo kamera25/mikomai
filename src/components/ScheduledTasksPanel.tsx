@@ -181,7 +181,7 @@ interface ScheduledTask {
   prompt: string;
 }
 
-export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClose }) => {
+export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClose: _onClose }) => {
   const { t } = useTranslation();
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [searchQuery, setSearchQuery] = useState("");

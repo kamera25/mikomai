@@ -58,7 +58,7 @@ export const getDeviceTypeAlias = (
 };
 
 export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = ({
-  onClose,
+  onClose: _onClose,
   onConnectionsChanged,
 }) => {
   const { t } = useTranslation();

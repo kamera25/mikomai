@@ -169,6 +169,38 @@ impl ToolKind
             Self::FetchConfig | Self::FetchRouting | Self::FetchArp | Self::NetworkShow
         )
     }
+
+    /// Tools in this set may inspect the local system or network devices but
+    /// must not change a device, transfer destination, or serial-console state.
+    pub fn is_read_only(&self) -> bool
+    {
+        matches!(
+            self,
+            Self::SelfNetworkPing
+                | Self::SelfNetworkTraceroute
+                | Self::SelfNetworkTestConnection
+                | Self::SelfNetworkTestNetConnection
+                | Self::NetworkGetHosts
+                | Self::NetworkQueryNwDb
+                | Self::QueryNwDb
+                | Self::QueryRag
+                | Self::SelfNetworkArp
+                | Self::SelfNetworkRoute
+                | Self::NetworkGetIpInfo
+                | Self::NetworkListSerialPorts
+                | Self::NetworkShow
+                | Self::FetchConfig
+                | Self::FetchRouting
+                | Self::FetchArp
+                | Self::RequireHostRegistered
+                | Self::SelfNetworkNwdiag
+                | Self::ValidateCiscoConfig
+                | Self::ConvertCiscoConfig
+                | Self::AskUserChoice
+                | Self::AskInterfaceChoice
+                | Self::AskIpaddressChoice
+        )
+    }
 }
 
 impl std::str::FromStr for ToolKind

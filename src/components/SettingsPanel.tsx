@@ -44,7 +44,7 @@ export const PRESET_MODELS: ModelPreset[] = [
   },
 ];
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _onClose }) => {
   const { t } = useTranslation();
   const {
     historyLimit,

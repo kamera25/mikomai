@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./StatusBar.css";
 import { BoxIcon } from "../Icons";
@@ -36,4 +36,3 @@ export const StatusBar = memo(function StatusBar({ modelStatus, modelPath }: Sta
 });
 
 StatusBar.displayName = "StatusBar";
-
