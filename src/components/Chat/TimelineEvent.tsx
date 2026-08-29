@@ -22,7 +22,7 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
   const { t } = useTranslation();
   const isNwDb = msg.tool_id === "query_nw_db" || msg.tool_id === "network_query_nw_db";
   const isChoice = msg.tool_id === "ask_user_choice" || msg.tool_id === "ask_interface_choice" || msg.tool_id === "ask_ipaddress_choice";
-  const defaultExpanded = msg.event_type === "ToolExecution" && !isNwDb && !isChoice;
+  const defaultExpanded = false;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
