@@ -15,7 +15,6 @@ const mockSetDbPath = vi.fn();
 const mockSetIpVersion = vi.fn();
 const mockSetConsolePort = vi.fn();
 const mockSetConsoleBaudRate = vi.fn();
-const mockSetPreloadInvestigate = vi.fn();
 const mockSetPreloadKnowledge = vi.fn();
 const mockSetPreloadAnalysis = vi.fn();
 const mockSetPreloadRag = vi.fn();
@@ -44,8 +43,6 @@ vi.mock("../../contexts/SettingsContext", () => ({
     setConsolePort: mockSetConsolePort,
     consoleBaudRate: 9600,
     setConsoleBaudRate: mockSetConsoleBaudRate,
-    preloadInvestigate: true,
-    setPreloadInvestigate: mockSetPreloadInvestigate,
     preloadKnowledge: true,
     setPreloadKnowledge: mockSetPreloadKnowledge,
     preloadAnalysis: true,
@@ -344,4 +341,3 @@ describe("SettingsPanel", () => {
     }
   });
 });
-

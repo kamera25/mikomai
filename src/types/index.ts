@@ -219,7 +219,6 @@ export interface SystemSettings {
   ipVersion?: string;
   consolePort?: string | null;
   consoleBaudRate?: number;
-  preloadInvestigate?: boolean;
   preloadKnowledge?: boolean;
   preloadAnalysis?: boolean;
   preloadRag?: boolean;

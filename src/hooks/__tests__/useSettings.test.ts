@@ -25,7 +25,6 @@ describe("useSettings", () => {
       ipVersion: "ipv4",
       consolePort: "COM3",
       consoleBaudRate: 115200,
-      preloadInvestigate: false,
       preloadKnowledge: false,
       preloadAnalysis: false,
       preloadRag: false,

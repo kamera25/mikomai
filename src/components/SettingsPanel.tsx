@@ -67,8 +67,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
     setConsolePort,
     consoleBaudRate,
     setConsoleBaudRate,
-    preloadInvestigate,
-    setPreloadInvestigate,
     preloadKnowledge,
     setPreloadKnowledge,
     preloadAnalysis,
@@ -197,11 +195,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
   const handleConsoleBaudRateChange = (val: number) => {
     setConsoleBaudRate(val);
     saveAllSettings({ consoleBaudRate: val });
-  };
-
-  const handlePreloadInvestigateChange = (val: boolean) => {
-    setPreloadInvestigate(val);
-    saveAllSettings({ preloadInvestigate: val });
   };
 
   const handlePreloadKnowledgeChange = (val: boolean) => {
@@ -734,14 +727,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
                 {t("settings.desc_kv_preload")}
               </p>
               <div className="preload-grid">
-                <label className="preload-label">
-                  <input
-                    type="checkbox"
-                    checked={preloadInvestigate}
-                    onChange={(e) => handlePreloadInvestigateChange(e.target.checked)}
-                  />
-                  {t("settings.worker_investigator")}
-                </label>
                 <label className="preload-label">
                   <input
                     type="checkbox"

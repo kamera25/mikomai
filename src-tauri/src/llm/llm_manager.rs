@@ -12,7 +12,6 @@ use tauri::Emitter;
 pub struct SharedWorkers
 {
     pub router: std::sync::Mutex<crate::llm::worker::Router>,
-    pub investigate: std::sync::Mutex<crate::llm::worker::InvestigateWorker>,
     pub knowledge: std::sync::Mutex<crate::llm::worker::KnowledgeWorker>,
     pub analysis: std::sync::Mutex<crate::llm::worker::AnalysisWorker>,
     pub rag: std::sync::Mutex<crate::llm::worker::RagWorker>,

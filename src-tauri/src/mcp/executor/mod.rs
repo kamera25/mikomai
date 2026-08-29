@@ -149,7 +149,7 @@ pub async fn handle_mcp_message(
     // Select from the user's request, never from attachment contents. An
     // attached command example must not by itself escalate a documentation
     // question into an autonomous device investigation.
-    match crate::harness::dispatch::select_dispatch_mode(&user_message)
+    match crate::harness::dispatch::select_dispatch_mode_for_request(&app, &user_message)
     {
         crate::harness::dispatch::DispatchMode::Agent =>
         {

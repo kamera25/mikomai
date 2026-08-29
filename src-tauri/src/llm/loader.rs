@@ -2,8 +2,8 @@ use crate::error::TauriError;
 use crate::llm::llm::{LlamaState, LlmError, ModelState};
 use crate::llm::llm_manager::SharedModel;
 use crate::llm::worker::{
-    AnalysisWorker, BuilderWorker, InvestigateWorker, KnowledgeWorker, LlmWorker, PlotterWorker,
-    RagWorker, Router, SummarizationWorker,
+    AnalysisWorker, BuilderWorker, KnowledgeWorker, LlmWorker, PlotterWorker, RagWorker, Router,
+    SummarizationWorker,
 };
 use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::model::LlamaModel;
@@ -79,8 +79,6 @@ pub async fn load_model(
     });
 
     // Create fast uninitialized shell instances (preload: false)
-    let investigate =
-        InvestigateWorker::new(&model_arc, &state.backend, false).map_err(LlmError::Worker)?;
     let knowledge =
         KnowledgeWorker::new(&model_arc, &state.backend, false).map_err(LlmError::Worker)?;
     let analysis =
@@ -100,7 +98,6 @@ pub async fn load_model(
     let shared_model = Arc::new(SharedModel {
         workers: Some(crate::llm::llm_manager::SharedWorkers {
             router: std::sync::Mutex::new(router),
-            investigate: std::sync::Mutex::new(investigate),
             knowledge: std::sync::Mutex::new(knowledge),
             analysis: std::sync::Mutex::new(analysis),
             rag: std::sync::Mutex::new(rag),
@@ -127,13 +124,6 @@ pub async fn load_model(
     let backend_bg = state.backend.clone();
     let shared_bg = shared_model.clone();
     tokio::task::spawn_blocking(move || {
-        if settings.preload_investigate
-        {
-            if let Ok(mut w) = shared_bg.investigate.lock()
-            {
-                let _ = w.ensure_initialized(&model_bg, &backend_bg);
-            }
-        }
         if settings.preload_knowledge
         {
             if let Ok(mut w) = shared_bg.knowledge.lock()

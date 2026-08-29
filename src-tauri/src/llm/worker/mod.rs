@@ -3,14 +3,12 @@ pub use device_context::{format_device_contexts, resolve_device_contexts, Device
 pub mod analysis;
 pub mod builder;
 pub mod device_context;
-pub mod investigate;
 pub mod knowledge;
 pub mod plotter;
 pub mod rag;
 pub mod summarization;
 pub use analysis::AnalysisWorker;
 pub use builder::BuilderWorker;
-pub use investigate::InvestigateWorker;
 pub use knowledge::KnowledgeWorker;
 pub use plotter::PlotterWorker;
 pub use rag::RagWorker;

@@ -211,7 +211,6 @@
     "label_gguf_file": "ファイル名 (GGUF)",
     "label_kv_preload": "起動時・モデル読込時のKVキャッシュ プリロード設定",
     "desc_kv_preload": "チェックを外したワーカーは、初回呼出時（遅延読込）にキャッシュを生成するため、起動時のメモリ消費量と起動時間を削減できます。",
-    "worker_investigator": "Investigator (調査員)",
     "worker_knowledge": "Knowledge (知識専門家)",
     "worker_analyst": "Analyst (分析官)",
     "worker_rag": "RAG Worker (RAG回答員)",

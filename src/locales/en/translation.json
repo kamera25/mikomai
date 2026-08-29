@@ -211,7 +211,6 @@
     "label_gguf_file": "File Name (GGUF)",
     "label_kv_preload": "KV Cache Preload on Startup/Model Load",
     "desc_kv_preload": "Workers unchecked will generate cache on first call (lazy load), reducing memory usage and startup time.",
-    "worker_investigator": "Investigator",
     "worker_knowledge": "Knowledge Expert",
     "worker_analyst": "Analyst",
     "worker_rag": "RAG Worker",

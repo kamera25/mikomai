@@ -12,11 +12,20 @@ pub enum DispatchMode {
     Agent,
 }
 
+fn is_explanatory_request(normalized: &str) -> bool {
+    [
+        "とは", "仕組み", "解説", "設定例", "サンプル", "作成して", "生成して", "変換して",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
 /// Returns the least-powerful execution model capable of handling `message`.
 ///
-/// This is deliberately deterministic.  It is a safety gate, not an LLM
-/// classification: an LLM may select a specialised worker *after* this gate,
-/// but cannot silently escalate an explanatory request into device access.
+/// This is deliberately deterministic. Live investigations always use
+/// `AgentLoop`; there is no single-turn investigation worker to fall back to.
+/// Explanatory and authoring requests remain workers unless they explicitly
+/// request an observation of the current environment.
 pub fn select_dispatch_mode(message: &str) -> DispatchMode {
     let normalized = message.to_lowercase();
 
@@ -24,6 +33,11 @@ pub fn select_dispatch_mode(message: &str) -> DispatchMode {
         // Explicit delegation
         "自動で調査",
         "自律調査",
+        "調査して",
+        "調べて",
+        "確認して",
+        "取得して",
+        "表示して",
         "切り分けて",
         "切り分け",
         "診断して",
@@ -36,6 +50,12 @@ pub fn select_dispatch_mode(message: &str) -> DispatchMode {
         "疎通",
         "接続確認",
         "状態確認",
+        "状態を確認",
+        "設定を確認",
+        "設定確認",
+        "構成を確認",
+        "ログを確認",
+        "情報を取得",
         "障害",
         "ping",
         "traceroute",
@@ -49,10 +69,31 @@ pub fn select_dispatch_mode(message: &str) -> DispatchMode {
         "arp を確認",
     ];
 
-    if agent_markers
+    let explicitly_live = agent_markers
         .iter()
-        .any(|marker| normalized.contains(marker))
-    {
+        .any(|marker| normalized.contains(marker));
+    let is_explanation = is_explanatory_request(&normalized);
+
+    if explicitly_live && !is_explanation {
+        DispatchMode::Agent
+    } else {
+        DispatchMode::Worker
+    }
+}
+
+/// Upgrades requests that name a registered device to `AgentLoop` when they
+/// are asking for that device's current state. This matches the router's
+/// investigation intent without ever instantiating an investigation worker.
+pub fn select_dispatch_mode_for_request(
+    app: &tauri::AppHandle,
+    message: &str,
+) -> DispatchMode {
+    let mode = select_dispatch_mode(message);
+    if mode == DispatchMode::Agent || is_explanatory_request(&message.to_lowercase()) {
+        return mode;
+    }
+
+    if !crate::llm::worker::resolve_device_contexts(app, message).is_empty() {
         DispatchMode::Agent
     } else {
         DispatchMode::Worker
@@ -88,6 +129,22 @@ mod tests {
         assert_eq!(
             select_dispatch_mode("show ip route を実行して"),
             DispatchMode::Agent
+        );
+        assert_eq!(
+            select_dispatch_mode("R1 の状態を調べて"),
+            DispatchMode::Agent
+        );
+        assert_eq!(
+            select_dispatch_mode("NakaokuGW の設定を確認して"),
+            DispatchMode::Agent
+        );
+    }
+
+    #[test]
+    fn conceptual_requests_do_not_start_an_agent() {
+        assert_eq!(
+            select_dispatch_mode("OSPF の状態遷移とは？"),
+            DispatchMode::Worker
         );
     }
 }

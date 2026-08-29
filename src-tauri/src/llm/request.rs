@@ -151,7 +151,10 @@ pub fn get_worker_for_route(
 {
     match route
     {
-        Route::Investigate => Some(&shared.investigate),
+        // Live investigation is handled by AgentLoop, which owns planning,
+        // policy validation, tool execution, and observation.  It must never
+        // fall back to a single-turn worker that can only emit tool JSON.
+        Route::Investigate => None,
         Route::Knowledge => Some(&shared.knowledge),
         Route::Analysis => Some(&shared.analysis),
         Route::Plotter => Some(&shared.plotter),

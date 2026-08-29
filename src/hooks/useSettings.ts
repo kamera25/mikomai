@@ -23,7 +23,6 @@ export interface SettingsState {
   ipVersion: string;
   consolePort: string | null;
   consoleBaudRate: number;
-  preloadInvestigate: boolean;
   preloadKnowledge: boolean;
   preloadAnalysis: boolean;
   preloadRag: boolean;
@@ -47,7 +46,6 @@ const INITIAL_SETTINGS_STATE: SettingsState = {
   ipVersion: DEFAULT_IP_VERSION,
   consolePort: null,
   consoleBaudRate: 9600,
-  preloadInvestigate: false,
   preloadKnowledge: false,
   preloadAnalysis: false,
   preloadRag: false,
@@ -82,7 +80,6 @@ export function useSettings() {
             ...(loaded.ipVersion !== undefined && { ipVersion: loaded.ipVersion }),
             ...(loaded.consolePort !== undefined && { consolePort: loaded.consolePort }),
             ...(loaded.consoleBaudRate !== undefined && { consoleBaudRate: loaded.consoleBaudRate }),
-            ...(loaded.preloadInvestigate !== undefined && { preloadInvestigate: loaded.preloadInvestigate }),
             ...(loaded.preloadKnowledge !== undefined && { preloadKnowledge: loaded.preloadKnowledge }),
             ...(loaded.preloadAnalysis !== undefined && { preloadAnalysis: loaded.preloadAnalysis }),
             ...(loaded.preloadRag !== undefined && { preloadRag: loaded.preloadRag }),
@@ -129,7 +126,6 @@ export function useSettings() {
       ipVersion: updated.ipVersion,
       consolePort: updated.consolePort,
       consoleBaudRate: updated.consoleBaudRate,
-      preloadInvestigate: updated.preloadInvestigate,
       preloadKnowledge: updated.preloadKnowledge,
       preloadAnalysis: updated.preloadAnalysis,
       preloadRag: updated.preloadRag,
@@ -169,8 +165,6 @@ export function useSettings() {
     setConsolePort: (val: string | null | ((prev: string | null) => string | null)) => updateSetting("consolePort", val),
     consoleBaudRate: settings.consoleBaudRate,
     setConsoleBaudRate: (val: number | ((prev: number) => number)) => updateSetting("consoleBaudRate", val),
-    preloadInvestigate: settings.preloadInvestigate,
-    setPreloadInvestigate: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("preloadInvestigate", val),
     preloadKnowledge: settings.preloadKnowledge,
     setPreloadKnowledge: (val: boolean | ((prev: boolean) => boolean)) => updateSetting("preloadKnowledge", val),
     preloadAnalysis: settings.preloadAnalysis,

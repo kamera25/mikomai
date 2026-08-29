@@ -54,8 +54,6 @@ pub struct AppSettings
     #[validate(range(min = 110, max = 1000000))]
     pub console_baud_rate: Option<u32>,
     #[serde(default = "default_false")]
-    pub preload_investigate: bool,
-    #[serde(default = "default_false")]
     pub preload_knowledge: bool,
     #[serde(default = "default_false")]
     pub preload_analysis: bool,
@@ -102,7 +100,6 @@ impl Default for AppSettings
             ip_version: Some("auto".to_string()),
             console_port: None,
             console_baud_rate: Some(9600),
-            preload_investigate: false,
             preload_knowledge: false,
             preload_analysis: false,
             preload_rag: false,
@@ -219,7 +216,6 @@ mod tests
         assert_eq!(settings.ip_version, Some("auto".to_string()));
         assert!(settings.console_port.is_none());
         assert_eq!(settings.console_baud_rate, Some(9600));
-        assert!(!settings.preload_investigate);
         assert!(!settings.preload_knowledge);
         assert!(!settings.preload_analysis);
         assert!(!settings.preload_rag);
@@ -244,7 +240,6 @@ mod tests
             ip_version: Some("ipv6".to_string()),
             console_port: Some("/dev/ttyUSB0".to_string()),
             console_baud_rate: Some(115200),
-            preload_investigate: false,
             preload_knowledge: true,
             preload_analysis: false,
             preload_rag: true,
@@ -271,7 +266,6 @@ mod tests
         assert!(serialized.contains(r#""ipVersion":"ipv6""#));
         assert!(serialized.contains(r#""consolePort":"/dev/ttyUSB0""#));
         assert!(serialized.contains(r#""consoleBaudRate":115200"#));
-        assert!(serialized.contains(r#""preloadInvestigate":false"#));
         assert!(serialized.contains(r#""cacheExpiryMinutes":15"#));
         assert!(serialized.contains(r#""promptKeepTokens":500"#));
         assert!(serialized.contains(r#""visionEnabled":true"#));
@@ -291,7 +285,6 @@ mod tests
             ip_version: Some("auto".to_string()),
             console_port: None,
             console_baud_rate: Some(9600),
-            preload_investigate: false,
             preload_knowledge: false,
             preload_analysis: false,
             preload_rag: false,
