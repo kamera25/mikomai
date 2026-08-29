@@ -227,7 +227,7 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
               }}
             >
               <div className="timeline-status-icon">
-                {msg.status === "Running" && <div className="status-spinner-small"></div>}
+                {msg.status === "Running" && <div className="codex-pulse-indicator status-spinner-small"></div>}
                 {msg.status === "Success" && (
                   <span className="icon-success">
                     <CheckIcon size={14} strokeWidth={3} />
@@ -250,7 +250,9 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
                   )}
                 </div>
                 <span className="action-label">{msg.action_name}</span>
-                <span className="summary-content">{msg.summary_text}</span>
+                <span className={`summary-content ${msg.status === "Running" ? "codex-wave-text" : ""}`}>
+                  {msg.summary_text}
+                </span>
               </div>
               {msg.status !== "Running" && (
                 <div className="timeline-expand-icon">
@@ -421,50 +423,158 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
             </div>
           )}
 
-          {(!hasThought || remainingContent !== "") && (
-            <div className={`message-bubble markdown-body ${msg.status === "Pending" ? "pending" : ""}`}>
-              {msg.role === "ai" &&
-              (remainingContent.includes("考え中") ||
-                remainingContent.includes("画像の読み取り") ||
-                remainingContent === t("chat.thinking") ||
-                remainingContent === t("chat.analyzing") ||
-                remainingContent === t("chat.reading_image") ||
-                (msg.isToolLoading && (remainingContent === "" || remainingContent === t("chat.thinking") || remainingContent === t("chat.reading_image")))) ? (
-                <div className="thinking-indicator">
-                  <div className="status-spinner-small"></div>
-                  <span>{remainingContent || t("chat.thinking")}</span>
-                </div>
-              ) : (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                  components={{
-                    pre({ children }) {
-                      const codeElement = React.Children.toArray(children)[0];
-                      if (React.isValidElement(codeElement) && codeElement.props) {
-                        const codeText = String((codeElement.props as any).children || "").replace(/\n$/, "");
-                        return <Terminal content={codeText} />;
+          {(!hasThought || remainingContent !== "") && (() => {
+            // Normalize agent-step blocks:
+            // Find highest step number and update the first agent-step in-place while removing subsequent ones.
+            let processedContent = remainingContent;
+            const stepMatches = Array.from(
+              remainingContent.matchAll(/```agent-step[\s\S]*?\bstep:\s*(\d+)\b[\s\S]*?```/gi)
+            );
+
+            if (stepMatches.length > 0) {
+              const highestStep = stepMatches.reduce(
+                (max, m) => Math.max(max, parseInt(m[1], 10)),
+                1
+              );
+
+              let isFirst = true;
+              processedContent = remainingContent.replace(
+                /```agent-step[\s\S]*?```\n?/gi,
+                () => {
+                  if (isFirst) {
+                    isFirst = false;
+                    return `\`\`\`agent-step\nphase: planning\nstep: ${highestStep}\n\`\`\`\n`;
+                  }
+                  return "";
+                }
+              );
+            }
+
+            return (
+              <div className={`message-bubble markdown-body ${msg.status === "Pending" ? "pending" : ""}`}>
+                {msg.role === "ai" &&
+                (remainingContent.includes("考え中") ||
+                  remainingContent.includes("画像の読み取り") ||
+                  remainingContent === t("chat.thinking") ||
+                  remainingContent === t("chat.analyzing") ||
+                  remainingContent === t("chat.reading_image") ||
+                  (msg.isToolLoading && (remainingContent === "" || remainingContent === t("chat.thinking") || remainingContent === t("chat.reading_image")))) ? (
+                  <div className="thinking-indicator">
+                    <div className="codex-pulse-indicator status-spinner-small"></div>
+                    <span className="codex-wave-text">{remainingContent || t("chat.thinking")}</span>
+                  </div>
+                ) : (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={{
+                      pre({ children }) {
+                        const codeElement = React.Children.toArray(children)[0];
+                        if (React.isValidElement(codeElement) && codeElement.props) {
+                          const className = ((codeElement.props as any).className as string) || "";
+                          const codeText = String((codeElement.props as any).children || "").replace(/\n$/, "");
+
+                          if (className.includes("language-agent-step")) {
+                            const stepMatch = codeText.match(/step:\s*(\d+)/i);
+                            const step = stepMatch ? stepMatch[1] : "1";
+
+                            const hasFinishedDecision = /action:\s*FINISH\b/i.test(remainingContent);
+                            const isDone = !msg.isToolLoading || hasFinishedDecision;
+
+                            if (isDone) {
+                              return (
+                                <div className="codex-agent-step done">
+                                  <div className="codex-step-header">
+                                    <span className="codex-step-done-icon">
+                                      <CheckIcon size={12} strokeWidth={3} />
+                                    </span>
+                                    <span className="codex-step-badge done">STEP {step}</span>
+                                    <span className="codex-step-done-text">完了</span>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="codex-agent-step active">
+                                <div className="codex-step-header">
+                                  <span className="codex-pulse-indicator"></span>
+                                  <span className="codex-step-badge">STEP {step}</span>
+                                  <span className="codex-wave-text">思考・計画中... (Planning)</span>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (className.includes("language-agent-decision")) {
+                            const stepMatch = codeText.match(/step:\s*([^\n]+)/i);
+                            const actionMatch = codeText.match(/action:\s*([^\n]+)/i);
+                            const objectiveMatch = codeText.match(/objective:\s*([^\n]+)/i);
+                            const reasonMatch = codeText.match(/reason:\s*([^\n]+)/i);
+
+                            const step = stepMatch ? stepMatch[1].trim() : "1";
+                            const action = actionMatch ? actionMatch[1].trim() : "Decision";
+                            const objective = objectiveMatch ? objectiveMatch[1].trim() : "";
+                            const reason = reasonMatch ? reasonMatch[1].trim() : "";
+
+                            return (
+                              <div className="codex-agent-decision">
+                                <div className="codex-decision-header">
+                                  <span className="codex-decision-tag">{action}</span>
+                                  <span className="codex-decision-step">Step {step}</span>
+                                </div>
+                                <div className="codex-decision-body">
+                                  {objective && (
+                                    <div className="codex-decision-row">
+                                      <span className="codex-decision-label">Objective:</span>
+                                      <span className="codex-decision-val">{objective}</span>
+                                    </div>
+                                  )}
+                                  {reason && (
+                                    <div className="codex-decision-row">
+                                      <span className="codex-decision-label">Reason:</span>
+                                      <span className="codex-decision-val">{reason}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (className.includes("language-agent-warning")) {
+                            const msgMatch = codeText.match(/message:\s*([^\n]+)/i);
+                            const warnMsg = msgMatch ? msgMatch[1].trim() : codeText;
+                            return (
+                              <div className="codex-agent-warning">
+                                <span className="codex-warning-icon">⚠️</span>
+                                <span className="codex-warning-text">{warnMsg}</span>
+                              </div>
+                            );
+                          }
+
+                          return <Terminal content={codeText} />;
+                        }
+                        return <pre>{children}</pre>;
+                      },
+                      img({ src, alt }) {
+                        return (
+                          <img
+                            src={src}
+                            alt={alt}
+                            style={{ cursor: "pointer", maxWidth: "100%" }}
+                            onClick={() => src && setSelectedImage({ src, alt })}
+                            title="クリックして拡大"
+                          />
+                        );
                       }
-                      return <pre>{children}</pre>;
-                    },
-                    img({ src, alt }) {
-                      return (
-                        <img
-                          src={src}
-                          alt={alt}
-                          style={{ cursor: "pointer", maxWidth: "100%" }}
-                          onClick={() => src && setSelectedImage({ src, alt })}
-                          title="クリックして拡大"
-                        />
-                      );
-                    }
-                  }}
-                >
-                  {remainingContent}
-                </ReactMarkdown>
-              )}
-            </div>
-          )}
+                    }}
+                  >
+                    {processedContent}
+                  </ReactMarkdown>
+                )}
+              </div>
+            );
+          })()}
           {msg.role === "user" && msg.event_type === "UserInput" && msg.attachments && msg.attachments.length > 0 && (
             <div className="message-attachments-container">
               {msg.attachments.map((att, idx) => {

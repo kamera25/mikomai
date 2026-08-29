@@ -209,6 +209,33 @@ describe("TimelineEvent Component", () => {
       path: "/Users/test/storage/current/Router1_show_ip_route.txt",
     });
   });
+
+  it("updates agent step element in-place to latest STEP without duplicating step cards", () => {
+    const msg: Message = {
+      role: "ai",
+      content: "```agent-step\nphase: planning\nstep: 1\n```\n```agent-decision\nstep: 1\naction: Execute Tool\nobjective: ルーティングテーブルを確認\nreason: 宛先IPへの経路特定のため\n```\n```agent-step\nphase: planning\nstep: 2\n```",
+      timestamp: new Date().toISOString(),
+      event_type: "AgentResponse",
+      isToolLoading: true,
+    };
+
+    const { container } = render(
+      <TimelineEvent msg={msg} formatMessageTime={formatMessageTime} />
+    );
+
+    // There should be only ONE codex-agent-step container, updated in-place to STEP 2
+    const stepElements = container.querySelectorAll(".codex-agent-step");
+    expect(stepElements.length).toBe(1);
+
+    expect(screen.getByText("STEP 2")).toBeInTheDocument();
+    expect(screen.getByText("思考・計画中... (Planning)")).toBeInTheDocument();
+
+    // Decision for Step 1 remains below
+    expect(container.querySelector(".codex-agent-decision")).toBeInTheDocument();
+    expect(screen.getByText("Execute Tool")).toBeInTheDocument();
+    expect(screen.getByText("ルーティングテーブルを確認")).toBeInTheDocument();
+    expect(screen.getByText("宛先IPへの経路特定のため")).toBeInTheDocument();
+  });
 });
 
 

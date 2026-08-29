@@ -58,7 +58,7 @@ impl AgentLoop {
 
             let _ = self.window.emit(
                 "chat-event",
-                ChatEvent::LlmChunk(format!("\n\n🤖 **[Step {}: Planning]** 思考中...\n", self.state_machine.step_count())),
+                ChatEvent::LlmChunk(format!("\n```agent-step\nphase: planning\nstep: {}\n```\n", self.state_machine.step_count())),
             );
 
             let mut decision: Decision = match LlmPlanner::plan(&self.app, llama_state, &self.network_state).await {
@@ -110,7 +110,13 @@ impl AgentLoop {
 
             let _ = self.window.emit(
                 "chat-event",
-                ChatEvent::LlmChunk(format!("- **Decision**: [{}] {}\n- **理由**: {}\n", decision.action_type.as_str(), decision.objective, decision.reason.join(", "))),
+                ChatEvent::LlmChunk(format!(
+                    "\n```agent-decision\nstep: {}\naction: {}\nobjective: {}\nreason: {}\n```\n",
+                    self.state_machine.step_count(),
+                    decision.action_type.as_str(),
+                    decision.objective.replace('\n', " "),
+                    decision.reason.join(", ").replace('\n', " ")
+                )),
             );
 
             if decision.action_type == ActionType::Finish {
@@ -123,7 +129,7 @@ impl AgentLoop {
                     "目標が達成されました。".to_string()
                 };
                 log::info!("[AgentLoop] Step {}: Goal reached / Completed: {}", self.state_machine.step_count(), summary_text);
-                final_report = format!("### 🎯 目標達成・調査完了\n\n{}\n", summary_text);
+                final_report = summary_text;
                 break;
             }
 
@@ -148,7 +154,10 @@ impl AgentLoop {
                 log::warn!("[AgentLoop] Step {}: Policy violation: {}", self.state_machine.step_count(), policy_err);
                 let _ = self.window.emit(
                     "chat-event",
-                    ChatEvent::LlmChunk(format!("⚠️ **ポリシー違反により中断**: {}\n", policy_err)),
+                    ChatEvent::LlmChunk(format!(
+                        "\n```agent-warning\nmessage: ポリシー違反により中断: {}\n```\n",
+                        policy_err.replace('\n', " ")
+                    )),
                 );
                 continue;
             }

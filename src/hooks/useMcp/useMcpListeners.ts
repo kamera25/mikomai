@@ -278,12 +278,20 @@ export function useMcpListeners({
 
           case "mcpInitialFinished": {
             const { taskId, content } = chatEvent.payload;
+            const currentAccumulated =
+              activeInitialTaskIdRef.current === taskId ? activeInitialContentRef.current : "";
+            const mergedContent = currentAccumulated
+              ? content
+                ? `${currentAccumulated}\n\n${content}`
+                : currentAccumulated
+              : content;
+
             setMessagesRef.current((prev) =>
               prev.map((msg) =>
                 msg.task_id === taskId
                   ? ({
                       ...msg,
-                      content,
+                      content: mergedContent,
                       isHidden: false,
                       isToolLoading: false,
                     } as Message)
