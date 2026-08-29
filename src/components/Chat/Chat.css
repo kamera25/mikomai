@@ -51,6 +51,9 @@
   flex-direction: column;
   gap: 8px;
   width: 100%;
+  /* Skip paint/layout work for long conversation entries outside the viewport. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
 }
 
 .message-container.user {
@@ -538,7 +541,9 @@
   border-radius: 12px;
   background: linear-gradient(135deg, rgba(20, 20, 25, 0.95), rgba(30, 30, 40, 0.95));
   border: 1px solid rgba(59, 130, 246, 0.3);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 15px rgba(59, 130, 246, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    0 0 15px rgba(59, 130, 246, 0.1);
   padding: 20px;
   width: 100%;
   max-width: 900px;
@@ -632,7 +637,9 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s, opacity 0.2s;
+  transition:
+    transform 0.2s,
+    opacity 0.2s;
 }
 
 .cisco-validation-btn-commit:hover {
@@ -657,8 +664,13 @@
 
 /* Pulsing glow animation */
 @keyframes pulse-glow {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .pulsing-dot {
@@ -683,7 +695,6 @@
   padding-left: 48px;
   box-sizing: border-box;
 }
-
 
 .thought-icon {
   position: absolute;
@@ -822,7 +833,9 @@
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 8px rgba(59, 130, 246, 0.1);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.1),
+    0 0 8px rgba(59, 130, 246, 0.1);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   display: inline-flex;
   align-items: center;
@@ -833,7 +846,9 @@
   background: var(--accent-color);
   color: #ffffff;
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px var(--accent-glow), 0 0 12px rgba(59, 130, 246, 0.3);
+  box-shadow:
+    0 6px 16px var(--accent-glow),
+    0 0 12px rgba(59, 130, 246, 0.3);
 }
 
 .suggestion-bubble-btn:active {
@@ -866,7 +881,9 @@
   cursor: pointer;
   border: 1px solid var(--border-color);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .message-attachment-image:hover {
@@ -919,5 +936,3 @@
   font-size: 0.8rem;
   color: var(--text-primary);
 }
-
-

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CopyIcon, CheckIcon } from "./Icons";
 import "./Terminal.css";
@@ -9,13 +9,20 @@ interface TerminalProps {
 
 function highlightConfigLine(line: string): React.ReactNode[] {
   // 1. Check if the line is a comment (ensure it's not a CLI command prompt starting with '#')
-  const isComment = /^\s*[!]/.test(line) || 
-    (/^\s*[#]/.test(line) && 
-     !/^\s*#\s*$/.test(line) && 
-     !/^\s*#\s*(?:interface|ip|no|shutdown|router|vlan|switchport|description|set|delete|commit|rollback|configure|exit|end|write|system|protocols|routing-options|policy-options|security|firewall|show)\b/i.test(line));
+  const isComment =
+    /^\s*[!]/.test(line) ||
+    (/^\s*[#]/.test(line) &&
+      !/^\s*#\s*$/.test(line) &&
+      !/^\s*#\s*(?:interface|ip|no|shutdown|router|vlan|switchport|description|set|delete|commit|rollback|configure|exit|end|write|system|protocols|routing-options|policy-options|security|firewall|show)\b/i.test(
+        line
+      ));
 
   if (isComment) {
-    return [<span key="comment" className="terminal-comment">{line}</span>];
+    return [
+      <span key="comment" className="terminal-comment">
+        {line}
+      </span>,
+    ];
   }
 
   // 2. Check if the line is a diff line
@@ -38,7 +45,8 @@ function highlightConfigLine(line: string): React.ReactNode[] {
   }
 
   // Define regex for highlighting: double-quoted strings, MAC addresses, IPv6, IPv4, interfaces, slash-numbers, FQDNs, protocols/ports, keywords, statuses, numbers
-  const tokenRegex = /("[^"]*"|\b(?:(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}|[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4})\b|\b(?:[0-9a-fA-F]{1,4}::?){1,7}[0-9a-fA-F]{1,4}(?:\/\d+)?\b|\b::1(?:\/\d+)?\b|\b::(?:\/\d+)?\b|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|\b(?:GigabitEthernet|FastEthernet|Ethernet|Vlan|Loopback|Tunnel|Port-channel|ge-|xe-|et-|lan|wan)(?:\d+(?:\/\d+)*(?:\.\d+)*)?\b|\/\d+|\b[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+\b|\b(?:udp|tcp|smtp|www|http|https|ssh|dns|ftp|telnet|dhcp|tftp|ntp|snmp|domain|pop3)\b|\b(?:interface|ip address|no|shutdown|router|vlan|ip route|switchport|description|set|delete|commit|rollback|configure|exit|end|write|system|protocols|routing-options|policy-options|security|firewall|show)\b|\b(?:up|down)\b|\b\d+\b)/gi;
+  const tokenRegex =
+    /("[^"]*"|\b(?:(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}|[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4})\b|\b(?:[0-9a-fA-F]{1,4}::?){1,7}[0-9a-fA-F]{1,4}(?:\/\d+)?\b|\b::1(?:\/\d+)?\b|\b::(?:\/\d+)?\b|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|\b(?:GigabitEthernet|FastEthernet|Ethernet|Vlan|Loopback|Tunnel|Port-channel|ge-|xe-|et-|lan|wan)(?:\d+(?:\/\d+)*(?:\.\d+)*)?\b|\/\d+|\b[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+\b|\b(?:udp|tcp|smtp|www|http|https|ssh|dns|ftp|telnet|dhcp|tftp|ntp|snmp|domain|pop3)\b|\b(?:interface|ip address|no|shutdown|router|vlan|ip route|switchport|description|set|delete|commit|rollback|configure|exit|end|write|system|protocols|routing-options|policy-options|security|firewall|show)\b|\b(?:up|down)\b|\b\d+\b)/gi;
 
   const parts = cleanLine.split(tokenRegex);
   const nodes: React.ReactNode[] = [];
@@ -50,29 +58,101 @@ function highlightConfigLine(line: string): React.ReactNode[] {
     if (i % 2 === 1) {
       // Matched token
       if (val.startsWith('"') && val.endsWith('"')) {
-        nodes.push(<span key={`str-${i}`} className="terminal-string">{val}</span>);
-      } else if (/^(?:(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}|[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4})$/.test(val)) {
-        nodes.push(<span key={`mac-${i}`} className="terminal-mac">{val}</span>);
-      } else if (/^(?:(?:[0-9a-fA-F]{1,4}::?){1,7}[0-9a-fA-F]{1,4}(?:\/\d+)?|::1(?:\/\d+)?|::(?:\/\d+)?)$/i.test(val)) {
-        nodes.push(<span key={`ip6-${i}`} className="terminal-ip">{val}</span>);
+        nodes.push(
+          <span key={`str-${i}`} className="terminal-string">
+            {val}
+          </span>
+        );
+      } else if (
+        /^(?:(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}|[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4})$/.test(
+          val
+        )
+      ) {
+        nodes.push(
+          <span key={`mac-${i}`} className="terminal-mac">
+            {val}
+          </span>
+        );
+      } else if (
+        /^(?:(?:[0-9a-fA-F]{1,4}::?){1,7}[0-9a-fA-F]{1,4}(?:\/\d+)?|::1(?:\/\d+)?|::(?:\/\d+)?)$/i.test(
+          val
+        )
+      ) {
+        nodes.push(
+          <span key={`ip6-${i}`} className="terminal-ip">
+            {val}
+          </span>
+        );
       } else if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(val)) {
-        nodes.push(<span key={`ip-${i}`} className="terminal-ip">{val}</span>);
-      } else if (/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/.test(val)) {
-        nodes.push(<span key={`fqdn-${i}`} className="terminal-fqdn">{val}</span>);
-      } else if (/^(?:GigabitEthernet|FastEthernet|Ethernet|Vlan|Loopback|Tunnel|Port-channel|ge-|xe-|et-|lan|wan)/i.test(val)) {
-        nodes.push(<span key={`if-${i}`} className="terminal-interface">{val}</span>);
+        nodes.push(
+          <span key={`ip-${i}`} className="terminal-ip">
+            {val}
+          </span>
+        );
+      } else if (
+        /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/.test(
+          val
+        )
+      ) {
+        nodes.push(
+          <span key={`fqdn-${i}`} className="terminal-fqdn">
+            {val}
+          </span>
+        );
+      } else if (
+        /^(?:GigabitEthernet|FastEthernet|Ethernet|Vlan|Loopback|Tunnel|Port-channel|ge-|xe-|et-|lan|wan)/i.test(
+          val
+        )
+      ) {
+        nodes.push(
+          <span key={`if-${i}`} className="terminal-interface">
+            {val}
+          </span>
+        );
       } else if (/^\/\d+$/.test(val)) {
-        nodes.push(<span key={`slashnum-${i}`} className="terminal-slash-number">{val}</span>);
-      } else if (/^(?:udp|tcp|smtp|www|http|https|ssh|dns|ftp|telnet|dhcp|tftp|ntp|snmp|domain|pop3)$/i.test(val)) {
-        nodes.push(<span key={`proto-${i}`} className="terminal-protocol">{val}</span>);
-      } else if (/^(?:interface|ip address|no|shutdown|router|vlan|ip route|switchport|description|set|delete|commit|rollback|configure|exit|end|write|system|protocols|routing-options|policy-options|security|firewall|show)$/i.test(val)) {
-        nodes.push(<span key={`kw-${i}`} className="terminal-keyword">{val}</span>);
+        nodes.push(
+          <span key={`slashnum-${i}`} className="terminal-slash-number">
+            {val}
+          </span>
+        );
+      } else if (
+        /^(?:udp|tcp|smtp|www|http|https|ssh|dns|ftp|telnet|dhcp|tftp|ntp|snmp|domain|pop3)$/i.test(
+          val
+        )
+      ) {
+        nodes.push(
+          <span key={`proto-${i}`} className="terminal-protocol">
+            {val}
+          </span>
+        );
+      } else if (
+        /^(?:interface|ip address|no|shutdown|router|vlan|ip route|switchport|description|set|delete|commit|rollback|configure|exit|end|write|system|protocols|routing-options|policy-options|security|firewall|show)$/i.test(
+          val
+        )
+      ) {
+        nodes.push(
+          <span key={`kw-${i}`} className="terminal-keyword">
+            {val}
+          </span>
+        );
       } else if (/^up$/i.test(val)) {
-        nodes.push(<span key={`up-${i}`} className="terminal-status-up">{val}</span>);
+        nodes.push(
+          <span key={`up-${i}`} className="terminal-status-up">
+            {val}
+          </span>
+        );
       } else if (/^down$/i.test(val)) {
-        nodes.push(<span key={`down-${i}`} className="terminal-status-down">{val}</span>);
+        nodes.push(
+          <span key={`down-${i}`} className="terminal-status-down">
+            {val}
+          </span>
+        );
       } else if (/^\d+$/.test(val)) {
-        nodes.push(<span key={`num-${i}`} className="terminal-number">{val}</span>);
+        nodes.push(
+          <span key={`num-${i}`} className="terminal-number">
+            {val}
+          </span>
+        );
       } else {
         nodes.push(<span key={`tok-${i}`}>{val}</span>);
       }
@@ -85,13 +165,21 @@ function highlightConfigLine(line: string): React.ReactNode[] {
   // Wrap in diff span if applicable
   if (isDiffAdd) {
     return [
-      <span key="diff-prefix" className="terminal-diff-prefix add">+ </span>,
-      <span key="diff-content" className="terminal-diff-add">{nodes}</span>
+      <span key="diff-prefix" className="terminal-diff-prefix add">
+        +{" "}
+      </span>,
+      <span key="diff-content" className="terminal-diff-add">
+        {nodes}
+      </span>,
     ];
   } else if (isDiffRemove) {
     return [
-      <span key="diff-prefix" className="terminal-diff-prefix remove">- </span>,
-      <span key="diff-content" className="terminal-diff-remove">{nodes}</span>
+      <span key="diff-prefix" className="terminal-diff-prefix remove">
+        -{" "}
+      </span>,
+      <span key="diff-content" className="terminal-diff-remove">
+        {nodes}
+      </span>,
     ];
   }
 
@@ -123,40 +211,13 @@ function parseAnsi(text: string): React.ReactNode[] {
           } else if (code === 4) {
             currentStyle.textDecoration = "underline";
           } else if (code >= 30 && code <= 37) {
-            const colors = [
-              "black",
-              "red",
-              "green",
-              "yellow",
-              "blue",
-              "magenta",
-              "cyan",
-              "white",
-            ];
+            const colors = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
             currentStyle.color = `var(--terminal-${colors[code - 30]})`;
           } else if (code >= 90 && code <= 97) {
-            const colors = [
-              "black",
-              "red",
-              "green",
-              "yellow",
-              "blue",
-              "magenta",
-              "cyan",
-              "white",
-            ];
+            const colors = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
             currentStyle.color = `var(--terminal-bright-${colors[code - 90]})`;
           } else if (code >= 40 && code <= 47) {
-            const colors = [
-              "black",
-              "red",
-              "green",
-              "yellow",
-              "blue",
-              "magenta",
-              "cyan",
-              "white",
-            ];
+            const colors = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
             currentStyle.backgroundColor = `var(--terminal-${colors[code - 40]})`;
           }
         });
@@ -192,11 +253,21 @@ export const Terminal: React.FC<TerminalProps> = ({ content }) => {
     }
   };
 
-  // Split content into lines, filter out empty trailing lines
-  const rawLines = content.split("\n");
-  const lines = rawLines.length > 1 && rawLines[rawLines.length - 1] === "" 
-    ? rawLines.slice(0, -1) 
-    : rawLines;
+  // Syntax highlighting can create thousands of nodes for command output.
+  // Preserve it across local UI state updates such as the copy confirmation.
+  const renderedLines = useMemo(() => {
+    const rawLines = content.split("\n");
+    const lines =
+      rawLines.length > 1 && rawLines[rawLines.length - 1] === ""
+        ? rawLines.slice(0, -1)
+        : rawLines;
+    return lines.map((line, idx) => (
+      <div key={idx} className="terminal-line">
+        <span className="terminal-line-number">{idx + 1}</span>
+        <span className="terminal-line-text">{parseAnsi(line)}</span>
+      </div>
+    ));
+  }, [content]);
 
   return (
     <div className="terminal-container">
@@ -226,14 +297,7 @@ export const Terminal: React.FC<TerminalProps> = ({ content }) => {
         </button>
       </div>
       <pre className="terminal-content">
-        <code>
-          {lines.map((line, idx) => (
-            <div key={idx} className="terminal-line">
-              <span className="terminal-line-number">{idx + 1}</span>
-              <span className="terminal-line-text">{parseAnsi(line)}</span>
-            </div>
-          ))}
-        </code>
+        <code>{renderedLines}</code>
       </pre>
     </div>
   );
