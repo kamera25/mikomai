@@ -5,17 +5,56 @@ import frontmatter
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
+import re
 
 # Configuration
-DOCS_DIR = "./nw-docs"
-DB_PATH = os.environ.get("MIKOMAI_DB_PATH", "./data/knowledge.lance")
+DOCS_DIR = os.environ.get("MIKOMAI_DOCS_DIR", "./nw-docs")
+# Keep the command-line ingestion target aligned with the desktop application's
+# default.  An explicit MIKOMAI_DB_PATH remains the single override point.
+DB_PATH = os.environ.get(
+    "MIKOMAI_DB_PATH",
+    os.path.expanduser("~/Library/Application Support/com.mikomai.agent/lancedb"),
+)
 TABLE_NAME = "documents"
+CHUNK_SIZE = int(os.environ.get("MIKOMAI_CHUNK_SIZE", "1400"))
+CHUNK_OVERLAP = int(os.environ.get("MIKOMAI_CHUNK_OVERLAP", "180"))
 
 MODEL_NAME = "intfloat/multilingual-e5-large-instruct"
 MODEL_CACHE_PATH = os.environ.get(
     "MIKOMAI_MODEL_CACHE_PATH",
     os.path.expanduser("~/Library/Application Support/com.mikomai.agent/model_cache")
 )
+
+def split_chunks(content: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP):
+    """Split Markdown on headings first, then into overlapping bounded chunks.
+
+    The heading is retained in every chunk so command snippets do not lose their
+    vendor/operation context during retrieval.
+    """
+    if chunk_size <= 0 or overlap < 0 or overlap >= chunk_size:
+        raise ValueError("chunk_size must be positive and overlap must be smaller than chunk_size")
+
+    sections = re.split(r"(?=^#{1,6}\s+)", content, flags=re.MULTILINE)
+    chunks = []
+    for section in (s.strip() for s in sections):
+        if not section:
+            continue
+        if len(section) <= chunk_size:
+            chunks.append(section)
+            continue
+        start = 0
+        while start < len(section):
+            end = min(len(section), start + chunk_size)
+            if end < len(section):
+                boundary = max(section.rfind("\n", start, end), section.rfind("。", start, end))
+                if boundary > start + chunk_size // 2:
+                    end = boundary + 1
+            chunks.append(section[start:end].strip())
+            if end == len(section):
+                break
+            start = end - overlap
+    return chunks
+
 
 def main():
     print(f"Initializing LanceDB at {DB_PATH}...")
@@ -52,24 +91,21 @@ def main():
                 if placeholder in content:
                     content = content.replace(placeholder, str(value))
             
-            # Basic chunking: for now, we just take the whole content if it's small, 
-            # or we could split by headers. Let's keep it simple for the first version.
-            # We'll store the full text and its embedding.
-            
-            # E5 models require "passage: " prefix for documents
-            instructional_content = f"passage: {content}"
-            embedding = model.encode(instructional_content).astype(np.float16)
-            
-            data.append({
-                "vector": embedding,
-                "text": content,
-                "path": str(md_file),
-                "brand": metadata.get("brand", ""),
-                "os_version": metadata.get("os_version", ""),
-                "category": metadata.get("category", ""),
-                "command_type": metadata.get("command_type", ""),
-                "target_model": metadata.get("target_model", "")
-            })
+            for chunk_index, chunk in enumerate(split_chunks(content)):
+                # E5 models require "passage: " prefix for documents.
+                embedding = model.encode(f"passage: {chunk}").astype(np.float32)
+                data.append({
+                    "id": f"{md_file}:{chunk_index}",
+                    "chunk_index": chunk_index,
+                    "vector": embedding,
+                    "text": chunk,
+                    "path": str(md_file),
+                    "brand": metadata.get("brand", ""),
+                    "os_version": metadata.get("os_version", ""),
+                    "category": metadata.get("category", ""),
+                    "command_type": metadata.get("command_type", ""),
+                    "target_model": metadata.get("target_model", "")
+                })
 
     if not data:
         print("No documents found.")

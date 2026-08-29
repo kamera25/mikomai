@@ -10,23 +10,19 @@ const KNOWLEDGE_WORKER_PROMPT: &str = include_str!("../prompts/knowledge_worker.
 const MAX_NEW_TOKENS: u32 = 2048;
 const N_CTX: u32 = 8192;
 
-pub struct KnowledgeWorker
-{
+pub struct KnowledgeWorker {
     pub ctx: Option<AgentContext>,
     pub active_vendor: Option<String>,
     pub device_contexts: Vec<crate::llm::worker::DeviceContext>,
 }
 
-impl KnowledgeWorker
-{
+impl KnowledgeWorker {
     pub fn new(
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
         preload: bool,
-    ) -> Result<Self, String>
-    {
-        if preload
-        {
+    ) -> Result<Self, String> {
+        if preload {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Knowledge Expert (知識専門家)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
@@ -47,9 +43,7 @@ impl KnowledgeWorker
                 active_vendor: None,
                 device_contexts: Vec::new(),
             })
-        }
-        else
-        {
+        } else {
             Ok(Self {
                 ctx: None,
                 active_vendor: None,
@@ -63,12 +57,10 @@ impl KnowledgeWorker
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
         _vendor: Option<String>,
-    ) -> Result<(), String>
-    {
+    ) -> Result<(), String> {
         let needs_init = self.ctx.is_none();
 
-        if needs_init
-        {
+        if needs_init {
             self.ctx = None;
 
             let role_desc = format!(
@@ -97,20 +89,16 @@ impl KnowledgeWorker
     }
 }
 
-impl LlmWorker for KnowledgeWorker
-{
-    fn agent_name(&self) -> &'static str
-    {
+impl LlmWorker for KnowledgeWorker {
+    fn agent_name(&self) -> &'static str {
         "Knowledge Expert (知識専門家)"
     }
 
-    fn set_device_contexts(&mut self, contexts: Vec<crate::llm::worker::DeviceContext>)
-    {
+    fn set_device_contexts(&mut self, contexts: Vec<crate::llm::worker::DeviceContext>) {
         self.device_contexts = contexts;
     }
 
-    fn context_mut(&mut self) -> &mut AgentContext
-    {
+    fn context_mut(&mut self) -> &mut AgentContext {
         self.ctx
             .as_mut()
             .expect("Knowledge context not initialized")
@@ -120,8 +108,7 @@ impl LlmWorker for KnowledgeWorker
         &mut self,
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
-    ) -> Result<(), String>
-    {
+    ) -> Result<(), String> {
         self.ensure_initialized_with_vendor(model, backend, None)
     }
 
@@ -138,8 +125,7 @@ impl LlmWorker for KnowledgeWorker
         window: Option<&tauri::Window>,
         temperature: f32,
         repetition_penalty: f32,
-    ) -> Result<String, String>
-    {
+    ) -> Result<String, String> {
         // Connection details are now provided in device_contexts
         let matched_context = self.device_contexts.first().cloned();
 
@@ -167,29 +153,20 @@ impl LlmWorker for KnowledgeWorker
             subsequent_task,
         );
 
-        let (vendor_str, device_str, gateway_str) = if let Some(ctx) = &matched_context
-        {
-            let v = if ctx.vendor.is_empty()
-            {
+        let (vendor_str, device_str, gateway_str) = if let Some(ctx) = &matched_context {
+            let v = if ctx.vendor.is_empty() {
                 "Unknown".to_string()
-            }
-            else
-            {
+            } else {
                 ctx.vendor.clone()
             };
-            let d = if ctx.device_type.is_empty()
-            {
+            let d = if ctx.device_type.is_empty() {
                 "Unknown".to_string()
-            }
-            else
-            {
+            } else {
                 ctx.device_type.clone()
             };
             let g = format!("{} ({})", ctx.hostname, ctx.ip);
             (v, d, g)
-        }
-        else
-        {
+        } else {
             (
                 "Unknown".to_string(),
                 "Unknown".to_string(),
@@ -227,8 +204,7 @@ impl LlmWorker for KnowledgeWorker
         output: Option<String>,
         history_block: Option<String>,
         subsequent_task: Option<&str>,
-    ) -> String
-    {
+    ) -> String {
         build_common_worker_prompt(
             prompt,
             user_message,
@@ -237,5 +213,17 @@ impl LlmWorker for KnowledgeWorker
             history_block,
             subsequent_task,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::KNOWLEDGE_WORKER_PROMPT;
+
+    #[test]
+    fn rag_tool_examples_use_the_runtime_tool_call_schema() {
+        assert!(KNOWLEDGE_WORKER_PROMPT.contains(r#""tool_name": "query_nw_db""#));
+        assert!(KNOWLEDGE_WORKER_PROMPT.contains(r#""params": {"query"#));
+        assert!(!KNOWLEDGE_WORKER_PROMPT.contains(r#""tool": "query_nw_db""#));
     }
 }

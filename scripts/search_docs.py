@@ -18,6 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description="Search LanceDB documents")
     parser.add_argument("query", help="The search query string")
     parser.add_argument("--filter", help="Metadata filter string (SQL-like)")
+    parser.add_argument("--limit", type=int, default=5, help="Number of ranked chunks to return")
     args = parser.parse_args()
 
     query = args.query
@@ -44,7 +45,7 @@ def main():
         if filter_str:
             search_builder = search_builder.where(filter_str)
             
-        results = search_builder.limit(3).to_list()
+        results = search_builder.limit(args.limit).to_list()
         
         # Format results for Rust
         formatted_results = []
@@ -52,6 +53,7 @@ def main():
             formatted_results.append({
                 "text": res["text"],
                 "path": res["path"],
+                "chunk_index": res.get("chunk_index", 0),
                 "score": res.get("_distance", 0) # LanceDB uses distance (lower is better)
             })
             

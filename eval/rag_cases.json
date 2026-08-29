@@ -1,0 +1,7 @@
+[
+  {"id": "cisco-interface", "query": "[Context: Cisco] インターフェース 状態 確認", "expected_paths": ["nw-docs/cisco/1-01_show_int.md"]},
+  {"id": "yamaha-route", "query": "[Context: Yamaha] IP ルーティングテーブル 確認", "expected_paths": ["nw-docs/yamaha/2-03_show_ip_route.md"]},
+  {"id": "fitelnet-vlan", "query": "[Context: FITELnet] VLAN トランク 設定", "expected_paths": ["nw-docs/fitelnet/02-1_make_trunk_vlan.md"]},
+  {"id": "troubleshoot-ping", "query": "Ping が失敗する 原因 切り分け", "expected_paths": ["nw-docs/troubleshoot/0-01_ping_trouble.md"]},
+  {"id": "no-answer", "query": "存在しない製品 QuantumRouter9000 の独自コマンド", "expect_no_answer": true}
+]

@@ -12,33 +12,29 @@ use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::connect;
 use lancedb::connection::Connection;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
-pub struct RagState
-{
+pub struct RagState {
     pub db: Mutex<Option<Connection>>,
     pub model: Mutex<Option<Arc<TextEmbedding>>>,
 }
 
-impl RagState
-{
-    pub fn new() -> Self
-    {
+impl RagState {
+    pub fn new() -> Self {
         Self {
             db: Mutex::new(None),
             model: Mutex::new(None),
         }
     }
 
-    pub fn get_model(&self) -> Result<Arc<TextEmbedding>, String>
-    {
+    pub fn get_model(&self) -> Result<Arc<TextEmbedding>, String> {
         let mut model_lock = self
             .model
             .lock()
             .map_err(|_| "Mutex lock poisoned".to_string())?;
-        if let Some(model) = &*model_lock
-        {
+        if let Some(model) = &*model_lock {
             return Ok(model.clone());
         }
 
@@ -54,21 +50,18 @@ impl RagState
         Ok(arc_model)
     }
 
-    pub async fn get_db(&self, app: &tauri::AppHandle) -> Result<Connection, String>
-    {
+    pub async fn get_db(&self, app: &tauri::AppHandle) -> Result<Connection, String> {
         {
             let db_lock = self
                 .db
                 .lock()
                 .map_err(|_| "Mutex lock poisoned".to_string())?;
-            if let Some(conn) = &*db_lock
-            {
+            if let Some(conn) = &*db_lock {
                 return Ok(conn.clone());
             }
         }
 
-        let db_path = if let Ok(settings) = crate::settings::load_settings(app.clone())
-        {
+        let db_path = if let Ok(settings) = crate::settings::load_settings(app.clone()) {
             settings
                 .db_path
                 .filter(|s| !s.trim().is_empty())
@@ -79,17 +72,14 @@ impl RagState
                         .expect("Failed to get app data dir");
                     app_data_dir.join("lancedb").to_string_lossy().to_string()
                 })
-        }
-        else
-        {
+        } else {
             let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
             app_data_dir.join("lancedb").to_string_lossy().to_string()
         };
 
         let lancedb_dir = std::path::PathBuf::from(&db_path);
 
-        if !lancedb_dir.exists()
-        {
+        if !lancedb_dir.exists() {
             std::fs::create_dir_all(&lancedb_dir)
                 .map_err(|e| format!("Failed to create DB directory: {}", e))?;
         }
@@ -110,17 +100,14 @@ impl RagState
     }
 }
 
-impl Default for RagState
-{
-    fn default() -> Self
-    {
+impl Default for RagState {
+    fn default() -> Self {
         Self::new()
     }
 }
 
 #[tauri::command]
-pub async fn connect_db(path: String, state: tauri::State<'_, RagState>) -> Result<String, String>
-{
+pub async fn connect_db(path: String, state: tauri::State<'_, RagState>) -> Result<String, String> {
     let conn = connect(&path)
         .execute()
         .await
@@ -138,8 +125,7 @@ pub async fn connect_db(path: String, state: tauri::State<'_, RagState>) -> Resu
 }
 
 #[tauri::command]
-pub async fn ingest_document(_path: String) -> Result<String, String>
-{
+pub async fn ingest_document(_path: String) -> Result<String, String> {
     Ok("Document ingested successfully (stub)".to_string())
 }
 
@@ -162,11 +148,9 @@ pub async fn query_nw_db(
     filter: Option<String>,
     state: tauri::State<'_, RagState>,
     app: tauri::AppHandle,
-) -> Result<RagResult, String>
-{
+) -> Result<RagResult, String> {
     // Check registered device info first
-    if let Some(info) = vendor::check_registered_device(&query, &app)
-    {
+    if let Some(info) = vendor::check_registered_device(&query, &app) {
         return Ok(RagResult {
             success: true,
             output: info,
@@ -184,37 +168,28 @@ pub async fn query_nw_db(
         .await
         .map_err(|e| format!("Failed to open table: {}", e))?;
 
-    // 1. ベクトル検索（E5 Embeddings）をプライマリ検索として実行
+    // Retrieve broadly from both indexes.  A vector-only fallback loses exact
+    // command names, while an FTS-only fallback loses paraphrases in Japanese.
     let model = state.get_model()?;
     let vector_searcher = VectorSearcher::new(model, vendor::get_vector_search_instruction());
-    let mut batches = vector_searcher
-        .search(&table, &vendor_context.query, final_filter.as_deref(), 3)
+    let vector_batches = vector_searcher
+        .search(&table, &vendor_context.query, final_filter.as_deref(), 12)
+        .await?;
+    let fts_batches = FullTextSearcher::new()
+        .search(&table, &vendor_context.query, final_filter.as_deref(), 12)
         .await?;
 
-    // 2. ベクトル検索で有効な結果が得られなかった場合、全文検索（FTS: Full-Text Search）をフォールバックとして実行
-    if !has_valid_results(&batches)
-    {
-        let fts_searcher = FullTextSearcher::new();
-        batches = fts_searcher
-            .search(&table, &vendor_context.query, final_filter.as_deref(), 3)
-            .await?;
-    }
-
-    format_search_results(batches)
+    format_hybrid_search_results(vector_batches, fts_batches, &vendor_context.query)
 }
 
-fn has_valid_results(batches: &[RecordBatch]) -> bool
-{
-    for batch in batches
-    {
+fn has_valid_results(batches: &[RecordBatch]) -> bool {
+    for batch in batches {
         let dist_col = batch.column_by_name("_distance");
         let dist_array = dist_col.and_then(|col| col.as_any().downcast_ref::<Float32Array>());
 
-        for i in 0..batch.num_rows()
-        {
+        for i in 0..batch.num_rows() {
             let distance = dist_array.map(|arr| arr.value(i)).unwrap_or(0.0);
-            if distance <= 1.2
-            {
+            if distance <= 1.2 {
                 return true;
             }
         }
@@ -222,101 +197,146 @@ fn has_valid_results(batches: &[RecordBatch]) -> bool
     false
 }
 
-fn format_search_results(batches: Vec<RecordBatch>) -> Result<RagResult, String>
-{
-    let mut context = String::new();
-    let mut count = 1;
+#[derive(Debug, Clone)]
+struct RetrievedChunk {
+    path: String,
+    text: String,
+    vector_distance: Option<f32>,
+    vector_rank: Option<usize>,
+    fts_rank: Option<usize>,
+}
 
-    for batch in batches
-    {
-        let text_col = batch
-            .column_by_name("text")
-            .ok_or("Column 'text' not found in results")?;
+const MAX_VECTOR_DISTANCE: f32 = 0.85;
+const MIN_RERANK_SCORE: f32 = 0.32;
+const RRF_K: f32 = 60.0;
 
-        let path_col = batch
-            .column_by_name("path")
-            .ok_or("Column 'path' not found in results")?;
+fn read_string_column(batch: &RecordBatch, name: &str, row: usize) -> Result<String, String> {
+    let column = batch
+        .column_by_name(name)
+        .ok_or_else(|| format!("Column '{}' not found in results", name))?;
+    if let Some(values) = column.as_any().downcast_ref::<LargeStringArray>() {
+        Ok(values.value(row).to_string())
+    } else if let Some(values) = column.as_any().downcast_ref::<StringArray>() {
+        Ok(values.value(row).to_string())
+    } else {
+        Err(format!(
+            "Column '{}' is not a string (actual: {:?})",
+            name,
+            column.data_type()
+        ))
+    }
+}
 
-        let dist_col = batch.column_by_name("_distance");
-
-        let (text_large, text_small) = (
-            text_col.as_any().downcast_ref::<LargeStringArray>(),
-            text_col.as_any().downcast_ref::<StringArray>(),
-        );
-
-        let (path_large, path_small) = (
-            path_col.as_any().downcast_ref::<LargeStringArray>(),
-            path_col.as_any().downcast_ref::<StringArray>(),
-        );
-
-        let dist_array = dist_col.and_then(|col| col.as_any().downcast_ref::<Float32Array>());
-
-        for i in 0..batch.num_rows()
-        {
-            let distance = dist_array.map(|arr| arr.value(i)).unwrap_or(0.0);
-
-            // L2 distance threshold (e.g. 1.2). If distance is larger than 1.2, the result is considered irrelevant.
-            if distance > 1.2
-            {
-                log::info!(
-                    "Skipping search result due to low similarity (distance: {})",
-                    distance
-                );
-                continue;
+fn collect_candidates(
+    batches: Vec<RecordBatch>,
+    is_vector: bool,
+    candidates: &mut HashMap<String, RetrievedChunk>,
+) -> Result<(), String> {
+    let mut rank = 1;
+    for batch in batches {
+        let distances = batch
+            .column_by_name("_distance")
+            .and_then(|column| column.as_any().downcast_ref::<Float32Array>());
+        for row in 0..batch.num_rows() {
+            let path = read_string_column(&batch, "path", row)?;
+            let text = read_string_column(&batch, "text", row)?;
+            let key = format!("{}\u{0}{}", path, text);
+            let candidate = candidates.entry(key).or_insert_with(|| RetrievedChunk {
+                path: path.clone(),
+                text: text.clone(),
+                vector_distance: None,
+                vector_rank: None,
+                fts_rank: None,
+            });
+            if is_vector {
+                candidate.vector_distance = distances.map(|values| values.value(row));
+                candidate.vector_rank = Some(rank);
+            } else {
+                candidate.fts_rank = Some(rank);
             }
-
-            let text = if let Some(arr) = text_large
-            {
-                arr.value(i)
-            }
-            else if let Some(arr) = text_small
-            {
-                arr.value(i)
-            }
-            else
-            {
-                return Err(format!(
-                    "Failed to downcast text column. Actual type: {:?}",
-                    text_col.data_type()
-                ));
-            };
-
-            let path = if let Some(arr) = path_large
-            {
-                arr.value(i)
-            }
-            else if let Some(arr) = path_small
-            {
-                arr.value(i)
-            }
-            else
-            {
-                return Err(format!(
-                    "Failed to downcast path column. Actual type: {:?}",
-                    path_col.data_type()
-                ));
-            };
-
-            let score = (1.0 - distance).max(0.0);
-            let citation = RagCitation {
-                source_path: path.to_string(),
-                similarity_score: score,
-                rank: count,
-            };
-            context.push_str(&format_citation(&citation, text));
-            count += 1;
+            rank += 1;
         }
     }
+    Ok(())
+}
 
-    if context.is_empty()
-    {
+fn lexical_overlap(query: &str, text: &str) -> f32 {
+    let terms: Vec<_> = query
+        .split_whitespace()
+        .map(|term| {
+            term.trim_matches(|c: char| {
+                !c.is_alphanumeric()
+                    && !('\u{3040}'..='\u{30ff}').contains(&c)
+                    && !('\u{4e00}'..='\u{9fff}').contains(&c)
+            })
+        })
+        .filter(|term| term.chars().count() >= 2)
+        .collect();
+    if terms.is_empty() {
+        return 0.0;
+    }
+    let text = text.to_lowercase();
+    let matches = terms
+        .iter()
+        .filter(|term| text.contains(&term.to_lowercase()))
+        .count();
+    matches as f32 / terms.len() as f32
+}
+
+fn rerank_score(candidate: &RetrievedChunk, query: &str) -> f32 {
+    let semantic = candidate
+        .vector_distance
+        .map(|distance| (1.0 - distance / 1.2).clamp(0.0, 1.0))
+        .unwrap_or(0.0);
+    let lexical = lexical_overlap(query, &candidate.text);
+    let rrf = [candidate.vector_rank, candidate.fts_rank]
+        .into_iter()
+        .flatten()
+        .map(|rank| RRF_K / (RRF_K + rank as f32))
+        .fold(0.0_f32, f32::max);
+    0.50 * semantic + 0.30 * lexical + 0.20 * rrf
+}
+
+fn is_supported(candidate: &RetrievedChunk, query: &str) -> Option<f32> {
+    let lexical = lexical_overlap(query, &candidate.text);
+    let vector_is_relevant = candidate
+        .vector_distance
+        .map(|distance| distance <= MAX_VECTOR_DISTANCE)
+        .unwrap_or(false);
+    let score = rerank_score(candidate, query);
+    ((vector_is_relevant || lexical >= 0.5) && score >= MIN_RERANK_SCORE).then_some(score)
+}
+
+fn format_hybrid_search_results(
+    vector_batches: Vec<RecordBatch>,
+    fts_batches: Vec<RecordBatch>,
+    query: &str,
+) -> Result<RagResult, String> {
+    let mut context = String::new();
+    let mut candidates = HashMap::new();
+    collect_candidates(vector_batches, true, &mut candidates)?;
+    collect_candidates(fts_batches, false, &mut candidates)?;
+    let mut ranked: Vec<_> = candidates
+        .into_values()
+        .filter_map(|candidate| is_supported(&candidate, query).map(|score| (candidate, score)))
+        .collect();
+    ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
+
+    for (rank, (candidate, score)) in ranked.into_iter().take(5).enumerate() {
+        let citation = RagCitation {
+            source_path: candidate.path,
+            similarity_score: score,
+            rank: rank + 1,
+        };
+        context.push_str(&format_citation(&citation, &candidate.text));
+    }
+
+    if context.is_empty() {
         Ok(RagResult {
             success: true,
             output: "LanceDBに該当する情報が見つかりませんでした。".to_string(),
         })
-    }
-    else
-    {
+    } else {
         Ok(RagResult {
             success: true,
             output: context,
@@ -324,8 +344,7 @@ fn format_search_results(batches: Vec<RecordBatch>) -> Result<RagResult, String>
     }
 }
 
-fn format_citation(citation: &RagCitation, text: &str) -> String
-{
+fn format_citation(citation: &RagCitation, text: &str) -> String {
     format!(
         "\n--- 根拠 [{}] (ソース: {}, 類似度スコア: {:.2}) ---\n{}\n",
         citation.rank, citation.source_path, citation.similarity_score, text
@@ -333,13 +352,11 @@ fn format_citation(citation: &RagCitation, text: &str) -> String
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_rag_result_serialization()
-    {
+    fn test_rag_result_serialization() {
         let result = RagResult {
             success: true,
             output: "RAG search results...".to_string(),
@@ -352,16 +369,14 @@ mod tests
     }
 
     #[test]
-    fn test_rag_state_instantiation()
-    {
+    fn test_rag_state_instantiation() {
         let state = RagState::new();
         assert!(state.db.lock().unwrap().is_none());
         assert!(state.model.lock().unwrap().is_none());
     }
 
     #[test]
-    fn test_has_valid_results()
-    {
+    fn test_has_valid_results() {
         use arrow::datatypes::{DataType, Field, Schema};
         use std::sync::Arc;
 
@@ -415,8 +430,7 @@ mod tests
     }
 
     #[test]
-    fn citation_keeps_source_and_rank_visible_to_callers()
-    {
+    fn citation_keeps_source_and_rank_visible_to_callers() {
         let citation = RagCitation {
             source_path: "nw-docs/cisco/show_version.md".to_string(),
             similarity_score: 0.82,
@@ -425,5 +439,38 @@ mod tests
         let result = format_citation(&citation, "show version の説明");
         assert!(result.contains("根拠 [1]"));
         assert!(result.contains("nw-docs/cisco/show_version.md"));
+    }
+
+    #[test]
+    fn hybrid_reranker_prefers_exact_command_over_weak_semantic_match() {
+        let exact = RetrievedChunk {
+            path: "exact".into(),
+            text: "show ip route でルーティングを確認".into(),
+            vector_distance: Some(0.7),
+            vector_rank: Some(2),
+            fts_rank: Some(1),
+        };
+        let weak = RetrievedChunk {
+            path: "weak".into(),
+            text: "VLAN の基本説明".into(),
+            vector_distance: Some(0.8),
+            vector_rank: Some(1),
+            fts_rank: None,
+        };
+        assert!(
+            rerank_score(&exact, "show ip route 確認") > rerank_score(&weak, "show ip route 確認")
+        );
+    }
+
+    #[test]
+    fn unsupported_result_is_not_exposed_as_evidence() {
+        let candidate = RetrievedChunk {
+            path: "irrelevant".into(),
+            text: "VLAN の基本説明".into(),
+            vector_distance: Some(1.05),
+            vector_rank: Some(1),
+            fts_rank: None,
+        };
+        assert!(is_supported(&candidate, "QuantumRouter9000 独自コマンド").is_none());
     }
 }

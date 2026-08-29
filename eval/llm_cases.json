@@ -1,0 +1,5 @@
+[
+  {"id": "router-specific-device", "prompt": "NakaokuGWの時刻同期先は？", "must_contain": ["INVESTIGATE"]},
+  {"id": "router-theory", "prompt": "BGPのローカルプリファレンスとは？", "must_contain": ["KNOWLEDGE"]},
+  {"id": "tool-schema", "prompt": "Yamahaのインターフェース確認方法", "must_contain": ["tool_name", "query_nw_db"], "must_not_contain": ["\"tool\": \"query_nw_db\""]}
+]

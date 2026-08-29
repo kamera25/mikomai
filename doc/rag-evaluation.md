@@ -9,3 +9,26 @@ Before changing embeddings, chunking, metadata filters, or retrieval limits,
 evaluate a versioned corpus covering Cisco, Yamaha, FITELnet, device-name and
 vendor resolution, troubleshooting retrieval, and no-answer queries. Track
 source-at-rank, answer grounding, and unsupported-answer rate.
+
+## Local evaluation procedure
+
+`eval/rag_cases.json` is the versioned retrieval suite. It deliberately has
+expected source paths rather than expected prose, so a model change cannot hide
+a retrieval regression. Re-ingest the corpus, then run:
+
+```bash
+python scripts/rag_eval.py --cases eval/rag_cases.json --report eval/rag-report.json
+```
+
+The command exits non-zero when any case fails and produces Recall@k in the
+report. Add production failures as cases before changing the retriever. For
+answer-grounding checks, retain the returned citation blocks and verify that
+each device-changing proposal has at least one cited chunk above the configured
+reranking threshold.
+
+For local-model comparisons, use `scripts/llm_eval.py` with a runner that
+applies the same worker system prompt and chat template as the application.
+The runner interface is deliberately small: it receives `--model` and
+`--prompt`, and writes only the final model output. This allows GGUF variants
+and quantization levels to be compared by pass rate without coupling the
+repository to a particular local inference executable.
