@@ -93,14 +93,12 @@ define_tool!(
 );
 
 define_tool!(FetchConfigTool, "fetch_config", |app, args| {
-    let llama_state = app.state::<crate::llm::llm::LlamaState>();
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
     let device = get_str_arg(&args, &["device"]);
     let host = get_str_arg(&args, &["host"]);
     let user_msg = get_str_arg(&args, &["userMessage", "user_message"]);
     crate::mcp::fetch::fetch_config::fetch_config(
-        app.clone(),
-        llama_state,
+        app,
         device_name.clone(),
         device_name,
         device,

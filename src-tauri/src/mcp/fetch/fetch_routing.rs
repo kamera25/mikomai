@@ -111,21 +111,28 @@ pub async fn fetch_routing(
         let llama_state = app_clone.state::<crate::llm::llm::LlamaState>();
 
         // Convert raw output to YAML using the LLM and validate it
-        let validated_yaml = match crate::mcp::route::llm::convert_raw_to_yaml(
-            &app_clone,
-            &llama_state,
-            &raw_output_clone,
-            &name_clone,
-            &os_type,
+        let validated_yaml = match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            crate::mcp::route::llm::convert_raw_to_yaml(
+                &app_clone,
+                &llama_state,
+                &raw_output_clone,
+                &name_clone,
+                &os_type,
+            ),
         )
         .await
         {
-            Ok(yaml) => yaml,
-            Err(e) => {
+            Ok(Ok(yaml)) => yaml,
+            Ok(Err(e)) => {
                 log::error!(
                     "LLM route conversion/validation failed in background: {}",
                     e
                 );
+                return;
+            }
+            Err(_) => {
+                log::warn!("LLM route normalization timed out; raw graph observation was retained");
                 return;
             }
         };

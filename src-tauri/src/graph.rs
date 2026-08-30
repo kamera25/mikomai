@@ -561,7 +561,6 @@ pub async fn query_network_graph(
         // current and a response is only produced after the refresh attempt.
         crate::mcp::fetch::fetch_config::fetch_config(
             app.clone(),
-            app.state::<crate::llm::llm::LlamaState>(),
             Some(device.clone()),
             None,
             None,

@@ -18,7 +18,6 @@ impl McpCommandFetcher for ConfigFetcher {
 #[allow(non_snake_case)]
 pub async fn fetch_config(
     app: tauri::AppHandle,
-    llama_state: tauri::State<'_, crate::llm::llm::LlamaState>,
     device_name: Option<String>,
     deviceName: Option<String>,
     device: Option<String>,
@@ -47,11 +46,11 @@ pub async fn fetch_config(
                 device_name: resolved_name,
                 kind: crate::graph::GraphDataKind::Config,
                 raw: result.output.clone(),
-                normalized: Some(
-                    crate::graph::normalize_config_with_llm(&result.output, &app, &llama_state)
-                        .await,
-                ),
-                normalizer_version: "config-llm-v1".to_string(),
+                // A config fetch must never wait for local LLM inference.
+                // The immutable raw snapshot is immediately useful for
+                // provenance, diffing, and later asynchronous normalization.
+                normalized: None,
+                normalizer_version: "config-raw-v1".to_string(),
             })
             .await?;
     }
