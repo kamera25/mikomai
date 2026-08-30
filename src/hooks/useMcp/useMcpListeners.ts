@@ -9,6 +9,30 @@ interface UseMcpListenersProps {
   updateRecentHosts?: (hosts: string[]) => void;
 }
 
+export function mergeTaskContent(currentAccumulated: string, newContent: string): string {
+  if (!currentAccumulated) return newContent || "";
+  if (!newContent) return currentAccumulated;
+
+  // 1. Exact match
+  if (currentAccumulated === newContent) {
+    return currentAccumulated;
+  }
+
+  // 2. newContent is continuation of currentAccumulated (starts with prefix)
+  if (newContent.startsWith(currentAccumulated)) {
+    return newContent;
+  }
+
+  // 3. currentAccumulated already contains newContent
+  if (currentAccumulated.includes(newContent)) {
+    return currentAccumulated;
+  }
+
+  // 4. In AgentLoop, step/decision logs are streamed via chunks, and the final report
+  // is passed via mcpInitialFinished content. Append the final report text after the logs.
+  return `${currentAccumulated}\n\n${newContent}`;
+}
+
 export function useMcpListeners({
   setMessages,
   setSummaries,
@@ -24,51 +48,147 @@ export function useMcpListeners({
   const setSummariesRef = useRef(setSummaries);
   const updateRecentHostsRef = useRef(updateRecentHosts);
 
-  const chunkRafIdRef = useRef<number | null>(null);
-  const lastChunkCommitRef = useRef(0);
-  const chunkCommitDelayRef = useRef<number | null>(null);
+  // Map to track typing queue and state per task ID
+  const taskStatesRef = useRef<
+    Map<
+      string,
+      {
+        targetContent: string;
+        displayedContent: string;
+        isTyping: boolean;
+        timerId: any;
+        isFinished: boolean;
+        summaryText?: string;
+      }
+    >
+  >(new Map());
 
-  // Rendering a growing Markdown document is substantially more expensive than
-  // receiving a token. Keep the latest text in refs and commit it at most a few
-  // times per second, while still aligning the work with the next paint.
-  const CHUNK_RENDER_INTERVAL_MS = 100;
+  const TYPING_INTERVAL_MS = 10;
 
-  const scheduleChunkUpdate = () => {
-    if (chunkRafIdRef.current !== null || chunkCommitDelayRef.current !== null) return;
-    const elapsed = performance.now() - lastChunkCommitRef.current;
-    const commit = () => {
-      chunkCommitDelayRef.current = null;
-      chunkRafIdRef.current = requestAnimationFrame(() => {
-        chunkRafIdRef.current = null;
-        lastChunkCommitRef.current = performance.now();
-        const targetTaskId = activeInitialTaskIdRef.current || activeAnalysisTaskIdRef.current;
-        const targetContent = activeInitialTaskIdRef.current
-          ? activeInitialContentRef.current
-          : activeAnalysisContentRef.current;
-
-        if (targetTaskId) {
-          const isAgent =
-            targetContent.includes("agent-step") || targetContent.includes("agent-decision");
-          setMessagesRef.current((prev) =>
-            prev.map((msg) =>
-              msg.task_id === targetTaskId
-                ? ({
-                    ...msg,
-                    content: targetContent,
-                    isHidden: false,
-                    summary_text: isAgent ? "エージェントによる解析を開始" : msg.summary_text,
-                  } as Message)
-                : msg
-            )
-          );
+  const commitMessageContent = (
+    taskId: string,
+    content: string,
+    isFinished: boolean,
+    customSummaryText?: string
+  ) => {
+    const isAgent = content.includes("agent-step") || content.includes("agent-decision");
+    setMessagesRef.current((prev) =>
+      prev.map((msg) => {
+        if (msg.task_id === taskId) {
+          return {
+            ...msg,
+            content,
+            isHidden: false,
+            isToolLoading: isFinished ? false : msg.isToolLoading,
+            summary_text: isAgent
+              ? "エージェントによる解析を開始"
+              : customSummaryText || msg.summary_text,
+          } as Message;
         }
-      });
+        return msg;
+      })
+    );
+  };
+
+  const getOrCreateTaskState = (taskId: string) => {
+    let state = taskStatesRef.current.get(taskId);
+    if (!state) {
+      state = {
+        targetContent: "",
+        displayedContent: "",
+        isTyping: false,
+        timerId: null,
+        isFinished: false,
+      };
+      taskStatesRef.current.set(taskId, state);
+    }
+    return state;
+  };
+
+  const startTyping = (taskId: string) => {
+    const state = taskStatesRef.current.get(taskId);
+    if (!state || state.isTyping) return;
+
+    state.isTyping = true;
+
+    const tick = () => {
+      const targetChars = Array.from(state.targetContent);
+      const displayedChars = Array.from(state.displayedContent);
+      const remaining = targetChars.length - displayedChars.length;
+
+      if (remaining > 0) {
+        // Fast, snappy typing with dynamic step scaling for smooth UX
+        let step = 1;
+        if (remaining > 150) {
+          step = Math.ceil(remaining / 30);
+        } else if (remaining > 60) {
+          step = 3;
+        } else if (remaining > 20) {
+          step = 2;
+        }
+
+        const nextChars = targetChars
+          .slice(displayedChars.length, displayedChars.length + step)
+          .join("");
+        state.displayedContent += nextChars;
+        commitMessageContent(taskId, state.displayedContent, false, state.summaryText);
+        state.timerId = setTimeout(tick, TYPING_INTERVAL_MS);
+      } else {
+        // Finished typing all available target content
+        state.isTyping = false;
+        state.timerId = null;
+        if (state.isFinished) {
+          commitMessageContent(taskId, state.displayedContent, true, state.summaryText);
+        }
+      }
     };
 
-    if (elapsed >= CHUNK_RENDER_INTERVAL_MS) {
-      commit();
+    state.timerId = setTimeout(tick, TYPING_INTERVAL_MS);
+  };
+
+  const appendChunk = (taskId: string, chunk: string) => {
+    const state = getOrCreateTaskState(taskId);
+    const chunkChars = Array.from(chunk);
+    state.targetContent += chunk;
+
+    if (state.isTyping) {
+      // Already typing; the loop will continue consuming targetContent
+      return;
+    }
+
+    // If 6 or more characters are received at once, start character-by-character display
+    if (chunkChars.length >= 6) {
+      startTyping(taskId);
     } else {
-      chunkCommitDelayRef.current = window.setTimeout(commit, CHUNK_RENDER_INTERVAL_MS - elapsed);
+      // 5 or fewer characters: display immediately
+      state.displayedContent = state.targetContent;
+      commitMessageContent(taskId, state.displayedContent, false, state.summaryText);
+    }
+  };
+
+  const finishTaskContent = (taskId: string, finalContent?: string, summaryText?: string) => {
+    const state = getOrCreateTaskState(taskId);
+    if (summaryText) {
+      state.summaryText = summaryText;
+    }
+
+    if (finalContent !== undefined && finalContent !== null) {
+      state.targetContent = finalContent;
+    }
+
+    const targetChars = Array.from(state.targetContent);
+    const displayedChars = Array.from(state.displayedContent);
+    const remainingDiffCount = targetChars.length - displayedChars.length;
+
+    state.isFinished = true;
+
+    if (!state.isTyping) {
+      if (remainingDiffCount >= 6) {
+        startTyping(taskId);
+      } else {
+        state.displayedContent = state.targetContent;
+        commitMessageContent(taskId, state.displayedContent, true, state.summaryText);
+      }
     }
   };
 
@@ -224,12 +344,9 @@ export function useMcpListeners({
 
           case "llmChunk": {
             const chunk = chatEvent.payload;
-            if (activeInitialTaskIdRef.current) {
-              activeInitialContentRef.current += chunk;
-              scheduleChunkUpdate();
-            } else if (activeAnalysisTaskIdRef.current) {
-              activeAnalysisContentRef.current += chunk;
-              scheduleChunkUpdate();
+            const targetTaskId = activeInitialTaskIdRef.current || activeAnalysisTaskIdRef.current;
+            if (targetTaskId) {
+              appendChunk(targetTaskId, chunk);
             }
             break;
           }
@@ -283,31 +400,11 @@ export function useMcpListeners({
 
           case "mcpInitialFinished": {
             const { taskId, content } = chatEvent.payload;
-            const currentAccumulated =
-              activeInitialTaskIdRef.current === taskId ? activeInitialContentRef.current : "";
-            const mergedContent = currentAccumulated
-              ? content
-                ? `${currentAccumulated}\n\n${content}`
-                : currentAccumulated
-              : content;
-            const isAgent =
-              mergedContent?.includes("agent-step") || mergedContent?.includes("agent-decision");
+            const state = taskStatesRef.current.get(taskId);
+            const currentAccumulated = state ? state.targetContent : "";
+            const mergedContent = mergeTaskContent(currentAccumulated, content);
 
-            setMessagesRef.current((prev) =>
-              prev.map((msg) =>
-                msg.task_id === taskId
-                  ? ({
-                      ...msg,
-                      content: mergedContent,
-                      isHidden: false,
-                      isToolLoading: false,
-                      summary_text: isAgent
-                        ? "エージェントによる解析を開始"
-                        : msg.summary_text,
-                    } as Message)
-                  : msg
-              )
-            );
+            finishTaskContent(taskId, mergedContent);
 
             if (activeInitialTaskIdRef.current === taskId) {
               activeInitialTaskIdRef.current = null;
@@ -320,21 +417,29 @@ export function useMcpListeners({
             const { taskId, summaryText, summary, content } = chatEvent.payload;
             const shouldHide =
               content === "PENDING_DECISION" || content === "他の質問への回答を待っています...";
-            setMessagesRef.current((prev) =>
-              prev.map((msg) =>
-                msg.task_id === taskId
-                  ? ({
-                      ...msg,
-                      content,
-                      isHidden: shouldHide ? true : false,
-                      isToolLoading: false,
-                      summary_text: summaryText,
-                    } as Message)
-                  : msg
-              )
-            );
 
-            if (!shouldHide) {
+            if (shouldHide) {
+              const state = taskStatesRef.current.get(taskId);
+              if (state && state.timerId) {
+                clearTimeout(state.timerId);
+                state.timerId = null;
+                state.isTyping = false;
+              }
+              setMessagesRef.current((prev) =>
+                prev.map((msg) =>
+                  msg.task_id === taskId
+                    ? ({
+                        ...msg,
+                        content,
+                        isHidden: true,
+                        isToolLoading: false,
+                        summary_text: summaryText,
+                      } as Message)
+                    : msg
+                )
+              );
+            } else {
+              finishTaskContent(taskId, content, summaryText);
               setSummariesRef.current((prev) => {
                 const next = [...prev, summary];
                 return next.length > 20 ? next.slice(next.length - 20) : next;
@@ -422,14 +527,13 @@ export function useMcpListeners({
 
     return () => {
       isCancelled = true;
-      if (chunkRafIdRef.current !== null) {
-        cancelAnimationFrame(chunkRafIdRef.current);
-        chunkRafIdRef.current = null;
-      }
-      if (chunkCommitDelayRef.current !== null) {
-        clearTimeout(chunkCommitDelayRef.current);
-        chunkCommitDelayRef.current = null;
-      }
+      taskStatesRef.current.forEach((state) => {
+        if (state.timerId) {
+          clearTimeout(state.timerId);
+          state.timerId = null;
+        }
+      });
+      taskStatesRef.current.clear();
       if (unlistenFn) {
         unlistenFn();
       }
