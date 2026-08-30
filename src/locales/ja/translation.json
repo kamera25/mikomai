@@ -25,7 +25,16 @@
   "app": {
     "sidebar_close": "サイドバーを閉じる",
     "sidebar_open": "サイドバーを開く",
-    "double_click_rename": "ダブルクリックしてリネーム"
+    "double_click_rename": "ダブルクリックしてリネーム",
+    "diff_close": "変更差分を閉じる",
+    "diff_open": "変更差分を開く"
+  },
+  "context_menu": {
+    "cut": "切り取り",
+    "copy": "コピー",
+    "paste": "貼り付け",
+    "select_all": "すべて選択",
+    "reload": "再読み込み"
   },
   "activity_bar": {
     "chat": "チャット",

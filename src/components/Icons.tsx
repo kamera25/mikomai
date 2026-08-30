@@ -700,6 +700,64 @@ export const AlertCircleIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 
   </svg>
 );
 
+export const CutIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <circle cx="6" cy="6" r="3"></circle>
+    <circle cx="6" cy="18" r="3"></circle>
+    <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+    <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+    <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+  </svg>
+);
+
+export const PasteIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+  </svg>
+);
+
+export const SelectAllIcon: React.FC<IconProps> = ({ size = 16, strokeWidth = 2, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+    <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+    <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+    <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+    <rect x="7" y="7" width="10" height="10" rx="1"></rect>
+  </svg>
+);
+
+
 
 
 

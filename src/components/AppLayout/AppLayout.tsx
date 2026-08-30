@@ -19,6 +19,7 @@ import { useQuestionQueue } from "../../hooks/useQuestionQueue";
 import { useConfigDiffEvents } from "../../hooks/useConfigDiffEvents";
 import { QuestionPanel } from "./QuestionPanel";
 import { CustomModal } from "../CustomModal";
+import { ContextMenu } from "../ContextMenu";
 import { SidebarIcon, ServerIcon, DiffIcon } from "../Icons";
 import { Attachment, Message } from "../../types";
 
@@ -497,7 +498,9 @@ export function AppLayout() {
                             payload: !uiState.isConfigDiffOpen,
                           })
                         }
-                        title={uiState.isConfigDiffOpen ? "Close Config Diff" : "Open Config Diff"}
+                        title={
+                          uiState.isConfigDiffOpen ? t("app.diff_close") : t("app.diff_open")
+                        }
                       >
                         <DiffIcon size={20} />
                       </button>
@@ -576,6 +579,7 @@ export function AppLayout() {
       </div>
       <StatusBar modelStatus={modelState.modelStatus} modelPath={modelPath} />
       {chatState.modalConfig && <CustomModal {...chatState.modalConfig} />}
+      <ContextMenu />
     </div>
   );
 }

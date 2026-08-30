@@ -25,7 +25,16 @@
   "app": {
     "sidebar_close": "Close Sidebar",
     "sidebar_open": "Open Sidebar",
-    "double_click_rename": "Double click to rename"
+    "double_click_rename": "Double click to rename",
+    "diff_close": "Close Config Diff",
+    "diff_open": "Open Config Diff"
+  },
+  "context_menu": {
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "select_all": "Select All",
+    "reload": "Reload"
   },
   "activity_bar": {
     "chat": "Chat",
