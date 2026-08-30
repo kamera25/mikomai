@@ -55,9 +55,21 @@ pub async fn fetch_arp(
         }
     };
 
-    // Check if within cache expiry duration
-    if let Some(cached_res) = super::fetch_base::check_yaml_cache(&app, &registered_name, "arp") {
-        return Ok(cached_res);
+    // SurrealDB is the authoritative read-through cache for fetched state.
+    // A fresh graph observation is returned to the Agent; otherwise we must
+    // contact the device and commit the new observation before returning.
+    if let Some((raw, collected_at)) = app
+        .state::<crate::graph::SurrealDbState>()
+        .fresh_raw(&registered_name, crate::graph::GraphDataKind::Arp)
+        .await?
+    {
+        return Ok(CommandResult {
+            success: true,
+            output: raw,
+            saved_path: None,
+            is_cached: Some(true),
+            cache_time: Some(collected_at),
+        });
     }
 
     // 1. Fetch raw ARP table output using the registered host name

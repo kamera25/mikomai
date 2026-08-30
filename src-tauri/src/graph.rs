@@ -27,6 +27,16 @@ pub enum GraphDataKind {
     Arp,
 }
 
+impl GraphDataKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Config => "config",
+            Self::Routing => "routing",
+            Self::Arp => "arp",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphIngestInput {
     pub source_id: String,
@@ -113,7 +123,7 @@ DEFINE INDEX edge_key ON TABLE graph_edge FIELDS key UNIQUE;
     }
 
     async fn upsert(&self, table: &str, id: &str, record: Value) -> Result<(), String> {
-        let sql = format!("UPSERT type::thing('{table}', $id) CONTENT $record;");
+        let sql = format!("UPSERT type::record('{table}', $id) CONTENT $record;");
         self.db
             .query(sql)
             .bind(("id", id.to_owned()))
@@ -402,6 +412,38 @@ DEFINE INDEX edge_key ON TABLE graph_edge FIELDS key UNIQUE;
             relationships,
             citations,
         })
+    }
+
+    /// Read-through cache lookup used by the fetch tools. Only a committed,
+    /// unexpired observation of the requested kind can satisfy this call.
+    pub async fn fresh_raw(
+        &self,
+        device_name: &str,
+        kind: GraphDataKind,
+    ) -> Result<Option<(String, String)>, String> {
+        let mut response = self.db.query(
+            "SELECT raw, collected_at FROM observation WHERE device_name = $device AND kind = $kind ORDER BY collected_at DESC LIMIT 1;"
+        ).bind(("device", device_name.to_owned())).bind(("kind", kind.as_str())).await
+            .map_err(|e| format!("Failed to read graph observation: {e}"))?;
+        let records: Vec<Value> = response
+            .take(0)
+            .map_err(|e| format!("Failed to decode graph observation: {e}"))?;
+        let Some(record) = records.first() else {
+            return Ok(None);
+        };
+        let Some(raw) = record.get("raw").and_then(Value::as_str) else {
+            return Ok(None);
+        };
+        let Some(collected_at) = record.get("collected_at").and_then(Value::as_str) else {
+            return Ok(None);
+        };
+        let observed_at = DateTime::parse_from_rfc3339(collected_at)
+            .map_err(|e| format!("Invalid graph observation timestamp: {e}"))?
+            .with_timezone(&Utc);
+        if Utc::now() - observed_at > Duration::minutes(GRAPH_TTL_MINUTES) {
+            return Ok(None);
+        }
+        Ok(Some((raw.to_owned(), collected_at.to_owned())))
     }
 
     async fn select(&self, sql: &str, value: &str) -> Result<Vec<Value>, String> {
