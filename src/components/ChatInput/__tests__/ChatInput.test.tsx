@@ -148,4 +148,23 @@ describe("ChatInput Component", () => {
     expect(setFilteredSuggestions).toHaveBeenCalledWith([]);
     expect(setShowSuggestions).toHaveBeenCalledWith(false);
   });
+
+  it("closes host suggestions with Escape without sending the message", () => {
+    const setShowSuggestions = vi.fn();
+    const handleSend = vi.fn();
+    render(
+      <ChatInput
+        {...defaultProps}
+        input="@router"
+        cursorPos={7}
+        showSuggestions={true}
+        filteredSuggestions={[{ hostname: "router-1", ip: "10.0.0.1" }]}
+        setShowSuggestions={setShowSuggestions}
+        handleSend={handleSend}
+      />
+    );
+    fireEvent.keyDown(screen.getByPlaceholderText("mikomaiに質問する..."), { key: "Escape" });
+    expect(setShowSuggestions).toHaveBeenCalledWith(false);
+    expect(handleSend).not.toHaveBeenCalled();
+  });
 });

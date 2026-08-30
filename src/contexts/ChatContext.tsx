@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Message, ChatSession, HistoryItem, SummaryItem } from "../types";
+import { Message, ChatSession, HistoryItem, SummaryItem, HistoryMutation, HistorySnapshot } from "../types";
 import { useSettingsContext } from "./SettingsContext";
 import i18n from "../i18n";
 
@@ -194,6 +194,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const activeSession = findSession(state.history, state.activeSessionId);
 
+  const commitHistoryMutation = async (mutation: HistoryMutation) => {
+    const snapshot = await invoke<HistorySnapshot>("mutate_history", { mutation });
+    dispatch({ type: "SET_HISTORY", payload: snapshot.history });
+    return snapshot;
+  };
+
   // Load history on mount
   useEffect(() => {
     const initHistory = async () => {
@@ -230,23 +236,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initHistory();
   }, []);
 
-  // Save history whenever history or active session messages change
+  // Message persistence is owned by the backend. Structural changes use the
+  // same mutation API below, so the webview never writes history.json directly.
   useEffect(() => {
     if (!state.isLoaded) return;
     const save = async () => {
       try {
-        const historyToSave = updateSessionMessagesInHistory(
-          state.history,
-          state.activeSessionId,
-          state.messages
-        );
-        await invoke("save_history", { history: historyToSave });
+        await commitHistoryMutation({
+          type: "updateSessionMessages",
+          sessionId: state.activeSessionId,
+          messages: state.messages,
+        });
       } catch (e) {
         console.error("Failed to save history:", e);
       }
     };
     save();
-  }, [state.history, state.messages, state.activeSessionId, state.isLoaded]);
+  }, [state.messages, state.activeSessionId, state.isLoaded]);
 
   // Sync messages when active session changes
   useEffect(() => {
@@ -292,21 +298,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         placeholder: i18n.t("history.folder_name_placeholder"),
         initialValue: "",
         confirmLabel: i18n.t("history.create_label"),
-        onConfirm: (folderName) => {
+        onConfirm: async (folderName) => {
           if (folderName && folderName.trim()) {
-            dispatch({
-              type: "SET_HISTORY",
-              payload: [
-                {
-                  id: crypto.randomUUID(),
-                  type: "folder",
-                  name: folderName.trim(),
-                  isOpen: true,
-                  items: [],
-                },
-                ...state.history,
-              ],
-            });
+            try {
+              await commitHistoryMutation({ type: "createFolder", name: folderName.trim() });
+            } catch (error) {
+              console.error("Failed to create folder:", error);
+            }
           }
           dispatch({ type: "SET_MODAL_CONFIG", payload: null });
         },
@@ -315,32 +313,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const createNewSession = () => {
-    const id = crypto.randomUUID();
-    const newSession: ChatSession = {
-      id,
-      type: "session",
-      title: i18n.t("history.new_session"),
-      messages: [],
-    };
-    dispatch({ type: "SET_HISTORY", payload: [newSession, ...state.history] });
-    dispatch({ type: "SET_ACTIVE_SESSION_ID", payload: id });
-    dispatch({ type: "SET_MESSAGES", payload: [] });
+  const createNewSession = async () => {
+    try {
+      const existingIds = new Set(state.history.filter((item): item is ChatSession => item.type === "session").map((item) => item.id));
+      const snapshot = await commitHistoryMutation({ type: "createSession", title: i18n.t("history.new_session") });
+      const newSession = snapshot.history.find((item) => item.type === "session" && !existingIds.has(item.id));
+      if (newSession && newSession.type === "session") {
+        dispatch({ type: "SET_ACTIVE_SESSION_ID", payload: newSession.id });
+        dispatch({ type: "SET_MESSAGES", payload: [] });
+      }
+    } catch (error) {
+      console.error("Failed to create session:", error);
+    }
   };
 
-  const toggleFolder = (folderId: string) => {
-    const toggleNode = (items: HistoryItem[]): HistoryItem[] => {
-      return items.map((item) => {
-        if (item.type === "folder") {
-          if (item.id === folderId) {
-            return { ...item, isOpen: !item.isOpen };
-          }
-          return { ...item, items: toggleNode(item.items) };
-        }
-        return item;
-      });
-    };
-    dispatch({ type: "SET_HISTORY", payload: toggleNode(state.history) });
+  const toggleFolder = async (folderId: string) => {
+    try { await commitHistoryMutation({ type: "toggleFolder", folderId }); }
+    catch (error) { console.error("Failed to toggle folder:", error); }
   };
 
   const switchSession = async (sessionId: string) => {
@@ -351,20 +340,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const renameSession = (sessionId: string, newTitle: string) => {
+  const renameSession = async (sessionId: string, newTitle: string) => {
     if (newTitle && newTitle.trim()) {
-      const updateSessionTitle = (items: HistoryItem[]): HistoryItem[] => {
-        return items.map((item) => {
-          if (item.id === sessionId && item.type === "session") {
-            return { ...item, title: newTitle.trim() };
-          }
-          if (item.type === "folder") {
-            return { ...item, items: updateSessionTitle(item.items) };
-          }
-          return item;
-        });
-      };
-      dispatch({ type: "SET_HISTORY", payload: updateSessionTitle(state.history) });
+      try { await commitHistoryMutation({ type: "renameSession", sessionId, title: newTitle.trim() }); }
+      catch (error) { console.error("Failed to rename session:", error); }
     }
   };
 
@@ -377,60 +356,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         title: i18n.t("history.delete_session_title"),
         message: i18n.t("history.delete_session_msg"),
         confirmLabel: i18n.t("common.delete"),
-        onConfirm: () => {
-          const removeSession = (items: HistoryItem[]): HistoryItem[] => {
-            return items
-              .filter((item) => item.id !== sessionId)
-              .map((item) => {
-                if (item.type === "folder") {
-                  return { ...item, items: removeSession(item.items) };
-                }
-                return item;
-              });
-          };
-
-          let updated = removeSession(state.history);
-
-          if (updated.length === 0) {
-            const defaultId = crypto.randomUUID();
-            updated = [
-              {
-                id: defaultId,
-                type: "session",
-                title: i18n.t("history.new_session"),
-                messages: [],
-              },
-            ];
-            dispatch({ type: "SET_HISTORY", payload: updated });
-            dispatch({ type: "SET_ACTIVE_SESSION_ID", payload: defaultId });
-            dispatch({ type: "SET_MESSAGES", payload: [] });
-            dispatch({ type: "SET_MODAL_CONFIG", payload: null });
-            return;
-          }
-
-          dispatch({ type: "SET_HISTORY", payload: updated });
-
-          if (state.activeSessionId === sessionId) {
-            const firstSession = findFirstSession(updated);
-            if (firstSession) {
-              dispatch({ type: "SET_ACTIVE_SESSION_ID", payload: firstSession.id });
-            } else {
-              const defaultId = crypto.randomUUID();
-              dispatch({
-                type: "SET_HISTORY",
-                payload: [
-                  {
-                    id: defaultId,
-                    type: "session",
-                    title: i18n.t("history.new_session"),
-                    messages: [],
-                  },
-                  ...updated,
-                ],
-              });
-              dispatch({ type: "SET_ACTIVE_SESSION_ID", payload: defaultId });
-              dispatch({ type: "SET_MESSAGES", payload: [] });
+        onConfirm: async () => {
+          try {
+            const snapshot = await commitHistoryMutation({ type: "deleteSession", sessionId });
+            if (state.activeSessionId === sessionId) {
+              dispatch({ type: "SET_ACTIVE_SESSION_ID", payload: snapshot.activeSessionId });
+              const next = findSession(snapshot.history, snapshot.activeSessionId);
+              dispatch({ type: "SET_MESSAGES", payload: next?.messages || [] });
             }
+          } catch (error) {
+            console.error("Failed to delete session:", error);
           }
           dispatch({ type: "SET_MODAL_CONFIG", payload: null });
         },
@@ -439,19 +374,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const updateSessionRecentIps = (sessionId: string, ips: string[]) => {
-    const updateIps = (items: HistoryItem[]): HistoryItem[] => {
-      return items.map((item) => {
-        if (item.id === sessionId && item.type === "session") {
-          return { ...item, recentIps: ips };
-        }
-        if (item.type === "folder") {
-          return { ...item, items: updateIps(item.items) };
-        }
-        return item;
-      });
-    };
-    dispatch({ type: "SET_HISTORY", payload: updateIps(state.history) });
+  const updateSessionRecentIps = async (sessionId: string, ips: string[]) => {
+    try { await commitHistoryMutation({ type: "updateSessionRecentIps", sessionId, recentIps: ips }); }
+    catch (error) { console.error("Failed to update recent hosts:", error); }
   };
 
   return (

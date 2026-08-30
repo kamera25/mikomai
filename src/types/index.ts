@@ -5,6 +5,20 @@ export interface Attachment {
   path?: string; // local file path on disk
 }
 
+export type AttachmentSource =
+  | { kind: "path"; path: string }
+  | { kind: "inline"; name: string; content: string; mediaType?: string };
+
+export interface AttachmentRejection {
+  name: string;
+  reason: string;
+}
+
+export interface AttachmentPreparation {
+  attachments: Attachment[];
+  rejected: AttachmentRejection[];
+}
+
 export interface BaseMessage {
   role: "user" | "ai";
   content: string;
@@ -163,6 +177,7 @@ export interface AnalysisStartedPayload {
 
 export interface InitialStartedPayload {
   taskId: string;
+  hasImage?: boolean;
 }
 
 export interface InitialFinishedPayload {
@@ -196,6 +211,20 @@ export interface ChatSession {
   messages: Message[];
   recentIps?: string[];
 }
+
+export interface HistorySnapshot {
+  history: HistoryItem[];
+  activeSessionId: string;
+}
+
+export type HistoryMutation =
+  | { type: "createSession"; title?: string }
+  | { type: "createFolder"; name?: string }
+  | { type: "renameSession"; sessionId: string; title: string }
+  | { type: "deleteSession"; sessionId: string }
+  | { type: "toggleFolder"; folderId: string }
+  | { type: "updateSessionMessages"; sessionId: string; messages: Message[] }
+  | { type: "updateSessionRecentIps"; sessionId: string; recentIps: string[] };
 
 export interface Folder {
   id: string;

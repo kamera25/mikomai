@@ -8,8 +8,8 @@ describe("KeyringAccessModal", () => {
 
   beforeEach(() => {
     eventListeners = {};
-    vi.mocked(listen).mockImplementation(async (event: string, callback: (payload: unknown) => void) => {
-      eventListeners[event] = callback;
+    vi.mocked(listen).mockImplementation(async (event, callback) => {
+      eventListeners[String(event)] = callback as unknown as (event: unknown) => void;
       return () => {
         delete eventListeners[event];
       };

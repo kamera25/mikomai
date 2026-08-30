@@ -37,6 +37,37 @@ pub struct Attachment {
     pub path: Option<PathBuf>,
 }
 
+/// A source supplied by the webview before it is turned into a persisted attachment.
+/// Keeping this conversion in Rust means file size/type policy is identical for the
+/// file picker, native drag-and-drop and pasted browser data.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum AttachmentSource {
+    Path {
+        path: String,
+    },
+    Inline {
+        name: String,
+        content: String,
+        #[serde(default)]
+        media_type: Option<String>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentRejection {
+    pub name: String,
+    pub reason: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentPreparation {
+    pub attachments: Vec<Attachment>,
+    pub rejected: Vec<AttachmentRejection>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageRole {
@@ -155,6 +186,42 @@ pub enum HistoryItem {
     Folder(Folder),
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum HistoryMutation {
+    CreateSession {
+        title: Option<String>,
+    },
+    CreateFolder {
+        name: Option<String>,
+    },
+    RenameSession {
+        session_id: uuid::Uuid,
+        title: String,
+    },
+    DeleteSession {
+        session_id: uuid::Uuid,
+    },
+    ToggleFolder {
+        folder_id: uuid::Uuid,
+    },
+    UpdateSessionMessages {
+        session_id: uuid::Uuid,
+        messages: Vec<Message>,
+    },
+    UpdateSessionRecentIps {
+        session_id: uuid::Uuid,
+        recent_ips: Vec<String>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct HistorySnapshot {
+    pub history: Vec<HistoryItem>,
+    pub active_session_id: uuid::Uuid,
+}
+
 fn get_history_path(app: &tauri::AppHandle) -> PathBuf {
     let path = app
         .path()
@@ -266,6 +333,129 @@ pub fn save_history(app: tauri::AppHandle, history: Vec<HistoryItem>) -> Result<
     let data = serde_json::to_string_pretty(&history)?;
     fs::write(path, data)?;
     Ok(())
+}
+
+fn first_session_id(items: &[HistoryItem]) -> Option<uuid::Uuid> {
+    for item in items {
+        match item {
+            HistoryItem::Session(session) => return Some(session.id),
+            HistoryItem::Folder(folder) => {
+                if let Some(id) = first_session_id(&folder.items) {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn mutate_items(items: &mut Vec<HistoryItem>, mutation: &HistoryMutation) -> bool {
+    match mutation {
+        HistoryMutation::RenameSession { session_id, title } => {
+            items.iter_mut().any(|item| match item {
+                HistoryItem::Session(session) if session.id == *session_id => {
+                    session.title = title.trim().to_string();
+                    true
+                }
+                HistoryItem::Folder(folder) => mutate_items(&mut folder.items, mutation),
+                _ => false,
+            })
+        }
+        HistoryMutation::DeleteSession { session_id } => {
+            let before = items.len();
+            items.retain(
+                |item| !matches!(item, HistoryItem::Session(session) if session.id == *session_id),
+            );
+            if items.len() != before {
+                return true;
+            }
+            items.iter_mut().any(|item| match item {
+                HistoryItem::Folder(folder) => mutate_items(&mut folder.items, mutation),
+                _ => false,
+            })
+        }
+        HistoryMutation::ToggleFolder { folder_id } => items.iter_mut().any(|item| match item {
+            HistoryItem::Folder(folder) if folder.id == *folder_id => {
+                folder.is_open = !folder.is_open;
+                true
+            }
+            HistoryItem::Folder(folder) => mutate_items(&mut folder.items, mutation),
+            _ => false,
+        }),
+        HistoryMutation::UpdateSessionMessages {
+            session_id,
+            messages,
+        } => items.iter_mut().any(|item| match item {
+            HistoryItem::Session(session) if session.id == *session_id => {
+                session.messages = messages.clone();
+                true
+            }
+            HistoryItem::Folder(folder) => mutate_items(&mut folder.items, mutation),
+            _ => false,
+        }),
+        HistoryMutation::UpdateSessionRecentIps {
+            session_id,
+            recent_ips,
+        } => items.iter_mut().any(|item| match item {
+            HistoryItem::Session(session) if session.id == *session_id => {
+                session.recent_ips = Some(recent_ips.clone());
+                true
+            }
+            HistoryItem::Folder(folder) => mutate_items(&mut folder.items, mutation),
+            _ => false,
+        }),
+        HistoryMutation::CreateSession { .. } | HistoryMutation::CreateFolder { .. } => false,
+    }
+}
+
+/// Applies a single tree mutation and saves only a valid history snapshot.  The UI
+/// still owns selection and rendering, while identifiers and persisted tree
+/// invariants are owned by the backend.
+#[tauri::command]
+pub fn mutate_history(
+    app: tauri::AppHandle,
+    mutation: HistoryMutation,
+) -> Result<HistorySnapshot, TauriError> {
+    let mut history = load_history(app.clone())?;
+    match &mutation {
+        HistoryMutation::CreateSession { title } => {
+            history.push(HistoryItem::Session(ChatSession {
+                id: uuid::Uuid::new_v4(),
+                title: title
+                    .clone()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or_else(|| "New Session".to_string()),
+                messages: vec![],
+                recent_ips: None,
+            }))
+        }
+        HistoryMutation::CreateFolder { name } => history.push(HistoryItem::Folder(Folder {
+            id: uuid::Uuid::new_v4(),
+            name: name
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "New Folder".to_string()),
+            items: vec![],
+            is_open: true,
+        })),
+        _ => {
+            mutate_items(&mut history, &mutation);
+        }
+    }
+    if first_session_id(&history).is_none() {
+        history.push(HistoryItem::Session(ChatSession {
+            id: uuid::Uuid::new_v4(),
+            title: "New Session".to_string(),
+            messages: vec![],
+            recent_ips: None,
+        }));
+    }
+    let active_session_id = first_session_id(&history).expect("history always has a session");
+    save_history(app, history.clone())?;
+    Ok(HistorySnapshot {
+        history,
+        active_session_id,
+    })
 }
 
 #[cfg(test)]
@@ -461,6 +651,52 @@ mod tests {
         let _ = fs::remove_file(text_path);
         let _ = fs::remove_file(bin_path);
     }
+
+    #[test]
+    fn prepares_inline_attachments_and_rejects_duplicates_and_large_content() {
+        let result = prepare_attachments(vec![
+            AttachmentSource::Inline {
+                name: "note.txt".to_string(),
+                content: "router configuration".to_string(),
+                media_type: Some("text/plain".to_string()),
+            },
+            AttachmentSource::Inline {
+                name: "note.txt".to_string(),
+                content: "duplicate".to_string(),
+                media_type: Some("text/plain".to_string()),
+            },
+            AttachmentSource::Inline {
+                name: "large.txt".to_string(),
+                content: "x".repeat(MAX_INLINE_ATTACHMENT_SIZE + 1),
+                media_type: Some("text/plain".to_string()),
+            },
+        ]);
+        assert_eq!(result.attachments.len(), 1);
+        assert_eq!(result.attachments[0].mime_type, AttachmentType::Text);
+        assert_eq!(result.rejected.len(), 2);
+    }
+
+    #[test]
+    fn history_mutation_keeps_a_session_after_deletion() {
+        let id = uuid::Uuid::new_v4();
+        let mut items = vec![HistoryItem::Session(ChatSession {
+            id,
+            title: "Session".to_string(),
+            messages: vec![],
+            recent_ips: None,
+        })];
+        assert!(mutate_items(&mut items, &HistoryMutation::DeleteSession { session_id: id }));
+        assert!(items.is_empty());
+        if first_session_id(&items).is_none() {
+            items.push(HistoryItem::Session(ChatSession {
+                id: uuid::Uuid::new_v4(),
+                title: "New Session".to_string(),
+                messages: vec![],
+                recent_ips: None,
+            }));
+        }
+        assert!(first_session_id(&items).is_some());
+    }
 }
 
 fn get_summaries_path(app: &tauri::AppHandle) -> PathBuf {
@@ -504,83 +740,159 @@ pub fn save_summary(app: tauri::AppHandle, summary: SummaryItem) -> Result<(), T
 
 use base64::{engine::general_purpose, Engine as _};
 
-#[tauri::command]
-pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, TauriError> {
-    let mut result = Vec::new();
-    for path_str in paths {
-        let path = std::path::Path::new(&path_str);
-        if !path.exists() || !path.is_file() {
-            continue;
-        }
+const MAX_TEXT_ATTACHMENT_SIZE: u64 = 512 * 1024;
+const MAX_INLINE_ATTACHMENT_SIZE: usize = 512 * 1024;
 
-        let file_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file")
-            .to_string();
+fn attachment_from_path(path_str: String) -> Result<Attachment, AttachmentRejection> {
+    let path = std::path::Path::new(&path_str);
+    if !path.exists() || !path.is_file() {
+        return Err(AttachmentRejection {
+            name: path_str,
+            reason: "ファイルが見つかりません".to_string(),
+        });
+    }
 
-        let extension = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file")
+        .to_string();
 
-        let is_image = matches!(
-            extension.as_str(),
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg"
-        );
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
 
-        if is_image {
-            if let Ok(bytes) = fs::read(&path) {
-                let mime = match extension.as_str() {
-                    "png" => "image/png",
-                    "jpg" | "jpeg" => "image/jpeg",
-                    "gif" => "image/gif",
-                    "webp" => "image/webp",
-                    "bmp" => "image/bmp",
-                    "svg" => "image/svg+xml",
-                    _ => "image/png",
-                };
-                let b64 = general_purpose::STANDARD.encode(&bytes);
-                let data_url = format!("data:{};base64,{}", mime, b64);
-                result.push(Attachment {
-                    name: file_name,
-                    mime_type: AttachmentType::Image,
-                    content: data_url,
-                    path: Some(PathBuf::from(path_str)),
-                });
-            }
-        } else {
-            let file_size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-            const MAX_TEXT_FILE_SIZE: u64 = 512 * 1024; // 512 KB
+    let is_image = matches!(
+        extension.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg"
+    );
 
-            if file_size <= MAX_TEXT_FILE_SIZE {
-                if let Ok(text) = fs::read_to_string(&path) {
-                    result.push(Attachment {
-                        name: file_name,
-                        mime_type: AttachmentType::Text,
-                        content: text,
-                        path: Some(PathBuf::from(path_str)),
-                    });
-                    continue;
-                }
-            }
-
-            let size_desc = if file_size < 1024 {
-                format!("{} B", file_size)
-            } else if file_size < 1024 * 1024 {
-                format!("{:.1} KB", file_size as f64 / 1024.0)
-            } else {
-                format!("{:.1} MB", file_size as f64 / (1024.0 * 1024.0))
+    if is_image {
+        if let Ok(bytes) = fs::read(&path) {
+            let mime = match extension.as_str() {
+                "png" => "image/png",
+                "jpg" | "jpeg" => "image/jpeg",
+                "gif" => "image/gif",
+                "webp" => "image/webp",
+                "bmp" => "image/bmp",
+                "svg" => "image/svg+xml",
+                _ => "image/png",
             };
-
-            result.push(Attachment {
-                name: file_name.clone(),
-                mime_type: AttachmentType::File,
-                content: format!("[ファイル: {} (サイズ: {})]", file_name, size_desc),
+            let b64 = general_purpose::STANDARD.encode(&bytes);
+            let data_url = format!("data:{};base64,{}", mime, b64);
+            return Ok(Attachment {
+                name: file_name,
+                mime_type: AttachmentType::Image,
+                content: data_url,
                 path: Some(PathBuf::from(path_str)),
             });
         }
+        return Err(AttachmentRejection {
+            name: file_name,
+            reason: "画像ファイルを読み込めません".to_string(),
+        });
+    } else {
+        let file_size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+
+        if file_size <= MAX_TEXT_ATTACHMENT_SIZE {
+            if let Ok(text) = fs::read_to_string(&path) {
+                return Ok(Attachment {
+                    name: file_name,
+                    mime_type: AttachmentType::Text,
+                    content: text,
+                    path: Some(PathBuf::from(path_str)),
+                });
+            }
+        }
+
+        let size_desc = if file_size < 1024 {
+            format!("{} B", file_size)
+        } else if file_size < 1024 * 1024 {
+            format!("{:.1} KB", file_size as f64 / 1024.0)
+        } else {
+            format!("{:.1} MB", file_size as f64 / (1024.0 * 1024.0))
+        };
+
+        return Ok(Attachment {
+            name: file_name.clone(),
+            mime_type: AttachmentType::File,
+            content: format!("[ファイル: {} (サイズ: {})]", file_name, size_desc),
+            path: Some(PathBuf::from(path_str)),
+        });
     }
-    Ok(result)
+}
+
+fn attachment_from_inline(
+    name: String,
+    content: String,
+    media_type: Option<String>,
+) -> Result<Attachment, AttachmentRejection> {
+    if name.trim().is_empty() {
+        return Err(AttachmentRejection {
+            name,
+            reason: "ファイル名が必要です".to_string(),
+        });
+    }
+    if content.len() > MAX_INLINE_ATTACHMENT_SIZE {
+        return Err(AttachmentRejection {
+            name,
+            reason: "添付内容が大きすぎます (最大 512 KB)".to_string(),
+        });
+    }
+    let is_image = media_type
+        .as_deref()
+        .is_some_and(|value| value.starts_with("image/"))
+        || content.starts_with("data:image/");
+    Ok(Attachment {
+        name,
+        mime_type: if is_image {
+            AttachmentType::Image
+        } else {
+            AttachmentType::Text
+        },
+        content,
+        path: None,
+    })
+}
+
+#[tauri::command]
+pub fn prepare_attachments(sources: Vec<AttachmentSource>) -> AttachmentPreparation {
+    let mut attachments = Vec::new();
+    let mut rejected = Vec::new();
+    let mut names = std::collections::HashSet::new();
+    for source in sources {
+        let result = match source {
+            AttachmentSource::Path { path } => attachment_from_path(path),
+            AttachmentSource::Inline {
+                name,
+                content,
+                media_type,
+            } => attachment_from_inline(name, content, media_type),
+        };
+        match result {
+            Ok(attachment) if names.insert(attachment.name.clone()) => attachments.push(attachment),
+            Ok(attachment) => rejected.push(AttachmentRejection {
+                name: attachment.name,
+                reason: "同名の添付が既にあります".to_string(),
+            }),
+            Err(rejection) => rejected.push(rejection),
+        }
+    }
+    AttachmentPreparation {
+        attachments,
+        rejected,
+    }
+}
+
+#[tauri::command]
+pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, TauriError> {
+    Ok(prepare_attachments(
+        paths
+            .into_iter()
+            .map(|path| AttachmentSource::Path { path })
+            .collect(),
+    )
+    .attachments)
 }

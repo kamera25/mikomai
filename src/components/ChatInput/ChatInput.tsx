@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { SuggestionsList } from "./SuggestionsList";
 import { RefreshIcon, GearIcon, SendIcon, StopIcon, PaperclipIcon, CrossIcon, FileTextIcon } from "../Icons";
-import { Attachment } from "../../types";
+import { Attachment, AttachmentPreparation, AttachmentSource } from "../../types";
 import { useSettingsContext } from "../../contexts/SettingsContext";
 import { ImageModal } from "../ImageModal/ImageModal";
 import "./ChatInput.css";
@@ -74,6 +74,7 @@ export const ChatInput = memo(
     const [selectedImage, setSelectedImage] = useState<{ src: string; alt?: string } | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [showVisionWarning, setShowVisionWarning] = useState(false);
+    const [attachmentErrors, setAttachmentErrors] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const processDroppedPathsRef = useRef<(paths: string[]) => Promise<void>>(async () => {});
 
@@ -86,63 +87,39 @@ export const ChatInput = memo(
       return /\.(png|jpg|jpeg|gif|webp|bmp|svg|heic|heif|tiff)$/i.test(filePath);
     };
 
-    const handleFileAttach = (files: FileList | null) => {
-      if (!files) return;
-      let hasImageRejected = false;
+    const addPreparedAttachments = async (sources: AttachmentSource[]) => {
+      const prepared = await invoke<AttachmentPreparation>("prepare_attachments", { sources });
+      setAttachments((prev) => {
+        const existingNames = new Set(prev.map((attachment) => attachment.name));
+        return [...prev, ...prepared.attachments.filter((attachment) => !existingNames.has(attachment.name))];
+      });
+      setAttachmentErrors(prepared.rejected.map((rejection) => `${rejection.name}: ${rejection.reason}`));
+      if (prepared.attachments.some((attachment) => attachment.type === "image") && !isVisionReadyRef.current) {
+        setShowVisionWarning(true);
+      }
+    };
 
-      Array.from(files).forEach((file) => {
-        const isImage = isImageFile(file);
-        const isText = file.type.startsWith("text/") || 
-                       /\.(txt|md|json|csv|log|yaml|yml)$/i.test(file.name);
-        
-        if (isImage && !isVisionReadyRef.current) {
-          hasImageRejected = true;
-          return;
-        }
-
-        if (!isImage && !isText) {
-          // Default fallback for pasted/selected file
-          setAttachments((prev) => {
-            if (prev.some((a) => a.name === file.name)) return prev;
-            return [
-              ...prev,
-              {
-                name: file.name,
-                type: "file",
-                content: `[ファイル: ${file.name}]`,
-              },
-            ];
-          });
-          return;
-        }
-
+    const readFile = (file: File): Promise<AttachmentSource> =>
+      new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => {
-          const content = e.target?.result as string;
-          if (content) {
-            setAttachments((prev) => {
-              if (prev.some((a) => a.name === file.name)) return prev;
-              return [
-                ...prev,
-                {
-                  name: file.name,
-                  type: isImage ? "image" : "text",
-                  content: content,
-                },
-              ];
-            });
-          }
-        };
-
-        if (isImage) {
-          reader.readAsDataURL(file);
-        } else {
-          reader.readAsText(file);
-        }
+        reader.onload = () => resolve({
+          kind: "inline",
+          name: file.name,
+          content: String(reader.result || ""),
+          mediaType: file.type || undefined,
+        });
+        reader.onerror = () => reject(reader.error);
+        if (isImageFile(file)) reader.readAsDataURL(file);
+        else reader.readAsText(file);
       });
 
-      if (hasImageRejected) {
-        setShowVisionWarning(true);
+    const handleFileAttach = async (files: FileList | null) => {
+      if (!files) return;
+      try {
+        await addPreparedAttachments(await Promise.all(Array.from(files).map(readFile)));
+      } catch (error) {
+        console.error("Failed to prepare attachments:", error);
+        setAttachmentErrors(["添付ファイルを読み込めませんでした"]);
       }
     };
 
@@ -200,26 +177,7 @@ export const ChatInput = memo(
         }
 
         try {
-          const newAtts = await invoke<Attachment[]>("read_files_as_attachments", { paths });
-          if (newAtts && newAtts.length > 0) {
-            const hasImageAtt = newAtts.some((a) => a.type === "image");
-            if (hasImageAtt && !isVisionReadyRef.current) {
-              setShowVisionWarning(true);
-            }
-
-            const validAtts = newAtts.filter((a) => {
-              if (a.type === "image" && !isVisionReadyRef.current) return false;
-              return true;
-            });
-
-            if (validAtts.length > 0) {
-              setAttachments((prev) => {
-                const existingNames = new Set(prev.map((a) => a.name));
-                const filtered = validAtts.filter((a) => !existingNames.has(a.name));
-                return [...prev, ...filtered];
-              });
-            }
-          }
+          await addPreparedAttachments(paths.map((path) => ({ kind: "path", path })));
         } catch (err) {
           console.error("Failed to read dropped files as attachments:", err);
         }
@@ -544,6 +502,11 @@ export const ChatInput = memo(
               </div>
             </div>
           )}
+          {attachmentErrors.length > 0 && (
+            <div className="attachment-errors" role="alert">
+              {attachmentErrors.map((error) => <div key={error}>{error}</div>)}
+            </div>
+          )}
           <SuggestionsList
             showSuggestions={showSuggestions}
             filteredSuggestions={filteredSuggestions}
@@ -619,6 +582,9 @@ export const ChatInput = memo(
                 }, 150);
               }}
               onKeyDown={handleInputKeyDown}
+              aria-label={t("chat_input.placeholder")}
+              aria-expanded={showSuggestions}
+              aria-controls={showSuggestions ? "host-suggestions" : undefined}
             />
             {isGenerating ? (
               <button
