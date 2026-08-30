@@ -39,7 +39,7 @@
   "activity_bar": {
     "chat": "Chat",
     "connection_settings": "Connections",
-    "scheduled_tasks": "Scheduled Tasks",
+    "scheduled_tasks": "Watches",
     "settings": "Settings"
   },
   "chat": {

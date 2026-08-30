@@ -1,0 +1,33 @@
+.watch-notification {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 16px;
+  min-width: 280px;
+  max-width: 440px;
+  padding: 14px 16px;
+  color: #f5f7fa;
+  background: #a32d2d;
+  border: 1px solid #df6b6b;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+}
+.watch-notification strong {
+  font-size: 0.9rem;
+}
+.watch-notification span {
+  grid-column: 1;
+}
+.watch-notification button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font-size: 1.5rem;
+  cursor: pointer;
+}

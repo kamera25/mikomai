@@ -2,6 +2,7 @@ use super::fetch_base::{CommandTemplate, McpCommandFetcher};
 use super::state_resource::StateResource;
 use crate::graph::{GraphDataKind, GraphIngestInput, SurrealDbState};
 use crate::network::CommandResult;
+use regex::Regex;
 use std::str::FromStr;
 use tauri::Manager;
 
@@ -78,6 +79,46 @@ impl McpCommandFetcher for OspfFetcher {
     fn get_log_prefix(&self) -> &'static str {
         "ospf"
     }
+}
+
+/// Read-only CPU primitive.  The command is selected from the existing
+/// per-vendor template; only its small, structured result is exposed to Watch.
+pub struct CpuFetcher;
+impl McpCommandFetcher for CpuFetcher {
+    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+        template.fetch_cpu.clone()
+    }
+
+    fn get_log_prefix(&self) -> &'static str {
+        "cpu"
+    }
+}
+
+pub fn parse_cpu_usage(output: &str) -> Result<f64, String> {
+    let patterns = [
+        r"(?i)cpu\s+utilization[^\n:]*:\s*(\d+(?:\.\d+)?)\s*%",
+        r"(?i)cpu[^\n]*?\b(\d+(?:\.\d+)?)\s*(?:%|percent)\b",
+    ];
+    for pattern in patterns {
+        let regex = Regex::new(pattern).expect("CPU parser regex is valid");
+        if let Some(captures) = regex.captures(output) {
+            let usage = captures[1]
+                .parse::<f64>()
+                .map_err(|_| "CPU usage is not numeric".to_string())?;
+            if (0.0..=100.0).contains(&usage) {
+                return Ok(usage);
+            }
+        }
+    }
+    Err("Could not parse CPU usage from device output".to_string())
+}
+
+pub async fn fetch_cpu_usage(app: &tauri::AppHandle, device_name: &str) -> Result<f64, String> {
+    let result = CpuFetcher.fetch_device_info(app, device_name).await?;
+    if !result.success {
+        return Err(result.output);
+    }
+    parse_cpu_usage(&result.output)
 }
 
 async fn fetch_and_ingest_state<F: McpCommandFetcher>(
@@ -190,6 +231,16 @@ pub async fn dispatch_get_state(
             )
             .await
         }
+        StateResource::Cpu => {
+            let usage = fetch_cpu_usage(app, device_name).await?;
+            Ok(CommandResult {
+                success: true,
+                output: serde_json::json!({ "usage": usage }).to_string(),
+                saved_path: None,
+                is_cached: None,
+                cache_time: None,
+            })
+        }
     }
 }
 
@@ -208,11 +259,7 @@ pub async fn get_state(
     userMessage: Option<String>,
     user_message: Option<String>,
 ) -> Result<CommandResult, String> {
-    let resolved_device_arg = device
-        .or(deviceName)
-        .or(device_name)
-        .or(host)
-        .or(target);
+    let resolved_device_arg = device.or(deviceName).or(device_name).or(host).or(target);
 
     let normalized_device = crate::mcp::args::normalize_device_args(
         &app,
@@ -243,15 +290,12 @@ pub async fn get_state(
         }
     };
 
-    let raw_resource = resource
-        .or(resourceType)
-        .or(resource_type)
-        .ok_or_else(|| {
-            format!(
-                "Error: 'resource' parameter is required. Supported values: {}",
-                StateResource::valid_resources().join(", ")
-            )
-        })?;
+    let raw_resource = resource.or(resourceType).or(resource_type).ok_or_else(|| {
+        format!(
+            "Error: 'resource' parameter is required. Supported values: {}",
+            StateResource::valid_resources().join(", ")
+        )
+    })?;
 
     let parsed_resource = StateResource::from_str(&raw_resource)?;
     let final_user_msg = user_message.or(userMessage);
@@ -274,6 +318,7 @@ mod tests {
             fetch_lldp: "show lldp neighbors".to_string(),
             fetch_mac_table: "show mac address-table".to_string(),
             fetch_ospf: "show ip ospf neighbor".to_string(),
+            fetch_cpu: "show processes cpu".to_string(),
         };
 
         assert_eq!(
@@ -296,5 +341,22 @@ mod tests {
             OspfFetcher.get_command_from_template(&template),
             "show ip ospf neighbor"
         );
+        assert_eq!(
+            CpuFetcher.get_command_from_template(&template),
+            "show processes cpu"
+        );
+    }
+
+    #[test]
+    fn parses_common_cpu_formats() {
+        assert_eq!(
+            parse_cpu_usage("CPU utilization for five seconds: 82%/10%").unwrap(),
+            82.0
+        );
+        assert_eq!(
+            parse_cpu_usage("CPU utilization: 17 percent").unwrap(),
+            17.0
+        );
+        assert!(parse_cpu_usage("no cpu data").is_err());
     }
 }

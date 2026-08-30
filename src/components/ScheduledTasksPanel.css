@@ -95,6 +95,11 @@
   color: #166534;
 }
 
+.status-badge.enabled {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
 .status-badge.stopped {
   background-color: #fee2e2;
   color: #991b1b;
@@ -126,6 +131,57 @@
 
 .task-name-text:hover {
   text-decoration: underline;
+}
+
+.watch-name-button {
+  padding: 0;
+  color: #2563eb;
+  font-weight: 600;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.watch-name-button:hover {
+  text-decoration: underline;
+}
+
+.watch-subtitle {
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.watch-error {
+  margin: 12px 24px 0;
+  padding: 10px 12px;
+  color: #991b1b;
+  background: #fee2e2;
+  border-radius: 6px;
+}
+
+.watch-error-hint {
+  color: #b91c1c;
+}
+
+.watch-actions {
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+.watch-actions button {
+  padding: 4px 7px;
+  font-size: 0.75rem;
+  color: #334155;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.watch-actions .watch-delete {
+  color: #b91c1c;
+  border-color: #fca5a5;
 }
 
 .scheduled-panel-footer {

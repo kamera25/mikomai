@@ -292,6 +292,7 @@ mod tests {
             fetch_route: "show ip route".to_string(),
             fetch_bgp: "show ip bgp".to_string(),
             fetch_arp: "show ip arp".to_string(),
+            fetch_cpu: "show processes cpu".to_string(),
             ..Default::default()
         };
         let serialized = serde_json::to_string(&template).unwrap();

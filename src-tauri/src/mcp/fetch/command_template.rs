@@ -22,6 +22,8 @@ pub struct CommandTemplate {
     pub fetch_mac_table: String,
     #[serde(default)]
     pub fetch_ospf: String,
+    #[serde(default)]
+    pub fetch_cpu: String,
 }
 
 pub type CommandTemplates = HashMap<String, CommandTemplate>;
@@ -83,6 +85,9 @@ pub fn load_templates(app: &tauri::AppHandle) -> CommandTemplates {
             }
             if !loaded_template.fetch_ospf.trim().is_empty() {
                 entry.fetch_ospf = loaded_template.fetch_ospf;
+            }
+            if !loaded_template.fetch_cpu.trim().is_empty() {
+                entry.fetch_cpu = loaded_template.fetch_cpu;
             }
         }
         defaults

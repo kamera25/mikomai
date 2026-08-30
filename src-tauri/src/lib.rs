@@ -11,12 +11,12 @@ pub(crate) mod mcp;
 mod network;
 pub mod operations;
 pub mod planner;
-pub(crate) mod scheduled_tasks;
 pub(crate) mod schema;
 pub(crate) mod settings;
 pub(crate) mod snapshot;
 pub mod state;
 pub mod validator;
+pub(crate) mod watch;
 
 use tauri::Manager;
 
@@ -30,8 +30,8 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
             tauri::async_runtime::block_on(async move {
-                let sched_state = scheduled_tasks::init_scheduler(&app_handle).await;
-                app_handle.manage(sched_state);
+                let watch_state = watch::init_watch_scheduler(&app_handle).await;
+                app_handle.manage(watch_state);
                 let graph_state = graph::SurrealDbState::initialize(&app_handle)
                     .await
                     .expect("Failed to initialize embedded SurrealDB");
@@ -87,12 +87,14 @@ pub fn run() {
             connections::get_mcp_hosts,
             connections::save_connections,
             connections::get_device_types,
-            scheduled_tasks::load_scheduled_tasks,
-            scheduled_tasks::save_scheduled_tasks,
-            scheduled_tasks::add_scheduled_task,
-            scheduled_tasks::update_scheduled_task,
-            scheduled_tasks::delete_scheduled_task,
-            scheduled_tasks::execute_task,
+            watch::create_watch,
+            watch::list_watches,
+            watch::get_watch,
+            watch::update_watch,
+            watch::delete_watch,
+            watch::enable_watch,
+            watch::disable_watch,
+            watch::execute_watch_now,
             settings::load_settings,
             settings::save_settings,
             network::dns::resolve_ip,

@@ -25,6 +25,8 @@ pub enum StateResource {
     Bgp,
     #[serde(rename = "ospf")]
     Ospf,
+    #[serde(rename = "cpu")]
+    Cpu,
 }
 
 impl StateResource {
@@ -37,6 +39,7 @@ impl StateResource {
             Self::MacTable => "mac_table",
             Self::Bgp => "bgp",
             Self::Ospf => "ospf",
+            Self::Cpu => "cpu",
         }
     }
 
@@ -49,6 +52,7 @@ impl StateResource {
             "mac_table",
             "bgp",
             "ospf",
+            "cpu",
         ]
     }
 }
@@ -74,6 +78,7 @@ impl FromStr for StateResource {
             }
             "bgp" => Ok(Self::Bgp),
             "ospf" => Ok(Self::Ospf),
+            "cpu" => Ok(Self::Cpu),
             _ => Err(format!(
                 "Invalid resource '{}'. Supported resources are: {}",
                 s,

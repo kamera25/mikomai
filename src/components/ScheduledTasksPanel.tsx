@@ -1,479 +1,324 @@
-import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useTranslation } from "react-i18next";
-import "./ScheduledTasksPanel.css";
+import React, { useEffect, useMemo, useState } from "react";
 import { ClockIcon, SearchIcon, UpdateIcon } from "./Icons";
+import "./ScheduledTasksPanel.css";
 
 interface ScheduledTasksPanelProps {
   onClose: () => void;
 }
-
-type ScheduleType = "weekly" | "daily" | "hourly" | "minutely" | "secondly" | "custom";
-
-const ScheduleInput: React.FC<{ value: string; onChange: (val: string) => void }> = ({
-  value,
-  onChange,
-}) => {
-  const { t } = useTranslation();
-  const [type, setType] = useState<ScheduleType>("custom");
-  const [dayOfWeek, setDayOfWeek] = useState("月曜");
-  const [time, setTime] = useState("00:00");
-  const [minute, setMinute] = useState("0");
-  const [second, setSecond] = useState("0");
-  const [customText, setCustomText] = useState("");
-
-  useEffect(() => {
-    if (value.startsWith("毎週") && value.includes(" ")) {
-      setType("weekly");
-      const parts = value.split(" ");
-      setDayOfWeek(parts[0].replace("毎週", ""));
-      setTime(parts[1]);
-    } else if (value.startsWith("毎日 ")) {
-      setType("daily");
-      setTime(value.replace("毎日 ", ""));
-    } else if (value.startsWith("毎時 ") && value.endsWith("分")) {
-      setType("hourly");
-      setMinute(value.replace("毎時 ", "").replace("分", ""));
-    } else if (value.startsWith("毎分 ") && value.endsWith("秒")) {
-      setType("minutely");
-      setSecond(value.replace("毎分 ", "").replace("秒", ""));
-    } else if (value === "毎秒") {
-      setType("secondly");
-    } else {
-      setType("custom");
-      setCustomText(value);
-    }
-  }, [value]);
-
-  const handleChange = (
-    newType: ScheduleType,
-    newDay: string,
-    newTime: string,
-    newMin: string,
-    newSec: string,
-    newCustom: string
-  ) => {
-    setType(newType);
-    setDayOfWeek(newDay);
-    setTime(newTime);
-    setMinute(newMin);
-    setSecond(newSec);
-    setCustomText(newCustom);
-
-    let newValue = "";
-    if (newType === "weekly") {
-      newValue = `毎週${newDay} ${newTime}`;
-    } else if (newType === "daily") {
-      newValue = `毎日 ${newTime}`;
-    } else if (newType === "hourly") {
-      newValue = `毎時 ${newMin}分`;
-    } else if (newType === "minutely") {
-      newValue = `毎分 ${newSec}秒`;
-    } else if (newType === "secondly") {
-      newValue = `毎秒`;
-    } else {
-      newValue = newCustom;
-    }
-    onChange(newValue);
-  };
-
-  return (
-    <div className="schedule-input-container">
-      <select
-        value={type}
-        onChange={(e) =>
-          handleChange(e.target.value as ScheduleType, dayOfWeek, time, minute, second, customText)
-        }
-        className="schedule-type-select"
-      >
-        <option value="weekly">{t("scheduled_tasks.weekly")}</option>
-        <option value="daily">{t("scheduled_tasks.daily")}</option>
-        <option value="hourly">{t("scheduled_tasks.hourly")}</option>
-        <option value="minutely">{t("scheduled_tasks.minutely")}</option>
-        <option value="secondly">{t("scheduled_tasks.secondly")}</option>
-        <option value="custom">{t("scheduled_tasks.custom")}</option>
-      </select>
-
-      {type === "weekly" && (
-        <>
-          <select
-            value={dayOfWeek}
-            onChange={(e) => handleChange(type, e.target.value, time, minute, second, customText)}
-            className="schedule-day-select"
-          >
-            <option value="月曜">{t("scheduled_tasks.monday")}</option>
-            <option value="火曜">{t("scheduled_tasks.tuesday")}</option>
-            <option value="水曜">{t("scheduled_tasks.wednesday")}</option>
-            <option value="木曜">{t("scheduled_tasks.thursday")}</option>
-            <option value="金曜">{t("scheduled_tasks.friday")}</option>
-            <option value="土曜">{t("scheduled_tasks.saturday")}</option>
-            <option value="日曜">{t("scheduled_tasks.sunday")}</option>
-          </select>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) =>
-              handleChange(type, dayOfWeek, e.target.value, minute, second, customText)
-            }
-          />
-        </>
-      )}
-
-      {type === "daily" && (
-        <input
-          type="time"
-          value={time}
-          onChange={(e) =>
-            handleChange(type, dayOfWeek, e.target.value, minute, second, customText)
-          }
-        />
-      )}
-
-      {type === "hourly" && (
-        <div className="schedule-flex-input">
-          <input
-            type="number"
-            min="0"
-            max="59"
-            value={minute}
-            onChange={(e) =>
-              handleChange(type, dayOfWeek, time, e.target.value, second, customText)
-            }
-          />
-          <span>{t("scheduled_tasks.minute")}</span>
-        </div>
-      )}
-
-      {type === "minutely" && (
-        <div className="schedule-flex-input">
-          <input
-            type="number"
-            min="0"
-            max="59"
-            value={second}
-            onChange={(e) =>
-              handleChange(type, dayOfWeek, time, minute, e.target.value, customText)
-            }
-          />
-          <span>{t("scheduled_tasks.second")}</span>
-        </div>
-      )}
-
-      {type === "custom" && (
-        <input
-          type="text"
-          value={customText}
-          onChange={(e) => handleChange(type, dayOfWeek, time, minute, second, e.target.value)}
-          placeholder={t("scheduled_tasks.cron_placeholder")}
-        />
-      )}
-    </div>
-  );
-};
-
-interface ScheduledTask {
+type WatchStatus = "enabled" | "disabled";
+type Step =
+  | { id: string; call: "get_state"; args: { device: string; resource: "cpu" } }
+  | { when: { left: { ref: string }; operator: "gt"; right: number }; then: unknown[] };
+interface Watch {
   id: string;
   name: string;
-  status: "running" | "stopped" | "disabled";
-  schedule: string;
-  lastRun: string;
-  prompt: string;
+  status: WatchStatus;
+  ir: { schedule: { every: string }; steps: Step[] };
+  lastRunAt?: string | null;
+  lastError?: string | null;
+}
+interface WatchForm {
+  id?: string;
+  name: string;
+  device: string;
+  intervalSeconds: number;
+  threshold: number;
+}
+interface RegisteredDevice {
+  hostname: string;
+  ip?: string;
 }
 
-export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClose: _onClose }) => {
-  const { t } = useTranslation();
-  const [tasks, setTasks] = useState<ScheduledTask[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [editingTask, setEditingTask] = useState<ScheduledTask | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    loadTasks();
-
-    const unlisten = listen("task-executed", (event) => {
-      console.log("Task executed:", event.payload);
-      loadTasks(); // reload to get updated lastRun
-    });
-
-    return () => {
-      unlisten.then((f) => f());
-    };
-  }, []);
-
-  const loadTasks = async () => {
-    try {
-      const loadedTasks = await invoke<ScheduledTask[]>("load_scheduled_tasks");
-      setTasks(loadedTasks);
-    } catch (error) {
-      console.error("Failed to load tasks:", error);
-    }
-  };
-
-  const filteredTasks = tasks.filter(
-    (task) =>
-      task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.schedule.toLowerCase().includes(searchQuery.toLowerCase())
+const emptyForm = (): WatchForm => ({
+  name: "CPU 使用率監視",
+  device: "",
+  intervalSeconds: 60,
+  threshold: 80,
+});
+function toForm(watch: Watch): WatchForm {
+  const call = watch.ir.steps.find(
+    (step): step is Extract<Step, { call: "get_state" }> => "call" in step
   );
-
-  const handleSaveTask = async () => {
-    if (editingTask) {
-      try {
-        if (isCreating) {
-          await invoke("add_scheduled_task", {
-            name: editingTask.name,
-            schedule: editingTask.schedule,
-            prompt: editingTask.prompt,
-          });
-        } else {
-          await invoke("update_scheduled_task", { task: editingTask });
-        }
-        setEditingTask(null);
-        setIsCreating(false);
-        loadTasks();
-      } catch (error) {
-        console.error("Failed to save task:", error);
-      }
-    }
+  const condition = watch.ir.steps.find(
+    (step): step is Extract<Step, { when: unknown }> => "when" in step
+  );
+  return {
+    id: watch.id,
+    name: watch.name,
+    device: call?.args.device ?? "",
+    intervalSeconds: Number.parseInt(watch.ir.schedule.every, 10) || 60,
+    threshold: condition?.when.right ?? 80,
   };
+}
+function toRequest(form: WatchForm) {
+  const device = form.device.trim();
+  return {
+    name: form.name.trim(),
+    ir: {
+      version: 1,
+      schedule: { every: `${form.intervalSeconds}s` },
+      steps: [
+        { id: "cpu", call: "get_state", args: { device, resource: "cpu" } },
+        {
+          when: { left: { ref: "cpu.usage" }, operator: "gt", right: form.threshold },
+          then: [
+            {
+              call: "notify",
+              args: { message: `${device} の CPU 使用率が ${form.threshold}% を超えました` },
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+const formatTime = (value?: string | null) => (value ? new Date(value).toLocaleString() : "未実行");
 
-  const handleDeleteSelected = async () => {
+export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClose }) => {
+  const [watches, setWatches] = useState<Watch[]>([]);
+  const [devices, setDevices] = useState<RegisteredDevice[]>([]);
+  const [query, setQuery] = useState("");
+  const [form, setForm] = useState<WatchForm | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const loadWatches = async () => {
     try {
-      for (const id of selectedTasks) {
-        await invoke("delete_scheduled_task", { id });
-      }
-      setSelectedTasks(new Set());
-      loadTasks();
-    } catch (error) {
-      console.error("Failed to delete tasks:", error);
+      const [loadedWatches, loadedDevices] = await Promise.all([
+        invoke<Watch[]>("list_watches"),
+        invoke<RegisteredDevice[]>("load_connections"),
+      ]);
+      setWatches(loadedWatches);
+      setDevices(loadedDevices);
+      setError(null);
+    } catch (reason) {
+      setError(`Watch の読み込みに失敗しました: ${String(reason)}`);
     }
   };
-
-  const handleToggleSelect = (id: string) => {
-    const newSelected = new Set(selectedTasks);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
+  useEffect(() => {
+    void loadWatches();
+    const unlisten = listen("watch-executed", () => void loadWatches());
+    return () => void unlisten.then((dispose) => dispose());
+  }, []);
+  const filtered = useMemo(
+    () =>
+      watches.filter((watch) =>
+        `${watch.name} ${toForm(watch).device}`.toLowerCase().includes(query.toLowerCase())
+      ),
+    [query, watches]
+  );
+  const save = async () => {
+    if (!form) return;
+    if (!devices.some((device) => device.hostname === form.device)) {
+      setError("対象機器は登録済み機器から選択してください。");
+      return;
     }
-    setSelectedTasks(newSelected);
-  };
-
-  const handleCreateNew = () => {
-    setEditingTask({
-      id: "",
-      name: t("scheduled_tasks.default_new_task_name"),
-      status: "running",
-      schedule: "* * * * * *",
-      lastRun: "-",
-      prompt: t("scheduled_tasks.default_prompt"),
-    });
-    setIsCreating(true);
-  };
-
-  const handleExecuteNow = async (id: string) => {
     try {
-      await invoke("execute_task", { id });
-      loadTasks();
-    } catch (error) {
-      console.error("Failed to execute task:", error);
+      const request = toRequest(form);
+      if (form.id) await invoke("update_watch", { id: form.id, request });
+      else await invoke("create_watch", { request });
+      setForm(null);
+      await loadWatches();
+    } catch (reason) {
+      setError(`Watch を保存できませんでした: ${String(reason)}`);
     }
   };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "running":
-        return t("scheduled_tasks.state_running");
-      case "stopped":
-        return t("scheduled_tasks.state_stopped");
-      case "disabled":
-        return t("scheduled_tasks.state_disabled");
-      default:
-        return status;
+  const setEnabled = async (watch: Watch) => {
+    try {
+      await invoke(watch.status === "enabled" ? "disable_watch" : "enable_watch", { id: watch.id });
+      await loadWatches();
+    } catch (reason) {
+      setError(`状態を変更できませんでした: ${String(reason)}`);
     }
   };
-
+  const run = async (id: string) => {
+    try {
+      await invoke("execute_watch_now", { id });
+      await loadWatches();
+    } catch (reason) {
+      setError(`Watch を実行できませんでした: ${String(reason)}`);
+    }
+  };
+  const remove = async (id: string) => {
+    if (!window.confirm("この Watch を削除しますか？")) return;
+    try {
+      await invoke("delete_watch", { id });
+      await loadWatches();
+    } catch (reason) {
+      setError(`Watch を削除できませんでした: ${String(reason)}`);
+    }
+  };
   return (
     <div className="scheduled-tasks-overlay">
       <div className="scheduled-tasks-panel">
         <header className="scheduled-header">
-          <div className="header-title-container">
-            <h2>{t("scheduled_tasks.header")}</h2>
+          <div>
+            <h2>定期実行</h2>
           </div>
+          <button className="close-card-btn" aria-label="閉じる" onClick={onClose}>
+            ×
+          </button>
         </header>
-
         <div className="scheduled-toolbar">
           <div className="toolbar-left">
             <span className="results-count">
-              <strong>{filteredTasks.length}</strong> / <strong>{tasks.length}</strong>{" "}
-              {t("scheduled_tasks.show_tasks")}
+              <strong>{filtered.length}</strong> / <strong>{watches.length}</strong> 件の 定期実行
             </span>
             <div className="search-box-container">
               <SearchIcon className="search-icon" size={16} />
               <input
-                type="text"
-                placeholder={t("scheduled_tasks.search_placeholder")}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="名前または対象機器を検索..."
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
               />
             </div>
           </div>
-          <div className="toolbar-right">
-            <button className="toolbar-btn" onClick={loadTasks}>
-              <UpdateIcon size={14} />
-              {t("scheduled_tasks.btn_update")}
-            </button>
-          </div>
+          <button className="toolbar-btn" onClick={() => void loadWatches()}>
+            <UpdateIcon size={14} />
+            更新
+          </button>
         </div>
-
+        {error && (
+          <div className="watch-error" role="alert">
+            {error}
+          </div>
+        )}
         <div className="scheduled-table-wrapper">
           <table className="scheduled-table">
             <thead>
               <tr>
-                <th className="col-checkbox">-</th>
-                <th>{t("scheduled_tasks.th_name")}</th>
-                <th>{t("scheduled_tasks.th_state")}</th>
-                <th>{t("scheduled_tasks.th_cron")}</th>
-                <th>{t("scheduled_tasks.th_last_run")}</th>
-                <th>{t("scheduled_tasks.th_actions")}</th>
+                <th>名称</th>
+                <th>対象機器</th>
+                <th>間隔</th>
+                <th>閾値</th>
+                <th>状態</th>
+                <th>最終実行</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              {filteredTasks.map((task) => (
-                <tr key={task.id}>
-                  <td className="col-checkbox">
-                    <input
-                      type="checkbox"
-                      className="task-checkbox"
-                      checked={selectedTasks.has(task.id)}
-                      onChange={() => handleToggleSelect(task.id)}
-                    />
-                  </td>
-                  <td>
-                    <div className="task-name-cell">
-                      <div className="task-icon">
-                        <ClockIcon size={14} />
+              {filtered.map((watch) => {
+                const values = toForm(watch);
+                return (
+                  <tr key={watch.id}>
+                    <td>
+                      <div className="task-name-cell">
+                        <div className="task-icon">
+                          <ClockIcon size={14} />
+                        </div>
+                        <button className="watch-name-button" onClick={() => setForm(values)}>
+                          {watch.name}
+                        </button>
                       </div>
-                      <span
-                        className="task-name-text"
-                        onClick={() => {
-                          setEditingTask({ ...task });
-                          setIsCreating(false);
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setEditingTask({ ...task });
-                            setIsCreating(false);
-                          }
-                        }}
-                      >
-                        {task.name}
+                    </td>
+                    <td>{values.device}</td>
+                    <td>{values.intervalSeconds} 秒</td>
+                    <td>{values.threshold}% 超過</td>
+                    <td>
+                      <span className={`status-badge ${watch.status}`}>
+                        {watch.status === "enabled" ? "有効" : "無効"}
                       </span>
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`status-badge ${task.status}`}>
-                      {getStatusLabel(task.status)}
-                    </span>
-                  </td>
-                  <td>{task.schedule}</td>
-                  <td>{task.lastRun}</td>
-                  <td>
-                    <button
-                      onClick={() => handleExecuteNow(task.id)}
-                      style={{ padding: "4px 8px", fontSize: "12px", cursor: "pointer" }}
-                    >
-                      {t("scheduled_tasks.btn_manual_run")}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td title={watch.lastError ?? undefined}>
+                      {watch.lastError ? `エラー: ${watch.lastError}` : formatTime(watch.lastRunAt)}
+                    </td>
+                    <td className="watch-actions">
+                      <button onClick={() => void run(watch.id)}>今すぐ実行</button>
+                      <button onClick={() => void setEnabled(watch)}>
+                        {watch.status === "enabled" ? "無効化" : "有効化"}
+                      </button>
+                      <button className="watch-delete" onClick={() => void remove(watch.id)}>
+                        削除
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-
-        {editingTask && (
+        <footer className="scheduled-panel-footer">
+          <button className="add-task-btn" onClick={() => setForm(emptyForm())}>
+            CPU Watch を追加
+          </button>
+        </footer>
+        {form && (
           <div className="task-settings-modal-overlay">
             <div className="task-settings-card">
               <header className="settings-card-header">
-                <h3>{isCreating ? t("scheduled_tasks.dialog_create_title") : t("scheduled_tasks.dialog_edit_title")}</h3>
-                <button className="close-card-btn" onClick={() => setEditingTask(null)}>
-                  &times;
+                <h3>{form.id ? "CPU Watch を編集" : "CPU Watch を追加"}</h3>
+                <button className="close-card-btn" onClick={() => setForm(null)}>
+                  ×
                 </button>
               </header>
               <div className="settings-card-body">
-                <div className="settings-form-group">
-                  <label>{t("scheduled_tasks.label_name")}</label>
+                <p className="field-hint">
+                  実行 IR は固定です: CPU を取得し、指定した閾値を超えたときだけ通知します。
+                </p>
+                <label className="settings-form-group">
+                  名称
                   <input
-                    type="text"
-                    value={editingTask.name}
-                    onChange={(e) => setEditingTask({ ...editingTask, name: e.target.value })}
+                    value={form.name}
+                    onChange={(event) => setForm({ ...form, name: event.target.value })}
                   />
-                </div>
-                <div className="settings-form-group">
-                  <label>{t("scheduled_tasks.label_cron")}</label>
-                  <ScheduleInput
-                    value={editingTask.schedule}
-                    onChange={(val) => setEditingTask({ ...editingTask, schedule: val })}
-                  />
-                </div>
-                <div className="settings-form-group">
-                  <label>{t("scheduled_tasks.label_state")}</label>
+                </label>
+                <label className="settings-form-group">
+                  対象機器
                   <select
-                    value={editingTask.status}
-                    onChange={(e) =>
-                      setEditingTask({ ...editingTask, status: e.target.value as any })
-                    }
-                    className="task-status-select"
+                    value={form.device}
+                    onChange={(event) => setForm({ ...form, device: event.target.value })}
                   >
-                    <option value="running">{t("scheduled_tasks.state_running")}</option>
-                    <option value="stopped">{t("scheduled_tasks.state_stopped")}</option>
-                    <option value="disabled">{t("scheduled_tasks.state_disabled")}</option>
+                    <option value="">登録済み機器を選択...</option>
+                    {devices.map((device) => (
+                      <option key={device.hostname} value={device.hostname}>
+                        {device.hostname}
+                        {device.ip ? ` (${device.ip})` : ""}
+                      </option>
+                    ))}
                   </select>
-                </div>
-                <div className="settings-form-group">
-                  <label>{t("scheduled_tasks.label_prompt")} {isCreating ? "" : "(表示専用)"}</label>
-                  <textarea
-                    value={editingTask.prompt}
-                    readOnly={!isCreating}
-                    onChange={(e) => setEditingTask({ ...editingTask, prompt: e.target.value })}
-                    className={!isCreating ? "readonly-prompt-area" : "task-prompt-textarea"}
-                  />
-                  {!isCreating && (
-                    <p className="field-hint">
-                      {t("scheduled_tasks.prompt_readonly_notice")}
+                  {form.device && !devices.some((device) => device.hostname === form.device) && (
+                    <p className="field-hint watch-error-hint">
+                      現在の対象機器は登録されていません。登録済み機器を選び直してください。
                     </p>
                   )}
-                </div>
+                </label>
+                <label className="settings-form-group">
+                  実行間隔（秒）
+                  <input
+                    type="number"
+                    min="60"
+                    step="60"
+                    value={form.intervalSeconds}
+                    onChange={(event) =>
+                      setForm({ ...form, intervalSeconds: Number(event.target.value) })
+                    }
+                  />
+                </label>
+                <label className="settings-form-group">
+                  CPU 閾値（%）
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={form.threshold}
+                    onChange={(event) =>
+                      setForm({ ...form, threshold: Number(event.target.value) })
+                    }
+                  />
+                </label>
               </div>
               <footer className="settings-card-footer">
-                <button className="settings-cancel-btn" onClick={() => setEditingTask(null)}>
-                  {t("scheduled_tasks.btn_cancel")}
+                <button className="settings-cancel-btn" onClick={() => setForm(null)}>
+                  キャンセル
                 </button>
-                <button className="settings-save-btn" onClick={handleSaveTask}>
-                  {t("scheduled_tasks.btn_save")}
+                <button className="settings-save-btn" onClick={() => void save()}>
+                  保存
                 </button>
               </footer>
             </div>
           </div>
         )}
-
-        <footer className="scheduled-panel-footer">
-          <button className="add-task-btn" onClick={handleCreateNew}>
-            {t("scheduled_tasks.btn_add")}
-          </button>
-          <button
-            className={`delete-selected-btn ${selectedTasks.size > 0 ? "active" : "disabled"}`}
-            onClick={handleDeleteSelected}
-            disabled={selectedTasks.size === 0}
-          >
-            {t("scheduled_tasks.btn_delete")}
-          </button>
-        </footer>
       </div>
     </div>
   );

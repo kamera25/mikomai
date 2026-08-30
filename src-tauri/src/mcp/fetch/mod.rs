@@ -8,4 +8,3 @@ pub mod get_state;
 pub mod netmiko;
 pub mod state_resource;
 pub use crate::connections::ConnectionType;
-

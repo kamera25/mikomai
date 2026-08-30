@@ -11,6 +11,7 @@ cisco_ios:
   fetch_lldp: "show lldp neighbors"
   fetch_mac_table: "show mac address-table"
   fetch_ospf: "show ip ospf neighbor"
+  fetch_cpu: "show processes cpu"
 
 juniper_junos:
   fetch_config: "show configuration"
@@ -21,6 +22,7 @@ juniper_junos:
   fetch_lldp: "show lldp neighbors"
   fetch_mac_table: "show ethernet-switching table"
   fetch_ospf: "show ospf neighbor"
+  fetch_cpu: "show system processes extensive | match CPU"
 
 arista_eos:
   fetch_config: "show running-config"
@@ -31,6 +33,7 @@ arista_eos:
   fetch_lldp: "show lldp neighbors"
   fetch_mac_table: "show mac address-table"
   fetch_ospf: "show ip ospf neighbor"
+  fetch_cpu: "show processes top once"
 
 yamaha:
   fetch_config: "show config"
@@ -41,6 +44,7 @@ yamaha:
   fetch_lldp: "show status lldp"
   fetch_mac_table: "show status switching-hub mac"
   fetch_ospf: "show ip ospf neighbor"
+  fetch_cpu: "show status cpu"
 
 furukawa_fitelnet:
   fetch_config: "show running-config"
@@ -51,3 +55,4 @@ furukawa_fitelnet:
   fetch_lldp: "show lldp neighbor"
   fetch_mac_table: "show mac-address-table"
   fetch_ospf: "show ip ospf neighbor"
+  fetch_cpu: "show cpu"

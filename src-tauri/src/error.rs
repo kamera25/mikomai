@@ -15,9 +15,6 @@ pub enum MikomaiError {
     #[error("Connection error: {0}")]
     Connection(#[from] crate::connections::ConnectionError),
 
-    #[error("Scheduled task error: {0}")]
-    ScheduledTask(#[from] crate::scheduled_tasks::ScheduledTaskError),
-
     #[error("Network error: {0}")]
     Network(#[from] crate::network::NetworkError),
 
