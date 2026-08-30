@@ -43,7 +43,7 @@ impl BuilderWorker
                 SYSTEM_PROMPT,
                 BUILDER_INITIAL_PROMPT
             );
-            let mut ctx = AgentContext::new(
+            let ctx = AgentContext::new(
                 model.clone(),
                 backend.clone(),
                 &full_system_prompt,
@@ -52,7 +52,6 @@ impl BuilderWorker
                 N_CTX,
             )
             .map_err(|e| format!("Failed to create Builder context: {:?}", e))?;
-            ctx.response_prefix = Some("<thought>\n".to_string());
 
             Ok(Self {
                 ctx: Some(ctx),
@@ -110,7 +109,7 @@ impl LlmWorker for BuilderWorker
                 SYSTEM_PROMPT,
                 prompt_text
             );
-            let mut ctx = AgentContext::new(
+            let ctx = AgentContext::new(
                 model.clone(),
                 backend.clone(),
                 &full_system_prompt,
@@ -119,7 +118,6 @@ impl LlmWorker for BuilderWorker
                 N_CTX,
             )
             .map_err(|e| format!("Failed to create Builder context: {:?}", e))?;
-            ctx.response_prefix = Some("<thought>\n".to_string());
 
             self.ctx = Some(ctx);
         }

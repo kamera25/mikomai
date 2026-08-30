@@ -322,6 +322,21 @@ fn format_hybrid_search_results(
         .collect();
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
 
+    // An explicit command name is stronger evidence than semantic similarity.
+    // Otherwise a vendor-scoped hostname query can include unrelated VLAN
+    // templates and make their parameters look required downstream.
+    let query_lower = query.to_lowercase();
+    if query_lower.contains("hostname") {
+        let hostname_matches: Vec<_> = ranked
+            .iter()
+            .filter(|(candidate, _)| candidate.text.to_lowercase().contains("hostname"))
+            .cloned()
+            .collect();
+        if !hostname_matches.is_empty() {
+            ranked = hostname_matches;
+        }
+    }
+
     for (rank, (candidate, score)) in ranked.into_iter().take(5).enumerate() {
         let citation = RagCitation {
             source_path: candidate.path,
