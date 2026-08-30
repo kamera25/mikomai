@@ -6,7 +6,11 @@ struct RoutingFetcher;
 
 impl McpCommandFetcher for RoutingFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        template.fetch_route.clone()
+        if !template.fetch_route.trim().is_empty() {
+            template.fetch_route.clone()
+        } else {
+            "show ip route".to_string()
+        }
     }
 
     fn get_log_prefix(&self) -> &'static str {

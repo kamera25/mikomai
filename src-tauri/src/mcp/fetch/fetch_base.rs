@@ -172,6 +172,13 @@ pub trait McpCommandFetcher {
         } else {
             self.get_command_from_template(template)
         };
+        if command.trim().is_empty() {
+            return Err(format!(
+                "Error: No command defined for '{}' on device type '{}'.",
+                self.get_log_prefix(),
+                target_device.device_type
+            ));
+        }
         if let Some(ref port) = target_device.console_port {
             log::info!(
                 "Fetching {} for registered device '{}' via console port '{}' using command '{}'",
@@ -285,6 +292,7 @@ mod tests {
             fetch_route: "show ip route".to_string(),
             fetch_bgp: "show ip bgp".to_string(),
             fetch_arp: "show ip arp".to_string(),
+            ..Default::default()
         };
         let serialized = serde_json::to_string(&template).unwrap();
         assert!(serialized.contains(r#""fetch_config":"show run""#));

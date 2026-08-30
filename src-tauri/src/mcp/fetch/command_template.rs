@@ -4,12 +4,24 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct CommandTemplate {
+    #[serde(default)]
     pub fetch_config: String,
+    #[serde(default)]
     pub fetch_route: String,
+    #[serde(default)]
     pub fetch_bgp: String,
+    #[serde(default)]
     pub fetch_arp: String,
+    #[serde(default)]
+    pub fetch_interfaces: String,
+    #[serde(default)]
+    pub fetch_lldp: String,
+    #[serde(default)]
+    pub fetch_mac_table: String,
+    #[serde(default)]
+    pub fetch_ospf: String,
 }
 
 pub type CommandTemplates = HashMap<String, CommandTemplate>;
@@ -31,18 +43,49 @@ pub fn get_default_templates() -> CommandTemplates {
 }
 
 pub fn load_templates(app: &tauri::AppHandle) -> CommandTemplates {
+    let mut defaults = get_default_templates();
     let path = get_templates_path(app);
     if !path.exists() {
-        let defaults = get_default_templates();
         if let Ok(data) = serde_json::to_string_pretty(&defaults) {
             let _ = fs::write(&path, data);
         }
         defaults
     } else {
-        match fs::read_to_string(&path) {
-            Ok(data) => serde_json::from_str(&data).unwrap_or_else(|_| get_default_templates()),
-            Err(_) => get_default_templates(),
+        let loaded: CommandTemplates = match fs::read_to_string(&path) {
+            Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
+            Err(_) => HashMap::new(),
+        };
+        // Merge loaded with defaults (fill in missing vendors and empty fields)
+        for (vendor, loaded_template) in loaded {
+            let entry = defaults
+                .entry(vendor)
+                .or_insert_with(CommandTemplate::default);
+            if !loaded_template.fetch_config.trim().is_empty() {
+                entry.fetch_config = loaded_template.fetch_config;
+            }
+            if !loaded_template.fetch_route.trim().is_empty() {
+                entry.fetch_route = loaded_template.fetch_route;
+            }
+            if !loaded_template.fetch_bgp.trim().is_empty() {
+                entry.fetch_bgp = loaded_template.fetch_bgp;
+            }
+            if !loaded_template.fetch_arp.trim().is_empty() {
+                entry.fetch_arp = loaded_template.fetch_arp;
+            }
+            if !loaded_template.fetch_interfaces.trim().is_empty() {
+                entry.fetch_interfaces = loaded_template.fetch_interfaces;
+            }
+            if !loaded_template.fetch_lldp.trim().is_empty() {
+                entry.fetch_lldp = loaded_template.fetch_lldp;
+            }
+            if !loaded_template.fetch_mac_table.trim().is_empty() {
+                entry.fetch_mac_table = loaded_template.fetch_mac_table;
+            }
+            if !loaded_template.fetch_ospf.trim().is_empty() {
+                entry.fetch_ospf = loaded_template.fetch_ospf;
+            }
         }
+        defaults
     }
 }
 

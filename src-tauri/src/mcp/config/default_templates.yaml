@@ -7,27 +7,47 @@ cisco_ios:
   fetch_route: "show ip route"
   fetch_bgp: "show ip bgp summary"
   fetch_arp: "show ip arp"
+  fetch_interfaces: "show interfaces"
+  fetch_lldp: "show lldp neighbors"
+  fetch_mac_table: "show mac address-table"
+  fetch_ospf: "show ip ospf neighbor"
 
 juniper_junos:
   fetch_config: "show configuration"
   fetch_route: "show route"
   fetch_bgp: "show bgp summary"
   fetch_arp: "show arp"
+  fetch_interfaces: "show interfaces"
+  fetch_lldp: "show lldp neighbors"
+  fetch_mac_table: "show ethernet-switching table"
+  fetch_ospf: "show ospf neighbor"
 
 arista_eos:
   fetch_config: "show running-config"
   fetch_route: "show ip route"
   fetch_bgp: "show ip bgp summary"
   fetch_arp: "show ip arp"
+  fetch_interfaces: "show interfaces"
+  fetch_lldp: "show lldp neighbors"
+  fetch_mac_table: "show mac address-table"
+  fetch_ospf: "show ip ospf neighbor"
 
 yamaha:
   fetch_config: "show config"
   fetch_route: "show ip route"
   fetch_bgp: "show ip bgp summary"
   fetch_arp: "show arp"
+  fetch_interfaces: "show status lan1"
+  fetch_lldp: "show status lldp"
+  fetch_mac_table: "show status switching-hub mac"
+  fetch_ospf: "show ip ospf neighbor"
 
 furukawa_fitelnet:
   fetch_config: "show running-config"
   fetch_route: "show ip route"
   fetch_bgp: "show ip bgp summary"
   fetch_arp: "show ip arp"
+  fetch_interfaces: "show interface"
+  fetch_lldp: "show lldp neighbor"
+  fetch_mac_table: "show mac-address-table"
+  fetch_ospf: "show ip ospf neighbor"

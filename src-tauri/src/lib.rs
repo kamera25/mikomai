@@ -76,6 +76,7 @@ pub fn run() {
             mcp::fetch::fetch_config::fetch_config,
             mcp::fetch::fetch_routing::fetch_routing,
             mcp::fetch::fetch_arp::fetch_arp,
+            mcp::fetch::get_state::get_state,
             graph::query_network_graph,
             history::load_history,
             history::save_history,

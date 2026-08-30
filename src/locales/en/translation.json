@@ -286,6 +286,7 @@
     "fetch_config": "Fetch Config",
     "fetch_routing": "Fetch Routing",
     "fetch_arp": "Fetch ARP",
+    "get_state": "Get State",
     "require_host_registered": "Host Registration Request",
     "self_network_nwdiag": "Generate Diagram",
     "validate_cisco_config": "Validate Cisco Config",

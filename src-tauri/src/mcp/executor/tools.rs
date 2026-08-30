@@ -147,6 +147,32 @@ define_tool!(FetchArpTool, "fetch_arp", |app, args| {
     .await
 });
 
+define_tool!(GetStateTool, "get_state", |app, args| {
+    let device = get_str_arg(
+        &args,
+        &["device", "deviceName", "device_name", "host", "target"],
+    );
+    let resource = get_str_arg(
+        &args,
+        &["resource", "resourceType", "resource_type", "type"],
+    );
+    let user_msg = get_str_arg(&args, &["userMessage", "user_message"]);
+    crate::mcp::fetch::get_state::get_state(
+        app,
+        device.clone(),
+        device.clone(),
+        device.clone(),
+        device.clone(),
+        device,
+        resource.clone(),
+        resource.clone(),
+        resource,
+        user_msg.clone(),
+        user_msg,
+    )
+    .await
+});
+
 define_tool!(QueryNwDbTool, "query_nw_db", |app, args| {
     let query = get_str_arg(&args, &["query", "userMessage", "user_message"]).unwrap_or_default();
     let filter = get_str_arg(&args, &["filter"]);
@@ -673,6 +699,7 @@ pub fn init_tool_registry() -> HashMap<String, Box<dyn McpTool>> {
     reg!(FetchConfigTool);
     reg!(FetchRoutingTool);
     reg!(FetchArpTool);
+    reg!(GetStateTool);
     reg!(QueryNwDbTool);
     reg!(QueryNetworkGraphTool);
     reg!(SelfNetworkArpTool);

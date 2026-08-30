@@ -25,6 +25,7 @@ const TOOL_LABEL_MAP: Record<string, string> = {
   fetch_config: "Fetch Config",
   fetch_routing: "Fetch Routing",
   fetch_arp: "Fetch ARP",
+  get_state: "State取得",
   require_host_registered: "ホスト登録要求",
 };
 

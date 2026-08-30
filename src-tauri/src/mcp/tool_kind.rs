@@ -23,6 +23,7 @@ pub enum ToolKind {
     FetchConfig,
     FetchRouting,
     FetchArp,
+    GetState,
     RequireHostRegistered,
     SelfNetworkNwdiag,
     ValidateCiscoConfig,
@@ -59,6 +60,7 @@ impl ToolKind {
             Self::FetchConfig => "fetch_config",
             Self::FetchRouting => "fetch_routing",
             Self::FetchArp => "fetch_arp",
+            Self::GetState => "get_state",
             Self::RequireHostRegistered => "require_host_registered",
             Self::SelfNetworkNwdiag => "self_network_nwdiag",
             Self::ValidateCiscoConfig => "validate_cisco_config",
@@ -94,6 +96,7 @@ impl ToolKind {
             Self::FetchConfig => "Fetch Config",
             Self::FetchRouting => "Fetch Routing",
             Self::FetchArp => "Fetch ARP",
+            Self::GetState => "State取得",
             Self::RequireHostRegistered => "ホスト登録要求",
             Self::SelfNetworkNwdiag => "ネットワーク図生成",
             Self::ValidateCiscoConfig => "Cisco設定検証",
@@ -139,7 +142,7 @@ impl ToolKind {
     pub fn is_device_target_tool(&self) -> bool {
         matches!(
             self,
-            Self::FetchConfig | Self::FetchRouting | Self::FetchArp
+            Self::GetState | Self::FetchConfig | Self::FetchRouting | Self::FetchArp
         )
     }
 
@@ -160,7 +163,11 @@ impl ToolKind {
     pub fn is_heavy_network_tool(&self) -> bool {
         matches!(
             self,
-            Self::FetchConfig | Self::FetchRouting | Self::FetchArp | Self::NetworkShow
+            Self::GetState
+                | Self::FetchConfig
+                | Self::FetchRouting
+                | Self::FetchArp
+                | Self::NetworkShow
         )
     }
 
@@ -183,6 +190,7 @@ impl ToolKind {
                 | Self::NetworkGetIpInfo
                 | Self::NetworkListSerialPorts
                 | Self::NetworkShow
+                | Self::GetState
                 | Self::FetchConfig
                 | Self::FetchRouting
                 | Self::FetchArp
@@ -221,6 +229,7 @@ impl std::str::FromStr for ToolKind {
             "fetch_config" => Ok(Self::FetchConfig),
             "fetch_routing" => Ok(Self::FetchRouting),
             "fetch_arp" => Ok(Self::FetchArp),
+            "get_state" => Ok(Self::GetState),
             "require_host_registered" => Ok(Self::RequireHostRegistered),
             "self_network_nwdiag" => Ok(Self::SelfNetworkNwdiag),
             "validate_cisco_config" => Ok(Self::ValidateCiscoConfig),

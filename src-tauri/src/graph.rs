@@ -25,14 +25,24 @@ pub enum GraphDataKind {
     Config,
     Routing,
     Arp,
+    Interfaces,
+    Lldp,
+    MacTable,
+    Bgp,
+    Ospf,
 }
 
 impl GraphDataKind {
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Config => "config",
             Self::Routing => "routing",
             Self::Arp => "arp",
+            Self::Interfaces => "interfaces",
+            Self::Lldp => "lldp",
+            Self::MacTable => "mac_table",
+            Self::Bgp => "bgp",
+            Self::Ospf => "ospf",
         }
     }
 }
@@ -475,7 +485,12 @@ pub fn normalize_yaml(kind: GraphDataKind, yaml: &str) -> Option<Value> {
                 obj.insert("ip_addresses".to_string(), Value::Array(ips));
             }
         }
-        GraphDataKind::Config => {}
+        GraphDataKind::Config
+        | GraphDataKind::Interfaces
+        | GraphDataKind::Lldp
+        | GraphDataKind::MacTable
+        | GraphDataKind::Bgp
+        | GraphDataKind::Ospf => {}
     }
     Some(value)
 }
