@@ -2,8 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
-pub enum ToolKind
-{
+pub enum ToolKind {
     SelfNetworkPing,
     SelfNetworkTraceroute,
     SelfNetworkTestConnection,
@@ -13,6 +12,7 @@ pub enum ToolKind
     NetworkQueryNwDb,
     QueryNwDb,
     QueryRag,
+    QueryNetworkGraph,
     SelfNetworkArp,
     SelfNetworkRoute,
     NetworkGetIpInfo,
@@ -37,12 +37,9 @@ pub enum ToolKind
     NetworkTftpUpload,
 }
 
-impl ToolKind
-{
-    pub fn as_str(&self) -> &'static str
-    {
-        match self
-        {
+impl ToolKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
             Self::SelfNetworkPing => "self_network_ping",
             Self::SelfNetworkTraceroute => "self_network_traceroute",
             Self::SelfNetworkTestConnection => "self_network_test_connection",
@@ -51,6 +48,7 @@ impl ToolKind
             Self::NetworkQueryNwDb => "network_query_nw_db",
             Self::QueryNwDb => "query_nw_db",
             Self::QueryRag => "query_rag",
+            Self::QueryNetworkGraph => "query_network_graph",
             Self::SelfNetworkArp => "self_network_arp",
             Self::SelfNetworkRoute => "self_network_route",
             Self::NetworkGetIpInfo => "network_get_ip_info",
@@ -76,18 +74,16 @@ impl ToolKind
         }
     }
 
-    pub fn label(&self) -> &'static str
-    {
-        match self
-        {
+    pub fn label(&self) -> &'static str {
+        match self {
             Self::SelfNetworkPing => "Ping",
             Self::SelfNetworkTraceroute => "Traceroute",
-            Self::SelfNetworkTestConnection | Self::SelfNetworkTestNetConnection =>
-            {
+            Self::SelfNetworkTestConnection | Self::SelfNetworkTestNetConnection => {
                 "Test Connection"
             }
             Self::NetworkGetHosts => "Host List",
             Self::NetworkQueryNwDb | Self::QueryNwDb | Self::QueryRag => "NWDB検索",
+            Self::QueryNetworkGraph => "ネットワークグラフ検索",
             Self::SelfNetworkArp => "ARP Table",
             Self::SelfNetworkRoute => "Route Table",
             Self::NetworkGetIpInfo => "IP Info",
@@ -113,16 +109,14 @@ impl ToolKind
         }
     }
 
-    pub fn is_choice_tool(&self) -> bool
-    {
+    pub fn is_choice_tool(&self) -> bool {
         matches!(
             self,
             Self::AskUserChoice | Self::AskInterfaceChoice | Self::AskIpaddressChoice
         )
     }
 
-    pub fn is_builder_tool(&self) -> bool
-    {
+    pub fn is_builder_tool(&self) -> bool {
         matches!(
             self,
             Self::AskUserChoice
@@ -135,24 +129,21 @@ impl ToolKind
         )
     }
 
-    pub fn is_rag_tool(&self) -> bool
-    {
+    pub fn is_rag_tool(&self) -> bool {
         matches!(
             self,
             Self::QueryNwDb | Self::NetworkQueryNwDb | Self::QueryRag
         )
     }
 
-    pub fn is_device_target_tool(&self) -> bool
-    {
+    pub fn is_device_target_tool(&self) -> bool {
         matches!(
             self,
             Self::FetchConfig | Self::FetchRouting | Self::FetchArp
         )
     }
 
-    pub fn is_host_target_tool(&self) -> bool
-    {
+    pub fn is_host_target_tool(&self) -> bool {
         matches!(
             self,
             Self::SelfNetworkPing
@@ -166,8 +157,7 @@ impl ToolKind
         )
     }
 
-    pub fn is_heavy_network_tool(&self) -> bool
-    {
+    pub fn is_heavy_network_tool(&self) -> bool {
         matches!(
             self,
             Self::FetchConfig | Self::FetchRouting | Self::FetchArp | Self::NetworkShow
@@ -176,8 +166,7 @@ impl ToolKind
 
     /// Tools in this set may inspect the local system or network devices but
     /// must not change a device, transfer destination, or serial-console state.
-    pub fn is_read_only(&self) -> bool
-    {
+    pub fn is_read_only(&self) -> bool {
         matches!(
             self,
             Self::SelfNetworkPing
@@ -188,6 +177,7 @@ impl ToolKind
                 | Self::NetworkQueryNwDb
                 | Self::QueryNwDb
                 | Self::QueryRag
+                | Self::QueryNetworkGraph
                 | Self::SelfNetworkArp
                 | Self::SelfNetworkRoute
                 | Self::NetworkGetIpInfo
@@ -207,14 +197,11 @@ impl ToolKind
     }
 }
 
-impl std::str::FromStr for ToolKind
-{
+impl std::str::FromStr for ToolKind {
     type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err>
-    {
-        match s
-        {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
             "self_network_ping" => Ok(Self::SelfNetworkPing),
             "self_network_traceroute" => Ok(Self::SelfNetworkTraceroute),
             "self_network_test_connection" => Ok(Self::SelfNetworkTestConnection),
@@ -223,6 +210,7 @@ impl std::str::FromStr for ToolKind
             "network_query_nw_db" => Ok(Self::NetworkQueryNwDb),
             "query_nw_db" => Ok(Self::QueryNwDb),
             "query_rag" => Ok(Self::QueryRag),
+            "query_network_graph" => Ok(Self::QueryNetworkGraph),
             "self_network_arp" => Ok(Self::SelfNetworkArp),
             "self_network_route" => Ok(Self::SelfNetworkRoute),
             "network_get_ip_info" => Ok(Self::NetworkGetIpInfo),
@@ -250,10 +238,8 @@ impl std::str::FromStr for ToolKind
     }
 }
 
-impl std::fmt::Display for ToolKind
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-    {
+impl std::fmt::Display for ToolKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }

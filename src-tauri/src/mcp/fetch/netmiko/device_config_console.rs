@@ -1,8 +1,7 @@
 use crate::network::NetmikoDeviceConfig;
 use crate::settings::load_settings;
 
-pub trait ConsoleDeviceConfigBuilder
-{
+pub trait ConsoleDeviceConfigBuilder {
     fn build(
         &self,
         app: &tauri::AppHandle,
@@ -12,34 +11,27 @@ pub trait ConsoleDeviceConfigBuilder
 
 pub struct ConsoleBuilder;
 
-impl ConsoleDeviceConfigBuilder for ConsoleBuilder
-{
+impl ConsoleDeviceConfigBuilder for ConsoleBuilder {
     fn build(
         &self,
         app: &tauri::AppHandle,
         resolved_name: &str,
-    ) -> Result<NetmikoDeviceConfig, String>
-    {
+    ) -> Result<NetmikoDeviceConfig, String> {
         let device = crate::mcp::fetch::fetch_base::find_device(app, resolved_name)?;
 
         let settings = load_settings(app.clone()).unwrap_or_default();
-        let mut port = match settings.console_port
-        {
+        let mut port = match settings.console_port {
             Some(ref p) if !p.trim().is_empty() && p != "None" => Some(p.clone()),
             _ => None,
         };
 
-        if port.is_none()
-        {
-            if let Ok(ports) = serialport::available_ports()
-            {
-                if let Some(p) = ports.first()
-                {
+        if port.is_none() {
+            if let Ok(ports) = serialport::available_ports() {
+                if let Some(p) = ports.first() {
                     port = Some(p.port_name.clone());
                 }
             }
-            if port.is_none()
-            {
+            if port.is_none() {
                 #[cfg(target_os = "windows")]
                 {
                     port = Some("COM1".to_string());

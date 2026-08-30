@@ -10,21 +10,17 @@ const RAG_WORKER_PROMPT: &str = include_str!("../prompts/rag_worker.txt");
 const MAX_NEW_TOKENS: u32 = 512;
 const N_CTX: u32 = 8192;
 
-pub struct RagWorker
-{
+pub struct RagWorker {
     pub ctx: Option<AgentContext>,
 }
 
-impl RagWorker
-{
+impl RagWorker {
     pub fn new(
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
         preload: bool,
-    ) -> Result<Self, String>
-    {
-        if preload
-        {
+    ) -> Result<Self, String> {
+        if preload {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「RAG Worker (RAG回答員)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
@@ -41,23 +37,18 @@ impl RagWorker
             .map_err(|e| format!("Failed to create Rag context: {:?}", e))?;
 
             Ok(Self { ctx: Some(ctx) })
-        }
-        else
-        {
+        } else {
             Ok(Self { ctx: None })
         }
     }
 }
 
-impl LlmWorker for RagWorker
-{
-    fn agent_name(&self) -> &'static str
-    {
+impl LlmWorker for RagWorker {
+    fn agent_name(&self) -> &'static str {
         "RAG Worker (RAG回答員)"
     }
 
-    fn context_mut(&mut self) -> &mut AgentContext
-    {
+    fn context_mut(&mut self) -> &mut AgentContext {
         self.ctx.as_mut().expect("Rag context not initialized")
     }
 
@@ -65,10 +56,8 @@ impl LlmWorker for RagWorker
         &mut self,
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
-    ) -> Result<(), String>
-    {
-        if self.ctx.is_none()
-        {
+    ) -> Result<(), String> {
+        if self.ctx.is_none() {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「RAG Worker (RAG回答員)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
@@ -97,14 +86,10 @@ impl LlmWorker for RagWorker
         output: Option<String>,
         history_block: Option<String>,
         _subsequent_task: Option<&str>,
-    ) -> String
-    {
-        if let Some(p) = prompt
-        {
+    ) -> String {
+        if let Some(p) = prompt {
             p
-        }
-        else
-        {
+        } else {
             let user_msg = user_message.as_deref().unwrap_or_default();
             let out = output.as_deref().unwrap_or_default();
             let hist = history_block.as_deref().unwrap_or_default();

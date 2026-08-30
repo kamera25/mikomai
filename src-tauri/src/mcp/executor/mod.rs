@@ -11,15 +11,13 @@ use tauri::{AppHandle, Emitter, State, Window};
 
 use crate::mcp::protocol::ChatRequest;
 
-
 #[tauri::command]
 pub async fn execute_mcp_tool(
     app: AppHandle,
     window: Window,
     _llama_state: State<'_, crate::llm::llm::LlamaState>,
     payload: ExecuteMcpToolPayload,
-) -> Result<String, String>
-{
+) -> Result<String, String> {
     let tool_calls = vec![ToolCall {
         tool: payload.tool_id.clone(),
         args: payload.args.clone(),
@@ -48,8 +46,7 @@ pub async fn handle_mcp_message(
     window: Window,
     llama_state: State<'_, crate::llm::llm::LlamaState>,
     payload: ChatRequest,
-) -> Result<(), String>
-{
+) -> Result<(), String> {
     crate::llm::llm::reset_cancel();
 
     let ChatRequest {
@@ -61,41 +58,32 @@ pub async fn handle_mcp_message(
         attachments,
     } = payload;
 
-    if crate::llm::llm::is_cancelled()
-    {
+    if crate::llm::llm::is_cancelled() {
         return Ok(());
     }
 
     let mut final_user_message = user_message.clone();
     let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
 
-    if let Some(att_list) = &attachments
-    {
-        for att in att_list
-        {
-            match att.mime_type
-            {
-                crate::history::AttachmentType::Text =>
-                {
-                    if let Some(path) = &att.path
-                    {
+    if let Some(att_list) = &attachments {
+        for att in att_list {
+            match att.mime_type {
+                crate::history::AttachmentType::Text => {
+                    if let Some(path) = &att.path {
                         final_user_message.push_str(&format!(
                             "\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n{}",
                             att.name,
                             path.display(),
                             att.content
                         ));
-                    }
-                    else
-                    {
+                    } else {
                         final_user_message.push_str(&format!(
                             "\n\n--- 添付ファイル: {} ---\n{}",
                             att.name, att.content
                         ));
                     }
                 }
-                crate::history::AttachmentType::Image =>
-                {
+                crate::history::AttachmentType::Image => {
                     let analysis = crate::llm::vision::analyze_image_attachment(
                         &att.name,
                         att.mime_type.as_str(),
@@ -105,32 +93,25 @@ pub async fn handle_mcp_message(
                         &*llama_state,
                     )
                     .await;
-                    if let Some(path) = &att.path
-                    {
+                    if let Some(path) = &att.path {
                         final_user_message.push_str(&format!(
                             "\n\n[添付画像: {} (ローカルパス: {})]\n{}",
                             att.name,
                             path.display(),
                             analysis.extracted_context
                         ));
-                    }
-                    else
-                    {
+                    } else {
                         final_user_message.push_str(&format!("\n\n{}", analysis.extracted_context));
                     }
                 }
-                crate::history::AttachmentType::File =>
-                {
-                    if let Some(path) = &att.path
-                    {
+                crate::history::AttachmentType::File => {
+                    if let Some(path) = &att.path {
                         let path_str = path.display();
                         final_user_message.push_str(&format!(
                             "\n\n--- 添付ファイル: {} (ローカルパス: {}) ---\n※バイナリまたは大容量ファイルのため内容は省略されています。",
                             att.name, path_str
                         ));
-                    }
-                    else
-                    {
+                    } else {
                         final_user_message.push_str(&format!(
                             "\n\n--- 添付ファイル: {} ---\n{}",
                             att.name, att.content
@@ -141,33 +122,31 @@ pub async fn handle_mcp_message(
         }
     }
 
-    if crate::llm::llm::is_cancelled()
-    {
+    if crate::llm::llm::is_cancelled() {
         return Ok(());
     }
 
     // Select from the user's request, never from attachment contents. An
     // attached command example must not by itself escalate a documentation
     // question into an autonomous device investigation.
-    match crate::harness::dispatch::select_dispatch_mode_for_request(&app, &user_message)
-    {
-        crate::harness::dispatch::DispatchMode::Agent =>
-        {
+    match crate::harness::dispatch::select_dispatch_mode_for_request(&app, &user_message) {
+        crate::harness::dispatch::DispatchMode::Agent => {
             // AgentLoop owns live network observation and tool execution.
             // Its policy validator remains the only route to side effects.
             let mut agent_loop = crate::harness::agent_loop::AgentLoop::new(app, window, 10);
             agent_loop.run(final_user_message, &*llama_state).await?;
         }
-        crate::harness::dispatch::DispatchMode::Worker =>
-        {
+        crate::harness::dispatch::DispatchMode::Worker => {
             run_worker_request(
                 window,
                 final_user_message,
                 &*llama_state,
                 crate::mcp::executor::extract::get_history_block_rust(&summaries, history_limit),
-                attachments.as_ref().map_or(false, |items| items.iter().any(|item| {
-                    matches!(item.mime_type, crate::history::AttachmentType::Image)
-                })),
+                attachments.as_ref().map_or(false, |items| {
+                    items
+                        .iter()
+                        .any(|item| matches!(item.mime_type, crate::history::AttachmentType::Image))
+                }),
             )
             .await?;
         }
@@ -185,8 +164,7 @@ async fn run_worker_request(
     llama_state: &crate::llm::llm::LlamaState,
     history_block: String,
     has_attachments: bool,
-) -> Result<(), String>
-{
+) -> Result<(), String> {
     let task_id = uuid::Uuid::new_v4();
     let _ = window.emit(
         "chat-event",

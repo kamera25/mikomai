@@ -6,15 +6,13 @@ use std::collections::HashMap;
 
 /// Schema definitions for parsing the rule YAML (YANG-like constraints)
 #[derive(Debug, Deserialize, Clone)]
-pub struct SchemaRoot
-{
+pub struct SchemaRoot {
     pub schema: HashMap<String, SchemaNode>,
 }
 
 /// A node in the schema representing type, properties, and constraints
 #[derive(Debug, Deserialize, Clone)]
-pub struct SchemaNode
-{
+pub struct SchemaNode {
     #[serde(rename = "type")]
     pub node_type: String,
 
@@ -33,49 +31,38 @@ pub struct SchemaNode
 
 /// A validation error detailing the path and what failed
 #[derive(Debug, PartialEq)]
-pub struct ValidationError
-{
+pub struct ValidationError {
     pub path: String,
     pub message: String,
 }
 
 /// The validation engine that loads a schema and checks YAML input (AST) against it
-pub struct AstValidator
-{
+pub struct AstValidator {
     schema: SchemaRoot,
 }
 
-impl AstValidator
-{
+impl AstValidator {
     /// Initialize the validator with a schema YAML string
-    pub fn new(schema_yaml: &str) -> Result<Self, String>
-    {
+    pub fn new(schema_yaml: &str) -> Result<Self, String> {
         let schema: SchemaRoot = serde_yaml::from_str(schema_yaml)
             .map_err(|e| format!("Failed to parse schema: {}", e))?;
         Ok(Self { schema })
     }
 
     /// Validate the given LLM-generated YAML input string against the schema
-    pub fn validate(&self, input_yaml: &str) -> Result<Vec<ValidationError>, String>
-    {
+    pub fn validate(&self, input_yaml: &str) -> Result<Vec<ValidationError>, String> {
         let input: Value = serde_yaml::from_str(input_yaml)
             .map_err(|e| format!("Failed to parse input YAML: {}", e))?;
 
         let mut errors = Vec::new();
 
-        if let Value::Mapping(root_map) = input
-        {
+        if let Value::Mapping(root_map) = input {
             // Check for unknown keys and validate known ones at the root
-            for (key, val) in &root_map
-            {
-                if let Value::String(k) = key
-                {
-                    if let Some(schema_node) = self.schema.schema.get(k)
-                    {
+            for (key, val) in &root_map {
+                if let Value::String(k) = key {
+                    if let Some(schema_node) = self.schema.schema.get(k) {
                         self.validate_node(k, val, schema_node, &mut errors);
-                    }
-                    else
-                    {
+                    } else {
                         errors.push(ValidationError {
                             path: k.clone(),
                             message: format!("Unknown property: '{}'", k),
@@ -85,13 +72,10 @@ impl AstValidator
             }
 
             // Check for missing required properties at the root
-            for (k, schema_node) in &self.schema.schema
-            {
-                if schema_node.required
-                {
+            for (k, schema_node) in &self.schema.schema {
+                if schema_node.required {
                     let key_val = Value::String(k.clone());
-                    if !root_map.contains_key(&key_val)
-                    {
+                    if !root_map.contains_key(&key_val) {
                         errors.push(ValidationError {
                             path: k.clone(),
                             message: format!("Missing required property: '{}'", k),
@@ -99,9 +83,7 @@ impl AstValidator
                     }
                 }
             }
-        }
-        else
-        {
+        } else {
             return Err("Input YAML root must be a container (mapping)".to_string());
         }
 
@@ -115,28 +97,18 @@ impl AstValidator
         value: &Value,
         schema_node: &SchemaNode,
         errors: &mut Vec<ValidationError>,
-    )
-    {
-        match schema_node.node_type.as_str()
-        {
-            "container" =>
-            {
-                if let Value::Mapping(map) = value
-                {
-                    if let Some(props) = &schema_node.properties
-                    {
+    ) {
+        match schema_node.node_type.as_str() {
+            "container" => {
+                if let Value::Mapping(map) = value {
+                    if let Some(props) = &schema_node.properties {
                         // Validate child nodes and check for unknown properties
-                        for (k, v) in map
-                        {
-                            if let Value::String(k_str) = k
-                            {
+                        for (k, v) in map {
+                            if let Value::String(k_str) = k {
                                 let child_path = format!("{}.{}", path, k_str);
-                                if let Some(child_schema) = props.get(k_str)
-                                {
+                                if let Some(child_schema) = props.get(k_str) {
                                     self.validate_node(&child_path, v, child_schema, errors);
-                                }
-                                else
-                                {
+                                } else {
                                     errors.push(ValidationError {
                                         path: child_path,
                                         message: format!("Unknown property: '{}'", k_str),
@@ -146,13 +118,10 @@ impl AstValidator
                         }
 
                         // Check for missing required properties inside the container
-                        for (k, child_schema) in props
-                        {
-                            if child_schema.required
-                            {
+                        for (k, child_schema) in props {
+                            if child_schema.required {
                                 let key_val = Value::String(k.clone());
-                                if !map.contains_key(&key_val)
-                                {
+                                if !map.contains_key(&key_val) {
                                     errors.push(ValidationError {
                                         path: format!("{}.{}", path, k),
                                         message: format!("Missing required property: '{}'", k),
@@ -161,9 +130,7 @@ impl AstValidator
                             }
                         }
                     }
-                }
-                else
-                {
+                } else {
                     errors.push(ValidationError {
                         path: path.to_string(),
                         message: format!(
@@ -173,18 +140,12 @@ impl AstValidator
                     });
                 }
             }
-            "integer" =>
-            {
-                if let Value::Number(num) = value
-                {
-                    if let Some(i) = num.as_i64()
-                    {
-                        if let Some(range_str) = &schema_node.range
-                        {
-                            if let Some((min, max)) = Self::parse_range(range_str)
-                            {
-                                if i < min || i > max
-                                {
+            "integer" => {
+                if let Value::Number(num) = value {
+                    if let Some(i) = num.as_i64() {
+                        if let Some(range_str) = &schema_node.range {
+                            if let Some((min, max)) = Self::parse_range(range_str) {
+                                if i < min || i > max {
                                     errors.push(ValidationError {
                                         path: path.to_string(),
                                         message: format!(
@@ -193,9 +154,7 @@ impl AstValidator
                                         ),
                                     });
                                 }
-                            }
-                            else
-                            {
+                            } else {
                                 // Invalid range schema definition
                                 errors.push(ValidationError {
                                     path: path.to_string(),
@@ -206,17 +165,13 @@ impl AstValidator
                                 });
                             }
                         }
-                    }
-                    else
-                    {
+                    } else {
                         errors.push(ValidationError {
                             path: path.to_string(),
                             message: "Type mismatch: expected integer".to_string(),
                         });
                     }
-                }
-                else
-                {
+                } else {
                     errors.push(ValidationError {
                         path: path.to_string(),
                         message: format!(
@@ -226,14 +181,10 @@ impl AstValidator
                     });
                 }
             }
-            "string" =>
-            {
-                if let Value::String(s) = value
-                {
-                    if let Some(enum_vals) = &schema_node.enum_values
-                    {
-                        if !enum_vals.contains(s)
-                        {
+            "string" => {
+                if let Value::String(s) = value {
+                    if let Some(enum_vals) = &schema_node.enum_values {
+                        if !enum_vals.contains(s) {
                             errors.push(ValidationError {
                                 path: path.to_string(),
                                 message: format!(
@@ -243,9 +194,7 @@ impl AstValidator
                             });
                         }
                     }
-                }
-                else
-                {
+                } else {
                     errors.push(ValidationError {
                         path: path.to_string(),
                         message: format!(
@@ -255,8 +204,7 @@ impl AstValidator
                     });
                 }
             }
-            unknown_type =>
-            {
+            unknown_type => {
                 errors.push(ValidationError {
                     path: path.to_string(),
                     message: format!("Unsupported schema type: {}", unknown_type),
@@ -266,16 +214,13 @@ impl AstValidator
     }
 
     /// Helper to parse a range string like "1-4094" into a min/max tuple
-    fn parse_range(range_str: &str) -> Option<(i64, i64)>
-    {
+    fn parse_range(range_str: &str) -> Option<(i64, i64)> {
         let parts: Vec<&str> = range_str.split('-').collect();
-        if parts.len() == 2
-        {
+        if parts.len() == 2 {
             if let (Ok(min), Ok(max)) = (
                 parts[0].trim().parse::<i64>(),
                 parts[1].trim().parse::<i64>(),
-            )
-            {
+            ) {
                 return Some((min, max));
             }
         }
@@ -283,10 +228,8 @@ impl AstValidator
     }
 
     /// Helper to determine the string representation of a YAML value's type
-    fn get_type_name(value: &Value) -> &'static str
-    {
-        match value
-        {
+    fn get_type_name(value: &Value) -> &'static str {
+        match value {
             Value::Null => "null",
             Value::Bool(_) => "boolean",
             Value::Number(_) => "number",
@@ -299,8 +242,7 @@ impl AstValidator
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     const SCHEMA_YAML: &str = r#"
@@ -322,8 +264,7 @@ schema:
 "#;
 
     #[test]
-    fn test_valid_yaml()
-    {
+    fn test_valid_yaml() {
         let input_yaml = r#"
 vlan_config:
   vlan-id: 10
@@ -340,8 +281,7 @@ vlan_config:
     }
 
     #[test]
-    fn test_invalid_yaml()
-    {
+    fn test_invalid_yaml() {
         let input_yaml = r#"
 vlan_config:
   vlan-id: 5000
@@ -371,8 +311,7 @@ vlan_config:
     }
 
     #[test]
-    fn test_missing_required()
-    {
+    fn test_missing_required() {
         let input_yaml = r#"
 vlan_config:
   name: "Marketing"

@@ -233,18 +233,15 @@ pub const DEVICE_TYPE_ALIASES: &[(&str, &str)] = &[
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct DeviceTypesResponse
-{
+pub struct DeviceTypesResponse {
     pub device_types: &'static [&'static str],
     pub device_type_aliases: HashMap<&'static str, &'static str>,
 }
 
 #[tauri::command]
-pub fn get_device_types() -> DeviceTypesResponse
-{
+pub fn get_device_types() -> DeviceTypesResponse {
     let mut aliases = HashMap::new();
-    for &(key, val) in DEVICE_TYPE_ALIASES
-    {
+    for &(key, val) in DEVICE_TYPE_ALIASES {
         aliases.insert(key, val);
     }
     DeviceTypesResponse {

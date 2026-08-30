@@ -11,7 +11,10 @@ impl SchemaValidator {
         match decision.action_type {
             ActionType::Observe | ActionType::Verify => {
                 if decision.tool.is_none() && decision.target.is_none() {
-                    return Err(format!("Action type {:?} requires a tool or target", decision.action_type));
+                    return Err(format!(
+                        "Action type {:?} requires a tool or target",
+                        decision.action_type
+                    ));
                 }
             }
             ActionType::Configure => {

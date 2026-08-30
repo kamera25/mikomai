@@ -14,7 +14,14 @@ pub enum DispatchMode {
 
 fn is_explanatory_request(normalized: &str) -> bool {
     [
-        "とは", "仕組み", "解説", "設定例", "サンプル", "作成して", "生成して", "変換して",
+        "とは",
+        "仕組み",
+        "解説",
+        "設定例",
+        "サンプル",
+        "作成して",
+        "生成して",
+        "変換して",
     ]
     .iter()
     .any(|marker| normalized.contains(marker))
@@ -105,10 +112,7 @@ pub fn select_dispatch_mode(message: &str) -> DispatchMode {
 /// Upgrades requests that name a registered device to `AgentLoop` when they
 /// are asking for that device's current state. This matches the router's
 /// investigation intent without ever instantiating an investigation worker.
-pub fn select_dispatch_mode_for_request(
-    app: &tauri::AppHandle,
-    message: &str,
-) -> DispatchMode {
+pub fn select_dispatch_mode_for_request(app: &tauri::AppHandle, message: &str) -> DispatchMode {
     let mode = select_dispatch_mode(message);
     if mode == DispatchMode::Agent || is_explanatory_request(&message.to_lowercase()) {
         return mode;

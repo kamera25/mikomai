@@ -6,8 +6,7 @@ use std::sync::LazyLock;
 use tokio::time::{timeout, Duration, Instant};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct TestConnectionParams
-{
+pub struct TestConnectionParams {
     pub host: Option<String>,
     pub device: Option<String>,
     pub ip: Option<IpAddress>,
@@ -18,8 +17,7 @@ pub struct TestConnectionParams
 }
 
 #[derive(Debug, Deserialize)]
-struct CommonTcpPortsYaml
-{
+struct CommonTcpPortsYaml {
     ports: HashMap<String, u16>,
 }
 
@@ -35,8 +33,7 @@ static COMMON_TCP_PORTS: LazyLock<HashMap<String, u16>> = LazyLock::new(|| {
 });
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TestConnectionResult
-{
+pub struct TestConnectionResult {
     pub success: bool,
     pub output: String,
     pub computer_name: String,
@@ -50,10 +47,8 @@ pub struct TestConnectionResult
     pub latency_ms: Option<u64>,
 }
 
-impl From<TestConnectionResult> for crate::network::CommandResult
-{
-    fn from(res: TestConnectionResult) -> Self
-    {
+impl From<TestConnectionResult> for crate::network::CommandResult {
+    fn from(res: TestConnectionResult) -> Self {
         Self {
             success: res.success,
             output: res.output,
@@ -64,34 +59,25 @@ impl From<TestConnectionResult> for crate::network::CommandResult
     }
 }
 
-pub fn resolve_common_tcp_port(port_str: &str) -> Option<Port>
-{
+pub fn resolve_common_tcp_port(port_str: &str) -> Option<Port> {
     let key = port_str.trim().to_uppercase();
-    if let Some(&port) = COMMON_TCP_PORTS.get(&key)
-    {
+    if let Some(&port) = COMMON_TCP_PORTS.get(&key) {
         Port::try_from(port).ok()
-    }
-    else
-    {
+    } else {
         Port::try_from(port_str).ok()
     }
 }
 
-fn get_local_source_info(target_ip: IpAddr, port: u16) -> (Option<String>, Option<String>)
-{
+fn get_local_source_info(target_ip: IpAddr, port: u16) -> (Option<String>, Option<String>) {
     let target_addr = SocketAddr::new(target_ip, port);
-    let bind_addr = match target_ip
-    {
+    let bind_addr = match target_ip {
         IpAddr::V4(_) => "0.0.0.0:0",
         IpAddr::V6(_) => "[::]:0",
     };
 
-    if let Ok(socket) = UdpSocket::bind(bind_addr)
-    {
-        if socket.connect(target_addr).is_ok()
-        {
-            if let Ok(local_addr) = socket.local_addr()
-            {
+    if let Ok(socket) = UdpSocket::bind(bind_addr) {
+        if socket.connect(target_addr).is_ok() {
+            if let Ok(local_addr) = socket.local_addr() {
                 let ip_str = local_addr.ip().to_string();
                 return (Some(ip_str), None);
             }
@@ -106,8 +92,7 @@ pub async fn network_test_connection_core(
     port: Option<Port>,
     common_tcp_port: Option<String>,
     timeout_ms: Option<u64>,
-) -> Result<TestConnectionResult, String>
-{
+) -> Result<TestConnectionResult, String> {
     let target_port = port.or_else(|| common_tcp_port.as_deref().and_then(resolve_common_tcp_port));
 
     let timeout_duration = Duration::from_millis(timeout_ms.unwrap_or(2000));
@@ -118,12 +103,9 @@ pub async fn network_test_connection_core(
     let ping_res =
         crate::mcp::ping::network_ping_core(ip_addr.to_string(), Some(32), Some(1), None).await;
 
-    let (ping_succeeded, ping_reply_details) = match ping_res
-    {
-        Ok(res) =>
-        {
-            if res.success
-            {
+    let (ping_succeeded, ping_reply_details) = match ping_res {
+        Ok(res) => {
+            if res.success {
                 let rtt_str = res
                     .output
                     .lines()
@@ -131,9 +113,7 @@ pub async fn network_test_connection_core(
                     .map(|line| line.trim().to_string())
                     .unwrap_or_else(|| "Reply received".to_string());
                 (true, Some(rtt_str))
-            }
-            else
-            {
+            } else {
                 (false, Some("Ping request timed out".to_string()))
             }
         }
@@ -141,24 +121,19 @@ pub async fn network_test_connection_core(
     };
 
     // 2. TCP Port connection test (if port is requested)
-    let (tcp_test_succeeded, tcp_latency_ms) = if let Some(p) = target_port
-    {
+    let (tcp_test_succeeded, tcp_latency_ms) = if let Some(p) = target_port {
         let addr = SocketAddr::new(ip_addr, *p);
         let start = Instant::now();
-        match timeout(timeout_duration, tokio::net::TcpStream::connect(addr)).await
-        {
+        match timeout(timeout_duration, tokio::net::TcpStream::connect(addr)).await {
             Ok(Ok(_stream)) => (Some(true), Some(start.elapsed().as_millis() as u64)),
             Ok(Err(_err)) => (Some(false), None),
             Err(_timeout) => (Some(false), None),
         }
-    }
-    else
-    {
+    } else {
         (None, None)
     };
 
-    let overall_success = match tcp_test_succeeded
-    {
+    let overall_success = match tcp_test_succeeded {
         Some(tcp_succ) => tcp_succ,
         None => ping_succeeded,
     };
@@ -168,20 +143,16 @@ pub async fn network_test_connection_core(
     output.push_str(&format!("{:<23}: {}\n", "ComputerName", target_host));
     output.push_str(&format!("{:<23}: {}\n", "RemoteAddress", ip_addr));
 
-    if let Some(p) = target_port
-    {
+    if let Some(p) = target_port {
         output.push_str(&format!("{:<23}: {}\n", "RemotePort", p));
     }
-    if let Some(ref iface) = interface_alias
-    {
+    if let Some(ref iface) = interface_alias {
         output.push_str(&format!("{:<23}: {}\n", "InterfaceAlias", iface));
     }
-    if let Some(ref src) = source_address
-    {
+    if let Some(ref src) = source_address {
         output.push_str(&format!("{:<23}: {}\n", "SourceAddress", src));
     }
-    if let Some(tcp_succ) = tcp_test_succeeded
-    {
+    if let Some(tcp_succ) = tcp_test_succeeded {
         output.push_str(&format!(
             "{:<23}: {}\n",
             "TcpTestSucceeded",
@@ -195,28 +166,22 @@ pub async fn network_test_connection_core(
         if ping_succeeded { "True" } else { "False" }
     ));
 
-    if let Some(ref details) = ping_reply_details
-    {
+    if let Some(ref details) = ping_reply_details {
         output.push_str(&format!("{:<23}: {}\n", "PingReplyDetails", details));
     }
-    if let Some(lat) = tcp_latency_ms
-    {
+    if let Some(lat) = tcp_latency_ms {
         output.push_str(&format!("{:<23}: {} ms\n", "TcpConnectTime", lat));
     }
 
-    if !overall_success
-    {
-        if let Some(p) = target_port
-        {
+    if !overall_success {
+        if let Some(p) = target_port {
             output.push_str(&format!(
                 "\nWarning: TCP connection to {}:{} failed or timed out after {} ms.\n",
                 ip_addr,
                 p,
                 timeout_duration.as_millis()
             ));
-        }
-        else
-        {
+        } else {
             output.push_str(&format!(
                 "\nWarning: Ping to {} failed or timed out.\n",
                 ip_addr
@@ -242,8 +207,7 @@ pub async fn network_test_connection_core(
 pub async fn self_network_test_connection_with_params(
     app: tauri::AppHandle,
     params: TestConnectionParams,
-) -> Result<TestConnectionResult, String>
-{
+) -> Result<TestConnectionResult, String> {
     let host_args = crate::mcp::args::HostArgs {
         host: params.host.or(params.computer_name),
         device: params.device,
@@ -279,8 +243,7 @@ pub async fn self_network_test_connection(
     common_tcp_port: Option<String>,
     commonTcpPort: Option<String>,
     timeout_ms: Option<u64>,
-) -> Result<TestConnectionResult, String>
-{
+) -> Result<TestConnectionResult, String> {
     let target_device = device.or(deviceName).or(device_name);
     let comp_name = computer_name.or(computerName);
     let tcp_port = common_tcp_port.or(commonTcpPort);
@@ -301,13 +264,11 @@ pub async fn self_network_test_connection(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_resolve_common_tcp_port()
-    {
+    fn test_resolve_common_tcp_port() {
         assert_eq!(
             resolve_common_tcp_port("HTTP"),
             Some(Port::try_from(80).unwrap())
@@ -328,8 +289,7 @@ mod tests
     }
 
     #[test]
-    fn test_test_connection_result_serialization()
-    {
+    fn test_test_connection_result_serialization() {
         let result = TestConnectionResult {
             success: true,
             output: "Connection test successful".to_string(),
@@ -348,8 +308,7 @@ mod tests
     }
 
     #[tokio::test]
-    async fn test_network_test_connection_core_localhost()
-    {
+    async fn test_network_test_connection_core_localhost() {
         let res = network_test_connection_core(
             "localhost".to_string(),
             "127.0.0.1".parse().unwrap(),

@@ -1,11 +1,14 @@
-use tauri::{AppHandle, Emitter, Window};
 use crate::harness::state_machine::{HarnessState, HarnessStateMachine};
 use crate::llm::llm::LlamaState;
 use crate::mcp::protocol::{ChatEvent, InitialFinishedPayload, InitialStartedPayload};
 use crate::mcp::ToolKind;
+use tauri::{AppHandle, Emitter, Window};
 
 use crate::planner::llm_planner::LlmPlanner;
-use crate::state::events::{Action, ActionType, Decision, HarnessEvent, Observation, ObservationSource, Provenance, ProvenanceOrigin};
+use crate::state::events::{
+    Action, ActionType, Decision, HarnessEvent, Observation, ObservationSource, Provenance,
+    ProvenanceOrigin,
+};
 use crate::state::network_state::NetworkState;
 use crate::validator::policy::PolicyValidator;
 use crate::validator::schema::SchemaValidator;
@@ -36,9 +39,15 @@ fn is_configuration_change_goal(goal: &str) -> bool {
 
 fn builder_handoff_action(output: &str) -> ActionType {
     let output = output.to_lowercase();
-    if ["不足", "missing", "parameter", "入力してください", "ask_user_choice"]
-        .iter()
-        .any(|marker| output.contains(marker))
+    if [
+        "不足",
+        "missing",
+        "parameter",
+        "入力してください",
+        "ask_user_choice",
+    ]
+    .iter()
+    .any(|marker| output.contains(marker))
     {
         ActionType::AskHuman
     } else {
@@ -60,9 +69,11 @@ impl AgentLoop {
     }
 
     fn has_builder_coworker_result(&self) -> bool {
-        self.network_state.observed.observations.iter().any(|observation| {
-            observation.source.tool_name.as_deref() == Some("builder_co_worker")
-        })
+        self.network_state
+            .observed
+            .observations
+            .iter()
+            .any(|observation| observation.source.tool_name.as_deref() == Some("builder_co_worker"))
     }
 
     fn latest_builder_coworker_result(&self) -> Option<&str> {
@@ -102,8 +113,15 @@ impl AgentLoop {
             log::info!("[AgentLoop] === Step {}: Starting Cycle ===", current_step);
 
             // 1. Deciding Phase (LLM Planner)
-            if self.state_machine.transition(HarnessState::Deciding).is_err() {
-                let msg = format!("最大ステップ数（{}回）に達したため、ループを安全に停止しました。", self.state_machine.step_count());
+            if self
+                .state_machine
+                .transition(HarnessState::Deciding)
+                .is_err()
+            {
+                let msg = format!(
+                    "最大ステップ数（{}回）に達したため、ループを安全に停止しました。",
+                    self.state_machine.step_count()
+                );
                 log::warn!("[AgentLoop] {}", msg);
                 final_report = msg;
                 break;
@@ -111,27 +129,40 @@ impl AgentLoop {
 
             let _ = self.window.emit(
                 "chat-event",
-                ChatEvent::LlmChunk(format!("\n```agent-step\nphase: planning\nstep: {}\n```\n", self.state_machine.step_count())),
+                ChatEvent::LlmChunk(format!(
+                    "\n```agent-step\nphase: planning\nstep: {}\n```\n",
+                    self.state_machine.step_count()
+                )),
             );
 
-            let mut decision: Decision = match LlmPlanner::plan(&self.app, llama_state, &self.network_state).await {
-                Ok(d) => d,
-                Err(e) => {
-                    log::warn!("[AgentLoop] Planner failed at step {}: {}", self.state_machine.step_count(), e);
-                    Decision {
-                        id: uuid::Uuid::new_v4(),
-                        timestamp: chrono::Utc::now(),
-                        action_type: ActionType::Finish,
-                        objective: initial_objective.clone().unwrap_or_else(|| "目標達成または計画停止".to_string()),
-                        tool: None,
-                        target: None,
-                        parameters: serde_json::Value::Null,
-                        reason: vec![format!("Planning encountered error: {}", e)],
-                        expected_observation: vec![],
-                        final_answer: Some(format!("計画処理中にエラーが発生したため停止しました: {}", e)),
+            let mut decision: Decision =
+                match LlmPlanner::plan(&self.app, llama_state, &self.network_state).await {
+                    Ok(d) => d,
+                    Err(e) => {
+                        log::warn!(
+                            "[AgentLoop] Planner failed at step {}: {}",
+                            self.state_machine.step_count(),
+                            e
+                        );
+                        Decision {
+                            id: uuid::Uuid::new_v4(),
+                            timestamp: chrono::Utc::now(),
+                            action_type: ActionType::Finish,
+                            objective: initial_objective
+                                .clone()
+                                .unwrap_or_else(|| "目標達成または計画停止".to_string()),
+                            tool: None,
+                            target: None,
+                            parameters: serde_json::Value::Null,
+                            reason: vec![format!("Planning encountered error: {}", e)],
+                            expected_observation: vec![],
+                            final_answer: Some(format!(
+                                "計画処理中にエラーが発生したため停止しました: {}",
+                                e
+                            )),
+                        }
                     }
-                }
-            };
+                };
 
             // Builder is a bounded co-worker. Once it returns, its outcome is
             // handed to the user or used to request missing input; the Agent
@@ -187,10 +218,16 @@ impl AgentLoop {
                 decision.parameters
             );
             if let Ok(decision_json) = serde_json::to_string_pretty(&decision) {
-                log::info!("[AgentLoop] Step {}: Decision JSON:\n{}", self.state_machine.step_count(), decision_json);
+                log::info!(
+                    "[AgentLoop] Step {}: Decision JSON:\n{}",
+                    self.state_machine.step_count(),
+                    decision_json
+                );
             }
 
-            self.network_state.event_log.push(HarnessEvent::Decision(decision.clone()));
+            self.network_state
+                .event_log
+                .push(HarnessEvent::Decision(decision.clone()));
 
             let _ = self.window.emit(
                 "chat-event",
@@ -212,14 +249,22 @@ impl AgentLoop {
                 } else {
                     "目標が達成されました。".to_string()
                 };
-                log::info!("[AgentLoop] Step {}: Goal reached / Completed: {}", self.state_machine.step_count(), summary_text);
+                log::info!(
+                    "[AgentLoop] Step {}: Goal reached / Completed: {}",
+                    self.state_machine.step_count(),
+                    summary_text
+                );
                 final_report = summary_text;
                 break;
             }
 
             if decision.action_type == ActionType::AskHuman {
                 self.state_machine.transition(HarnessState::AskingHuman)?;
-                log::info!("[AgentLoop] Step {}: Asking human -> '{}'", self.state_machine.step_count(), decision.objective);
+                log::info!(
+                    "[AgentLoop] Step {}: Asking human -> '{}'",
+                    self.state_machine.step_count(),
+                    decision.objective
+                );
                 final_report = format!("### ❓ 確認要求\n\n{}\n", decision.objective);
                 break;
             }
@@ -229,13 +274,21 @@ impl AgentLoop {
             let action: Action = match SchemaValidator::validate_decision(&decision) {
                 Ok(a) => a,
                 Err(err_msg) => {
-                    log::warn!("[AgentLoop] Step {}: Schema validation failed: {}", self.state_machine.step_count(), err_msg);
+                    log::warn!(
+                        "[AgentLoop] Step {}: Schema validation failed: {}",
+                        self.state_machine.step_count(),
+                        err_msg
+                    );
                     continue;
                 }
             };
 
             if let Err(policy_err) = PolicyValidator::validate_action(&action) {
-                log::warn!("[AgentLoop] Step {}: Policy violation: {}", self.state_machine.step_count(), policy_err);
+                log::warn!(
+                    "[AgentLoop] Step {}: Policy violation: {}",
+                    self.state_machine.step_count(),
+                    policy_err
+                );
                 let _ = self.window.emit(
                     "chat-event",
                     ChatEvent::LlmChunk(format!(
@@ -246,11 +299,16 @@ impl AgentLoop {
                 continue;
             }
 
-            self.network_state.event_log.push(HarnessEvent::Action(action.clone()));
+            self.network_state
+                .event_log
+                .push(HarnessEvent::Action(action.clone()));
 
             // 3. Acting & Executing Phase (Tool Execution)
             self.state_machine.transition(HarnessState::Acting)?;
-            let tool_name = action.tool.clone().unwrap_or_else(|| "network_show".to_string());
+            let tool_name = action
+                .tool
+                .clone()
+                .unwrap_or_else(|| "network_show".to_string());
             let tool_kind_opt = ToolKind::from_str(&tool_name).ok();
             let tool_task_id = uuid::Uuid::new_v4();
 
@@ -258,16 +316,28 @@ impl AgentLoop {
             if let Some(target) = &action.target {
                 if let serde_json::Value::Object(ref mut map) = tool_args {
                     if !map.contains_key("target") {
-                        map.insert("target".to_string(), serde_json::Value::String(target.clone()));
+                        map.insert(
+                            "target".to_string(),
+                            serde_json::Value::String(target.clone()),
+                        );
                     }
                     if !map.contains_key("device_name") && !map.contains_key("deviceName") {
-                        map.insert("device_name".to_string(), serde_json::Value::String(target.clone()));
+                        map.insert(
+                            "device_name".to_string(),
+                            serde_json::Value::String(target.clone()),
+                        );
                     }
                     if !map.contains_key("host") {
-                        map.insert("host".to_string(), serde_json::Value::String(target.clone()));
+                        map.insert(
+                            "host".to_string(),
+                            serde_json::Value::String(target.clone()),
+                        );
                     }
                     if !map.contains_key("device") {
-                        map.insert("device".to_string(), serde_json::Value::String(target.clone()));
+                        map.insert(
+                            "device".to_string(),
+                            serde_json::Value::String(target.clone()),
+                        );
                     }
                 }
             }
@@ -275,7 +345,10 @@ impl AgentLoop {
             // MCPツールの引数にも強制的にSTEP 1の当初objectiveを挿入
             if let Some(ref init_obj) = initial_objective {
                 if let serde_json::Value::Object(ref mut map) = tool_args {
-                    map.insert("objective".to_string(), serde_json::Value::String(init_obj.clone()));
+                    map.insert(
+                        "objective".to_string(),
+                        serde_json::Value::String(init_obj.clone()),
+                    );
                 }
             }
 
@@ -319,7 +392,9 @@ impl AgentLoop {
                     true,
                 )
                 .await
-                .unwrap_or_else(|error| format!("Builder Co-Workerの実行に失敗しました: {}", error));
+                .unwrap_or_else(|error| {
+                    format!("Builder Co-Workerの実行に失敗しました: {}", error)
+                });
 
                 // Co-worker output is a fact for the Agent, not a terminal
                 // answer. This lets the Agent decide how to recover from a
@@ -360,7 +435,6 @@ impl AgentLoop {
                 vec![],
                 120,
             )
-
             .await
             .unwrap_or_else(|e| crate::network::CommandResult {
                 success: false,
@@ -395,7 +469,11 @@ impl AgentLoop {
                 parsed: None,
                 source: ObservationSource {
                     device: action.target.clone(),
-                    command: action.parameters.get("command").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    command: action
+                        .parameters
+                        .get("command")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                     tool_name: Some(tool_name.clone()),
                     tool_kind: tool_kind_opt,
                     parameters: Some(action.parameters.clone()),
@@ -410,7 +488,6 @@ impl AgentLoop {
             self.network_state.apply_observation(observation);
             self.state_machine.transition(HarnessState::Evaluating)?;
         }
-
 
         let _ = self.window.emit(
             "chat-event",
@@ -431,7 +508,9 @@ mod tests {
 
     #[test]
     fn only_change_requests_handoff_rag_to_builder_coworker() {
-        assert!(is_configuration_change_goal("F220 に hostname aaa を設定する"));
+        assert!(is_configuration_change_goal(
+            "F220 に hostname aaa を設定する"
+        ));
         assert!(!is_configuration_change_goal("F220 の設定を確認する"));
     }
 

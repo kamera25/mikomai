@@ -2,16 +2,13 @@ use crate::history::SummaryItem;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct McpToolResult
-{
+pub struct McpToolResult {
     pub success: bool,
     pub output: String,
 }
 
-impl From<McpToolResult> for crate::network::CommandResult
-{
-    fn from(res: McpToolResult) -> Self
-    {
+impl From<McpToolResult> for crate::network::CommandResult {
+    fn from(res: McpToolResult) -> Self {
         Self {
             success: res.success,
             output: res.output,
@@ -24,8 +21,7 @@ impl From<McpToolResult> for crate::network::CommandResult
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatRequest
-{
+pub struct ChatRequest {
     pub user_message: String,
     pub summaries: Vec<SummaryItem>,
     pub recent_ips: Vec<String>,
@@ -36,8 +32,7 @@ pub struct ChatRequest
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct ToolStartedPayload
-{
+pub struct ToolStartedPayload {
     pub task_id: uuid::Uuid,
     pub tool_id: crate::mcp::ToolKind,
     pub args: serde_json::Value,
@@ -46,8 +41,7 @@ pub struct ToolStartedPayload
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct ToolFinishedPayload
-{
+pub struct ToolFinishedPayload {
     pub task_id: uuid::Uuid,
     pub success: bool,
     pub output: String,
@@ -58,16 +52,14 @@ pub struct ToolFinishedPayload
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct AnalysisStartedPayload
-{
+pub struct AnalysisStartedPayload {
     pub task_id: uuid::Uuid,
     pub analysis_task_id: uuid::Uuid,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct InitialStartedPayload
-{
+pub struct InitialStartedPayload {
     pub task_id: uuid::Uuid,
     #[serde(default)]
     pub has_image: bool,
@@ -75,16 +67,14 @@ pub struct InitialStartedPayload
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct InitialFinishedPayload
-{
+pub struct InitialFinishedPayload {
     pub task_id: uuid::Uuid,
     pub content: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct SummarySavedPayload
-{
+pub struct SummarySavedPayload {
     pub task_id: uuid::Uuid,
     pub summary_text: String,
     pub summary: SummaryItem,
@@ -93,15 +83,12 @@ pub struct SummarySavedPayload
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", content = "payload", rename_all = "camelCase")]
-pub enum ChatEvent
-{
-    ArpYamlSaved
-    {
+pub enum ChatEvent {
+    ArpYamlSaved {
         device_name: String,
         saved_path: std::path::PathBuf,
     },
-    RouteYamlSaved
-    {
+    RouteYamlSaved {
         device_name: String,
         saved_path: std::path::PathBuf,
     },

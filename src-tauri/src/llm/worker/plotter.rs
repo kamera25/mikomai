@@ -10,21 +10,17 @@ const PLOTTER_WORKER_PROMPT: &str = include_str!("../prompts/plotter_worker.txt"
 const MAX_NEW_TOKENS: u32 = 2048;
 const N_CTX: u32 = 8192;
 
-pub struct PlotterWorker
-{
+pub struct PlotterWorker {
     pub ctx: Option<AgentContext>,
 }
 
-impl PlotterWorker
-{
+impl PlotterWorker {
     pub fn new(
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
         preload: bool,
-    ) -> Result<Self, String>
-    {
-        if preload
-        {
+    ) -> Result<Self, String> {
+        if preload {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Plotter (作図器)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
@@ -41,23 +37,18 @@ impl PlotterWorker
             .map_err(|e| format!("Failed to create Plotter context: {:?}", e))?;
 
             Ok(Self { ctx: Some(ctx) })
-        }
-        else
-        {
+        } else {
             Ok(Self { ctx: None })
         }
     }
 }
 
-impl LlmWorker for PlotterWorker
-{
-    fn agent_name(&self) -> &'static str
-    {
+impl LlmWorker for PlotterWorker {
+    fn agent_name(&self) -> &'static str {
         "Plotter (作図器)"
     }
 
-    fn context_mut(&mut self) -> &mut AgentContext
-    {
+    fn context_mut(&mut self) -> &mut AgentContext {
         self.ctx.as_mut().expect("Plotter context not initialized")
     }
 
@@ -65,10 +56,8 @@ impl LlmWorker for PlotterWorker
         &mut self,
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
-    ) -> Result<(), String>
-    {
-        if self.ctx.is_none()
-        {
+    ) -> Result<(), String> {
+        if self.ctx.is_none() {
             let full_system_prompt = format!(
                 "{}\n\n=== Current Role ===\nあなたは現在「Plotter (作図器)」として動作しています。以下の役割指示に特化してください:\n{}",
                 SYSTEM_PROMPT,
@@ -89,8 +78,7 @@ impl LlmWorker for PlotterWorker
         Ok(())
     }
 
-    fn max_new_tokens(&self) -> u32
-    {
+    fn max_new_tokens(&self) -> u32 {
         MAX_NEW_TOKENS
     }
 
@@ -107,8 +95,7 @@ impl LlmWorker for PlotterWorker
         window: Option<&tauri::Window>,
         temperature: f32,
         repetition_penalty: f32,
-    ) -> Result<String, String>
-    {
+    ) -> Result<String, String> {
         self.ensure_initialized(model, backend)?;
 
         let (prompt, user_message, output, history_block) =
@@ -177,8 +164,7 @@ impl LlmWorker for PlotterWorker
         output: Option<String>,
         history_block: Option<String>,
         subsequent_task: Option<&str>,
-    ) -> String
-    {
+    ) -> String {
         crate::llm::worker::build_common_worker_prompt(
             prompt,
             user_message,

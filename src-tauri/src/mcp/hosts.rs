@@ -3,8 +3,7 @@ use crate::mcp::protocol::McpToolResult;
 pub type HostListResult = McpToolResult;
 
 #[tauri::command]
-pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, String>
-{
+pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, String> {
     use crate::connections::load_connections;
 
     let var_name = "登録されている接続可能なホスト一覧:\n\n".to_string();
@@ -15,10 +14,8 @@ pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, 
     let mut count = 0;
 
     // Load local connections
-    if let Ok(connections) = load_connections(app.clone())
-    {
-        for conn in connections
-        {
+    if let Ok(connections) = load_connections(app.clone()) {
+        for conn in connections {
             let ip_str = if conn.ip_string().is_empty() {
                 "-".to_string()
             } else {
@@ -32,8 +29,7 @@ pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, 
         }
     }
 
-    if count == 0
-    {
+    if count == 0 {
         output = "登録されているホストが見つかりませんでした。".to_string();
     }
 
@@ -44,8 +40,7 @@ pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, 
 }
 
 #[tauri::command]
-pub fn require_host_registered() -> Result<HostListResult, String>
-{
+pub fn require_host_registered() -> Result<HostListResult, String> {
     Ok(HostListResult {
         success: false,
         output:
@@ -55,13 +50,11 @@ pub fn require_host_registered() -> Result<HostListResult, String>
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_host_list_result_serialization()
-    {
+    fn test_host_list_result_serialization() {
         let result = HostListResult {
             success: true,
             output: "Mock output".to_string(),

@@ -110,22 +110,33 @@ pub struct OperationStore {
 
 impl OperationStore {
     pub fn new() -> Self {
-        Self { plans: Mutex::new(HashMap::new()) }
+        Self {
+            plans: Mutex::new(HashMap::new()),
+        }
     }
 
     fn insert(&self, plan: OperationPlan) -> Result<OperationPlan, String> {
-        self.plans.lock().map_err(|_| "Operation plan store is unavailable".to_string())?
+        self.plans
+            .lock()
+            .map_err(|_| "Operation plan store is unavailable".to_string())?
             .insert(plan.id, plan.clone());
         Ok(plan)
     }
 
     pub fn get(&self, id: uuid::Uuid) -> Result<OperationPlan, String> {
-        self.plans.lock().map_err(|_| "Operation plan store is unavailable".to_string())?
-            .get(&id).cloned().ok_or("Operation plan was not found".to_string())
+        self.plans
+            .lock()
+            .map_err(|_| "Operation plan store is unavailable".to_string())?
+            .get(&id)
+            .cloned()
+            .ok_or("Operation plan was not found".to_string())
     }
 
     pub fn approve(&self, id: uuid::Uuid, plan_hash: &str) -> Result<OperationPlan, String> {
-        let mut plans = self.plans.lock().map_err(|_| "Operation plan store is unavailable".to_string())?;
+        let mut plans = self
+            .plans
+            .lock()
+            .map_err(|_| "Operation plan store is unavailable".to_string())?;
         let plan = plans.get_mut(&id).ok_or("Operation plan was not found")?;
         if plan.approval_status != ApprovalStatus::Pending {
             return Err("Only a pending operation plan can be approved".to_string());
@@ -138,7 +149,10 @@ impl OperationStore {
     }
 
     pub fn take_approved(&self, id: uuid::Uuid, plan_hash: &str) -> Result<OperationPlan, String> {
-        let mut plans = self.plans.lock().map_err(|_| "Operation plan store is unavailable".to_string())?;
+        let mut plans = self
+            .plans
+            .lock()
+            .map_err(|_| "Operation plan store is unavailable".to_string())?;
         let plan = plans.get_mut(&id).ok_or("Operation plan was not found")?;
         if plan.approval_status != ApprovalStatus::Approved {
             return Err("Operation plan has not been approved".to_string());
@@ -168,7 +182,9 @@ impl OperationStore {
 }
 
 impl Default for OperationStore {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[tauri::command]
@@ -214,12 +230,24 @@ pub async fn execute_approved_operation_plan(
         store.mark_failed(id);
         return Err(format!("Unsupported change-plan tool: {}", plan.tool_id));
     }
-    let device: crate::network::NetmikoDeviceConfig = plan.args.get("device").cloned()
+    let device: crate::network::NetmikoDeviceConfig = plan
+        .args
+        .get("device")
+        .cloned()
         .ok_or_else(|| "Change plan is missing device".to_string())
-        .and_then(|value| serde_json::from_value(value).map_err(|_| "Change plan has an invalid device".to_string()))?;
-    let commands: Vec<String> = plan.args.get("commands").cloned()
+        .and_then(|value| {
+            serde_json::from_value(value)
+                .map_err(|_| "Change plan has an invalid device".to_string())
+        })?;
+    let commands: Vec<String> = plan
+        .args
+        .get("commands")
+        .cloned()
         .ok_or_else(|| "Change plan is missing commands".to_string())
-        .and_then(|value| serde_json::from_value::<Vec<String>>(value).map_err(|_| "Change plan has invalid commands".to_string()))?;
+        .and_then(|value| {
+            serde_json::from_value::<Vec<String>>(value)
+                .map_err(|_| "Change plan has invalid commands".to_string())
+        })?;
 
     // Dry-run is mandatory for a ChangePlan. A planner or agent cannot opt
     // out by changing a prompt or omitting a UI flag.
@@ -235,14 +263,25 @@ pub async fn execute_approved_operation_plan(
         store.mark_failed(id);
         return Err(format!(
             "Change plan dry-run rejected execution: {}",
-            dry_run_errors.iter()
-                .map(|line| format!("{}: {}", line.line, line.error.as_deref().unwrap_or("validation failed")))
-                .collect::<Vec<_>>().join("; ")
+            dry_run_errors
+                .iter()
+                .map(|line| format!(
+                    "{}: {}",
+                    line.line,
+                    line.error.as_deref().unwrap_or("validation failed")
+                ))
+                .collect::<Vec<_>>()
+                .join("; ")
         ));
     }
     let result = crate::network::network_config(app, device, commands)
-        .await.map_err(|error| error.to_string())?;
-    if result.success { store.mark_executed(id); } else { store.mark_failed(id); }
+        .await
+        .map_err(|error| error.to_string())?;
+    if result.success {
+        store.mark_executed(id);
+    } else {
+        store.mark_failed(id);
+    }
     Ok(result)
 }
 
@@ -299,12 +338,19 @@ mod tests {
             Some("edge-01".into()),
             serde_json::json!({"commands": ["description managed"]}),
             "Approved maintenance window".into(),
-        ).unwrap();
+        )
+        .unwrap();
         let plan = store.insert(plan).unwrap();
         assert!(store.take_approved(plan.id, &plan.plan_hash).is_err());
         assert!(store.approve(plan.id, "wrong-hash").is_err());
         store.approve(plan.id, &plan.plan_hash).unwrap();
-        assert_eq!(store.take_approved(plan.id, &plan.plan_hash).unwrap().approval_status, ApprovalStatus::Executing);
+        assert_eq!(
+            store
+                .take_approved(plan.id, &plan.plan_hash)
+                .unwrap()
+                .approval_status,
+            ApprovalStatus::Executing
+        );
         assert!(store.take_approved(plan.id, &plan.plan_hash).is_err());
     }
 }

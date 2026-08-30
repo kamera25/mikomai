@@ -9,8 +9,7 @@ use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::sampling::LlamaSampler;
 use std::sync::Arc;
 use tauri::Emitter;
-pub struct SharedWorkers
-{
+pub struct SharedWorkers {
     pub router: std::sync::Mutex<crate::llm::worker::Router>,
     pub knowledge: std::sync::Mutex<crate::llm::worker::KnowledgeWorker>,
     pub analysis: std::sync::Mutex<crate::llm::worker::AnalysisWorker>,
@@ -20,35 +19,29 @@ pub struct SharedWorkers
     pub builder: std::sync::Mutex<crate::llm::worker::BuilderWorker>,
 }
 
-pub struct SharedModel
-{
+pub struct SharedModel {
     pub workers: Option<SharedWorkers>,
     pub model: Arc<LlamaModel>,
     pub backend: Arc<LlamaBackend>,
 }
 
-impl Drop for SharedModel
-{
-    fn drop(&mut self)
-    {
+impl Drop for SharedModel {
+    fn drop(&mut self) {
         // Explicitly drop workers first so that they drop their contexts which borrow the model/backend
         self.workers.take();
     }
 }
 
-impl std::ops::Deref for SharedModel
-{
+impl std::ops::Deref for SharedModel {
     type Target = SharedWorkers;
-    fn deref(&self) -> &Self::Target
-    {
+    fn deref(&self) -> &Self::Target {
         self.workers
             .as_ref()
             .expect("Workers not initialized or already dropped")
     }
 }
 
-pub struct AgentContext
-{
+pub struct AgentContext {
     // IMPORTANT: Field ordering matters for drop safety.
     // `ctx` MUST be declared before `_backend` and `model` so that it is dropped first.
     // This guarantees the LlamaContext (which borrows from model/backend) is destroyed
@@ -68,8 +61,7 @@ pub struct AgentContext
 unsafe impl Send for AgentContext {}
 unsafe impl Sync for AgentContext {}
 
-impl AgentContext
-{
+impl AgentContext {
     pub fn new(
         model: Arc<LlamaModel>,
         backend: Arc<LlamaBackend>,
@@ -77,15 +69,13 @@ impl AgentContext
         _id: i32,
         max_new_tokens: u32,
         n_ctx: u32,
-    ) -> Result<Self>
-    {
+    ) -> Result<Self> {
         let formatted_sys = format!("<|turn>system\n{}<turn|>\n", system_prompt);
         let mut tokens = model.str_to_token(&formatted_sys, AddBos::Always)?;
 
         // Ensure system prompt doesn't exceed 8192 tokens to leave room for user query + generation
         let max_sys_tokens = 8192;
-        if tokens.len() > max_sys_tokens
-        {
+        if tokens.len() > max_sys_tokens {
             tokens.truncate(max_sys_tokens);
         }
 
@@ -111,8 +101,7 @@ impl AgentContext
         let mut batch = LlamaBatch::new(n_ctx as usize, 1);
         let last_index = tokens_len - 1;
 
-        for (i, token) in tokens.into_iter().enumerate()
-        {
+        for (i, token) in tokens.into_iter().enumerate() {
             let is_last = i == last_index;
             batch.add(token, i as i32, &[0], is_last)?;
         }
@@ -137,14 +126,10 @@ fn process_token_bytes(
     bytes_accumulator: &mut Vec<u8>,
     result_string: &mut String,
     window: Option<&tauri::Window>,
-)
-{
-    match std::str::from_utf8(bytes_accumulator)
-    {
-        Ok(s) =>
-        {
-            if let Some(w) = window
-            {
+) {
+    match std::str::from_utf8(bytes_accumulator) {
+        Ok(s) => {
+            if let Some(w) = window {
                 let _ = w.emit(
                     "chat-event",
                     crate::mcp::protocol::ChatEvent::LlmChunk(s.to_string()),
@@ -153,13 +138,11 @@ fn process_token_bytes(
             result_string.push_str(s);
             bytes_accumulator.clear();
         }
-        Err(e) =>
-        {
+        Err(e) => {
             let utf8_error_index = e.valid_up_to();
             let valid_str =
                 String::from_utf8_lossy(&bytes_accumulator[..utf8_error_index]).to_string();
-            if let Some(w) = window
-            {
+            if let Some(w) = window {
                 let _ = w.emit(
                     "chat-event",
                     crate::mcp::protocol::ChatEvent::LlmChunk(valid_str.clone()),
@@ -167,11 +150,9 @@ fn process_token_bytes(
             }
             result_string.push_str(&valid_str);
             bytes_accumulator.drain(..utf8_error_index);
-            if bytes_accumulator.len() > 8
-            {
+            if bytes_accumulator.len() > 8 {
                 let s = String::from_utf8_lossy(bytes_accumulator);
-                if let Some(w) = window
-                {
+                if let Some(w) = window {
                     let _ = w.emit(
                         "chat-event",
                         crate::mcp::protocol::ChatEvent::LlmChunk(s.to_string()),
@@ -190,8 +171,7 @@ pub fn run_inference(
     window: Option<&tauri::Window>,
     temperature: f32,
     repetition_penalty: f32,
-) -> Result<String>
-{
+) -> Result<String> {
     run_inference_with_grammar(
         agent_ctx,
         prompt,
@@ -202,16 +182,13 @@ pub fn run_inference(
     )
 }
 
-struct KVCacheGuard<'a>
-{
+struct KVCacheGuard<'a> {
     ctx: &'a mut LlamaContext<'static>,
     base_n_past: u32,
 }
 
-impl<'a> Drop for KVCacheGuard<'a>
-{
-    fn drop(&mut self)
-    {
+impl<'a> Drop for KVCacheGuard<'a> {
+    fn drop(&mut self) {
         if let Err(e) = self
             .ctx
             .clear_kv_cache_seq(Some(0), Some(self.base_n_past), None)
@@ -228,8 +205,7 @@ pub fn run_inference_with_grammar(
     temperature: f32,
     repetition_penalty: f32,
     grammar_sampler: Option<LlamaSampler>,
-) -> Result<String>
-{
+) -> Result<String> {
     let prefix_tokens = agent_ctx
         .model
         .str_to_token("<|turn>user\n", AddBos::Never)
@@ -240,8 +216,7 @@ pub fn run_inference_with_grammar(
         .unwrap_or_default();
 
     let response_prefix_str = agent_ctx.response_prefix.clone();
-    if let Some(ref prefix_str) = response_prefix_str
-    {
+    if let Some(ref prefix_str) = response_prefix_str {
         let prefix_tokens_extra = agent_ctx
             .model
             .str_to_token(prefix_str, AddBos::Never)
@@ -251,8 +226,7 @@ pub fn run_inference_with_grammar(
 
     let mut user_tokens = agent_ctx.model.str_to_token(prompt, AddBos::Never)?;
 
-    if user_tokens.is_empty()
-    {
+    if user_tokens.is_empty() {
         user_tokens = agent_ctx.model.str_to_token("hi", AddBos::Never)?;
     }
 
@@ -265,8 +239,7 @@ pub fn run_inference_with_grammar(
         (n_ctx - base_n_past - max_gen - prefix_tokens.len() as i32 - suffix_tokens.len() as i32)
             .max(16) as usize;
 
-    if user_tokens.len() > max_user_tokens
-    {
+    if user_tokens.len() > max_user_tokens {
         log::warn!(
             "Prompt too long ({} tokens). Truncating to {} tokens by removing older history.",
             user_tokens.len(),
@@ -278,16 +251,13 @@ pub fn run_inference_with_grammar(
             .unwrap_or_default();
         let note_len = note_tokens.len();
 
-        if max_user_tokens > note_len
-        {
+        if max_user_tokens > note_len {
             let keep_len = max_user_tokens - note_len;
             let start_idx = user_tokens.len() - keep_len;
             let mut new_user_tokens = note_tokens;
             new_user_tokens.extend_from_slice(&user_tokens[start_idx..]);
             user_tokens = new_user_tokens;
-        }
-        else
-        {
+        } else {
             user_tokens.truncate(max_user_tokens);
         }
     }
@@ -300,8 +270,7 @@ pub fn run_inference_with_grammar(
     let mut batch = LlamaBatch::new(n_ctx as usize, 1);
     let mut current_pos = agent_ctx.base_n_past as i32;
     let last_index = tokens.len() - 1;
-    for (i, token) in tokens.into_iter().enumerate()
-    {
+    for (i, token) in tokens.into_iter().enumerate() {
         let is_last = i == last_index;
         batch.add(token, current_pos, &[0], is_last)?;
         current_pos += 1;
@@ -315,10 +284,8 @@ pub fn run_inference_with_grammar(
     guard.ctx.decode(&mut batch)?;
 
     let mut result_string = String::new();
-    if let Some(ref prefix_str) = response_prefix_str
-    {
-        if let Some(w) = window
-        {
+    if let Some(ref prefix_str) = response_prefix_str {
+        if let Some(w) = window {
             let _ = w.emit(
                 "chat-event",
                 crate::mcp::protocol::ChatEvent::LlmChunk(prefix_str.clone()),
@@ -330,16 +297,12 @@ pub fn run_inference_with_grammar(
 
     let mut samplers = Vec::new();
     samplers.push(LlamaSampler::penalties(64, repetition_penalty, 0.0, 0.0));
-    if let Some(g_sampler) = grammar_sampler
-    {
+    if let Some(g_sampler) = grammar_sampler {
         samplers.push(g_sampler);
     }
-    if temperature <= 0.0
-    {
+    if temperature <= 0.0 {
         samplers.push(LlamaSampler::greedy());
-    }
-    else
-    {
+    } else {
         samplers.push(LlamaSampler::temp(temperature));
         samplers.push(LlamaSampler::dist(42));
     }
@@ -354,17 +317,14 @@ pub fn run_inference_with_grammar(
     let n_len = agent_ctx.max_new_tokens; // max length
     let mut bytes_accumulator = Vec::new();
 
-    for _ in 0..n_len
-    {
-        if crate::llm::llm::is_cancelled()
-        {
+    for _ in 0..n_len {
+        if crate::llm::llm::is_cancelled() {
             log::info!("LLM generation loop cancelled by user");
             break;
         }
         let new_token_id = sampler.sample(&mut guard.ctx, batch.n_tokens() - 1);
 
-        if new_token_id == agent_ctx.model.token_eos() || Some(new_token_id) == turn_end_token
-        {
+        if new_token_id == agent_ctx.model.token_eos() || Some(new_token_id) == turn_end_token {
             break;
         }
 
@@ -383,8 +343,7 @@ pub fn run_inference_with_grammar(
         guard.ctx.decode(&mut batch)?;
     }
 
-    if !bytes_accumulator.is_empty()
-    {
+    if !bytes_accumulator.is_empty() {
         result_string.push_str(&String::from_utf8_lossy(&bytes_accumulator));
     }
 
@@ -396,14 +355,12 @@ pub fn truncate_and_annotate_section(
     text: &str,
     max_tokens: usize,
     section_name: &str,
-) -> Result<(String, usize)>
-{
+) -> Result<(String, usize)> {
     let tokens = model
         .str_to_token(text, llama_cpp_2::model::AddBos::Never)
         .map_err(|e| anyhow::anyhow!("Tokenization failed for {}: {:?}", section_name, e))?;
     let original_len = tokens.len();
-    if original_len <= max_tokens
-    {
+    if original_len <= max_tokens {
         return Ok((text.to_string(), original_len));
     }
 
@@ -422,8 +379,7 @@ pub fn truncate_and_annotate_section(
         })?;
     let note_len = note_tokens.len();
 
-    if max_tokens <= note_len
-    {
+    if max_tokens <= note_len {
         return Ok((note.to_string(), note_len));
     }
 
@@ -432,8 +388,7 @@ pub fn truncate_and_annotate_section(
     let truncated_tokens = &tokens[original_len - keep_len..];
 
     let mut bytes = Vec::new();
-    for &token in truncated_tokens
-    {
+    for &token in truncated_tokens {
         let mut piece = model
             .token_to_piece_bytes(token, 256, false, None)
             .map_err(|e| anyhow::anyhow!("token_to_piece_bytes failed: {:?}", e))?;
@@ -467,8 +422,7 @@ pub fn apply_token_budget(
     Option<String>,
     Option<String>,
     Option<String>,
-)>
-{
+)> {
     let budget = n_ctx
         .saturating_sub(base_n_past)
         .saturating_sub(max_new_tokens);
@@ -484,12 +438,9 @@ pub fn apply_token_budget(
     let mut final_output = None;
     let mut final_history_block = None;
 
-    if let Some(p) = prompt
-    {
-        if p.starts_with("【ユーザー入力】") && p.contains("<memory>")
-        {
-            if let Some(memory_pos) = p.find("<memory>")
-            {
+    if let Some(p) = prompt {
+        if p.starts_with("【ユーザー入力】") && p.contains("<memory>") {
+            if let Some(memory_pos) = p.find("<memory>") {
                 let user_part = p[..memory_pos].trim().to_string();
                 let memory_part = p[memory_pos..].trim().to_string();
 
@@ -512,9 +463,7 @@ pub fn apply_token_budget(
                     "Prompt Token Budget (Initial Parsing): System={} tokens, User Input limit={} (actual={}) tokens, Memory/History limit={} (actual={}) tokens",
                     base_n_past, max_user_tokens, user_tokens, max_history_tokens, mem_tokens
                 );
-            }
-            else
-            {
+            } else {
                 let (truncated, prompt_tokens) = truncate_and_annotate_section(
                     model,
                     &p,
@@ -527,9 +476,7 @@ pub fn apply_token_budget(
                     base_n_past, avail_budget, prompt_tokens
                 );
             }
-        }
-        else
-        {
+        } else {
             let (truncated, prompt_tokens) = truncate_and_annotate_section(
                 model,
                 &p,
@@ -548,32 +495,28 @@ pub fn apply_token_budget(
     let mut tool_tokens = 0;
     let mut mem_tokens = 0;
 
-    if let Some(user_msg) = user_message
-    {
+    if let Some(user_msg) = user_message {
         let (truncated, tokens_count) =
             truncate_and_annotate_section(model, &user_msg, max_user_tokens, "User Input")?;
         final_user_message = Some(truncated);
         user_tokens = tokens_count;
     }
 
-    if let Some(out) = output
-    {
+    if let Some(out) = output {
         let (truncated, tokens_count) =
             truncate_and_annotate_section(model, &out, max_tool_tokens, "Tool Output")?;
         final_output = Some(truncated);
         tool_tokens = tokens_count;
     }
 
-    if let Some(hist) = history_block
-    {
+    if let Some(hist) = history_block {
         let (truncated, tokens_count) =
             truncate_and_annotate_section(model, &hist, max_history_tokens, "Memory/History")?;
         final_history_block = Some(truncated);
         mem_tokens = tokens_count;
     }
 
-    if final_user_message.is_some() || final_output.is_some() || final_history_block.is_some()
-    {
+    if final_user_message.is_some() || final_output.is_some() || final_history_block.is_some() {
         log::info!(
             "Prompt Token Budget: System={} tokens, Tool Output limit={} (actual={}) tokens, Memory/History limit={} (actual={}) tokens, User Input limit={} (actual={}) tokens",
             base_n_past, max_tool_tokens, tool_tokens, max_history_tokens, mem_tokens, max_user_tokens, user_tokens

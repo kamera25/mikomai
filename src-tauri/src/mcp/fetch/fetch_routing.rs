@@ -4,15 +4,12 @@ use tauri::{Emitter, Manager};
 
 struct RoutingFetcher;
 
-impl McpCommandFetcher for RoutingFetcher
-{
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String
-    {
+impl McpCommandFetcher for RoutingFetcher {
+    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
         template.fetch_route.clone()
     }
 
-    fn get_log_prefix(&self) -> &'static str
-    {
+    fn get_log_prefix(&self) -> &'static str {
         "routing"
     }
 }
@@ -28,8 +25,7 @@ pub async fn fetch_routing(
     host: Option<String>,
     user_message: Option<String>,
     userMessage: Option<String>,
-) -> Result<CommandResult, String>
-{
+) -> Result<CommandResult, String> {
     let name = crate::mcp::args::normalize_device_args(
         &app,
         device_name,
@@ -45,28 +41,22 @@ pub async fn fetch_routing(
 
     // Resolve the registered host name from connections
     let registered_name = {
-        if let Ok(connections) = crate::connections::load_connections(app.clone())
-        {
-            if let Some(conn) = connections.iter().find(|c| {
-                c.matches_host_or_ip(&resolved_name)
-            })
+        if let Ok(connections) = crate::connections::load_connections(app.clone()) {
+            if let Some(conn) = connections
+                .iter()
+                .find(|c| c.matches_host_or_ip(&resolved_name))
             {
                 conn.hostname.as_str().to_string()
-            }
-            else
-            {
+            } else {
                 resolved_name
             }
-        }
-        else
-        {
+        } else {
             resolved_name
         }
     };
 
     // Check if within cache expiry duration
-    if let Some(cached_res) = super::fetch_base::check_yaml_cache(&app, &registered_name, "route")
-    {
+    if let Some(cached_res) = super::fetch_base::check_yaml_cache(&app, &registered_name, "route") {
         return Ok(cached_res);
     }
 
@@ -75,10 +65,23 @@ pub async fn fetch_routing(
         .fetch_device_info(&app, &registered_name)
         .await?;
 
-    if !command_res.success || command_res.output.trim().is_empty()
-    {
+    if !command_res.success || command_res.output.trim().is_empty() {
         return Ok(command_res);
     }
+
+    // Preserve the authoritative raw result immediately. The validated
+    // normalized form is added by the conversion task below.
+    app.state::<crate::graph::SurrealDbState>()
+        .ingest(crate::graph::GraphIngestInput {
+            source_id: "mcp.fetch_routing".to_string(),
+            collected_at: chrono::Utc::now(),
+            device_name: registered_name.clone(),
+            kind: crate::graph::GraphDataKind::Routing,
+            raw: command_res.output.clone(),
+            normalized: None,
+            normalizer_version: "route-raw-v1".to_string(),
+        })
+        .await?;
 
     // 2. Spawn background task to resolve OS, convert to YAML via LLM, validate and save
     let app_clone = app.clone();
@@ -95,8 +98,7 @@ pub async fn fetch_routing(
                 .await
             {
                 Ok(cfg) => cfg,
-                Err(e) =>
-                {
+                Err(e) => {
                     log::warn!(
                         "Warning: failed to resolve device config for metadata in background: {}",
                         e
@@ -119,8 +121,7 @@ pub async fn fetch_routing(
         .await
         {
             Ok(yaml) => yaml,
-            Err(e) =>
-            {
+            Err(e) => {
                 log::error!(
                     "LLM route conversion/validation failed in background: {}",
                     e
@@ -132,8 +133,25 @@ pub async fn fetch_routing(
         // Save YAML log
         match crate::mcp::route::yaml::save_validated_yaml(&app_clone, &name_clone, &validated_yaml)
         {
-            Ok(saved_path) =>
-            {
+            Ok(saved_path) => {
+                if let Err(e) = app_clone
+                    .state::<crate::graph::SurrealDbState>()
+                    .ingest(crate::graph::GraphIngestInput {
+                        source_id: "mcp.fetch_routing".to_string(),
+                        collected_at: chrono::Utc::now(),
+                        device_name: name_clone.clone(),
+                        kind: crate::graph::GraphDataKind::Routing,
+                        raw: raw_output_clone.clone(),
+                        normalized: crate::graph::normalize_yaml(
+                            crate::graph::GraphDataKind::Routing,
+                            &validated_yaml,
+                        ),
+                        normalizer_version: "route-llm-yaml-v1".to_string(),
+                    })
+                    .await
+                {
+                    log::error!("Failed to ingest normalized routing graph data: {}", e);
+                }
                 log::info!(
                     "Background YAML normalization succeeded, saved to: {}",
                     saved_path.display()
@@ -144,13 +162,11 @@ pub async fn fetch_routing(
                         device_name: name_clone,
                         saved_path,
                     },
-                )
-                {
+                ) {
                     log::error!("Error emitting route-yaml-saved event: {}", e);
                 }
             }
-            Err(e) =>
-            {
+            Err(e) => {
                 log::warn!(
                     "Warning: failed to save validated YAML artifact in background: {}",
                     e

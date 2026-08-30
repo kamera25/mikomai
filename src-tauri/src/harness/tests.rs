@@ -1,13 +1,16 @@
 #[cfg(test)]
 mod tests {
+    use crate::planner::decision::*;
     use crate::state::*;
     use crate::validator::*;
-    use crate::planner::decision::*;
 
     #[test]
     fn test_network_state_goal_and_observation() {
         let mut state = NetworkState::with_goal("Verify connectivity to 10.0.20.0/24".to_string());
-        assert_eq!(state.desired.as_ref().unwrap().raw_goal, "Verify connectivity to 10.0.20.0/24");
+        assert_eq!(
+            state.desired.as_ref().unwrap().raw_goal,
+            "Verify connectivity to 10.0.20.0/24"
+        );
         assert_eq!(state.event_log.len(), 1);
 
         let obs = Observation {
@@ -33,11 +36,20 @@ mod tests {
         assert_eq!(state.event_log.len(), 2);
         assert!(state.observed.devices.contains_key("R1"));
         let r1_fact = state.observed.devices.get("R1").unwrap();
-        assert_eq!(r1_fact.raw_snapshots.get("show ip route 10.0.20.0").unwrap(), "% Network not in table");
+        assert_eq!(
+            r1_fact
+                .raw_snapshots
+                .get("show ip route 10.0.20.0")
+                .unwrap(),
+            "% Network not in table"
+        );
 
         // Test state rebuild from event log
         let rebuilt = NetworkState::rebuild_from_log(&state.event_log);
-        assert_eq!(rebuilt.desired.as_ref().unwrap().raw_goal, "Verify connectivity to 10.0.20.0/24");
+        assert_eq!(
+            rebuilt.desired.as_ref().unwrap().raw_goal,
+            "Verify connectivity to 10.0.20.0/24"
+        );
         assert!(rebuilt.observed.devices.contains_key("R1"));
     }
 
@@ -142,7 +154,10 @@ mod tests {
         let action = SchemaValidator::validate_decision(&decision).expect("Validation failed");
         assert_eq!(action.tool.as_deref(), Some("network_show"));
         assert_eq!(action.target.as_deref(), Some("R1"));
-        assert_eq!(action.parameters.get("command").and_then(|v| v.as_str()), Some("show ip route"));
+        assert_eq!(
+            action.parameters.get("command").and_then(|v| v.as_str()),
+            Some("show ip route")
+        );
     }
 
     #[test]
@@ -184,13 +199,14 @@ mod tests {
             "expected_observation": ["show config"]
         }"#;
 
-        let rag_decision = parse_decision_from_json(raw_rag_decision).expect("RAG Decision parse failed");
-        let rag_action = SchemaValidator::validate_decision(&rag_decision).expect("RAG Action validation failed");
+        let rag_decision =
+            parse_decision_from_json(raw_rag_decision).expect("RAG Decision parse failed");
+        let rag_action = SchemaValidator::validate_decision(&rag_decision)
+            .expect("RAG Action validation failed");
         assert_eq!(rag_action.tool.as_deref(), Some("query_nw_db"));
-        assert_eq!(rag_action.parameters.get("query").and_then(|v| v.as_str()), Some("[Context: Yamaha] 設定 表示"));
+        assert_eq!(
+            rag_action.parameters.get("query").and_then(|v| v.as_str()),
+            Some("[Context: Yamaha] 設定 表示")
+        );
     }
 }
-
-
-
-

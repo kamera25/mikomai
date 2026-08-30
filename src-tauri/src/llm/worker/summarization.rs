@@ -9,21 +9,17 @@ const SUMMARIZATION_PROMPT: &str = include_str!("../prompts/summarization_prompt
 const MAX_NEW_TOKENS: u32 = 256;
 const N_CTX: u32 = 8192;
 
-pub struct SummarizationWorker
-{
+pub struct SummarizationWorker {
     pub ctx: Option<AgentContext>,
 }
 
-impl SummarizationWorker
-{
+impl SummarizationWorker {
     pub fn new(
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
         preload: bool,
-    ) -> Result<Self, String>
-    {
-        if preload
-        {
+    ) -> Result<Self, String> {
+        if preload {
             let ctx = AgentContext::new(
                 model.clone(),
                 backend.clone(),
@@ -34,23 +30,18 @@ impl SummarizationWorker
             )
             .map_err(|e| format!("Failed to create Summarization context: {:?}", e))?;
             Ok(Self { ctx: Some(ctx) })
-        }
-        else
-        {
+        } else {
             Ok(Self { ctx: None })
         }
     }
 }
 
-impl LlmWorker for SummarizationWorker
-{
-    fn agent_name(&self) -> &'static str
-    {
+impl LlmWorker for SummarizationWorker {
+    fn agent_name(&self) -> &'static str {
         "Summarization Unit (要約ユニット)"
     }
 
-    fn context_mut(&mut self) -> &mut AgentContext
-    {
+    fn context_mut(&mut self) -> &mut AgentContext {
         self.ctx
             .as_mut()
             .expect("Summarization context not initialized")
@@ -60,10 +51,8 @@ impl LlmWorker for SummarizationWorker
         &mut self,
         model: &Arc<LlamaModel>,
         backend: &Arc<LlamaBackend>,
-    ) -> Result<(), String>
-    {
-        if self.ctx.is_none()
-        {
+    ) -> Result<(), String> {
+        if self.ctx.is_none() {
             let ctx = AgentContext::new(
                 model.clone(),
                 backend.clone(),
@@ -86,8 +75,7 @@ impl LlmWorker for SummarizationWorker
         _output: Option<String>,
         _history_block: Option<String>,
         _subsequent_task: Option<&str>,
-    ) -> String
-    {
+    ) -> String {
         prompt.unwrap_or_default()
     }
 }

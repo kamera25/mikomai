@@ -39,7 +39,11 @@ impl HarnessStateMachine {
     }
 
     pub fn transition(&mut self, next: HarnessState) -> Result<(), String> {
-        log::info!("Harness State Transition: {:?} -> {:?}", self.current_state, next);
+        log::info!(
+            "Harness State Transition: {:?} -> {:?}",
+            self.current_state,
+            next
+        );
         self.current_state = next;
         if next == HarnessState::Deciding {
             self.step_count += 1;

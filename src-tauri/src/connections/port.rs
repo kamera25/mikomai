@@ -6,90 +6,70 @@ use std::fmt;
 #[serde(transparent)]
 pub struct Port(u16);
 
-impl Port
-{
-    pub fn new(value: u16) -> Result<Self, String>
-    {
-        if value < 1
-        {
+impl Port {
+    pub fn new(value: u16) -> Result<Self, String> {
+        if value < 1 {
             return Err("Port must be between 1 and 65535".to_string());
         }
         Ok(Self(value))
     }
 
     #[allow(dead_code)]
-    pub fn value(&self) -> u16
-    {
+    pub fn value(&self) -> u16 {
         self.0
     }
 }
 
-impl TryFrom<u16> for Port
-{
+impl TryFrom<u16> for Port {
     type Error = String;
-    fn try_from(value: u16) -> Result<Self, Self::Error>
-    {
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
         Self::new(value)
     }
 }
 
-impl TryFrom<i32> for Port
-{
+impl TryFrom<i32> for Port {
     type Error = String;
-    fn try_from(value: i32) -> Result<Self, Self::Error>
-    {
-        if value < 1 || value > 65535
-        {
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        if value < 1 || value > 65535 {
             return Err(format!("Port {} is out of range (1..=65535)", value));
         }
         Ok(Self(value as u16))
     }
 }
 
-impl TryFrom<u32> for Port
-{
+impl TryFrom<u32> for Port {
     type Error = String;
-    fn try_from(value: u32) -> Result<Self, Self::Error>
-    {
-        if value < 1 || value > 65535
-        {
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value < 1 || value > 65535 {
             return Err(format!("Port {} is out of range (1..=65535)", value));
         }
         Ok(Self(value as u16))
     }
 }
 
-impl TryFrom<usize> for Port
-{
+impl TryFrom<usize> for Port {
     type Error = String;
-    fn try_from(value: usize) -> Result<Self, Self::Error>
-    {
-        if value < 1 || value > 65535
-        {
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        if value < 1 || value > 65535 {
             return Err(format!("Port {} is out of range (1..=65535)", value));
         }
         Ok(Self(value as u16))
     }
 }
 
-impl TryFrom<i64> for Port
-{
+impl TryFrom<i64> for Port {
     type Error = String;
-    fn try_from(value: i64) -> Result<Self, Self::Error>
-    {
-        if value < 1 || value > 65535
-        {
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        if value < 1 || value > 65535 {
             return Err(format!("Port {} is out of range (1..=65535)", value));
         }
         Ok(Self(value as u16))
     }
 }
 
-impl TryFrom<&str> for Port
-{
+impl TryFrom<&str> for Port {
     type Error = String;
-    fn try_from(value: &str) -> Result<Self, Self::Error>
-    {
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         let trimmed = value.trim();
         let parsed = trimmed
             .parse::<u16>()
@@ -98,17 +78,14 @@ impl TryFrom<&str> for Port
     }
 }
 
-impl TryFrom<String> for Port
-{
+impl TryFrom<String> for Port {
     type Error = String;
-    fn try_from(value: String) -> Result<Self, Self::Error>
-    {
+    fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::try_from(value.as_str())
     }
 }
 
-impl<'de> Deserialize<'de> for Port
-{
+impl<'de> Deserialize<'de> for Port {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -118,39 +95,31 @@ impl<'de> Deserialize<'de> for Port
     }
 }
 
-impl std::ops::Deref for Port
-{
+impl std::ops::Deref for Port {
     type Target = u16;
-    fn deref(&self) -> &Self::Target
-    {
+    fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl AsRef<u16> for Port
-{
-    fn as_ref(&self) -> &u16
-    {
+impl AsRef<u16> for Port {
+    fn as_ref(&self) -> &u16 {
         &self.0
     }
 }
 
-impl fmt::Display for Port
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
-    {
+impl fmt::Display for Port {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_valid_port()
-    {
+    fn test_valid_port() {
         let p = Port::try_from(22).unwrap();
         assert_eq!(p.value(), 22);
         assert_eq!(*p, 22);
@@ -166,8 +135,7 @@ mod tests
     }
 
     #[test]
-    fn test_invalid_port()
-    {
+    fn test_invalid_port() {
         assert!(Port::try_from(0).is_err());
         assert!(Port::try_from("0").is_err());
         assert!(Port::try_from("65536").is_err());
@@ -177,8 +145,7 @@ mod tests
     }
 
     #[test]
-    fn test_port_serialization()
-    {
+    fn test_port_serialization() {
         let p = Port::try_from(22).unwrap();
         let serialized = serde_json::to_string(&p).unwrap();
         assert_eq!(serialized, "22");

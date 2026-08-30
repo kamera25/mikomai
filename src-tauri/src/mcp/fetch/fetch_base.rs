@@ -8,8 +8,7 @@ pub use super::command_template::{
     get_template_for_dtype, load_templates, map_vendor_type, CommandTemplate,
 };
 
-pub struct ResolvedDevice
-{
+pub struct ResolvedDevice {
     pub ip: String,
     pub username: String,
     pub password: Option<String>,
@@ -21,24 +20,19 @@ pub struct ResolvedDevice
     pub agent_forwarding: Option<bool>,
 }
 
-pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<ResolvedDevice, String>
-{
+pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<ResolvedDevice, String> {
     let mut resolved_device = None;
 
-    if let Ok(connections) = load_connections_raw(app)
-    {
-        if let Some(conn) = connections.iter().find(|c| c.matches_host_or_ip(resolved_name))
+    if let Ok(connections) = load_connections_raw(app) {
+        if let Some(conn) = connections
+            .iter()
+            .find(|c| c.matches_host_or_ip(resolved_name))
         {
-            let dtype = if let Some(dt) = &conn.device_type
-            {
+            let dtype = if let Some(dt) = &conn.device_type {
                 dt.to_string()
-            }
-            else if let Some(vt) = &conn.vendor_type
-            {
+            } else if let Some(vt) = &conn.vendor_type {
                 map_vendor_type(vt.as_str())
-            }
-            else
-            {
+            } else {
                 "cisco_ios".to_string()
             };
 
@@ -50,17 +44,12 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
 
             // Decrypt password on-demand for connection
             let decrypted_password = conn.password.as_ref().and_then(|p| {
-                if p.is_empty()
-                {
+                if p.is_empty() {
                     None
-                }
-                else
-                {
-                    match decrypt(app, p.as_str())
-                    {
+                } else {
+                    match decrypt(app, p.as_str()) {
                         Ok(decrypted) => Some(decrypted),
-                        Err(e) =>
-                        {
+                        Err(e) => {
                             log::error!(
                                 "Failed to decrypt password for connection {}: {}",
                                 conn.id,
@@ -79,7 +68,11 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
                     match decrypt(app, ep.as_str()) {
                         Ok(decrypted) => Some(decrypted),
                         Err(e) => {
-                            log::error!("Failed to decrypt enable password for connection {}: {}", conn.id, e);
+                            log::error!(
+                                "Failed to decrypt enable password for connection {}: {}",
+                                conn.id,
+                                e
+                            );
                             None
                         }
                     }
@@ -87,17 +80,12 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
             });
 
             let decrypted_passphrase = conn.passphrase.as_ref().and_then(|pp| {
-                if pp.is_empty()
-                {
+                if pp.is_empty() {
                     None
-                }
-                else
-                {
-                    match decrypt(app, pp.as_str())
-                    {
+                } else {
+                    match decrypt(app, pp.as_str()) {
                         Ok(decrypted) => Some(decrypted),
-                        Err(e) =>
-                        {
+                        Err(e) => {
                             log::error!(
                                 "Failed to decrypt passphrase for connection {}: {}",
                                 conn.id,
@@ -123,8 +111,7 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
         }
     }
 
-    match resolved_device
-    {
+    match resolved_device {
         Some(d) => Ok(d),
         None => Err(format!(
             "Error: Device '{}' is not registered. Only registered device names are allowed.",
@@ -136,27 +123,22 @@ pub fn find_device(app: &tauri::AppHandle, resolved_name: &str) -> Result<Resolv
 pub async fn resolve_device_config(
     app: &tauri::AppHandle,
     device_name: &str,
-) -> Result<NetmikoDeviceConfig, String>
-{
+) -> Result<NetmikoDeviceConfig, String> {
     let (resolved_name, conn_type) =
         super::device_resolver::resolve_device_name_and_type(app, device_name)?;
 
-    match conn_type
-    {
-        ConnectionType::Console =>
-        {
+    match conn_type {
+        ConnectionType::Console => {
             use super::netmiko::device_config_console::{
                 ConsoleBuilder, ConsoleDeviceConfigBuilder,
             };
             ConsoleBuilder.build(app, &resolved_name)
         }
-        ConnectionType::Telnet =>
-        {
+        ConnectionType::Telnet => {
             use super::netmiko::device_config_telnet::{TelnetBuilder, TelnetDeviceConfigBuilder};
             TelnetBuilder.build(app, &resolved_name)
         }
-        ConnectionType::SSH =>
-        {
+        ConnectionType::SSH => {
             use super::netmiko::device_config_ssh::{SshBuilder, SshDeviceConfigBuilder};
             SshBuilder.build(app, &resolved_name)
         }
@@ -164,8 +146,7 @@ pub async fn resolve_device_config(
 }
 
 #[allow(async_fn_in_trait)]
-pub trait McpCommandFetcher
-{
+pub trait McpCommandFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String;
     fn get_log_prefix(&self) -> &'static str;
 
@@ -173,15 +154,12 @@ pub trait McpCommandFetcher
         &self,
         app: &tauri::AppHandle,
         device_name: &str,
-    ) -> Result<CommandResult, String>
-    {
+    ) -> Result<CommandResult, String> {
         let target_device = resolve_device_config(app, device_name).await?;
         let templates = load_templates(app);
-        let template = match get_template_for_dtype(&templates, &target_device.device_type)
-        {
+        let template = match get_template_for_dtype(&templates, &target_device.device_type) {
             Some(t) => t,
-            None =>
-            {
+            None => {
                 return Err(format!(
                     "Error: No command template found for device type '{}'.",
                     target_device.device_type
@@ -189,16 +167,12 @@ pub trait McpCommandFetcher
             }
         };
 
-        let command = if self.get_log_prefix() == "config"
-        {
+        let command = if self.get_log_prefix() == "config" {
             super::command_template::get_show_running_config_command(&target_device.device_type)
-        }
-        else
-        {
+        } else {
             self.get_command_from_template(template)
         };
-        if let Some(ref port) = target_device.console_port
-        {
+        if let Some(ref port) = target_device.console_port {
             log::info!(
                 "Fetching {} for registered device '{}' via console port '{}' using command '{}'",
                 self.get_log_prefix(),
@@ -206,9 +180,7 @@ pub trait McpCommandFetcher
                 port,
                 command
             );
-        }
-        else
-        {
+        } else {
             log::info!(
                 "Fetching {} for registered device '{}' using command '{}'",
                 self.get_log_prefix(),
@@ -218,32 +190,21 @@ pub trait McpCommandFetcher
         }
 
         let wrapper = NetmikoConnectionWrapper::new(app);
-        match wrapper.execute_show(&target_device, &command).await
-        {
-            Ok(output) =>
-            {
-                let saved_path: Option<std::path::PathBuf> = if !output.trim().is_empty()
-                {
-                    if let Ok(mut manager) = crate::snapshot::SnapshotManager::new(app)
-                    {
+        match wrapper.execute_show(&target_device, &command).await {
+            Ok(output) => {
+                let saved_path: Option<std::path::PathBuf> = if !output.trim().is_empty() {
+                    if let Ok(mut manager) = crate::snapshot::SnapshotManager::new(app) {
                         let data_type = self.get_log_prefix().to_lowercase();
-                        if let Ok(path) = manager.save_artifact(device_name, &data_type, &output)
-                        {
+                        if let Ok(path) = manager.save_artifact(device_name, &data_type, &output) {
                             let _ = manager.update_current_link(path.parent().unwrap());
                             Some(path)
-                        }
-                        else
-                        {
+                        } else {
                             None
                         }
-                    }
-                    else
-                    {
+                    } else {
                         None
                     }
-                }
-                else
-                {
+                } else {
                     None
                 };
                 Ok(CommandResult {
@@ -269,12 +230,10 @@ pub fn check_yaml_cache(
     app: &tauri::AppHandle,
     registered_name: &str,
     suffix: &str,
-) -> Option<CommandResult>
-{
+) -> Option<CommandResult> {
     let settings = crate::settings::load_settings(app.clone()).ok()?;
     let expiry_mins = settings.cache_expiry_minutes.unwrap_or(10);
-    if expiry_mins == 0
-    {
+    if expiry_mins == 0 {
         return None;
     }
 
@@ -283,16 +242,14 @@ pub fn check_yaml_cache(
         .base_dir()
         .join("current")
         .join(format!("{}_{}.yaml", registered_name, suffix));
-    if !yaml_path.exists()
-    {
+    if !yaml_path.exists() {
         return None;
     }
 
     let metadata = std::fs::metadata(&yaml_path).ok()?;
     let modified = metadata.modified().ok()?;
     let elapsed = modified.elapsed().ok()?;
-    if elapsed.as_secs() >= expiry_mins * 60
-    {
+    if elapsed.as_secs() >= expiry_mins * 60 {
         return None;
     }
 
@@ -317,14 +274,12 @@ pub fn check_yaml_cache(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::super::command_template::get_default_templates;
     use super::*;
 
     #[test]
-    fn test_command_template_serialization()
-    {
+    fn test_command_template_serialization() {
         let template = CommandTemplate {
             fetch_config: "show run".to_string(),
             fetch_route: "show ip route".to_string(),
@@ -339,8 +294,7 @@ mod tests
     }
 
     #[test]
-    fn test_default_templates_loading()
-    {
+    fn test_default_templates_loading() {
         let templates = get_default_templates();
         assert!(templates.contains_key("cisco_ios"));
         assert!(templates.contains_key("juniper_junos"));
@@ -354,8 +308,7 @@ mod tests
     }
 
     #[test]
-    fn test_get_template_for_dtype()
-    {
+    fn test_get_template_for_dtype() {
         let templates = get_default_templates();
 
         // Exact match

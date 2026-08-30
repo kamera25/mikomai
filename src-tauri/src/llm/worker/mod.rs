@@ -15,8 +15,7 @@ pub use rag::RagWorker;
 pub use summarization::SummarizationWorker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Route
-{
+pub enum Route {
     Agent,
     Knowledge,
     Analysis,
@@ -25,49 +24,33 @@ pub enum Route
     None,
 }
 
-impl std::str::FromStr for Route
-{
+impl std::str::FromStr for Route {
     type Err = std::convert::Infallible;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err>
-    {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let upper = s.to_uppercase();
-        let route = if upper.contains("AGENT") || upper.contains("INVESTIGATE")
-        {
+        let route = if upper.contains("AGENT") || upper.contains("INVESTIGATE") {
             // INVESTIGATE is accepted for router-output compatibility with
             // older persisted prompts, but AGENT is the canonical route.
             Route::Agent
-        }
-        else if upper.contains("KNOWLEDGE")
-        {
+        } else if upper.contains("KNOWLEDGE") {
             Route::Knowledge
-        }
-        else if upper.contains("ANALYSIS")
-        {
+        } else if upper.contains("ANALYSIS") {
             Route::Analysis
-        }
-        else if upper.contains("PLOTTER") || upper.contains("PLOTER")
-        {
+        } else if upper.contains("PLOTTER") || upper.contains("PLOTER") {
             Route::Plotter
-        }
-        else if upper.contains("BUILDER")
-        {
+        } else if upper.contains("BUILDER") {
             Route::Builder
-        }
-        else if upper.contains("NONE")
-        {
+        } else if upper.contains("NONE") {
             Route::None
-        }
-        else
-        {
+        } else {
             Route::Agent
         };
         Ok(route)
     }
 }
 
-pub trait LlmWorker
-{
+pub trait LlmWorker {
     fn agent_name(&self) -> &'static str;
     fn context_mut(&mut self) -> &mut crate::llm::llm_manager::AgentContext;
     fn ensure_initialized(
@@ -85,8 +68,7 @@ pub trait LlmWorker
         subsequent_task: Option<&str>,
     ) -> String;
     #[allow(dead_code)]
-    fn max_new_tokens(&self) -> u32
-    {
+    fn max_new_tokens(&self) -> u32 {
         2048
     }
 
@@ -103,8 +85,7 @@ pub trait LlmWorker
         window: Option<&tauri::Window>,
         temperature: f32,
         repetition_penalty: f32,
-    ) -> Result<String, String>
-    {
+    ) -> Result<String, String> {
         self.ensure_initialized(model, backend)?;
         let (prompt, user_message, output, history_block) =
             crate::llm::llm_manager::apply_token_budget(
@@ -147,14 +128,10 @@ pub fn build_common_worker_prompt(
     output: Option<String>,
     history_block: Option<String>,
     subsequent_task: Option<&str>,
-) -> String
-{
-    let mut base = if let Some(p) = prompt
-    {
+) -> String {
+    let mut base = if let Some(p) = prompt {
         p
-    }
-    else
-    {
+    } else {
         let user_msg = user_message.as_deref().unwrap_or_default();
         let out = output.as_deref().unwrap_or_default();
         let hist = history_block.as_deref().unwrap_or_default();
@@ -174,8 +151,7 @@ pub fn build_common_worker_prompt(
         prompt_modified
     };
 
-    if let Some(task) = subsequent_task
-    {
+    if let Some(task) = subsequent_task {
         base.push_str(&format!(
             "\n\n=== Subsequent Task / 後続のタスク ===\nユーザーは以下の確認・解決を望んでいます:\n{}\n必ずこの確認・解決のために必要な処理・回答を行ってください。かつ、設定の意図や現在の状態を含めて分かりやすく報告してください。",
             task
@@ -185,13 +161,11 @@ pub fn build_common_worker_prompt(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_build_common_worker_prompt_default()
-    {
+    fn test_build_common_worker_prompt_default() {
         let prompt = build_common_worker_prompt(
             None,
             Some("Check interfaces".to_string()),
@@ -210,8 +184,7 @@ mod tests
     }
 
     #[test]
-    fn test_build_common_worker_prompt_override()
-    {
+    fn test_build_common_worker_prompt_override() {
         let prompt = build_common_worker_prompt(
             Some("Custom overriding prompt".to_string()),
             None,

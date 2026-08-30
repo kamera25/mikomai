@@ -1,17 +1,15 @@
 use super::fetch_base::{CommandTemplate, McpCommandFetcher};
 use crate::network::CommandResult;
+use tauri::Manager;
 
 struct ConfigFetcher;
 
-impl McpCommandFetcher for ConfigFetcher
-{
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String
-    {
+impl McpCommandFetcher for ConfigFetcher {
+    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
         template.fetch_config.clone()
     }
 
-    fn get_log_prefix(&self) -> &'static str
-    {
+    fn get_log_prefix(&self) -> &'static str {
         "config"
     }
 }
@@ -20,14 +18,14 @@ impl McpCommandFetcher for ConfigFetcher
 #[allow(non_snake_case)]
 pub async fn fetch_config(
     app: tauri::AppHandle,
+    llama_state: tauri::State<'_, crate::llm::llm::LlamaState>,
     device_name: Option<String>,
     deviceName: Option<String>,
     device: Option<String>,
     host: Option<String>,
     user_message: Option<String>,
     userMessage: Option<String>,
-) -> Result<CommandResult, String>
-{
+) -> Result<CommandResult, String> {
     let resolved_name = crate::mcp::args::normalize_device_args(
         &app,
         device_name,
@@ -37,17 +35,35 @@ pub async fn fetch_config(
         user_message,
         userMessage,
     )?;
-    ConfigFetcher.fetch_device_info(&app, &resolved_name).await
+    let result = ConfigFetcher
+        .fetch_device_info(&app, &resolved_name)
+        .await?;
+    if result.success && !result.output.trim().is_empty() {
+        let graph = app.state::<crate::graph::SurrealDbState>();
+        graph
+            .ingest(crate::graph::GraphIngestInput {
+                source_id: "mcp.fetch_config".to_string(),
+                collected_at: chrono::Utc::now(),
+                device_name: resolved_name,
+                kind: crate::graph::GraphDataKind::Config,
+                raw: result.output.clone(),
+                normalized: Some(
+                    crate::graph::normalize_config_with_llm(&result.output, &app, &llama_state)
+                        .await,
+                ),
+                normalizer_version: "config-llm-v1".to_string(),
+            })
+            .await?;
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::super::command_template::{get_default_templates, get_template_for_dtype};
 
     #[test]
-    fn test_default_templates()
-    {
+    fn test_default_templates() {
         let templates = get_default_templates();
         assert!(templates.contains_key("cisco_ios"));
         assert!(templates.contains_key("juniper_junos"));
@@ -69,8 +85,7 @@ mod tests
     }
 
     #[test]
-    fn test_get_template_for_dtype()
-    {
+    fn test_get_template_for_dtype() {
         let templates = get_default_templates();
 
         // Exact match

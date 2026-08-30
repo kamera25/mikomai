@@ -1,16 +1,11 @@
 use crate::connections::IpAddress;
 use serde_json::Value;
 
-pub fn get_str_arg(args: &Value, keys: &[&str]) -> Option<String>
-{
-    for &key in keys
-    {
-        if let Some(val) = args.get(key)
-        {
-            if let Some(s) = val.as_str()
-            {
-                if !s.trim().is_empty()
-                {
+pub fn get_str_arg(args: &Value, keys: &[&str]) -> Option<String> {
+    for &key in keys {
+        if let Some(val) = args.get(key) {
+            if let Some(s) = val.as_str() {
+                if !s.trim().is_empty() {
                     return Some(s.to_string());
                 }
             }
@@ -19,25 +14,18 @@ pub fn get_str_arg(args: &Value, keys: &[&str]) -> Option<String>
     None
 }
 
-pub fn get_ip_arg(args: &Value, keys: &[&str]) -> Option<IpAddress>
-{
+pub fn get_ip_arg(args: &Value, keys: &[&str]) -> Option<IpAddress> {
     get_str_arg(args, keys).and_then(|s| IpAddress::try_from(s.as_str()).ok())
 }
 
-pub fn get_usize_arg(args: &Value, keys: &[&str]) -> Option<usize>
-{
-    for &key in keys
-    {
-        if let Some(val) = args.get(key)
-        {
-            if let Some(n) = val.as_u64()
-            {
+pub fn get_usize_arg(args: &Value, keys: &[&str]) -> Option<usize> {
+    for &key in keys {
+        if let Some(val) = args.get(key) {
+            if let Some(n) = val.as_u64() {
                 return Some(n as usize);
             }
-            if let Some(s) = val.as_str()
-            {
-                if let Ok(n) = s.parse::<usize>()
-                {
+            if let Some(s) = val.as_str() {
+                if let Ok(n) = s.parse::<usize>() {
                     return Some(n);
                 }
             }
@@ -46,20 +34,14 @@ pub fn get_usize_arg(args: &Value, keys: &[&str]) -> Option<usize>
     None
 }
 
-pub fn get_u32_arg(args: &Value, keys: &[&str]) -> Option<u32>
-{
-    for &key in keys
-    {
-        if let Some(val) = args.get(key)
-        {
-            if let Some(n) = val.as_u64()
-            {
+pub fn get_u32_arg(args: &Value, keys: &[&str]) -> Option<u32> {
+    for &key in keys {
+        if let Some(val) = args.get(key) {
+            if let Some(n) = val.as_u64() {
                 return Some(n as u32);
             }
-            if let Some(s) = val.as_str()
-            {
-                if let Ok(n) = s.parse::<u32>()
-                {
+            if let Some(s) = val.as_str() {
+                if let Ok(n) = s.parse::<u32>() {
                     return Some(n);
                 }
             }
@@ -68,24 +50,17 @@ pub fn get_u32_arg(args: &Value, keys: &[&str]) -> Option<u32>
     None
 }
 
-pub fn get_bool_arg(args: &Value, keys: &[&str]) -> Option<bool>
-{
-    for &key in keys
-    {
-        if let Some(val) = args.get(key)
-        {
-            if let Some(b) = val.as_bool()
-            {
+pub fn get_bool_arg(args: &Value, keys: &[&str]) -> Option<bool> {
+    for &key in keys {
+        if let Some(val) = args.get(key) {
+            if let Some(b) = val.as_bool() {
                 return Some(b);
             }
-            if let Some(s) = val.as_str()
-            {
-                if s.eq_ignore_ascii_case("true")
-                {
+            if let Some(s) = val.as_str() {
+                if s.eq_ignore_ascii_case("true") {
                     return Some(true);
                 }
-                if s.eq_ignore_ascii_case("false")
-                {
+                if s.eq_ignore_ascii_case("false") {
                     return Some(false);
                 }
             }
@@ -94,10 +69,8 @@ pub fn get_bool_arg(args: &Value, keys: &[&str]) -> Option<bool>
     None
 }
 
-pub fn get_history_block_rust(items: &[crate::history::SummaryItem], limit: usize) -> String
-{
-    if limit == 0 || items.is_empty()
-    {
+pub fn get_history_block_rust(items: &[crate::history::SummaryItem], limit: usize) -> String {
+    if limit == 0 || items.is_empty() {
         return "".to_string();
     }
     let mut recent: Vec<crate::history::SummaryItem> = items.to_vec();
@@ -106,10 +79,8 @@ pub fn get_history_block_rust(items: &[crate::history::SummaryItem], limit: usiz
     let recent_slice = &recent[0..limit_len];
 
     let mut text = String::new();
-    for (i, item) in recent_slice.iter().enumerate()
-    {
-        if i > 0
-        {
+    for (i, item) in recent_slice.iter().enumerate() {
+        if i > 0 {
             text.push('\n');
         }
         text.push_str(&format!("{}. {}", i + 1, item.content));
@@ -117,24 +88,18 @@ pub fn get_history_block_rust(items: &[crate::history::SummaryItem], limit: usiz
     format!("\n\n<memory>\n{}\n</memory>", text)
 }
 
-pub fn extract_json_blocks(text: &str) -> Vec<String>
-{
+pub fn extract_json_blocks(text: &str) -> Vec<String> {
     let mut blocks = Vec::new();
     let chars: Vec<char> = text.chars().collect();
     let len = chars.len();
     let mut i = 0;
-    while i < len
-    {
-        if chars[i] == '{'
-        {
+    while i < len {
+        if chars[i] == '{' {
             let mut success = false;
-            for j in (i + 1..len).rev()
-            {
-                if chars[j] == '}'
-                {
+            for j in (i + 1..len).rev() {
+                if chars[j] == '}' {
                     let candidate: String = chars[i..=j].iter().collect();
-                    if serde_json::from_str::<Value>(&candidate).is_ok()
-                    {
+                    if serde_json::from_str::<Value>(&candidate).is_ok() {
                         blocks.push(candidate);
                         i = j;
                         success = true;
@@ -142,8 +107,7 @@ pub fn extract_json_blocks(text: &str) -> Vec<String>
                     }
                 }
             }
-            if success
-            {
+            if success {
                 i += 1;
                 continue;
             }
@@ -154,14 +118,12 @@ pub fn extract_json_blocks(text: &str) -> Vec<String>
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
     use serde_json::json;
 
     #[test]
-    fn test_extract_json_blocks()
-    {
+    fn test_extract_json_blocks() {
         let text =
             "Here is some text with { \"tool\": \"test\" } and another { \"abc\": 123 } block.";
         let blocks = extract_json_blocks(text);
@@ -174,8 +136,7 @@ mod tests
     }
 
     #[test]
-    fn test_get_str_arg()
-    {
+    fn test_get_str_arg() {
         let args = json!({
             "host": "192.168.1.1",
             "empty": "   "
@@ -192,8 +153,7 @@ mod tests
     }
 
     #[test]
-    fn test_get_usize_arg()
-    {
+    fn test_get_usize_arg() {
         let args = json!({
             "size": 64,
             "size_str": "128"
@@ -204,8 +164,7 @@ mod tests
     }
 
     #[test]
-    fn test_get_ip_arg()
-    {
+    fn test_get_ip_arg() {
         let args = json!({
             "ip": "192.168.1.1",
             "ip_v6": "::1",
@@ -224,8 +183,7 @@ mod tests
     }
 
     #[test]
-    fn test_get_u32_arg()
-    {
+    fn test_get_u32_arg() {
         let args = json!({
             "count": 5,
             "count_str": "10"
@@ -236,8 +194,7 @@ mod tests
     }
 
     #[test]
-    fn test_get_bool_arg()
-    {
+    fn test_get_bool_arg() {
         let args = json!({
             "df_bool": true,
             "df_str_true": "true",
@@ -250,8 +207,7 @@ mod tests
     }
 
     #[test]
-    fn test_get_history_block_rust()
-    {
+    fn test_get_history_block_rust() {
         let items = vec![
             crate::history::SummaryItem {
                 timestamp: "2023-10-27T00:00:00Z"

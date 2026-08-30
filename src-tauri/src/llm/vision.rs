@@ -2,8 +2,7 @@ use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImageAnalysisResult
-{
+pub struct ImageAnalysisResult {
     pub file_name: String,
     pub mime_type: String,
     pub width: Option<u32>,
@@ -17,15 +16,11 @@ pub fn process_image_attachment(
     content: &str,
     vision_enabled: bool,
     mmproj_path: Option<&str>,
-) -> ImageAnalysisResult
-{
+) -> ImageAnalysisResult {
     // Data URLプレフィックスの除去 (data:image/png;base64,... 形式対応)
-    let raw_b64 = if let Some(pos) = content.find("base64,")
-    {
+    let raw_b64 = if let Some(pos) = content.find("base64,") {
         &content[pos + 7..]
-    }
-    else
-    {
+    } else {
         content
     };
 
@@ -36,17 +31,13 @@ pub fn process_image_attachment(
     // 画像サイズ情報等のデコード試行
     let (width, height) = parse_image_dimensions(&image_bytes, mime_type);
 
-    let vision_source = if let Some(path) = mmproj_path
-    {
+    let vision_source = if let Some(path) = mmproj_path {
         format!("Gemma Vision モジュール ({})", path)
-    }
-    else
-    {
+    } else {
         "Gemma Vision モジュール".to_string()
     };
 
-    let extracted_context = if vision_enabled
-    {
+    let extracted_context = if vision_enabled {
         format!(
             "【添付画像Vision解析情報: {}】\n- 使用Visionエンジン: {}\n- 画像仕様: 形式={}, 解像度={}\n- 構成図/ダイアグラム解析: 添付画像はネットワーク構成図または機器スクリーンショットとしてVisionモジュールに認識されています。\n- 構成図に示されるトポロジ、ノード名、接続インターフェース、IPアドレス設定のコンテキストを参照して回答を構築してください。",
             file_name,
@@ -58,19 +49,14 @@ pub fn process_image_attachment(
                 "不明".to_string()
             }
         )
-    }
-    else
-    {
+    } else {
         format!(
             "[添付画像: {} (形式: {}, 解像度: {})]",
             file_name,
             mime_type,
-            if let (Some(w), Some(h)) = (width, height)
-            {
+            if let (Some(w), Some(h)) = (width, height) {
                 format!("{}x{}px", w, h)
-            }
-            else
-            {
+            } else {
                 "不明".to_string()
             }
         )
@@ -85,43 +71,34 @@ pub fn process_image_attachment(
     }
 }
 
-fn resolve_mmproj_path(path_str: &str) -> Option<String>
-{
+fn resolve_mmproj_path(path_str: &str) -> Option<String> {
     let path = std::path::Path::new(path_str);
-    if !path.exists()
-    {
+    if !path.exists() {
         log::warn!("mmproj path does not exist: {}", path_str);
         return None;
     }
-    if path.is_file()
-    {
+    if path.is_file() {
         return Some(path_str.to_string());
     }
-    if path.is_dir()
-    {
-        if let Ok(entries) = std::fs::read_dir(path)
-        {
+    if path.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(path) {
             let mut gguf_files = Vec::new();
-            for entry in entries.flatten()
-            {
+            for entry in entries.flatten() {
                 let p = entry.path();
-                if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("gguf")
-                {
+                if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("gguf") {
                     let name = p
                         .file_name()
                         .and_then(|s| s.to_str())
                         .unwrap_or("")
                         .to_lowercase();
-                    if name.contains("mmproj") || name.contains("clip") || name.contains("vision")
-                    {
+                    if name.contains("mmproj") || name.contains("clip") || name.contains("vision") {
                         log::info!("Resolved mmproj GGUF file from directory: {}", p.display());
                         return Some(p.to_string_lossy().to_string());
                     }
                     gguf_files.push(p.to_string_lossy().to_string());
                 }
             }
-            if let Some(first) = gguf_files.into_iter().next()
-            {
+            if let Some(first) = gguf_files.into_iter().next() {
                 log::info!("Resolved fallback GGUF file from directory: {}", first);
                 return Some(first);
             }
@@ -137,31 +114,25 @@ pub async fn analyze_image_attachment(
     vision_enabled: bool,
     mmproj_path: Option<&str>,
     llama_state: &crate::llm::llm::LlamaState,
-) -> ImageAnalysisResult
-{
+) -> ImageAnalysisResult {
     let fallback =
         process_image_attachment(file_name, mime_type, content, vision_enabled, mmproj_path);
-    if !vision_enabled
-    {
+    if !vision_enabled {
         log::info!("Vision is disabled in settings for {}", file_name);
         return fallback;
     }
 
-    let raw_mmproj = match mmproj_path
-    {
+    let raw_mmproj = match mmproj_path {
         Some(p) if !p.trim().is_empty() => p,
-        _ =>
-        {
+        _ => {
             log::warn!("Vision enabled but mmproj_path is empty for {}", file_name);
             return fallback;
         }
     };
 
-    let mmproj_path_str = match resolve_mmproj_path(raw_mmproj)
-    {
+    let mmproj_path_str = match resolve_mmproj_path(raw_mmproj) {
         Some(p) => p,
-        None =>
-        {
+        None => {
             log::warn!(
                 "Could not resolve valid mmproj GGUF file from path: {}",
                 raw_mmproj
@@ -176,20 +147,15 @@ pub async fn analyze_image_attachment(
         mmproj_path_str
     );
 
-    let raw_b64 = if let Some(pos) = content.find("base64,")
-    {
+    let raw_b64 = if let Some(pos) = content.find("base64,") {
         &content[pos + 7..]
-    }
-    else
-    {
+    } else {
         content
     };
 
-    let image_bytes = match general_purpose::STANDARD.decode(raw_b64)
-    {
+    let image_bytes = match general_purpose::STANDARD.decode(raw_b64) {
         Ok(b) if !b.is_empty() => b,
-        _ =>
-        {
+        _ => {
             log::warn!("Failed to decode base64 image bytes for {}", file_name);
             return fallback;
         }
@@ -200,11 +166,9 @@ pub async fn analyze_image_attachment(
         lock.clone()
     };
 
-    let shared_model = match shared
-    {
+    let shared_model = match shared {
         Some(s) => s,
-        None =>
-        {
+        None => {
             log::warn!("Llama model is not currently loaded in llama_state");
             return fallback;
         }
@@ -285,12 +249,9 @@ pub async fn analyze_image_attachment(
         Ok(result_text)
     }).await;
 
-    match res
-    {
-        Ok(Ok(vision_text)) =>
-        {
-            if !vision_text.trim().is_empty()
-            {
+    match res {
+        Ok(Ok(vision_text)) => {
+            if !vision_text.trim().is_empty() {
                 log::info!(
                     "Vision Inference Success for {}: {} chars generated",
                     file_name,
@@ -315,9 +276,7 @@ pub async fn analyze_image_attachment(
                     height,
                     extracted_context,
                 }
-            }
-            else
-            {
+            } else {
                 log::warn!(
                     "Vision inference returned empty text for {}, falling back",
                     file_name
@@ -325,8 +284,7 @@ pub async fn analyze_image_attachment(
                 fallback
             }
         }
-        Ok(Err(e)) =>
-        {
+        Ok(Err(e)) => {
             log::warn!(
                 "Vision inference failed for {}: {}, falling back",
                 file_name,
@@ -334,8 +292,7 @@ pub async fn analyze_image_attachment(
             );
             fallback
         }
-        Err(e) =>
-        {
+        Err(e) => {
             log::error!(
                 "Vision spawn_blocking panicked for {}: {}, falling back",
                 file_name,
@@ -346,10 +303,8 @@ pub async fn analyze_image_attachment(
     }
 }
 
-fn parse_image_dimensions(bytes: &[u8], mime_type: &str) -> (Option<u32>, Option<u32>)
-{
-    if bytes.len() < 16
-    {
+fn parse_image_dimensions(bytes: &[u8], mime_type: &str) -> (Option<u32>, Option<u32>) {
+    if bytes.len() < 16 {
         return (None, None);
     }
 
@@ -363,8 +318,7 @@ fn parse_image_dimensions(bytes: &[u8], mime_type: &str) -> (Option<u32>, Option
     }
 
     // GIFヘッダーチェック (GIF87a / GIF89a)
-    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")
-    {
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
         let width = u16::from_le_bytes([bytes[6], bytes[7]]) as u32;
         let height = u16::from_le_bytes([bytes[8], bytes[9]]) as u32;
         return (Some(width), Some(height));
@@ -374,21 +328,18 @@ fn parse_image_dimensions(bytes: &[u8], mime_type: &str) -> (Option<u32>, Option
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_process_image_attachment_disabled()
-    {
+    fn test_process_image_attachment_disabled() {
         let res = process_image_attachment("test.png", "image/png", "SGVsbG8=", false, None);
         assert_eq!(res.file_name, "test.png");
         assert!(res.extracted_context.contains("[添付画像: test.png"));
     }
 
     #[test]
-    fn test_process_image_attachment_enabled()
-    {
+    fn test_process_image_attachment_enabled() {
         let res = process_image_attachment(
             "diag.png",
             "image/png",

@@ -1,23 +1,19 @@
 use crate::schema::route::{RouteEntry, RouteMetadata, UniversalRouteTable};
 use chrono::Utc;
 
-pub fn parse_windows_route(stdout: &str) -> Result<UniversalRouteTable, String>
-{
+pub fn parse_windows_route(stdout: &str) -> Result<UniversalRouteTable, String> {
     let mut entries = Vec::new();
     let mut in_ipv4_routes = false;
 
     // IPv4 Route Table active routes section starts after "Active Routes:" under "IPv4 Route Table"
     // and ends with "=====================" or "IPv6 Route Table" or "Persistent Routes:"
-    for line in stdout.lines()
-    {
+    for line in stdout.lines() {
         let line = line.trim();
-        if line.is_empty()
-        {
+        if line.is_empty() {
             continue;
         }
 
-        if line.contains("IPv4 Route Table") || line.contains("IPv4 ルート テーブル")
-        {
+        if line.contains("IPv4 Route Table") || line.contains("IPv4 ルート テーブル") {
             in_ipv4_routes = true;
             continue;
         }
@@ -32,8 +28,7 @@ pub fn parse_windows_route(stdout: &str) -> Result<UniversalRouteTable, String>
             continue;
         }
 
-        if !in_ipv4_routes
-        {
+        if !in_ipv4_routes {
             continue;
         }
 
@@ -48,8 +43,7 @@ pub fn parse_windows_route(stdout: &str) -> Result<UniversalRouteTable, String>
         }
 
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 5
-        {
+        if parts.len() >= 5 {
             let dest = parts[0].to_string();
             let netmask = parts[1].to_string();
             let gateway = parts[2].to_string();
@@ -57,19 +51,13 @@ pub fn parse_windows_route(stdout: &str) -> Result<UniversalRouteTable, String>
             let metric_str = parts[4];
 
             // Validate if dest is a valid IP or 0.0.0.0
-            if dest.parse::<std::net::IpAddr>().is_ok() || dest == "0.0.0.0"
-            {
+            if dest.parse::<std::net::IpAddr>().is_ok() || dest == "0.0.0.0" {
                 let metric = metric_str.parse::<i32>().ok();
-                let destination = if netmask == "255.255.255.255"
-                {
+                let destination = if netmask == "255.255.255.255" {
                     dest
-                }
-                else if dest == "0.0.0.0" && netmask == "0.0.0.0"
-                {
+                } else if dest == "0.0.0.0" && netmask == "0.0.0.0" {
                     "default".to_string()
-                }
-                else
-                {
+                } else {
                     format!("{}/{}", dest, netmask)
                 };
 
@@ -96,13 +84,11 @@ pub fn parse_windows_route(stdout: &str) -> Result<UniversalRouteTable, String>
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_windows_route_success()
-    {
+    fn test_parse_windows_route_success() {
         let sample_output = r#"
 ===========================================================================
 IPv4 Route Table

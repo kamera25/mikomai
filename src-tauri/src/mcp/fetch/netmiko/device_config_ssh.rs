@@ -1,7 +1,6 @@
 use crate::network::NetmikoDeviceConfig;
 
-pub trait SshDeviceConfigBuilder
-{
+pub trait SshDeviceConfigBuilder {
     fn build(
         &self,
         app: &tauri::AppHandle,
@@ -11,14 +10,12 @@ pub trait SshDeviceConfigBuilder
 
 pub struct SshBuilder;
 
-impl SshDeviceConfigBuilder for SshBuilder
-{
+impl SshDeviceConfigBuilder for SshBuilder {
     fn build(
         &self,
         app: &tauri::AppHandle,
         resolved_name: &str,
-    ) -> Result<NetmikoDeviceConfig, String>
-    {
+    ) -> Result<NetmikoDeviceConfig, String> {
         let device = crate::mcp::fetch::fetch_base::find_device(app, resolved_name);
 
         let device = device?;

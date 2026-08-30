@@ -15,10 +15,8 @@ pub async fn load_model(
     app: tauri::AppHandle,
     path: String,
     state: tauri::State<'_, LlamaState>,
-) -> Result<String, TauriError>
-{
-    if path.contains("..")
-    {
+) -> Result<String, TauriError> {
+    if path.contains("..") {
         return Err(TauriError(crate::error::MikomaiError::Validation(
             "Path traversal detected".to_string(),
         )));
@@ -44,14 +42,11 @@ pub async fn load_model(
     .await
     .map_err(|e| LlmError::SpawnBlocking(e.to_string()))?;
 
-    let model = match model_res
-    {
+    let model = match model_res {
         Ok(m) => m,
-        Err(e) =>
-        {
+        Err(e) => {
             let err_msg = format!("Failed to load model: {}", e);
-            if let Ok(mut status_lock) = state.status.try_lock()
-            {
+            if let Ok(mut status_lock) = state.status.try_lock() {
                 *status_lock = ModelState::Error(err_msg.clone());
                 let _ = app.emit("model-status-changed", &*status_lock);
             }
@@ -124,38 +119,28 @@ pub async fn load_model(
     let backend_bg = state.backend.clone();
     let shared_bg = shared_model.clone();
     tokio::task::spawn_blocking(move || {
-        if settings.preload_knowledge
-        {
-            if let Ok(mut w) = shared_bg.knowledge.lock()
-            {
+        if settings.preload_knowledge {
+            if let Ok(mut w) = shared_bg.knowledge.lock() {
                 let _ = w.ensure_initialized(&model_bg, &backend_bg);
             }
         }
-        if settings.preload_analysis
-        {
-            if let Ok(mut w) = shared_bg.analysis.lock()
-            {
+        if settings.preload_analysis {
+            if let Ok(mut w) = shared_bg.analysis.lock() {
                 let _ = w.ensure_initialized(&model_bg, &backend_bg);
             }
         }
-        if settings.preload_rag
-        {
-            if let Ok(mut w) = shared_bg.rag.lock()
-            {
+        if settings.preload_rag {
+            if let Ok(mut w) = shared_bg.rag.lock() {
                 let _ = w.ensure_initialized(&model_bg, &backend_bg);
             }
         }
-        if settings.preload_plotter
-        {
-            if let Ok(mut w) = shared_bg.plotter.lock()
-            {
+        if settings.preload_plotter {
+            if let Ok(mut w) = shared_bg.plotter.lock() {
                 let _ = w.ensure_initialized(&model_bg, &backend_bg);
             }
         }
-        if settings.preload_builder
-        {
-            if let Ok(mut w) = shared_bg.builder.lock()
-            {
+        if settings.preload_builder {
+            if let Ok(mut w) = shared_bg.builder.lock() {
                 let _ = w.ensure_initialized(&model_bg, &backend_bg);
             }
         }

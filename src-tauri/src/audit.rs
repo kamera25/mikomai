@@ -11,7 +11,13 @@ use std::io::Write;
 use tauri::Manager;
 
 const SENSITIVE_KEYS: &[&str] = &[
-    "password", "pass", "secret", "enable_password", "enablepassword", "passphrase", "token",
+    "password",
+    "pass",
+    "secret",
+    "enable_password",
+    "enablepassword",
+    "passphrase",
+    "token",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,8 +36,17 @@ pub fn redact(value: &serde_json::Value) -> serde_json::Value {
         serde_json::Value::Object(values) => values
             .iter()
             .map(|(key, value)| {
-                let hidden = SENSITIVE_KEYS.iter().any(|sensitive| key.eq_ignore_ascii_case(sensitive));
-                (key.clone(), if hidden { serde_json::Value::String("[REDACTED]".into()) } else { redact(value) })
+                let hidden = SENSITIVE_KEYS
+                    .iter()
+                    .any(|sensitive| key.eq_ignore_ascii_case(sensitive));
+                (
+                    key.clone(),
+                    if hidden {
+                        serde_json::Value::String("[REDACTED]".into())
+                    } else {
+                        redact(value)
+                    },
+                )
             })
             .collect(),
         serde_json::Value::Array(values) => values.iter().map(redact).collect(),
@@ -58,7 +73,11 @@ pub fn record(
     };
 
     let result = (|| -> Result<(), String> {
-        let directory = app.path().app_data_dir().map_err(|e| e.to_string())?.join("audit");
+        let directory = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("audit");
         fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
         let mut file = OpenOptions::new()
             .create(true)
@@ -70,7 +89,12 @@ pub fn record(
     })();
 
     if let Err(error) = result {
-        log::error!("Could not write audit record for tool '{}' ({}): {}", tool_id, outcome, error);
+        log::error!(
+            "Could not write audit record for tool '{}' ({}): {}",
+            tool_id,
+            outcome,
+            error
+        );
     }
 }
 

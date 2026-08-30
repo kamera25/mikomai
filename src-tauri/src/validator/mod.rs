@@ -1,5 +1,5 @@
-pub mod schema;
 pub mod policy;
+pub mod schema;
 
-pub use schema::*;
 pub use policy::*;
+pub use schema::*;

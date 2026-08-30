@@ -23,8 +23,7 @@ const OP_ACK: u16 = 4;
 const OP_ERROR: u16 = 5;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct TftpDownloadParams
-{
+pub struct TftpDownloadParams {
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
@@ -38,8 +37,7 @@ pub struct TftpDownloadParams
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct TftpUploadParams
-{
+pub struct TftpUploadParams {
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
@@ -54,8 +52,7 @@ pub struct TftpUploadParams
 }
 
 /// Builds an RRQ or WRQ packet.
-fn build_rq_packet(op: u16, filename: &str, mode: &str) -> Vec<u8>
-{
+fn build_rq_packet(op: u16, filename: &str, mode: &str) -> Vec<u8> {
     let mut packet = Vec::with_capacity(2 + filename.len() + 1 + mode.len() + 1);
     packet.extend_from_slice(&op.to_be_bytes());
     packet.extend_from_slice(filename.as_bytes());
@@ -66,8 +63,7 @@ fn build_rq_packet(op: u16, filename: &str, mode: &str) -> Vec<u8>
 }
 
 /// Builds an ACK packet.
-fn build_ack_packet(block: u16) -> Vec<u8>
-{
+fn build_ack_packet(block: u16) -> Vec<u8> {
     let mut packet = Vec::with_capacity(4);
     packet.extend_from_slice(&OP_ACK.to_be_bytes());
     packet.extend_from_slice(&block.to_be_bytes());
@@ -75,8 +71,7 @@ fn build_ack_packet(block: u16) -> Vec<u8>
 }
 
 /// Builds a DATA packet.
-fn build_data_packet(block: u16, data: &[u8]) -> Vec<u8>
-{
+fn build_data_packet(block: u16, data: &[u8]) -> Vec<u8> {
     let mut packet = Vec::with_capacity(4 + data.len());
     packet.extend_from_slice(&OP_DATA.to_be_bytes());
     packet.extend_from_slice(&block.to_be_bytes());
@@ -85,28 +80,21 @@ fn build_data_packet(block: u16, data: &[u8]) -> Vec<u8>
 }
 
 /// Parses an error packet and extracts the error message.
-fn parse_error_packet(data: &[u8]) -> String
-{
-    if data.len() >= 4
-    {
+fn parse_error_packet(data: &[u8]) -> String {
+    if data.len() >= 4 {
         let err_code = u16::from_be_bytes([data[2], data[3]]);
-        let msg = if data.len() > 4
-        {
+        let msg = if data.len() > 4 {
             let msg_bytes = &data[4..];
             let end = msg_bytes
                 .iter()
                 .position(|&b| b == 0)
                 .unwrap_or(msg_bytes.len());
             String::from_utf8_lossy(&msg_bytes[..end]).to_string()
-        }
-        else
-        {
+        } else {
             String::new()
         };
         format!("TFTP Error {}: {}", err_code, msg)
-    }
-    else
-    {
+    } else {
         "Malformed TFTP Error packet".to_string()
     }
 }
@@ -117,14 +105,10 @@ pub async fn tftp_download_core(
     remote_file: &str,
     mode: &str,
     timeout_duration: Duration,
-) -> Result<(Vec<u8>, u64), String>
-{
-    let bind_addr = if server_addr.is_ipv4()
-    {
+) -> Result<(Vec<u8>, u64), String> {
+    let bind_addr = if server_addr.is_ipv4() {
         "0.0.0.0:0"
-    }
-    else
-    {
+    } else {
         "[::]:0"
     };
 
@@ -144,48 +128,35 @@ pub async fn tftp_download_core(
     let mut transfer_tid: Option<SocketAddr> = None;
     let mut buf = [0u8; 1024];
 
-    loop
-    {
+    loop {
         let mut retries = 0;
-        let (len, from_addr) = loop
-        {
-            match tokio::time::timeout(timeout_duration, socket.recv_from(&mut buf)).await
-            {
-                Ok(Ok((len, addr))) =>
-                {
+        let (len, from_addr) = loop {
+            match tokio::time::timeout(timeout_duration, socket.recv_from(&mut buf)).await {
+                Ok(Ok((len, addr))) => {
                     // Check TID (the server uses a dynamic port after initial RRQ)
-                    if let Some(tid) = transfer_tid
-                    {
-                        if addr != tid
-                        {
+                    if let Some(tid) = transfer_tid {
+                        if addr != tid {
                             // Packet from unexpected source, ignore
                             continue;
                         }
-                    }
-                    else
-                    {
+                    } else {
                         transfer_tid = Some(addr);
                     }
                     break (len, addr);
                 }
                 Ok(Err(e)) => return Err(format!("Socket receive error: {}", e)),
-                Err(_) =>
-                {
+                Err(_) => {
                     retries += 1;
-                    if retries >= TFTP_MAX_RETRIES
-                    {
+                    if retries >= TFTP_MAX_RETRIES {
                         return Err(format!(
                             "TFTP transfer timed out after {} retries (waiting for block {})",
                             TFTP_MAX_RETRIES, expected_block
                         ));
                     }
                     // Re-send previous ACK (or RRQ if waiting for block 1)
-                    if expected_block == 1
-                    {
+                    if expected_block == 1 {
                         let _ = socket.send_to(&rrq, server_addr).await;
-                    }
-                    else if let Some(tid) = transfer_tid
-                    {
+                    } else if let Some(tid) = transfer_tid {
                         let ack = build_ack_packet(expected_block.wrapping_sub(1));
                         let _ = socket.send_to(&ack, tid).await;
                     }
@@ -193,19 +164,15 @@ pub async fn tftp_download_core(
             }
         };
 
-        if len < 4
-        {
+        if len < 4 {
             return Err("Received packet too small".to_string());
         }
 
         let opcode = u16::from_be_bytes([buf[0], buf[1]]);
-        match opcode
-        {
-            OP_DATA =>
-            {
+        match opcode {
+            OP_DATA => {
                 let block = u16::from_be_bytes([buf[2], buf[3]]);
-                if block == expected_block
-                {
+                if block == expected_block {
                     let chunk = &buf[4..len];
                     file_data.extend_from_slice(chunk);
 
@@ -219,25 +186,20 @@ pub async fn tftp_download_core(
                     expected_block = expected_block.wrapping_add(1);
 
                     // If DATA packet is less than 512 bytes, transfer is complete
-                    if chunk.len() < TFTP_BLOCK_SIZE
-                    {
+                    if chunk.len() < TFTP_BLOCK_SIZE {
                         break;
                     }
-                }
-                else if block == expected_block.wrapping_sub(1)
-                {
+                } else if block == expected_block.wrapping_sub(1) {
                     // Duplicate DATA packet, re-send ACK
                     let ack = build_ack_packet(block);
                     let _ = socket.send_to(&ack, from_addr).await;
                 }
             }
-            OP_ERROR =>
-            {
+            OP_ERROR => {
                 let err_msg = parse_error_packet(&buf[..len]);
                 return Err(err_msg);
             }
-            other =>
-            {
+            other => {
                 return Err(format!("Unexpected TFTP opcode: {}", other));
             }
         }
@@ -254,14 +216,10 @@ pub async fn tftp_upload_core(
     data: &[u8],
     mode: &str,
     timeout_duration: Duration,
-) -> Result<u64, String>
-{
-    let bind_addr = if server_addr.is_ipv4()
-    {
+) -> Result<u64, String> {
+    let bind_addr = if server_addr.is_ipv4() {
         "0.0.0.0:0"
-    }
-    else
-    {
+    } else {
         "[::]:0"
     };
 
@@ -278,35 +236,25 @@ pub async fn tftp_upload_core(
     let start_time = Instant::now();
     let mut buf = [0u8; 1024];
     let mut retries = 0;
-    let tid: SocketAddr = loop
-    {
-        match tokio::time::timeout(timeout_duration, socket.recv_from(&mut buf)).await
-        {
-            Ok(Ok((len, addr))) =>
-            {
-                if len >= 4
-                {
+    let tid: SocketAddr = loop {
+        match tokio::time::timeout(timeout_duration, socket.recv_from(&mut buf)).await {
+            Ok(Ok((len, addr))) => {
+                if len >= 4 {
                     let opcode = u16::from_be_bytes([buf[0], buf[1]]);
-                    if opcode == OP_ACK
-                    {
+                    if opcode == OP_ACK {
                         let block = u16::from_be_bytes([buf[2], buf[3]]);
-                        if block == 0
-                        {
+                        if block == 0 {
                             break addr;
                         }
-                    }
-                    else if opcode == OP_ERROR
-                    {
+                    } else if opcode == OP_ERROR {
                         return Err(parse_error_packet(&buf[..len]));
                     }
                 }
             }
             Ok(Err(e)) => return Err(format!("Socket receive error: {}", e)),
-            Err(_) =>
-            {
+            Err(_) => {
                 retries += 1;
-                if retries >= TFTP_MAX_RETRIES
-                {
+                if retries >= TFTP_MAX_RETRIES {
                     return Err(format!(
                         "TFTP upload WRQ timed out after {} retries waiting for ACK 0",
                         TFTP_MAX_RETRIES
@@ -326,12 +274,9 @@ pub async fn tftp_upload_core(
     while chunk_idx < chunks.len()
         || (chunk_idx == chunks.len() && data.len() % TFTP_BLOCK_SIZE == 0)
     {
-        let chunk_data = if chunk_idx < chunks.len()
-        {
+        let chunk_data = if chunk_idx < chunks.len() {
             chunks[chunk_idx]
-        }
-        else
-        {
+        } else {
             &[]
         };
 
@@ -343,35 +288,25 @@ pub async fn tftp_upload_core(
 
         // Wait for ACK(block_num)
         let mut block_retries = 0;
-        loop
-        {
-            match tokio::time::timeout(timeout_duration, socket.recv_from(&mut buf)).await
-            {
-                Ok(Ok((len, addr))) =>
-                {
-                    if addr == tid && len >= 4
-                    {
+        loop {
+            match tokio::time::timeout(timeout_duration, socket.recv_from(&mut buf)).await {
+                Ok(Ok((len, addr))) => {
+                    if addr == tid && len >= 4 {
                         let opcode = u16::from_be_bytes([buf[0], buf[1]]);
-                        if opcode == OP_ACK
-                        {
+                        if opcode == OP_ACK {
                             let ack_block = u16::from_be_bytes([buf[2], buf[3]]);
-                            if ack_block == block_num
-                            {
+                            if ack_block == block_num {
                                 break;
                             }
-                        }
-                        else if opcode == OP_ERROR
-                        {
+                        } else if opcode == OP_ERROR {
                             return Err(parse_error_packet(&buf[..len]));
                         }
                     }
                 }
                 Ok(Err(e)) => return Err(format!("Socket receive error: {}", e)),
-                Err(_) =>
-                {
+                Err(_) => {
                     block_retries += 1;
-                    if block_retries >= TFTP_MAX_RETRIES
-                    {
+                    if block_retries >= TFTP_MAX_RETRIES {
                         return Err(format!(
                             "TFTP upload timed out after {} retries waiting for ACK {}",
                             TFTP_MAX_RETRIES, block_num
@@ -394,8 +329,7 @@ pub async fn tftp_upload_core(
 pub async fn network_tftp_download_with_params(
     app: tauri::AppHandle,
     params: TftpDownloadParams,
-) -> Result<FileTransferResult, String>
-{
+) -> Result<FileTransferResult, String> {
     let host_args = crate::mcp::args::HostArgs {
         host: params.host,
         device: params.device,
@@ -418,11 +352,9 @@ pub async fn network_tftp_download_with_params(
     let (file_data, duration_ms) =
         tftp_download_core(server_addr, &remote_file, mode, timeout_duration).await?;
 
-    let saved_path = if let Some(local_path) = params.local_path
-    {
+    let saved_path = if let Some(local_path) = params.local_path {
         let path = PathBuf::from(&local_path);
-        if let Some(parent) = path.parent()
-        {
+        if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
         fs::write(&path, &file_data).map_err(|e| {
@@ -432,9 +364,7 @@ pub async fn network_tftp_download_with_params(
             )
         })?;
         path
-    }
-    else
-    {
+    } else {
         let mut manager = SnapshotManager::new(&app)
             .map_err(|e| format!("Failed to initialize SnapshotManager: {}", e))?;
         let clean_filename = Path::new(&remote_file)
@@ -479,8 +409,7 @@ pub async fn network_tftp_download_with_params(
 pub async fn network_tftp_upload_with_params(
     app: tauri::AppHandle,
     params: TftpUploadParams,
-) -> Result<FileTransferResult, String>
-{
+) -> Result<FileTransferResult, String> {
     let host_args = crate::mcp::args::HostArgs {
         host: params.host,
         device: params.device,
@@ -492,31 +421,26 @@ pub async fn network_tftp_upload_with_params(
     let port = params.port.map(|p| *p).unwrap_or(TFTP_DEFAULT_PORT);
     let server_addr = SocketAddr::new(ip_addr, port);
 
-    let (file_data, file_source_desc, default_remote_name) = if let Some(local_path) =
-        &params.local_file
-    {
-        let path = PathBuf::from(local_path);
-        let data = fs::read(&path)
-            .map_err(|e| format!("Failed to read local file {}: {}", local_path, e))?;
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file.bin")
-            .to_string();
-        (data, local_path.clone(), name)
-    }
-    else if let Some(text_content) = params.content
-    {
-        (
-            text_content.into_bytes(),
-            "provided text content".to_string(),
-            "upload.txt".to_string(),
-        )
-    }
-    else
-    {
-        return Err("Error: local_file or content is required for TFTP upload".to_string());
-    };
+    let (file_data, file_source_desc, default_remote_name) =
+        if let Some(local_path) = &params.local_file {
+            let path = PathBuf::from(local_path);
+            let data = fs::read(&path)
+                .map_err(|e| format!("Failed to read local file {}: {}", local_path, e))?;
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file.bin")
+                .to_string();
+            (data, local_path.clone(), name)
+        } else if let Some(text_content) = params.content {
+            (
+                text_content.into_bytes(),
+                "provided text content".to_string(),
+                "upload.txt".to_string(),
+            )
+        } else {
+            return Err("Error: local_file or content is required for TFTP upload".to_string());
+        };
 
     let remote_file = params
         .remote_file
@@ -574,8 +498,7 @@ pub async fn network_tftp_download(
     mode: Option<String>,
     timeout_secs: Option<u64>,
     timeoutSecs: Option<u64>,
-) -> Result<FileTransferResult, String>
-{
+) -> Result<FileTransferResult, String> {
     network_tftp_download_with_params(
         app,
         TftpDownloadParams {
@@ -613,8 +536,7 @@ pub async fn network_tftp_upload(
     mode: Option<String>,
     timeout_secs: Option<u64>,
     timeoutSecs: Option<u64>,
-) -> Result<FileTransferResult, String>
-{
+) -> Result<FileTransferResult, String> {
     network_tftp_upload_with_params(
         app,
         TftpUploadParams {
@@ -635,13 +557,11 @@ pub async fn network_tftp_upload(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_build_rq_packet()
-    {
+    fn test_build_rq_packet() {
         let rrq = build_rq_packet(OP_RRQ, "startup-config", "octet");
         assert_eq!(rrq[0..2], [0, 1]);
         assert_eq!(&rrq[2..16], b"startup-config");
@@ -651,15 +571,13 @@ mod tests
     }
 
     #[test]
-    fn test_build_ack_packet()
-    {
+    fn test_build_ack_packet() {
         let ack = build_ack_packet(42);
         assert_eq!(ack, vec![0, 4, 0, 42]);
     }
 
     #[test]
-    fn test_build_data_packet()
-    {
+    fn test_build_data_packet() {
         let data = b"hello world";
         let packet = build_data_packet(1, data);
         assert_eq!(&packet[0..4], &[0, 3, 0, 1]);
@@ -667,8 +585,7 @@ mod tests
     }
 
     #[test]
-    fn test_parse_error_packet()
-    {
+    fn test_parse_error_packet() {
         let mut err_pkt = vec![0, 5, 0, 1];
         err_pkt.extend_from_slice(b"File not found\0");
         let msg = parse_error_packet(&err_pkt);
@@ -676,8 +593,7 @@ mod tests
     }
 
     #[tokio::test]
-    async fn test_local_tftp_mock_loopback()
-    {
+    async fn test_local_tftp_mock_loopback() {
         // Spin up a mock TFTP server on UDP localhost
         let server_socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let server_addr = server_socket.local_addr().unwrap();

@@ -4,15 +4,12 @@ use tauri::{Emitter, Manager};
 
 struct ArpFetcher;
 
-impl McpCommandFetcher for ArpFetcher
-{
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String
-    {
+impl McpCommandFetcher for ArpFetcher {
+    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
         template.fetch_arp.clone()
     }
 
-    fn get_log_prefix(&self) -> &'static str
-    {
+    fn get_log_prefix(&self) -> &'static str {
         "ARP"
     }
 }
@@ -28,8 +25,7 @@ pub async fn fetch_arp(
     host: Option<String>,
     user_message: Option<String>,
     userMessage: Option<String>,
-) -> Result<CommandResult, String>
-{
+) -> Result<CommandResult, String> {
     let name = crate::mcp::args::normalize_device_args(
         &app,
         device_name,
@@ -45,38 +41,43 @@ pub async fn fetch_arp(
 
     // Resolve the registered host name from connections
     let registered_name = {
-        if let Ok(connections) = crate::connections::load_connections(app.clone())
-        {
-            if let Some(conn) = connections.iter().find(|c| {
-                c.matches_host_or_ip(&resolved_name)
-            })
+        if let Ok(connections) = crate::connections::load_connections(app.clone()) {
+            if let Some(conn) = connections
+                .iter()
+                .find(|c| c.matches_host_or_ip(&resolved_name))
             {
                 conn.hostname.as_str().to_string()
-            }
-            else
-            {
+            } else {
                 resolved_name
             }
-        }
-        else
-        {
+        } else {
             resolved_name
         }
     };
 
     // Check if within cache expiry duration
-    if let Some(cached_res) = super::fetch_base::check_yaml_cache(&app, &registered_name, "arp")
-    {
+    if let Some(cached_res) = super::fetch_base::check_yaml_cache(&app, &registered_name, "arp") {
         return Ok(cached_res);
     }
 
     // 1. Fetch raw ARP table output using the registered host name
     let command_res = ArpFetcher.fetch_device_info(&app, &registered_name).await?;
 
-    if !command_res.success || command_res.output.trim().is_empty()
-    {
+    if !command_res.success || command_res.output.trim().is_empty() {
         return Ok(command_res);
     }
+
+    app.state::<crate::graph::SurrealDbState>()
+        .ingest(crate::graph::GraphIngestInput {
+            source_id: "mcp.fetch_arp".to_string(),
+            collected_at: chrono::Utc::now(),
+            device_name: registered_name.clone(),
+            kind: crate::graph::GraphDataKind::Arp,
+            raw: command_res.output.clone(),
+            normalized: None,
+            normalizer_version: "arp-raw-v1".to_string(),
+        })
+        .await?;
 
     // 2. Spawn background task to resolve OS, convert to YAML via LLM, validate and save
     let app_clone = app.clone();
@@ -93,8 +94,7 @@ pub async fn fetch_arp(
                 .await
             {
                 Ok(cfg) => cfg,
-                Err(e) =>
-                {
+                Err(e) => {
                     log::warn!(
                         "Warning: failed to resolve device config for metadata in background: {}",
                         e
@@ -117,18 +117,33 @@ pub async fn fetch_arp(
         .await
         {
             Ok(yaml) => yaml,
-            Err(e) =>
-            {
+            Err(e) => {
                 log::error!("LLM ARP conversion/validation failed in background: {}", e);
                 return;
             }
         };
 
         // Save YAML log
-        match crate::mcp::arp::yaml::save_validated_yaml(&app_clone, &name_clone, &validated_yaml)
-        {
-            Ok(saved_path) =>
-            {
+        match crate::mcp::arp::yaml::save_validated_yaml(&app_clone, &name_clone, &validated_yaml) {
+            Ok(saved_path) => {
+                if let Err(e) = app_clone
+                    .state::<crate::graph::SurrealDbState>()
+                    .ingest(crate::graph::GraphIngestInput {
+                        source_id: "mcp.fetch_arp".to_string(),
+                        collected_at: chrono::Utc::now(),
+                        device_name: name_clone.clone(),
+                        kind: crate::graph::GraphDataKind::Arp,
+                        raw: raw_output_clone.clone(),
+                        normalized: crate::graph::normalize_yaml(
+                            crate::graph::GraphDataKind::Arp,
+                            &validated_yaml,
+                        ),
+                        normalizer_version: "arp-llm-yaml-v1".to_string(),
+                    })
+                    .await
+                {
+                    log::error!("Failed to ingest normalized ARP graph data: {}", e);
+                }
                 log::info!(
                     "Background YAML normalization succeeded, saved to: {}",
                     saved_path.display()
@@ -139,13 +154,11 @@ pub async fn fetch_arp(
                         device_name: name_clone,
                         saved_path,
                     },
-                )
-                {
+                ) {
                     log::error!("Error emitting arp-yaml-saved event: {}", e);
                 }
             }
-            Err(e) =>
-            {
+            Err(e) => {
                 log::warn!(
                     "Warning: failed to save validated YAML artifact in background: {}",
                     e

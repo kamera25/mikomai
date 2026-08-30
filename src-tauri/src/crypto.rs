@@ -7,8 +7,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 const KEY_STORE_FILE: &str = "key.bin";
 
 #[derive(Debug, thiserror::Error)]
-pub enum CryptoError
-{
+pub enum CryptoError {
     #[error("Keyring use_native_store failed: {0}")]
     KeyringStoreInit(String),
     #[error("Keyring entry creation failed: {0}")]
@@ -35,18 +34,14 @@ pub enum CryptoError
     Utf8(#[from] std::string::FromUtf8Error),
 }
 
-fn get_key_from_keyring() -> Result<Option<Key<Aes256Gcm>>, CryptoError>
-{
+fn get_key_from_keyring() -> Result<Option<Key<Aes256Gcm>>, CryptoError> {
     keyring::use_native_store(false).map_err(|e| CryptoError::KeyringStoreInit(e.to_string()))?;
     let entry = keyring_core::Entry::new("com.mikomai.agent", "crypto-key")
         .map_err(|e| CryptoError::KeyringEntry(e.to_string()))?;
-    match entry.get_password()
-    {
-        Ok(password_str) =>
-        {
+    match entry.get_password() {
+        Ok(password_str) => {
             let key_bytes = STANDARD.decode(password_str)?;
-            if key_bytes.len() != 32
-            {
+            if key_bytes.len() != 32 {
                 return Err(CryptoError::InvalidKeyringLength);
             }
             Ok(Some(*Key::<Aes256Gcm>::from_slice(&key_bytes)))
@@ -56,8 +51,7 @@ fn get_key_from_keyring() -> Result<Option<Key<Aes256Gcm>>, CryptoError>
     }
 }
 
-fn save_key_to_keyring(key: &Key<Aes256Gcm>) -> Result<(), CryptoError>
-{
+fn save_key_to_keyring(key: &Key<Aes256Gcm>) -> Result<(), CryptoError> {
     keyring::use_native_store(false).map_err(|e| CryptoError::KeyringStoreInit(e.to_string()))?;
     let entry = keyring_core::Entry::new("com.mikomai.agent", "crypto-key")
         .map_err(|e| CryptoError::KeyringEntry(e.to_string()))?;
@@ -68,8 +62,7 @@ fn save_key_to_keyring(key: &Key<Aes256Gcm>) -> Result<(), CryptoError>
     Ok(())
 }
 
-fn save_key_to_file(key_path: &std::path::Path, key: &Key<Aes256Gcm>) -> Result<(), CryptoError>
-{
+fn save_key_to_file(key_path: &std::path::Path, key: &Key<Aes256Gcm>) -> Result<(), CryptoError> {
     std::fs::write(key_path, key.as_slice())?;
 
     #[cfg(unix)]
@@ -82,34 +75,26 @@ fn save_key_to_file(key_path: &std::path::Path, key: &Key<Aes256Gcm>) -> Result<
     Ok(())
 }
 
-pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, CryptoError>
-{
+pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, CryptoError> {
     let path = tauri::Manager::path(app)
         .app_data_dir()
         .expect("Failed to get app data dir");
-    if !path.exists()
-    {
+    if !path.exists() {
         let _ = std::fs::create_dir_all(&path);
     }
     let key_path = path.join(KEY_STORE_FILE);
 
     // Try to get key from keyring first
-    match get_key_from_keyring()
-    {
+    match get_key_from_keyring() {
         Ok(Some(key)) => Ok(key),
-        Ok(None) =>
-        {
+        Ok(None) => {
             // Key not in keyring. Check if we have a fallback file key.bin
-            if key_path.exists()
-            {
-                if let Ok(key_bytes) = std::fs::read(&key_path)
-                {
-                    if key_bytes.len() == 32
-                    {
+            if key_path.exists() {
+                if let Ok(key_bytes) = std::fs::read(&key_path) {
+                    if key_bytes.len() == 32 {
                         let key = *Key::<Aes256Gcm>::from_slice(&key_bytes);
                         // Try to migrate this key to the keyring so future calls use keyring
-                        if let Err(e) = save_key_to_keyring(&key)
-                        {
+                        if let Err(e) = save_key_to_keyring(&key) {
                             log::warn!("Failed to migrate key to keyring: {}", e);
                         }
                         return Ok(key);
@@ -118,11 +103,9 @@ pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, Crypt
             }
             // Neither exists. Generate a new key and try to store in keyring
             let new_key = Aes256Gcm::generate_key(OsRng);
-            match save_key_to_keyring(&new_key)
-            {
+            match save_key_to_keyring(&new_key) {
                 Ok(_) => Ok(new_key),
-                Err(e) =>
-                {
+                Err(e) => {
                     log::warn!(
                         "Failed to save new key to keyring, falling back to file: {}",
                         e
@@ -133,24 +116,19 @@ pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, Crypt
                 }
             }
         }
-        Err(e) =>
-        {
+        Err(e) => {
             log::warn!(
                 "Keyring failed or not available, falling back to file: {}",
                 e
             );
             // Keyring failed (e.g. not supported, locked). Fallback to file-based storage.
-            if key_path.exists()
-            {
+            if key_path.exists() {
                 let key_bytes = std::fs::read(&key_path)?;
-                if key_bytes.len() != 32
-                {
+                if key_bytes.len() != 32 {
                     return Err(CryptoError::InvalidFileLength);
                 }
                 Ok(*Key::<Aes256Gcm>::from_slice(&key_bytes))
-            }
-            else
-            {
+            } else {
                 let new_key = Aes256Gcm::generate_key(OsRng);
                 save_key_to_file(&key_path, &new_key)?;
                 Ok(new_key)
@@ -159,10 +137,8 @@ pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, Crypt
     }
 }
 
-pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, CryptoError>
-{
-    if data.is_empty()
-    {
+pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, CryptoError> {
+    if data.is_empty() {
         return Ok("".to_string());
     }
 
@@ -178,10 +154,8 @@ pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, Cryp
     Ok(STANDARD.encode(result))
 }
 
-pub fn decrypt_with_key(key: &Key<Aes256Gcm>, encrypted_data: &str) -> Result<String, CryptoError>
-{
-    if encrypted_data.is_empty()
-    {
+pub fn decrypt_with_key(key: &Key<Aes256Gcm>, encrypted_data: &str) -> Result<String, CryptoError> {
+    if encrypted_data.is_empty() {
         return Ok("".to_string());
     }
 
@@ -189,8 +163,7 @@ pub fn decrypt_with_key(key: &Key<Aes256Gcm>, encrypted_data: &str) -> Result<St
 
     let decoded = STANDARD.decode(encrypted_data)?;
 
-    if decoded.len() < 12
-    {
+    if decoded.len() < 12 {
         return Err(CryptoError::TooShort);
     }
 
@@ -204,10 +177,8 @@ pub fn decrypt_with_key(key: &Key<Aes256Gcm>, encrypted_data: &str) -> Result<St
     Ok(String::from_utf8(plaintext)?)
 }
 
-pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, CryptoError>
-{
-    if data.is_empty()
-    {
+pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, CryptoError> {
+    if data.is_empty() {
         return Ok("".to_string());
     }
 
@@ -215,10 +186,8 @@ pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, CryptoError
     encrypt_with_key(&key, data)
 }
 
-pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, CryptoError>
-{
-    if encrypted_data.is_empty()
-    {
+pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, CryptoError> {
+    if encrypted_data.is_empty() {
         return Ok("".to_string());
     }
 
@@ -227,20 +196,17 @@ pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, C
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
     use aes_gcm::aead::OsRng;
     use aes_gcm::Aes256Gcm;
 
-    fn get_test_key() -> Key<Aes256Gcm>
-    {
+    fn get_test_key() -> Key<Aes256Gcm> {
         Aes256Gcm::generate_key(OsRng)
     }
 
     #[test]
-    fn test_encrypt_decrypt()
-    {
+    fn test_encrypt_decrypt() {
         let key = get_test_key();
         let plain_text = "Hello, World! This is a secret message.";
 
@@ -251,16 +217,14 @@ mod tests
     }
 
     #[test]
-    fn test_decrypt_empty_string()
-    {
+    fn test_decrypt_empty_string() {
         let key = get_test_key();
         let result = decrypt_with_key(&key, "");
         assert_eq!(result.unwrap(), "".to_string());
     }
 
     #[test]
-    fn test_decrypt_invalid_base64()
-    {
+    fn test_decrypt_invalid_base64() {
         let key = get_test_key();
         let result = decrypt_with_key(&key, "invalid_base64!!!");
         assert!(result.is_err());
@@ -268,8 +232,7 @@ mod tests
     }
 
     #[test]
-    fn test_decrypt_too_short()
-    {
+    fn test_decrypt_too_short() {
         let key = get_test_key();
         // A valid base64 string that decodes to less than 12 bytes
         let short_data = base64::engine::general_purpose::STANDARD.encode(b"short");
@@ -279,8 +242,7 @@ mod tests
     }
 
     #[test]
-    fn test_decrypt_invalid_ciphertext()
-    {
+    fn test_decrypt_invalid_ciphertext() {
         let key = get_test_key();
         // Create valid base64 but invalid ciphertext/nonce combo
         let mut invalid_data = vec![0u8; 32]; // 12 bytes nonce + 20 bytes random data

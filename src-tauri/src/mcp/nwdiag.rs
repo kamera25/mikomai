@@ -6,23 +6,19 @@ use std::process::Command;
 
 /// Compiles nwdiag DSL code to SVG using the Python wrapper script.
 /// This helper is free of Tauri-specific structs so it can be easily unit tested.
-pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String>
-{
-    if schema.trim().is_empty()
-    {
+pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String> {
+    if schema.trim().is_empty() {
         return Err("Schema cannot be empty".to_string());
     }
 
     // Validate nwdiag DSL schema before invoking python wrapper
-    if let Err(err) = crate::mcp::nwdiag_validator::validate_nwdiag_schema(schema)
-    {
+    if let Err(err) = crate::mcp::nwdiag_validator::validate_nwdiag_schema(schema) {
         return Err(err.to_llm_feedback_string());
     }
 
     let mut current_dir =
         std::env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?;
-    if current_dir.ends_with("src-tauri")
-    {
+    if current_dir.ends_with("src-tauri") {
         current_dir.pop();
     }
 
@@ -32,15 +28,13 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String>
         .join("python")
         .join("nwdiag_wrapper.py");
 
-    if !python_path.exists()
-    {
+    if !python_path.exists() {
         return Err(format!(
             "Python virtual environment binary not found at {:?}",
             python_path
         ));
     }
-    if !wrapper_path.exists()
-    {
+    if !wrapper_path.exists() {
         return Err(format!(
             "nwdiag wrapper script not found at {:?}",
             wrapper_path
@@ -51,8 +45,7 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String>
         .join("src-tauri")
         .join("target")
         .join("tmp_nwdiag");
-    if !temp_dir.exists()
-    {
+    if !temp_dir.exists() {
         fs::create_dir_all(&temp_dir)
             .map_err(|e| format!("Failed to create temporary directory: {}", e))?;
     }
@@ -77,8 +70,7 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String>
 
     let output = output.map_err(|e| format!("Failed to run nwdiag command: {}", e))?;
 
-    if !output.status.success()
-    {
+    if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let _ = fs::remove_file(&svg_path);
@@ -88,8 +80,7 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String>
         ));
     }
 
-    if !svg_path.exists()
-    {
+    if !svg_path.exists() {
         return Err("nwdiag completed successfully but output SVG was not found".to_string());
     }
 
@@ -105,8 +96,7 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String>
 pub async fn self_network_nwdiag(
     app: tauri::AppHandle,
     schema: String,
-) -> Result<CommandResult, String>
-{
+) -> Result<CommandResult, String> {
     let svg_content = compile_nwdiag_to_svg(&schema)?;
 
     let b64_encoded = general_purpose::STANDARD.encode(&svg_content);
@@ -135,21 +125,18 @@ pub async fn self_network_nwdiag(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_compile_empty_schema()
-    {
+    fn test_compile_empty_schema() {
         let result = compile_nwdiag_to_svg("");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Schema cannot be empty");
     }
 
     #[test]
-    fn test_compile_valid_schema()
-    {
+    fn test_compile_valid_schema() {
         let schema = r#"
             nwdiag {
                 network dmz {
@@ -159,8 +146,7 @@ mod tests
             }
         "#;
         let result = compile_nwdiag_to_svg(schema);
-        if let Err(e) = &result
-        {
+        if let Err(e) = &result {
             if e.contains("No module named 'nwdiag'")
                 || e.contains("Python virtual environment binary not found")
             {
@@ -184,12 +170,10 @@ mod tests
     }
 
     #[test]
-    fn test_compile_invalid_schema()
-    {
+    fn test_compile_invalid_schema() {
         let schema = "invalid syntax {";
         let result = compile_nwdiag_to_svg(schema);
-        if let Err(e) = &result
-        {
+        if let Err(e) = &result {
             if e.contains("No module named 'nwdiag'")
                 || e.contains("Python virtual environment binary not found")
             {

@@ -1,7 +1,7 @@
+use crate::mcp::ToolKind;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::mcp::ToolKind;
 
 /// Action space supported by the harness
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -53,7 +53,6 @@ pub struct ObservationSource {
     pub parameters: Option<serde_json::Value>,
 }
 
-
 /// Fact acquired by the harness from the network or environment
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Observation {
@@ -79,7 +78,6 @@ pub struct Decision {
     pub expected_observation: Vec<String>,
     pub final_answer: Option<String>,
 }
-
 
 /// Executable action validated and prepared by the harness
 #[derive(Debug, Clone, Serialize, Deserialize)]

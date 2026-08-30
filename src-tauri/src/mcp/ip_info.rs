@@ -5,14 +5,12 @@ use std::process::Command;
 pub type IpInfoResult = McpToolResult;
 
 #[tauri::command]
-pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, String>
-{
+pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, String> {
     let is_verbose = verbose.unwrap_or(false);
     let mut combined_output = String::new();
     let mut all_success = true;
 
-    if cfg!(target_os = "windows")
-    {
+    if cfg!(target_os = "windows") {
         let ipconfig_path = resolve_safe_command_path("ipconfig")?;
         let output = Command::new(&ipconfig_path)
             .arg("/all")
@@ -22,12 +20,9 @@ pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, 
         combined_output.push_str("--- IP Configuration ---\n");
         let output_str = String::from_utf8_lossy(&output.stdout);
 
-        if is_verbose
-        {
+        if is_verbose {
             combined_output.push_str(&output_str);
-        }
-        else
-        {
+        } else {
             let keywords = [
                 "IPv4",
                 "IPv6",
@@ -35,17 +30,13 @@ pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, 
                 "物理アドレス",
                 "Windows IP",
             ];
-            for line in output_str.lines()
-            {
+            for line in output_str.lines() {
                 let trimmed = line.trim();
                 // Interface lines in ipconfig often start with no indent or are adapter names
-                if !line.starts_with(' ') && !line.starts_with('\t') && !trimmed.is_empty()
-                {
+                if !line.starts_with(' ') && !line.starts_with('\t') && !trimmed.is_empty() {
                     combined_output.push_str(line);
                     combined_output.push('\n');
-                }
-                else if keywords.iter().any(|k| trimmed.contains(k))
-                {
+                } else if keywords.iter().any(|k| trimmed.contains(k)) {
                     combined_output.push_str(line);
                     combined_output.push('\n');
                 }
@@ -53,9 +44,7 @@ pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, 
         }
 
         all_success = output.status.success();
-    }
-    else
-    {
+    } else {
         // macOS and Linux
         combined_output.push_str("--- Interfaces & IP Addresses ---\n");
         let ifconfig_path = resolve_safe_command_path("ifconfig")?;
@@ -64,36 +53,27 @@ pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, 
             .map_err(|e| format!("Failed to execute ifconfig: {}", e))?;
 
         let output_str = String::from_utf8_lossy(&ifconfig.stdout);
-        if is_verbose
-        {
+        if is_verbose {
             combined_output.push_str(&output_str);
-        }
-        else
-        {
+        } else {
             let keywords = ["inet ", "inet6 ", "ether "];
-            for line in output_str.lines()
-            {
+            for line in output_str.lines() {
                 let trimmed = line.trim();
-                if !line.starts_with(' ') && !line.starts_with('\t') && !trimmed.is_empty()
-                {
+                if !line.starts_with(' ') && !line.starts_with('\t') && !trimmed.is_empty() {
                     combined_output.push_str(line);
                     combined_output.push('\n');
-                }
-                else if keywords.iter().any(|k| trimmed.contains(k))
-                {
+                } else if keywords.iter().any(|k| trimmed.contains(k)) {
                     combined_output.push_str(line);
                     combined_output.push('\n');
                 }
             }
         }
 
-        if !ifconfig.status.success()
-        {
+        if !ifconfig.status.success() {
             all_success = false;
         }
 
-        if is_verbose
-        {
+        if is_verbose {
             combined_output.push_str("\n--- Routing Table (Gateway) ---\n");
             let netstat_path = resolve_safe_command_path("netstat")?;
             let netstat = Command::new(&netstat_path)
@@ -101,8 +81,7 @@ pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, 
                 .output()
                 .map_err(|e| format!("Failed to execute netstat: {}", e))?;
             combined_output.push_str(&String::from_utf8_lossy(&netstat.stdout));
-            if !netstat.status.success()
-            {
+            if !netstat.status.success() {
                 all_success = false;
             }
 
@@ -110,18 +89,14 @@ pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, 
             let scutil_path = resolve_safe_command_path("scutil")?;
             let scutil = Command::new(&scutil_path).arg("--dns").output();
 
-            match scutil
-            {
-                Ok(output) =>
-                {
+            match scutil {
+                Ok(output) => {
                     combined_output.push_str(&String::from_utf8_lossy(&output.stdout));
-                    if !output.status.success()
-                    {
+                    if !output.status.success() {
                         all_success = false;
                     }
                 }
-                Err(_) =>
-                {
+                Err(_) => {
                     // Fallback to /etc/resolv.conf if scutil fails
                     let resolv_content = std::fs::read_to_string("/etc/resolv.conf")
                         .map_err(|e| format!("Failed to read resolv.conf: {}", e))?;
@@ -138,13 +113,11 @@ pub async fn network_get_ip_info(verbose: Option<bool>) -> Result<IpInfoResult, 
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_ip_info_result_serialization()
-    {
+    fn test_ip_info_result_serialization() {
         let result = IpInfoResult {
             success: true,
             output: "ip info".to_string(),

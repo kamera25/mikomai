@@ -6,45 +6,33 @@ use std::str::FromStr;
 use validator::{Validate, ValidationError};
 
 /// Custom validator for verifying that a single string is a valid IPv4 address.
-pub fn validate_ipv4_str(ip: &str) -> Result<(), ValidationError>
-{
-    if Ipv4Addr::from_str(ip).is_ok()
-    {
+pub fn validate_ipv4_str(ip: &str) -> Result<(), ValidationError> {
+    if Ipv4Addr::from_str(ip).is_ok() {
         Ok(())
-    }
-    else
-    {
+    } else {
         Err(ValidationError::new("invalid_ipv4"))
     }
 }
 
 /// Custom validator for verifying that all strings in a list are valid IPv4 addresses.
-pub fn validate_ipv4_list(ips: &[String]) -> Result<(), ValidationError>
-{
-    for ip in ips
-    {
+pub fn validate_ipv4_list(ips: &[String]) -> Result<(), ValidationError> {
+    for ip in ips {
         validate_ipv4_str(ip)?;
     }
     Ok(())
 }
 
 /// Custom validator for verifying network specifications (either plain IPv4 or CIDR prefix notation).
-pub fn validate_network_str(net: &str) -> Result<(), ValidationError>
-{
-    if Ipv4Addr::from_str(net).is_ok()
-    {
+pub fn validate_network_str(net: &str) -> Result<(), ValidationError> {
+    if Ipv4Addr::from_str(net).is_ok() {
         return Ok(());
     }
 
     let parts: Vec<&str> = net.split('/').collect();
-    if parts.len() == 2
-    {
-        if Ipv4Addr::from_str(parts[0]).is_ok()
-        {
-            if let Ok(prefix) = parts[1].parse::<u8>()
-            {
-                if prefix <= 32
-                {
+    if parts.len() == 2 {
+        if Ipv4Addr::from_str(parts[0]).is_ok() {
+            if let Ok(prefix) = parts[1].parse::<u8>() {
+                if prefix <= 32 {
                     return Ok(());
                 }
             }
@@ -56,8 +44,7 @@ pub fn validate_network_str(net: &str) -> Result<(), ValidationError>
 
 // 1. FactGraph (Root Struct)
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct FactGraph
-{
+pub struct FactGraph {
     #[validate(nested)]
     pub nodes: Vec<Node>,
     #[validate(nested)]
@@ -68,8 +55,7 @@ pub struct FactGraph
 
 // 2. Node Structure
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct Node
-{
+pub struct Node {
     pub id: String,
     pub name: String,
     #[validate(nested)]
@@ -80,15 +66,13 @@ pub struct Node
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum InterfaceStatus
-{
+pub enum InterfaceStatus {
     Enabled,
     Disabled,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct Interface
-{
+pub struct Interface {
     pub id: String,
     pub name: String,
     pub status: InterfaceStatus,
@@ -100,16 +84,14 @@ pub struct Interface
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum RoutingProtocolType
-{
+pub enum RoutingProtocolType {
     Ospf,
     Bgp,
     Static,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct RoutingProtocol
-{
+pub struct RoutingProtocol {
     #[serde(rename = "type")]
     pub protocol_type: RoutingProtocolType,
     pub process_id: Option<u32>,
@@ -120,15 +102,13 @@ pub struct RoutingProtocol
 // 3. Edge Structure
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum EdgeType
-{
+pub enum EdgeType {
     RoutingMembership,
     PolicyAttachment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct Edge
-{
+pub struct Edge {
     pub id: String,
     pub edge_type: EdgeType,
     pub source: String,
@@ -139,14 +119,12 @@ pub struct Edge
 // 4. Policy Structure
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum PolicyType
-{
+pub enum PolicyType {
     AccessControlList,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct Policy
-{
+pub struct Policy {
     pub id: String,
     pub policy_type: PolicyType,
     pub name: String,
@@ -156,24 +134,21 @@ pub struct Policy
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum RuleAction
-{
+pub enum RuleAction {
     Permit,
     Deny,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum RuleProtocol
-{
+pub enum RuleProtocol {
     Tcp,
     Udp,
     Any,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct Rule
-{
+pub struct Rule {
     pub sequence: u32,
     pub action: RuleAction,
     pub protocol: RuleProtocol,
@@ -184,13 +159,11 @@ pub struct Rule
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     // Helper to generate a valid template FactGraph
-    fn valid_fact_graph() -> FactGraph
-    {
+    fn valid_fact_graph() -> FactGraph {
         FactGraph {
             nodes: vec![Node {
                 id: "node-1".to_string(),
@@ -235,15 +208,13 @@ mod tests
     }
 
     #[test]
-    fn test_valid_fact_graph()
-    {
+    fn test_valid_fact_graph() {
         let fg = valid_fact_graph();
         assert!(fg.validate().is_ok());
     }
 
     #[test]
-    fn test_invalid_prefix_len()
-    {
+    fn test_invalid_prefix_len() {
         let mut fg = valid_fact_graph();
         // prefix_len exceeds max limit (32)
         fg.nodes[0].interfaces[0].prefix_len = Some(35);
@@ -256,8 +227,7 @@ mod tests
     }
 
     #[test]
-    fn test_invalid_ipv4_interface()
-    {
+    fn test_invalid_ipv4_interface() {
         let mut fg = valid_fact_graph();
         // Invalid IPv4 address format
         fg.nodes[0].interfaces[0].ipv4_addresses = vec!["999.999.999.999".to_string()];
@@ -266,8 +236,7 @@ mod tests
     }
 
     #[test]
-    fn test_invalid_router_id()
-    {
+    fn test_invalid_router_id() {
         let mut fg = valid_fact_graph();
         // Invalid router_id format
         fg.nodes[0].routing_protocols[0].router_id = Some("invalid-ip".to_string());
@@ -276,8 +245,7 @@ mod tests
     }
 
     #[test]
-    fn test_invalid_rule_network()
-    {
+    fn test_invalid_rule_network() {
         let mut fg = valid_fact_graph();
         // Invalid CIDR/IP format in rules
         fg.policies[0].rules[0].source_network = "192.168.1.300/24".to_string();
@@ -291,8 +259,7 @@ mod tests
     }
 
     #[test]
-    fn test_serialization_and_deserialization()
-    {
+    fn test_serialization_and_deserialization() {
         let fg = valid_fact_graph();
         let serialized = serde_json::to_string(&fg).unwrap();
 

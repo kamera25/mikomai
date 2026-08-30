@@ -14,14 +14,12 @@ pub const BRANDS: &[&str] = &[
 ];
 
 #[derive(Debug, Deserialize)]
-struct BrandConfig
-{
+struct BrandConfig {
     aliases: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct BrandsYaml
-{
+struct BrandsYaml {
     brands: HashMap<String, BrandConfig>,
 }
 
@@ -35,12 +33,9 @@ static BRAND_MAP: LazyLock<HashMap<String, &'static str>> = LazyLock::new(|| {
     });
 
     let mut map = HashMap::new();
-    for brand_name in BRANDS
-    {
-        if let Some(config) = parsed.brands.get(*brand_name)
-        {
-            for alias in &config.aliases
-            {
+    for brand_name in BRANDS {
+        if let Some(config) = parsed.brands.get(*brand_name) {
+            for alias in &config.aliases {
                 map.insert(alias.to_lowercase(), *brand_name);
             }
         }
@@ -48,8 +43,7 @@ static BRAND_MAP: LazyLock<HashMap<String, &'static str>> = LazyLock::new(|| {
     map
 });
 
-pub fn get_brand(input: &str) -> Option<&'static str>
-{
+pub fn get_brand(input: &str) -> Option<&'static str> {
     let trimmed = input.trim().to_lowercase();
     BRAND_MAP.get(&trimmed).copied()
 }
@@ -62,13 +56,10 @@ static BRAND_ALIASES: LazyLock<Vec<(String, &'static str)>> = LazyLock::new(|| {
     list
 });
 
-pub fn detect_brand_in_text(text: &str) -> Option<(&'static str, String)>
-{
+pub fn detect_brand_in_text(text: &str) -> Option<(&'static str, String)> {
     let lower_text = text.to_lowercase();
-    for (alias, brand) in BRAND_ALIASES.iter()
-    {
-        if lower_text.contains(alias)
-        {
+    for (alias, brand) in BRAND_ALIASES.iter() {
+        if lower_text.contains(alias) {
             return Some((*brand, alias.clone()));
         }
     }
@@ -76,13 +67,11 @@ pub fn detect_brand_in_text(text: &str) -> Option<(&'static str, String)>
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_get_brand_furukawa()
-    {
+    fn test_get_brand_furukawa() {
         assert_eq!(get_brand("furukawa"), Some("furukawa_fitelnet"));
         assert_eq!(get_brand("Furukawa"), Some("furukawa_fitelnet"));
         assert_eq!(get_brand("fitelnet"), Some("furukawa_fitelnet"));
@@ -92,8 +81,7 @@ mod tests
     }
 
     #[test]
-    fn test_detect_brand_in_text()
-    {
+    fn test_detect_brand_in_text() {
         let res = detect_brand_in_text("Cisco 841Jのインターフェース設定方法");
         assert!(res.is_some());
         let (brand, alias) = res.unwrap();

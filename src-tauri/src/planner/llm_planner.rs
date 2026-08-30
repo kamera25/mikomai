@@ -31,6 +31,7 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
    - "ASK_HUMAN": ユーザーに追加情報や確認を求める
    - "FINISH": 目標が達成され、調査・作業が完了した（final_answerにユーザーへの最終回答を記述）
 5. 主な利用可能ツールと引数例:
+   - query_network_graph: {"query": "NakaokuGWのNTP同期先", "device_name": "NakaokuGW"}（登録済み機器、IP、VLAN、ACL、経路、NTPの現況は最優先でこのグラフ検索を使う。期限超過時は関連fetchを実行してから再照会する）
    - query_nw_db: {"query": "[Context: Yamaha] 設定 表示"} (ドキュメント検索。必ず日本語キーワード、判明時は[Context: メーカー名]を先頭に付与)
    - network_show: {"command": "show ip route"} (targetに対象機器名を指定)
    - self_network_ping: {"host": "192.168.1.1"}
@@ -61,9 +62,6 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
 }
 ```
 "#;
-
-
-
 
 const DECISION_JSON_SCHEMA: &str = r#"{
   "type": "object",
@@ -103,12 +101,8 @@ fn fallback_to_rag_for_known_vendor(
         return;
     }
 
-    let command_question = format!(
-        "{} {}",
-        decision.objective,
-        decision.reason.join(" ")
-    )
-    .to_lowercase();
+    let command_question =
+        format!("{} {}", decision.objective, decision.reason.join(" ")).to_lowercase();
     let is_command_question = ["コマンド", "command", "構文", "仕様", "cli", "hostname"]
         .iter()
         .any(|term| command_question.contains(term));
@@ -141,9 +135,10 @@ fn fallback_to_rag_for_known_vendor(
     decision.parameters = serde_json::json!({
         "query": format!("[Context: {}] {} コマンド 設定", brand, goal),
     });
-    decision.reason = vec![
-        format!("{} のベンダーは {} と判明しているため、ユーザーにコマンドを確認する前にNW-DBを検索する。", hostname, brand),
-    ];
+    decision.reason = vec![format!(
+        "{} のベンダーは {} と判明しているため、ユーザーにコマンドを確認する前にNW-DBを検索する。",
+        hostname, brand
+    )];
     decision.expected_observation = vec!["対象機器で使える設定コマンドと手順".to_string()];
     decision.final_answer = None;
 }
@@ -167,14 +162,22 @@ impl LlmPlanner {
         if !connections.is_empty() {
             devices_context.push_str("【登録機器情報 (Registered Devices)】\n");
             for conn in &connections {
-                let dev_type = conn.device_type.as_ref().map(|d| d.as_str()).unwrap_or("不明");
+                let dev_type = conn
+                    .device_type
+                    .as_ref()
+                    .map(|d| d.as_str())
+                    .unwrap_or("不明");
                 if conn.conn_type == crate::connections::ConnectionType::Console {
                     devices_context.push_str(&format!(
                         "- {}(コンソール接続, ベンダー: {})\n",
                         conn.hostname, dev_type
                     ));
                 } else {
-                    let ip_str = if conn.ip_string().is_empty() { "なし" } else { &conn.ip_string() };
+                    let ip_str = if conn.ip_string().is_empty() {
+                        "なし"
+                    } else {
+                        &conn.ip_string()
+                    };
                     devices_context.push_str(&format!(
                         "- {}(IP: {}, ベンダー: {})\n",
                         conn.hostname, ip_str, dev_type
@@ -185,7 +188,11 @@ impl LlmPlanner {
         }
 
         let state_prompt = network_state.to_prompt_context();
-        let initial_goal = network_state.desired.as_ref().map(|d| d.raw_goal.as_str()).unwrap_or("（未設定）");
+        let initial_goal = network_state
+            .desired
+            .as_ref()
+            .map(|d| d.raw_goal.as_str())
+            .unwrap_or("（未設定）");
         let full_prompt = format!(
             r#"{}{}
 --------------------------------------------------
@@ -209,9 +216,13 @@ impl LlmPlanner {
         log::info!("================ [LLM Planner JSON Output] ================\n{}\n===========================================================", response);
 
         let mut decision = parse_decision_from_json(&response)?;
-        let has_builder_handoff = network_state.observed.observations.iter().any(|observation| {
-            observation.source.tool_name.as_deref() == Some("builder_co_worker")
-        });
+        let has_builder_handoff = network_state
+            .observed
+            .observations
+            .iter()
+            .any(|observation| {
+                observation.source.tool_name.as_deref() == Some("builder_co_worker")
+            });
         if !has_builder_handoff {
             fallback_to_rag_for_known_vendor(&mut decision, &device_vendors, initial_goal);
         }
@@ -226,12 +237,15 @@ mod tests {
 
     #[test]
     fn known_vendor_command_question_falls_back_to_rag() {
-        let mut decision = parse_decision_from_json(r#"{
+        let mut decision = parse_decision_from_json(
+            r#"{
             "action_type": "ASK_HUMAN",
             "objective": "F220 の hostname 設定コマンドを確認する",
             "target": "F220",
             "reason": ["FITELnet のコマンド仕様が不明"]
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
 
         fallback_to_rag_for_known_vendor(
             &mut decision,
@@ -239,23 +253,32 @@ mod tests {
             "F220 に hostname aaa を設定する",
         );
 
-        assert_eq!(decision.action_type, crate::state::events::ActionType::Observe);
+        assert_eq!(
+            decision.action_type,
+            crate::state::events::ActionType::Observe
+        );
         assert_eq!(decision.tool.as_deref(), Some("query_nw_db"));
         assert_eq!(decision.target.as_deref(), Some("F220"));
         assert_eq!(
-            decision.parameters.get("query").and_then(|value| value.as_str()),
+            decision
+                .parameters
+                .get("query")
+                .and_then(|value| value.as_str()),
             Some("[Context: furukawa_fitelnet] F220 に hostname aaa を設定する コマンド 設定")
         );
     }
 
     #[test]
     fn non_command_question_remains_ask_human() {
-        let mut decision = parse_decision_from_json(r#"{
+        let mut decision = parse_decision_from_json(
+            r#"{
             "action_type": "ASK_HUMAN",
             "objective": "変更実施の承認を確認する",
             "target": "F220",
             "reason": ["設定変更にはユーザー承認が必要"]
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
 
         fallback_to_rag_for_known_vendor(
             &mut decision,
@@ -263,6 +286,9 @@ mod tests {
             "F220 に hostname aaa を設定する",
         );
 
-        assert_eq!(decision.action_type, crate::state::events::ActionType::AskHuman);
+        assert_eq!(
+            decision.action_type,
+            crate::state::events::ActionType::AskHuman
+        );
     }
 }

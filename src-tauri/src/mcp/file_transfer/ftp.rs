@@ -15,8 +15,7 @@ const FTP_DEFAULT_PORT: u16 = 21;
 const FTP_DEFAULT_TIMEOUT_SECS: u64 = 15;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct FtpDownloadParams
-{
+pub struct FtpDownloadParams {
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
@@ -31,8 +30,7 @@ pub struct FtpDownloadParams
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct FtpUploadParams
-{
+pub struct FtpUploadParams {
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
@@ -53,19 +51,17 @@ fn resolve_credentials(
     target_host: &str,
     param_user: Option<String>,
     param_pass: Option<String>,
-) -> (String, String)
-{
-    if let (Some(u), Some(p)) = (param_user.clone(), param_pass.clone())
-    {
-        if !u.is_empty()
-        {
+) -> (String, String) {
+    if let (Some(u), Some(p)) = (param_user.clone(), param_pass.clone()) {
+        if !u.is_empty() {
             return (u, p);
         }
     }
 
-    if let Ok(connections) = crate::connections::load_connections_raw(app)
-    {
-        if let Some(conn) = connections.iter().find(|c| c.matches_host_or_ip(target_host))
+    if let Ok(connections) = crate::connections::load_connections_raw(app) {
+        if let Some(conn) = connections
+            .iter()
+            .find(|c| c.matches_host_or_ip(target_host))
         {
             let user = param_user
                 .filter(|u| !u.trim().is_empty())
@@ -95,8 +91,7 @@ fn resolve_credentials(
 pub async fn network_ftp_download_with_params(
     app: tauri::AppHandle,
     params: FtpDownloadParams,
-) -> Result<FileTransferResult, String>
-{
+) -> Result<FileTransferResult, String> {
     let host_args = crate::mcp::args::HostArgs {
         host: params.host,
         device: params.device,
@@ -155,11 +150,9 @@ pub async fn network_ftp_download_with_params(
 
     let duration_ms = start_time.elapsed().as_millis() as u64;
 
-    let saved_path = if let Some(local_path) = params.local_path
-    {
+    let saved_path = if let Some(local_path) = params.local_path {
         let path = PathBuf::from(&local_path);
-        if let Some(parent) = path.parent()
-        {
+        if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
         fs::write(&path, &file_data).map_err(|e| {
@@ -169,9 +162,7 @@ pub async fn network_ftp_download_with_params(
             )
         })?;
         path
-    }
-    else
-    {
+    } else {
         let mut manager = SnapshotManager::new(&app)
             .map_err(|e| format!("Failed to initialize SnapshotManager: {}", e))?;
         let clean_filename = Path::new(&remote_file)
@@ -216,8 +207,7 @@ pub async fn network_ftp_download_with_params(
 pub async fn network_ftp_upload_with_params(
     app: tauri::AppHandle,
     params: FtpUploadParams,
-) -> Result<FileTransferResult, String>
-{
+) -> Result<FileTransferResult, String> {
     let host_args = crate::mcp::args::HostArgs {
         host: params.host,
         device: params.device,
@@ -230,31 +220,26 @@ pub async fn network_ftp_upload_with_params(
     let (username, password) =
         resolve_credentials(&app, &target_host, params.username, params.password);
 
-    let (file_data, file_source_desc, default_remote_name) = if let Some(local_path) =
-        &params.local_file
-    {
-        let path = PathBuf::from(local_path);
-        let data = fs::read(&path)
-            .map_err(|e| format!("Failed to read local file {}: {}", local_path, e))?;
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file.bin")
-            .to_string();
-        (data, local_path.clone(), name)
-    }
-    else if let Some(text_content) = params.content
-    {
-        (
-            text_content.into_bytes(),
-            "provided text content".to_string(),
-            "upload.txt".to_string(),
-        )
-    }
-    else
-    {
-        return Err("Error: local_file or content is required for FTP upload".to_string());
-    };
+    let (file_data, file_source_desc, default_remote_name) =
+        if let Some(local_path) = &params.local_file {
+            let path = PathBuf::from(local_path);
+            let data = fs::read(&path)
+                .map_err(|e| format!("Failed to read local file {}: {}", local_path, e))?;
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file.bin")
+                .to_string();
+            (data, local_path.clone(), name)
+        } else if let Some(text_content) = params.content {
+            (
+                text_content.into_bytes(),
+                "provided text content".to_string(),
+                "upload.txt".to_string(),
+            )
+        } else {
+            return Err("Error: local_file or content is required for FTP upload".to_string());
+        };
 
     let remote_file = params
         .remote_file
@@ -332,8 +317,7 @@ pub async fn network_ftp_download(
     local_path: Option<String>,
     timeoutSecs: Option<u64>,
     timeout_secs: Option<u64>,
-) -> Result<FileTransferResult, String>
-{
+) -> Result<FileTransferResult, String> {
     network_ftp_download_with_params(
         app,
         FtpDownloadParams {
@@ -373,8 +357,7 @@ pub async fn network_ftp_upload(
     content: Option<String>,
     timeoutSecs: Option<u64>,
     timeout_secs: Option<u64>,
-) -> Result<FileTransferResult, String>
-{
+) -> Result<FileTransferResult, String> {
     network_ftp_upload_with_params(
         app,
         FtpUploadParams {
@@ -396,13 +379,11 @@ pub async fn network_ftp_upload(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_ftp_result_serialization()
-    {
+    fn test_ftp_result_serialization() {
         let res = FileTransferResult {
             success: true,
             output: "FTP OK".to_string(),

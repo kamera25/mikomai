@@ -8,8 +8,7 @@ pub async fn download_model(
     app: tauri::AppHandle,
     repo: String,
     filename: String,
-) -> Result<String, TauriError>
-{
+) -> Result<String, TauriError> {
     if repo.contains("..")
         || filename.contains('/')
         || filename.contains('\\')
@@ -28,8 +27,7 @@ pub fn check_model_exists(
     app: tauri::AppHandle,
     repo: String,
     filename: String,
-) -> Result<bool, TauriError>
-{
+) -> Result<bool, TauriError> {
     if repo.contains("..")
         || filename.contains('/')
         || filename.contains('\\')
@@ -37,8 +35,7 @@ pub fn check_model_exists(
     {
         return Ok(false);
     }
-    let home = match app.path().home_dir()
-    {
+    let home = match app.path().home_dir() {
         Ok(h) => h,
         Err(_) => return Ok(false),
     };
@@ -55,8 +52,7 @@ async fn download_model_inner(
     app: tauri::AppHandle,
     repo: String,
     filename: String,
-) -> Result<String, LlmError>
-{
+) -> Result<String, LlmError> {
     tracing::info!("Starting model download: {}/{}", repo, filename);
 
     let home = app
@@ -70,8 +66,7 @@ async fn download_model_inner(
 
     let dest_path = target_dir.join(&repo).join(&filename);
 
-    if let Some(parent) = dest_path.parent()
-    {
+    if let Some(parent) = dest_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
 
@@ -81,8 +76,7 @@ async fn download_model_inner(
     let client = reqwest::Client::new();
     let response = client.get(&url).send().await?;
 
-    if !response.status().is_success()
-    {
+    if !response.status().is_success() {
         return Err(LlmError::DownloadStatus(response.status().to_string()));
     }
 
@@ -95,8 +89,7 @@ async fn download_model_inner(
         let mut file = tokio::fs::File::create(&temp_path).await?;
         let mut stream = response.bytes_stream();
 
-        while let Some(chunk_result) = stream.next().await
-        {
+        while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result?;
             file.write_all(&chunk).await?;
         }
@@ -110,12 +103,9 @@ async fn download_model_inner(
 }
 
 #[tauri::command]
-pub fn open_model_dir(app: tauri::AppHandle, model_path: Option<String>) -> Result<(), TauriError>
-{
-    if let Some(ref path) = model_path
-    {
-        if path.contains("..")
-        {
+pub fn open_model_dir(app: tauri::AppHandle, model_path: Option<String>) -> Result<(), TauriError> {
+    if let Some(ref path) = model_path {
+        if path.contains("..") {
             return Err(TauriError(crate::error::MikomaiError::Validation(
                 "Path traversal detected".to_string(),
             )));
@@ -125,37 +115,27 @@ pub fn open_model_dir(app: tauri::AppHandle, model_path: Option<String>) -> Resu
     Ok(())
 }
 
-fn open_model_dir_inner(app: tauri::AppHandle, model_path: Option<String>) -> Result<(), LlmError>
-{
+fn open_model_dir_inner(app: tauri::AppHandle, model_path: Option<String>) -> Result<(), LlmError> {
     use std::path::PathBuf;
     use tauri::Manager;
     use tauri_plugin_opener::OpenerExt;
 
-    let target_dir = if let Some(ref path_str) = model_path
-    {
+    let target_dir = if let Some(ref path_str) = model_path {
         let path = PathBuf::from(path_str);
-        if path.exists()
-        {
-            if path.is_file()
-            {
+        if path.exists() {
+            if path.is_file() {
                 path.parent().map(|p| p.to_path_buf()).unwrap_or(path)
-            }
-            else
-            {
+            } else {
                 path
             }
-        }
-        else
-        {
+        } else {
             let home = app.path().home_dir().map_err(LlmError::Tauri)?;
             std::env::var("HF_HUB_CACHE")
                 .map(PathBuf::from)
                 .or_else(|_| std::env::var("HF_HOME").map(|h| PathBuf::from(h).join("hub")))
                 .unwrap_or_else(|_| home.join(".cache").join("huggingface").join("hub"))
         }
-    }
-    else
-    {
+    } else {
         let home = app.path().home_dir().map_err(LlmError::Tauri)?;
         std::env::var("HF_HUB_CACHE")
             .map(PathBuf::from)
@@ -163,8 +143,7 @@ fn open_model_dir_inner(app: tauri::AppHandle, model_path: Option<String>) -> Re
             .unwrap_or_else(|_| home.join(".cache").join("huggingface").join("hub"))
     };
 
-    if !target_dir.exists()
-    {
+    if !target_dir.exists() {
         let _ = std::fs::create_dir_all(&target_dir);
     }
 
@@ -176,30 +155,24 @@ fn open_model_dir_inner(app: tauri::AppHandle, model_path: Option<String>) -> Re
 }
 
 #[tauri::command]
-pub fn open_path_in_file_manager(app: tauri::AppHandle, path: String) -> Result<(), TauriError>
-{
+pub fn open_path_in_file_manager(app: tauri::AppHandle, path: String) -> Result<(), TauriError> {
     use std::path::PathBuf;
     use tauri_plugin_opener::OpenerExt;
 
-    if path.contains("..")
-    {
+    if path.contains("..") {
         return Err(TauriError(crate::error::MikomaiError::Validation(
             "Path traversal detected".to_string(),
         )));
     }
 
     let p = PathBuf::from(&path);
-    let target = if p.is_file()
-    {
+    let target = if p.is_file() {
         p.parent().map(|parent| parent.to_path_buf()).unwrap_or(p)
-    }
-    else
-    {
+    } else {
         p
     };
 
-    if !target.exists()
-    {
+    if !target.exists() {
         let _ = std::fs::create_dir_all(&target);
     }
 
@@ -215,25 +188,21 @@ pub fn open_path_in_file_manager(app: tauri::AppHandle, path: String) -> Result<
 }
 
 #[tauri::command]
-pub fn copy_file_to_destination(src_path: String, dest_path: String) -> Result<(), TauriError>
-{
+pub fn copy_file_to_destination(src_path: String, dest_path: String) -> Result<(), TauriError> {
     use std::path::PathBuf;
 
     let src = PathBuf::from(&src_path);
     let dest = PathBuf::from(&dest_path);
 
-    if !src.exists()
-    {
+    if !src.exists() {
         return Err(TauriError(crate::error::MikomaiError::Validation(format!(
             "Source file not found: {}",
             src_path
         ))));
     }
 
-    if let Some(parent) = dest.parent()
-    {
-        if !parent.exists()
-        {
+    if let Some(parent) = dest.parent() {
+        if !parent.exists() {
             let _ = std::fs::create_dir_all(parent);
         }
     }

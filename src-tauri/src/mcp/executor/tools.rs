@@ -7,10 +7,8 @@ use tauri::Manager;
 macro_rules! define_tool {
     ($struct_name:ident, $tool_name:expr, |$app:ident, $args:ident| $body:expr) => {
         pub struct $struct_name;
-        impl McpTool for $struct_name
-        {
-            fn name(&self) -> &'static str
-            {
+        impl McpTool for $struct_name {
+            fn name(&self) -> &'static str {
                 $tool_name
             }
             fn execute(
@@ -95,12 +93,14 @@ define_tool!(
 );
 
 define_tool!(FetchConfigTool, "fetch_config", |app, args| {
+    let llama_state = app.state::<crate::llm::llm::LlamaState>();
     let device_name = get_str_arg(&args, &["deviceName", "device_name"]);
     let device = get_str_arg(&args, &["device"]);
     let host = get_str_arg(&args, &["host"]);
     let user_msg = get_str_arg(&args, &["userMessage", "user_message"]);
     crate::mcp::fetch::fetch_config::fetch_config(
-        app,
+        app.clone(),
+        llama_state,
         device_name.clone(),
         device_name,
         device,
@@ -158,6 +158,34 @@ define_tool!(QueryNwDbTool, "query_nw_db", |app, args| {
         .map(Into::into)
 });
 
+define_tool!(QueryNetworkGraphTool, "query_network_graph", |app, args| {
+    let query = get_str_arg(&args, &["query", "userMessage", "user_message"]).unwrap_or_default();
+    let device_name = get_str_arg(&args, &["deviceName", "device_name", "device"]);
+    let ip_address = get_str_arg(&args, &["ipAddress", "ip_address", "ip"]);
+    let vlan = get_u32_arg(&args, &["vlan"]);
+    let acl = get_str_arg(&args, &["acl"]);
+    let state = app.state::<crate::graph::SurrealDbState>();
+    crate::graph::query_network_graph(
+        query,
+        device_name.clone(),
+        device_name,
+        ip_address.clone(),
+        ip_address,
+        vlan,
+        acl,
+        app.clone(),
+        state,
+    )
+    .await
+    .map(|output| CommandResult {
+        success: true,
+        output,
+        saved_path: None,
+        is_cached: None,
+        cache_time: None,
+    })
+});
+
 define_tool!(SelfNetworkArpTool, "self_network_arp", |app, _args| {
     crate::mcp::arp::self_network_arp(app).await.map(Into::into)
 });
@@ -213,17 +241,14 @@ define_tool!(
 fn resolve_device_config_from_args(
     app: &tauri::AppHandle,
     args: &serde_json::Value,
-) -> Result<crate::network::NetmikoDeviceConfig, String>
-{
+) -> Result<crate::network::NetmikoDeviceConfig, String> {
     // 1. Direct device object in args.device
-    if let Some(device_val) = args.get("device")
-    {
-        if device_val.is_object()
-        {
-            if let Ok(config) = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(device_val.clone())
+    if let Some(device_val) = args.get("device") {
+        if device_val.is_object() {
+            if let Ok(config) =
+                serde_json::from_value::<crate::network::NetmikoDeviceConfig>(device_val.clone())
             {
-                if !config.host.trim().is_empty()
-                {
+                if !config.host.trim().is_empty() {
                     return Ok(config);
                 }
             }
@@ -233,14 +258,16 @@ fn resolve_device_config_from_args(
     // 2. Direct device config in root args
     if let Ok(config) = serde_json::from_value::<crate::network::NetmikoDeviceConfig>(args.clone())
     {
-        if !config.host.trim().is_empty()
-        {
+        if !config.host.trim().is_empty() {
             return Ok(config);
         }
     }
 
     // 3. Resolve by device name / target / host string
-    let device_name = get_str_arg(args, &["target", "deviceName", "device_name", "device", "host"]);
+    let device_name = get_str_arg(
+        args,
+        &["target", "deviceName", "device_name", "device", "host"],
+    );
     let user_msg = get_str_arg(args, &["userMessage", "user_message"]);
 
     let resolved_name = crate::mcp::args::normalize_device_args(
@@ -253,7 +280,8 @@ fn resolve_device_config_from_args(
         user_msg,
     )?;
 
-    if let Some((ip, user, password, enable_password, dtype)) = crate::connections::get_device_config(app, &resolved_name)
+    if let Some((ip, user, password, enable_password, dtype)) =
+        crate::connections::get_device_config(app, &resolved_name)
     {
         Ok(crate::network::NetmikoDeviceConfig {
             host: ip,
@@ -268,10 +296,7 @@ fn resolve_device_config_from_args(
             passphrase: None,
             agent_forwarding: None,
         })
-    }
-
-    else
-    {
+    } else {
         Ok(crate::network::NetmikoDeviceConfig {
             host: resolved_name,
             username: "admin".to_string(),
@@ -298,16 +323,11 @@ define_tool!(NetworkShowTool, "network_show", |app, args| {
 
 define_tool!(NetworkConfigTool, "network_config", |app, args| {
     let device = resolve_device_config_from_args(&app, &args)?;
-    let commands: Vec<String> = if let Some(cmds_val) = args.get("commands")
-    {
+    let commands: Vec<String> = if let Some(cmds_val) = args.get("commands") {
         serde_json::from_value::<Vec<String>>(cmds_val.clone()).unwrap_or_default()
-    }
-    else if let Some(cmd) = get_str_arg(&args, &["command"])
-    {
+    } else if let Some(cmd) = get_str_arg(&args, &["command"]) {
         vec![cmd]
-    }
-    else
-    {
+    } else {
         Vec::new()
     };
 
@@ -316,15 +336,13 @@ define_tool!(NetworkConfigTool, "network_config", |app, args| {
         .map_err(|e| e.to_string())
 });
 
-
 define_tool!(NwDiagTool, "self_network_nwdiag", |app, args| {
     let schema = get_str_arg(&args, &["schema"]).unwrap_or_default();
     crate::mcp::nwdiag::self_network_nwdiag(app, schema).await
 });
 
 define_tool!(GetOperationPlanTool, "get_operation_plan", |app, args| {
-    let id = get_str_arg(&args, &["id", "plan_id", "planId"])
-        .ok_or("plan id is required")?;
+    let id = get_str_arg(&args, &["id", "plan_id", "planId"]).ok_or("plan id is required")?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| "invalid plan id")?;
     let plan = app.state::<crate::operations::OperationStore>().get(id)?;
     Ok(CommandResult {
@@ -350,7 +368,8 @@ define_tool!(
             .ok_or("config is required")?;
         let target = get_str_arg(&args, &["device_name", "deviceName", "target", "host"]);
         let target_device = target.map(|name| (name.clone(), name));
-        crate::mcp::config_helper::validate_cisco_config_impl(Some(app), id, config, target_device).await
+        crate::mcp::config_helper::validate_cisco_config_impl(Some(app), id, config, target_device)
+            .await
     }
 );
 
@@ -370,21 +389,15 @@ define_tool!(AskUserChoiceTool, "ask_user_choice", |app, args| {
     let title = get_str_arg(&args, &["title"]).unwrap_or_default();
     let message = get_str_arg(&args, &["message"]).unwrap_or_default();
 
-    let options: Vec<String> = if let Some(opt_val) = args.get("options")
-    {
-        if let Some(arr) = opt_val.as_array()
-        {
+    let options: Vec<String> = if let Some(opt_val) = args.get("options") {
+        if let Some(arr) = opt_val.as_array() {
             arr.iter()
                 .map(|v| v.as_str().unwrap_or("").to_string())
                 .collect()
-        }
-        else
-        {
+        } else {
             Vec::new()
         }
-    }
-    else
-    {
+    } else {
         Vec::new()
     };
 
@@ -597,41 +610,33 @@ define_tool!(TftpUploadTool, "network_tftp_upload", |app, args| {
 });
 
 // Delegate alias tool to avoid duplicate implementations
-struct DelegatingAliasTool
-{
+struct DelegatingAliasTool {
     name: &'static str,
     target_tool_name: &'static str,
 }
 
-impl McpTool for DelegatingAliasTool
-{
-    fn name(&self) -> &'static str
-    {
+impl McpTool for DelegatingAliasTool {
+    fn name(&self) -> &'static str {
         self.name
     }
     fn execute(
         &self,
         app: tauri::AppHandle,
         args: serde_json::Value,
-    ) -> futures::future::BoxFuture<'static, Result<CommandResult, String>>
-    {
+    ) -> futures::future::BoxFuture<'static, Result<CommandResult, String>> {
         let target = self.target_tool_name;
         Box::pin(async move {
             let registry = super::registry::get_tool_registry();
-            if let Some(tool) = registry.get(target)
-            {
+            if let Some(tool) = registry.get(target) {
                 tool.execute(app, args).await
-            }
-            else
-            {
+            } else {
                 Err(format!("Alias target tool not found: {}", target))
             }
         })
     }
 }
 
-pub fn init_tool_registry() -> HashMap<String, Box<dyn McpTool>>
-{
+pub fn init_tool_registry() -> HashMap<String, Box<dyn McpTool>> {
     let mut registry: HashMap<String, Box<dyn McpTool>> = HashMap::new();
 
     // Macro helper to register unique tools
@@ -649,6 +654,7 @@ pub fn init_tool_registry() -> HashMap<String, Box<dyn McpTool>>
     reg!(FetchRoutingTool);
     reg!(FetchArpTool);
     reg!(QueryNwDbTool);
+    reg!(QueryNetworkGraphTool);
     reg!(SelfNetworkArpTool);
     reg!(SelfNetworkRouteTool);
     reg!(NetworkGetHostsTool);

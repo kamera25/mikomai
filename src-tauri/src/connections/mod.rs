@@ -35,8 +35,7 @@ use tauri::Manager;
 use validator::Validate;
 
 #[derive(Debug, thiserror::Error)]
-pub enum ConnectionError
-{
+pub enum ConnectionError {
     #[error("File I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Serialization/Deserialization error: {0}")]
@@ -67,16 +66,11 @@ where
     <T as std::convert::TryFrom<String>>::Error: std::fmt::Display,
 {
     let s: Option<String> = serde::Deserialize::deserialize(deserializer)?;
-    match s
-    {
-        Some(val) =>
-        {
-            if val.trim().is_empty()
-            {
+    match s {
+        Some(val) => {
+            if val.trim().is_empty() {
                 Ok(None)
-            }
-            else
-            {
+            } else {
                 T::try_from(val).map(Some).map_err(serde::de::Error::custom)
             }
         }
@@ -86,8 +80,7 @@ where
 
 #[derive(Serialize, Deserialize, Clone, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
-pub struct Connection
-{
+pub struct Connection {
     pub id: ConnectionId,
     pub status: ConnectionStatus,
     pub hostname: Hostname,
@@ -132,15 +125,12 @@ pub struct Connection
     pub passphrase_changed: Option<bool>,
 }
 
-impl Connection
-{
-    pub fn ip_string(&self) -> String
-    {
+impl Connection {
+    pub fn ip_string(&self) -> String {
         self.ip.as_ref().map(|i| i.to_string()).unwrap_or_default()
     }
 
-    pub fn matches_host_or_ip(&self, target: &str) -> bool
-    {
+    pub fn matches_host_or_ip(&self, target: &str) -> bool {
         self.hostname.eq_ignore_ascii_case(target)
             || self.ip.as_ref().map(|i| i.to_string()).as_deref() == Some(target)
     }
@@ -148,22 +138,19 @@ impl Connection
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct McpHost
-{
+pub struct McpHost {
     pub hostname: Hostname,
     pub ip: IpAddress,
     pub device_type: DeviceType,
     pub username: Username,
 }
 
-fn get_connections_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf
-{
+fn get_connections_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
     let path = app
         .path()
         .app_data_dir()
         .expect("Failed to get app data dir");
-    if !path.exists()
-    {
+    if !path.exists() {
         let _ = fs::create_dir_all(&path);
     }
     path.join("connections.json")
@@ -171,11 +158,9 @@ fn get_connections_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf
 
 pub(crate) fn load_connections_raw<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
-) -> Result<Vec<Connection>, ConnectionError>
-{
+) -> Result<Vec<Connection>, ConnectionError> {
     let path = get_connections_path(app);
-    if !path.exists()
-    {
+    if !path.exists() {
         return Ok(vec![]);
     }
     let data = fs::read_to_string(path)?;
@@ -186,13 +171,11 @@ pub(crate) fn load_connections_raw<R: tauri::Runtime>(
 #[tauri::command]
 pub fn load_connections<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
-) -> Result<Vec<Connection>, TauriError>
-{
+) -> Result<Vec<Connection>, TauriError> {
     let mut connections = load_connections_raw(&app)?;
 
     // Mask passwords for frontend so keychain is not accessed on startup/load.
-    for conn in &mut connections
-    {
+    for conn in &mut connections {
         conn.has_password = Some(
             conn.password
                 .as_ref()
@@ -220,8 +203,7 @@ pub fn load_connections<R: tauri::Runtime>(
 }
 
 #[tauri::command]
-pub fn get_mcp_hosts() -> Result<Vec<McpHost>, TauriError>
-{
+pub fn get_mcp_hosts() -> Result<Vec<McpHost>, TauriError> {
     let hosts = vec![];
     Ok(hosts)
 }
@@ -230,10 +212,8 @@ pub fn get_mcp_hosts() -> Result<Vec<McpHost>, TauriError>
 pub fn save_connections(
     app: tauri::AppHandle,
     mut connections: Vec<Connection>,
-) -> Result<(), TauriError>
-{
-    for conn in &connections
-    {
+) -> Result<(), TauriError> {
+    for conn in &connections {
         conn.validate()
             .map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
     }
@@ -241,24 +221,17 @@ pub fn save_connections(
     let path = get_connections_path(&app);
 
     // Encrypt passwords before saving if they have changed from the placeholder flags
-    for conn in &mut connections
-    {
+    for conn in &mut connections {
         let old_conn = old_connections.iter().find(|oc| oc.id == conn.id);
 
         let password_changed = conn.password_changed.unwrap_or(old_conn.is_none());
-        if password_changed
-        {
-            if let Some(plain_password) = &conn.password
-            {
-                if !plain_password.is_empty()
-                {
-                    match encrypt(&app, plain_password.as_str())
-                    {
-                        Ok(encrypted) => match Password::try_from(encrypted)
-                        {
+        if password_changed {
+            if let Some(plain_password) = &conn.password {
+                if !plain_password.is_empty() {
+                    match encrypt(&app, plain_password.as_str()) {
+                        Ok(encrypted) => match Password::try_from(encrypted) {
                             Ok(p) => conn.password = Some(p),
-                            Err(e) =>
-                            {
+                            Err(e) => {
                                 return Err(ConnectionError::PasswordValidation(
                                     conn.id.to_string(),
                                     e,
@@ -266,8 +239,7 @@ pub fn save_connections(
                                 .into())
                             }
                         },
-                        Err(e) =>
-                        {
+                        Err(e) => {
                             return Err(ConnectionError::PasswordEncryption(
                                 conn.id.to_string(),
                                 e.to_string(),
@@ -275,39 +247,26 @@ pub fn save_connections(
                             .into())
                         }
                     }
-                }
-                else
-                {
+                } else {
                     conn.password = None;
                 }
-            }
-            else
-            {
+            } else {
                 conn.password = None;
             }
-        }
-        else
-        {
-            if let Some(oc) = old_conn
-            {
+        } else {
+            if let Some(oc) = old_conn {
                 conn.password = oc.password.clone();
             }
         }
 
         let enable_password_changed = conn.enable_password_changed.unwrap_or(old_conn.is_none());
-        if enable_password_changed
-        {
-            if let Some(plain_enable_password) = &conn.enable_password
-            {
-                if !plain_enable_password.is_empty()
-                {
-                    match encrypt(&app, plain_enable_password.as_str())
-                    {
-                        Ok(encrypted) => match EnablePassword::try_from(encrypted)
-                        {
+        if enable_password_changed {
+            if let Some(plain_enable_password) = &conn.enable_password {
+                if !plain_enable_password.is_empty() {
+                    match encrypt(&app, plain_enable_password.as_str()) {
+                        Ok(encrypted) => match EnablePassword::try_from(encrypted) {
                             Ok(ep) => conn.enable_password = Some(ep),
-                            Err(e) =>
-                            {
+                            Err(e) => {
                                 return Err(ConnectionError::EnablePasswordValidation(
                                     conn.id.to_string(),
                                     e,
@@ -315,8 +274,7 @@ pub fn save_connections(
                                 .into())
                             }
                         },
-                        Err(e) =>
-                        {
+                        Err(e) => {
                             return Err(ConnectionError::EnablePasswordEncryption(
                                 conn.id.to_string(),
                                 e.to_string(),
@@ -324,40 +282,27 @@ pub fn save_connections(
                             .into())
                         }
                     }
-                }
-                else
-                {
+                } else {
                     conn.enable_password = None;
                 }
-            }
-            else
-            {
+            } else {
                 conn.enable_password = None;
             }
-        }
-        else
-        {
-            if let Some(oc) = old_conn
-            {
+        } else {
+            if let Some(oc) = old_conn {
                 conn.enable_password = oc.enable_password.clone();
             }
         }
 
         let passphrase_changed = conn.passphrase_changed.unwrap_or(old_conn.is_none());
-        if passphrase_changed
-        {
-            if let Some(plain_passphrase) = &conn.passphrase
-            {
-                if !plain_passphrase.is_empty()
-                {
-                    match encrypt(&app, plain_passphrase.as_str())
-                    {
-                        Ok(encrypted) =>
-                        {
+        if passphrase_changed {
+            if let Some(plain_passphrase) = &conn.passphrase {
+                if !plain_passphrase.is_empty() {
+                    match encrypt(&app, plain_passphrase.as_str()) {
+                        Ok(encrypted) => {
                             conn.passphrase = Some(encrypted);
                         }
-                        Err(e) =>
-                        {
+                        Err(e) => {
                             return Err(ConnectionError::PasswordEncryption(
                                 conn.id.to_string(),
                                 e.to_string(),
@@ -365,21 +310,14 @@ pub fn save_connections(
                             .into())
                         }
                     }
-                }
-                else
-                {
+                } else {
                     conn.passphrase = None;
                 }
-            }
-            else
-            {
+            } else {
                 conn.passphrase = None;
             }
-        }
-        else
-        {
-            if let Some(oc) = old_conn
-            {
+        } else {
+            if let Some(oc) = old_conn {
                 conn.passphrase = oc.passphrase.clone();
             }
         }
@@ -390,18 +328,15 @@ pub fn save_connections(
     Ok(())
 }
 
-pub fn resolve_host_with_mcp<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &str) -> String
-{
+pub fn resolve_host_with_mcp<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &str) -> String {
     // 1. Check local connections first
-    if let Ok(connections) = load_connections_raw(app)
-    {
+    if let Ok(connections) = load_connections_raw(app) {
         if let Some(conn) = connections
             .iter()
             .find(|c| c.hostname.eq_ignore_ascii_case(host))
         {
             let ip_str = conn.ip_string();
-            if !ip_str.is_empty()
-            {
+            if !ip_str.is_empty() {
                 return ip_str;
             }
         }
@@ -414,56 +349,34 @@ pub fn resolve_host_with_mcp<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host:
 pub fn get_device_config(
     app: &tauri::AppHandle,
     host: &str,
-) -> Option<(String, String, Option<String>, Option<String>, String)>
-{
+) -> Option<(String, String, Option<String>, Option<String>, String)> {
     // Returns (IP, Username, Password, EnablePassword, DeviceType)
 
     // 1. Check local connections
-    if let Ok(connections) = load_connections_raw(app)
-    {
-        if let Some(conn) = connections
-            .iter()
-            .find(|c| c.matches_host_or_ip(host))
-        {
-            let mut dtype = if let Some(dt) = &conn.device_type
-            {
+    if let Ok(connections) = load_connections_raw(app) {
+        if let Some(conn) = connections.iter().find(|c| c.matches_host_or_ip(host)) {
+            let mut dtype = if let Some(dt) = &conn.device_type {
                 dt.as_str().to_string()
-            }
-            else if let Some(vt) = &conn.vendor_type
-            {
+            } else if let Some(vt) = &conn.vendor_type {
                 let vt_str = vt.as_str().to_lowercase();
-                if vt_str.contains("cisco")
-                {
+                if vt_str.contains("cisco") {
                     "cisco_ios".to_string()
-                }
-                else if vt_str.contains("juniper") || vt_str.contains("junos")
-                {
+                } else if vt_str.contains("juniper") || vt_str.contains("junos") {
                     "juniper_junos".to_string()
-                }
-                else if vt_str.contains("arista") || vt_str.contains("eos")
-                {
+                } else if vt_str.contains("arista") || vt_str.contains("eos") {
                     "arista_eos".to_string()
-                }
-                else if vt_str.contains("yamaha")
-                {
+                } else if vt_str.contains("yamaha") {
                     "yamaha".to_string()
-                }
-                else if vt_str.contains("furukawa") || vt_str.contains("fitelnet")
-                {
+                } else if vt_str.contains("furukawa") || vt_str.contains("fitelnet") {
                     "furukawa_fitelnet".to_string()
-                }
-                else
-                {
+                } else {
                     "cisco_ios".to_string()
                 }
-            }
-            else
-            {
+            } else {
                 "cisco_ios".to_string()
             };
 
-            if conn.conn_type == ConnectionType::Telnet && !dtype.ends_with("_telnet")
-            {
+            if conn.conn_type == ConnectionType::Telnet && !dtype.ends_with("_telnet") {
                 dtype = format!("{}_telnet", dtype);
             }
 
@@ -475,17 +388,12 @@ pub fn get_device_config(
 
             // Decrypt password on-demand when accessing the device
             let decrypted_password = conn.password.as_ref().and_then(|p| {
-                if p.is_empty()
-                {
+                if p.is_empty() {
                     None
-                }
-                else
-                {
-                    match decrypt(app, p.as_str())
-                    {
+                } else {
+                    match decrypt(app, p.as_str()) {
                         Ok(decrypted) => Some(decrypted),
-                        Err(e) =>
-                        {
+                        Err(e) => {
                             log::error!(
                                 "Failed to decrypt password for connection {}: {}",
                                 conn.id,
@@ -498,17 +406,12 @@ pub fn get_device_config(
             });
 
             let decrypted_enable_password = conn.enable_password.as_ref().and_then(|ep| {
-                if ep.is_empty()
-                {
+                if ep.is_empty() {
                     None
-                }
-                else
-                {
-                    match decrypt(app, ep.as_str())
-                    {
+                } else {
+                    match decrypt(app, ep.as_str()) {
                         Ok(decrypted) => Some(decrypted),
-                        Err(e) =>
-                        {
+                        Err(e) => {
                             log::error!(
                                 "Failed to decrypt enable password for connection {}: {}",
                                 conn.id,
@@ -536,8 +439,7 @@ pub fn get_device_config(
 pub fn resolve_host_with_preference<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     host: &str,
-) -> Result<std::net::IpAddr, ConnectionError>
-{
+) -> Result<std::net::IpAddr, ConnectionError> {
     use std::net::{IpAddr, ToSocketAddrs};
 
     let parsed_ip = host.parse::<IpAddr>();
@@ -545,32 +447,25 @@ pub fn resolve_host_with_preference<R: tauri::Runtime>(
     let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
     let pref = settings.ip_version.as_deref().unwrap_or("auto");
 
-    if let Ok(ip) = parsed_ip
-    {
-        match pref
-        {
-            "ipv4" =>
-            {
-                if ip.is_ipv6()
-                {
+    if let Ok(ip) = parsed_ip {
+        match pref {
+            "ipv4" => {
+                if ip.is_ipv6() {
                     return Err(ConnectionError::IpPreferenceMismatch(
                         "IPv6".to_string(),
                         "IPv4 Only".to_string(),
                     ));
                 }
             }
-            "ipv6" =>
-            {
-                if ip.is_ipv4()
-                {
+            "ipv6" => {
+                if ip.is_ipv4() {
                     return Err(ConnectionError::IpPreferenceMismatch(
                         "IPv4".to_string(),
                         "IPv6 Only".to_string(),
                     ));
                 }
             }
-            _ =>
-            {}
+            _ => {}
         }
         return Ok(ip);
     }
@@ -579,8 +474,7 @@ pub fn resolve_host_with_preference<R: tauri::Runtime>(
     let filtered: Vec<IpAddr> = addrs
         .into_iter()
         .map(|a| a.ip())
-        .filter(|ip| match pref
-        {
+        .filter(|ip| match pref {
             "ipv4" => ip.is_ipv4(),
             "ipv6" => ip.is_ipv6(),
             _ => true,
@@ -594,13 +488,11 @@ pub fn resolve_host_with_preference<R: tauri::Runtime>(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_connection_serialization()
-    {
+    fn test_connection_serialization() {
         let conn = Connection {
             id: ConnectionId::try_from("test-1").unwrap(),
             status: ConnectionStatus::try_from("active").unwrap(),
@@ -635,8 +527,7 @@ mod tests
     }
 
     #[test]
-    fn test_mcp_host_serialization()
-    {
+    fn test_mcp_host_serialization() {
         let host = McpHost {
             hostname: Hostname::try_from("switch-1").unwrap(),
             ip: IpAddress::try_from("10.0.0.2").unwrap(),
@@ -651,8 +542,7 @@ mod tests
     }
 
     #[test]
-    fn test_multiple_connections_deserialization_roundtrip()
-    {
+    fn test_multiple_connections_deserialization_roundtrip() {
         let json_input = r#"[
             {
                 "id": "conn-1",
@@ -699,8 +589,7 @@ mod tests
     }
 
     #[test]
-    fn test_console_connection_without_ip()
-    {
+    fn test_console_connection_without_ip() {
         let json_input = r#"[
             {
                 "id": "console-conn-1",

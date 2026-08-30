@@ -58,7 +58,11 @@ pub fn parse_decision_from_json(raw_json: &str) -> Result<Decision, String> {
         id: uuid::Uuid::new_v4(),
         timestamp: chrono::Utc::now(),
         action_type,
-        objective: if parsed.objective.is_empty() { "処理完了/状態確認".to_string() } else { parsed.objective },
+        objective: if parsed.objective.is_empty() {
+            "処理完了/状態確認".to_string()
+        } else {
+            parsed.objective
+        },
         tool: parsed.tool,
         target: parsed.target,
         parameters: parsed.parameters,
@@ -81,7 +85,10 @@ mod tests {
         }"#;
         let decision = parse_decision_from_json(json).unwrap();
         assert_eq!(decision.action_type, ActionType::Finish);
-        assert_eq!(decision.final_answer, Some("ネットワーク調査が完了しました。".to_string()));
+        assert_eq!(
+            decision.final_answer,
+            Some("ネットワーク調査が完了しました。".to_string())
+        );
     }
 
     #[test]
@@ -114,4 +121,3 @@ mod tests {
         assert!(res.is_ok(), "Schema conversion failed: {:?}", res);
     }
 }
-

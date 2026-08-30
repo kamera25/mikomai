@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
-use crate::state::events::{HarnessEvent, Observation};
-use crate::state::observed::ObservedState;
 use crate::state::desired::DesiredState;
-use crate::state::hypothesis::Hypothesis;
 use crate::state::event_log::EventLog;
+use crate::state::events::{HarnessEvent, Observation};
+use crate::state::hypothesis::Hypothesis;
+use crate::state::observed::ObservedState;
+use serde::{Deserialize, Serialize};
 
 /// Central Network State tracking Observed, Desired, Hypotheses, and EventLog
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -38,12 +38,16 @@ impl NetworkState {
 
     pub fn apply_observation(&mut self, obs: Observation) {
         if let Some(device_name) = &obs.source.device {
-            let device_fact = self.observed.devices
+            let device_fact = self
+                .observed
+                .devices
                 .entry(device_name.clone())
                 .or_insert_with(|| crate::state::observed::DeviceFact::new(device_name.clone()));
 
             if let Some(cmd) = &obs.source.command {
-                device_fact.raw_snapshots.insert(cmd.clone(), obs.raw.clone());
+                device_fact
+                    .raw_snapshots
+                    .insert(cmd.clone(), obs.raw.clone());
             }
 
             if let Some(ref parsed) = obs.parsed {
@@ -89,15 +93,22 @@ impl NetworkState {
             out.push_str(&format!("【Goal / 達成目標】\n{}\n\n", desired.raw_goal));
         }
 
-        out.push_str("【Tool Execution History & Observed Facts / これまでに実行したツールとその結果】\n");
+        out.push_str(
+            "【Tool Execution History & Observed Facts / これまでに実行したツールとその結果】\n",
+        );
         if self.observed.observations.is_empty() {
             out.push_str("（まだ実行されたツール・観察された情報はありません）\n");
         } else {
             for (idx, obs) in self.observed.observations.iter().enumerate() {
                 let tool_info = obs.source.tool_name.as_deref().unwrap_or("unknown_tool");
                 let target_info = obs.source.device.as_deref().unwrap_or("localhost/default");
-                let params_info = obs.source.parameters.as_ref().map(|p| p.to_string()).unwrap_or_default();
-                
+                let params_info = obs
+                    .source
+                    .parameters
+                    .as_ref()
+                    .map(|p| p.to_string())
+                    .unwrap_or_default();
+
                 let is_error_indication = obs.raw.contains("% Invalid")
                     || obs.raw.contains("Syntax error")
                     || obs.raw.contains("unknown command")
@@ -123,18 +134,19 @@ impl NetworkState {
                     obs.raw.trim()
                 ));
             }
-
         }
 
         if !self.hypotheses.is_empty() {
             out.push_str("【Hypotheses / 検証中の仮説】\n");
             for h in &self.hypotheses {
-                out.push_str(&format!("- [{}] {} (確信度: {:.2})\n", h.id, h.description, h.confidence));
+                out.push_str(&format!(
+                    "- [{}] {} (確信度: {:.2})\n",
+                    h.id, h.description, h.confidence
+                ));
             }
             out.push('\n');
         }
 
         out
     }
-
 }

@@ -6,8 +6,7 @@ use crate::settings::load_settings;
 use tauri::AppHandle;
 
 #[derive(Debug, Clone)]
-pub struct TargetDevice
-{
+pub struct TargetDevice {
     host: String,
     username: String,
     password: Option<String>,
@@ -17,50 +16,41 @@ pub struct TargetDevice
     console_baud_rate: Option<u32>,
 }
 
-impl TargetDevice
-{
-    pub fn host(&self) -> &str
-    {
+impl TargetDevice {
+    pub fn host(&self) -> &str {
         &self.host
     }
 
     #[allow(dead_code)]
-    pub fn username(&self) -> &str
-    {
+    pub fn username(&self) -> &str {
         &self.username
     }
 
     #[allow(dead_code)]
-    pub fn password(&self) -> Option<&str>
-    {
+    pub fn password(&self) -> Option<&str> {
         self.password.as_deref()
     }
 
     #[allow(dead_code)]
-    pub fn enable_password(&self) -> Option<&str>
-    {
+    pub fn enable_password(&self) -> Option<&str> {
         self.enable_password.as_deref()
     }
 
     #[allow(dead_code)]
-    pub fn device_type(&self) -> &str
-    {
+    pub fn device_type(&self) -> &str {
         &self.device_type
     }
 
-    pub fn console_port(&self) -> Option<&str>
-    {
+    pub fn console_port(&self) -> Option<&str> {
         self.console_port.as_deref()
     }
 
     #[allow(dead_code)]
-    pub fn console_baud_rate(&self) -> Option<u32>
-    {
+    pub fn console_baud_rate(&self) -> Option<u32> {
         self.console_baud_rate
     }
 
-    pub fn to_netmiko_config(&self) -> NetmikoDeviceConfig
-    {
+    pub fn to_netmiko_config(&self) -> NetmikoDeviceConfig {
         NetmikoDeviceConfig {
             host: self.host.clone(),
             username: self.username.clone(),
@@ -77,21 +67,17 @@ impl TargetDevice
     }
 }
 
-pub struct TargetDeviceBuilder
-{
+pub struct TargetDeviceBuilder {
     app: AppHandle,
     device: NetmikoDeviceConfig,
 }
 
-impl TargetDeviceBuilder
-{
-    pub fn new(app: AppHandle, device: NetmikoDeviceConfig) -> Self
-    {
+impl TargetDeviceBuilder {
+    pub fn new(app: AppHandle, device: NetmikoDeviceConfig) -> Self {
         Self { app, device }
     }
 
-    pub async fn resolve(self) -> Result<TargetDevice, NetworkError>
-    {
+    pub async fn resolve(self) -> Result<TargetDevice, NetworkError> {
         let mut target_device = self.device;
 
         // 1. Try to resolve it from MCP/Connections, falling back to passed-in device if not found
@@ -100,12 +86,10 @@ impl TargetDeviceBuilder
         {
             target_device.host = ip;
             target_device.username = user;
-            if password.is_some()
-            {
+            if password.is_some() {
                 target_device.password = password;
             }
-            if enable_password.is_some()
-            {
+            if enable_password.is_some() {
                 target_device.enable_password = enable_password;
             }
             target_device.device_type = dtype;
@@ -113,43 +97,34 @@ impl TargetDeviceBuilder
 
         // 2. Load settings for console override if connection type is console/serial
         let mut is_console = target_device.console_port.is_some();
-        if !is_console
-        {
-            if let Ok(connections) = load_connections(self.app.clone())
-            {
-                if let Some(conn) = connections.iter().find(|c| {
-                    c.matches_host_or_ip(&target_device.host)
-                })
+        if !is_console {
+            if let Ok(connections) = load_connections(self.app.clone()) {
+                if let Some(conn) = connections
+                    .iter()
+                    .find(|c| c.matches_host_or_ip(&target_device.host))
                 {
-                    if conn.conn_type == ConnectionType::Console
-                    {
+                    if conn.conn_type == ConnectionType::Console {
                         is_console = true;
                     }
                 }
             }
         }
 
-        if is_console
-        {
+        if is_console {
             let settings = load_settings(self.app.clone()).unwrap_or_default();
-            if let Some(ref port) = settings.console_port
-            {
-                if !port.trim().is_empty() && port != "None"
-                {
+            if let Some(ref port) = settings.console_port {
+                if !port.trim().is_empty() && port != "None" {
                     target_device.console_port = Some(port.clone());
                     target_device.console_baud_rate = settings.console_baud_rate;
                 }
             }
-        }
-        else
-        {
+        } else {
             target_device.console_port = None;
             target_device.console_baud_rate = None;
         }
 
         // 3. Resolve using preference if not console
-        if target_device.console_port.is_none()
-        {
+        if target_device.console_port.is_none() {
             let host_to_resolve = target_device.host.clone();
             let app_clone = self.app.clone();
             let ip = tokio::task::spawn_blocking(move || {
@@ -173,13 +148,11 @@ impl TargetDeviceBuilder
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_target_device_getters_and_conversion()
-    {
+    fn test_target_device_getters_and_conversion() {
         let device = TargetDevice {
             host: "10.0.0.1".to_string(),
             username: "admin".to_string(),

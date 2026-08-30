@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FileTransferResult
-{
+pub struct FileTransferResult {
     pub success: bool,
     pub output: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -13,10 +12,8 @@ pub struct FileTransferResult
     pub duration_ms: Option<u64>,
 }
 
-impl From<FileTransferResult> for crate::network::CommandResult
-{
-    fn from(res: FileTransferResult) -> Self
-    {
+impl From<FileTransferResult> for crate::network::CommandResult {
+    fn from(res: FileTransferResult) -> Self {
         Self {
             success: res.success,
             output: res.output,

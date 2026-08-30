@@ -5,35 +5,29 @@ use std::path::PathBuf;
 use tauri::Manager;
 use validator::Validate;
 
-fn default_false() -> bool
-{
+fn default_false() -> bool {
     false
 }
 
-fn default_cache_expiry() -> Option<u64>
-{
+fn default_cache_expiry() -> Option<u64> {
     Some(10)
 }
 
-fn default_prompt_keep_tokens() -> usize
-{
+fn default_prompt_keep_tokens() -> usize {
     500
 }
 
-fn default_n_ctx() -> usize
-{
+fn default_n_ctx() -> usize {
     4096
 }
 
-fn default_max_gen() -> usize
-{
+fn default_max_gen() -> usize {
     2048
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
-pub struct AppSettings
-{
+pub struct AppSettings {
     #[validate(range(min = 0, max = 100))]
     pub history_limit: usize,
     #[validate(range(min = 0.0, max = 2.0))]
@@ -85,10 +79,8 @@ pub struct AppSettings
     pub mmproj_path: Option<String>,
 }
 
-impl Default for AppSettings
-{
-    fn default() -> Self
-    {
+impl Default for AppSettings {
+    fn default() -> Self {
         Self {
             history_limit: 5,
             temperature: 0.0,
@@ -118,8 +110,7 @@ impl Default for AppSettings
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum SettingsError
-{
+pub enum SettingsError {
     #[error("File I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Serialization/Deserialization error: {0}")]
@@ -128,8 +119,7 @@ pub enum SettingsError
     TauriPath,
 }
 
-impl serde::Serialize for SettingsError
-{
+impl serde::Serialize for SettingsError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -138,30 +128,25 @@ impl serde::Serialize for SettingsError
     }
 }
 
-fn get_settings_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf
-{
+fn get_settings_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
     let path = app
         .path()
         .app_data_dir()
         .expect("Failed to get app data dir");
-    if !path.exists()
-    {
+    if !path.exists() {
         let _ = fs::create_dir_all(&path);
     }
     path.join("settings.json")
 }
 
 #[tauri::command]
-pub fn load_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>)
-    -> Result<AppSettings, TauriError>
-{
+pub fn load_settings<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<AppSettings, TauriError> {
     let path = get_settings_path(&app);
-    let mut settings = if !path.exists()
-    {
+    let mut settings = if !path.exists() {
         AppSettings::default()
-    }
-    else
-    {
+    } else {
         let data = fs::read_to_string(path)?;
         serde_json::from_str(&data)?
     };
@@ -170,8 +155,7 @@ pub fn load_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>)
         .db_path
         .as_ref()
         .map_or(true, |s| s.trim().is_empty());
-    if has_no_db_path
-    {
+    if has_no_db_path {
         let app_data_dir = app
             .path()
             .app_data_dir()
@@ -186,8 +170,7 @@ pub fn load_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>)
 pub fn save_settings<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     settings: AppSettings,
-) -> Result<(), TauriError>
-{
+) -> Result<(), TauriError> {
     settings
         .validate()
         .map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
@@ -198,13 +181,11 @@ pub fn save_settings<R: tauri::Runtime>(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_app_settings_default()
-    {
+    fn test_app_settings_default() {
         let settings = AppSettings::default();
         assert_eq!(settings.history_limit, 5);
         assert_eq!(settings.temperature, 0.0);
@@ -227,8 +208,7 @@ mod tests
     }
 
     #[test]
-    fn test_app_settings_serialization()
-    {
+    fn test_app_settings_serialization() {
         let settings = AppSettings {
             history_limit: 10,
             temperature: 0.7,
@@ -272,8 +252,7 @@ mod tests
     }
 
     #[test]
-    fn test_app_settings_zero_validation()
-    {
+    fn test_app_settings_zero_validation() {
         let settings = AppSettings {
             history_limit: 0,
             temperature: 0.0,

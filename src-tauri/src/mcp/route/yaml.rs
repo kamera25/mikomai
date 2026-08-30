@@ -1,12 +1,9 @@
 use crate::snapshot::SnapshotManager;
 
-pub fn quote_yaml_strings(yaml: &str) -> String
-{
+pub fn quote_yaml_strings(yaml: &str) -> String {
     let mut result = String::new();
-    for line in yaml.lines()
-    {
-        if let Some(colon_idx) = line.find(':')
-        {
+    for line in yaml.lines() {
+        if let Some(colon_idx) = line.find(':') {
             let key_part = &line[..colon_idx];
             let val_part = line[colon_idx + 1..].trim();
 
@@ -50,15 +47,12 @@ pub fn save_validated_yaml(
     app: &tauri::AppHandle,
     device_name: &str,
     yaml_content: &str,
-) -> Result<std::path::PathBuf, String>
-{
+) -> Result<std::path::PathBuf, String> {
     let quoted_yaml = quote_yaml_strings(yaml_content);
     let mut manager = SnapshotManager::new(app)
         .map_err(|e| format!("Failed to create SnapshotManager: {}", e))?;
-    match manager.save_artifact(device_name, "route.yaml", &quoted_yaml)
-    {
-        Ok(path) =>
-        {
+    match manager.save_artifact(device_name, "route.yaml", &quoted_yaml) {
+        Ok(path) => {
             let _ = manager.update_current_link(path.parent().unwrap());
             Ok(path)
         }
@@ -67,13 +61,11 @@ pub fn save_validated_yaml(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_quote_yaml_strings()
-    {
+    fn test_quote_yaml_strings() {
         let input = r#"version: 1.0
 metadata:
   generated_at: 2026-06-13T13:51:38Z

@@ -12,7 +12,6 @@ pub struct ObservedState {
     pub facts: Vec<FactItem>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceFact {
     pub name: String,

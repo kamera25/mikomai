@@ -9,16 +9,14 @@ use crate::mcp::protocol::{
 };
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
-pub struct ToolCall
-{
+pub struct ToolCall {
     pub tool: String,
     pub args: Value,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct ExecuteMcpToolPayload
-{
+pub struct ExecuteMcpToolPayload {
     pub task_id: uuid::Uuid,
     pub tool_id: String,
     pub tool_label: String,
@@ -40,8 +38,7 @@ pub async fn execute_mcp_tool_raw(
     args: Value,
     recent_ips: Vec<String>,
     mcp_timeout: u64,
-) -> Result<crate::network::CommandResult, String>
-{
+) -> Result<crate::network::CommandResult, String> {
     // Enforce the safety boundary before adding user-controlled arguments or
     // dispatching to an adapter.  The approval/audit route for Change tools is
     // introduced separately; direct calls must never bypass it.
@@ -60,8 +57,7 @@ pub async fn execute_mcp_tool_raw(
 
     // 1. Normalize arguments by injecting userMessage/user_message
     let mut processed_args = args.clone();
-    if let serde_json::Value::Object(ref mut map) = processed_args
-    {
+    if let serde_json::Value::Object(ref mut map) = processed_args {
         map.insert(
             "userMessage".to_string(),
             serde_json::Value::String(user_message.clone()),
@@ -79,65 +75,53 @@ pub async fn execute_mcp_tool_raw(
     let kind_opt = std::str::FromStr::from_str(&tool_id).ok();
 
     // 2. Extract resolved host for recentIPs updates in the frontend
-    let raw_target_host = if kind_opt
-        .map_or(false, |k: crate::mcp::ToolKind| k.is_device_target_tool())
-    {
-        let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
-        let device = get_str_arg(&processed_args, &["device"]);
-        let host = get_str_arg(&processed_args, &["host"]);
+    let raw_target_host =
+        if kind_opt.map_or(false, |k: crate::mcp::ToolKind| k.is_device_target_tool()) {
+            let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
+            let device = get_str_arg(&processed_args, &["device"]);
+            let host = get_str_arg(&processed_args, &["host"]);
 
-        let resolved = crate::mcp::args::normalize_device_args(
-            &app,
-            device_name.clone(),
-            device_name.clone(),
-            device,
-            host,
-            Some(user_message.clone()),
-            Some(user_message.clone()),
-        )
-        .ok();
+            let resolved = crate::mcp::args::normalize_device_args(
+                &app,
+                device_name.clone(),
+                device_name.clone(),
+                device,
+                host,
+                Some(user_message.clone()),
+                Some(user_message.clone()),
+            )
+            .ok();
 
-        if resolved.as_ref().map_or(true, |r| r.trim().is_empty())
-        {
-            recent_ips.first().cloned()
-        }
-        else
-        {
-            resolved
-        }
-    }
-    else if kind_opt.map_or(false, |k: crate::mcp::ToolKind| k.is_host_target_tool())
-    {
-        let host = get_str_arg(&processed_args, &["host"]);
-        let device = get_str_arg(&processed_args, &["device"]);
-        let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
-        let ip = get_ip_arg(&processed_args, &["ip"]);
+            if resolved.as_ref().map_or(true, |r| r.trim().is_empty()) {
+                recent_ips.first().cloned()
+            } else {
+                resolved
+            }
+        } else if kind_opt.map_or(false, |k: crate::mcp::ToolKind| k.is_host_target_tool()) {
+            let host = get_str_arg(&processed_args, &["host"]);
+            let device = get_str_arg(&processed_args, &["device"]);
+            let device_name = get_str_arg(&processed_args, &["deviceName", "device_name"]);
+            let ip = get_ip_arg(&processed_args, &["ip"]);
 
-        let host_args = crate::mcp::args::HostArgs {
-            host,
-            device,
-            device_name,
-            ip,
+            let host_args = crate::mcp::args::HostArgs {
+                host,
+                device,
+                device_name,
+                ip,
+            };
+
+            let resolved = crate::mcp::args::normalize_host_args_struct(&app, &host_args).ok();
+
+            if resolved.as_ref().map_or(true, |r| r.trim().is_empty()) {
+                recent_ips.first().cloned()
+            } else {
+                resolved
+            }
+        } else {
+            None
         };
 
-        let resolved = crate::mcp::args::normalize_host_args_struct(&app, &host_args).ok();
-
-        if resolved.as_ref().map_or(true, |r| r.trim().is_empty())
-        {
-            recent_ips.first().cloned()
-        }
-        else
-        {
-            resolved
-        }
-    }
-    else
-    {
-        None
-    };
-
-    let resolved_host = match raw_target_host
-    {
+    let resolved_host = match raw_target_host {
         Some(ref target) => crate::mcp::args::resolve_target_host_string(&app, target)
             .await
             .ok()
@@ -165,22 +149,17 @@ pub async fn execute_mcp_tool_raw(
 
     // 3. Match and execute the appropriate command in a future
     let execution_future = async {
-        if let Some(tool) = get_tool_registry().get(&tool_id)
-        {
+        if let Some(tool) = get_tool_registry().get(&tool_id) {
             tool.execute(app.clone(), processed_args.clone()).await
-        }
-        else
-        {
+        } else {
             Err(format!("Unknown tool ID: {}", tool_id))
         }
     };
 
     // Run execution with timeout (bypass timeout for user choice prompts)
     let is_choice_tool = kind_opt.map_or(false, |k| k.is_choice_tool());
-    let result = if is_choice_tool
-    {
-        match execution_future.await
-        {
+    let result = if is_choice_tool {
+        match execution_future.await {
             Ok(res) => res,
             Err(e) => crate::network::CommandResult {
                 success: false,
@@ -190,22 +169,16 @@ pub async fn execute_mcp_tool_raw(
                 cache_time: None,
             },
         }
-    }
-    else
-    {
+    } else {
         let is_heavy_network_tool =
             kind_opt.map_or(false, |k| k.is_heavy_network_tool()) || tool_id == "apply_config";
-        let effective_timeout = if is_heavy_network_tool
-        {
+        let effective_timeout = if is_heavy_network_tool {
             std::cmp::max(mcp_timeout, 120)
-        }
-        else
-        {
+        } else {
             mcp_timeout
         };
         let mcp_timeout_duration = Duration::from_secs(effective_timeout);
-        match tokio::time::timeout(mcp_timeout_duration, execution_future).await
-        {
+        match tokio::time::timeout(mcp_timeout_duration, execution_future).await {
             Ok(Ok(res)) => res,
             Ok(Err(e)) => crate::network::CommandResult {
                 success: false,
@@ -240,7 +213,11 @@ pub async fn execute_mcp_tool_raw(
         &tool_id,
         resolved_host,
         operation_class,
-        if result.success { "succeeded" } else { "failed" },
+        if result.success {
+            "succeeded"
+        } else {
+            "failed"
+        },
         &serde_json::json!({
             "args": processed_args,
             "saved_path": result.saved_path,
@@ -262,11 +239,9 @@ pub fn execute_mcp_tools_flow(
     mcp_timeout: u64,
     depth: usize,
     is_builder_caller: bool,
-) -> futures::future::BoxFuture<'static, Result<String, String>>
-{
+) -> futures::future::BoxFuture<'static, Result<String, String>> {
     Box::pin(async move {
-        if depth >= 5
-        {
+        if depth >= 5 {
             return Err("Max nested depth reached".to_string());
         }
 
@@ -274,8 +249,7 @@ pub fn execute_mcp_tools_flow(
 
         // 1. Run all tool executions in parallel
         let mut execution_futures = Vec::new();
-        for tc in &tool_calls
-        {
+        for tc in &tool_calls {
             let app_c = app.clone();
             let window_c = window.clone();
             let user_message_c = user_message.clone();
@@ -307,16 +281,12 @@ pub fn execute_mcp_tools_flow(
 
         // Separate successful results
         let mut execution_results = Vec::new();
-        for (tool_id, tool_label, res) in raw_results
-        {
-            match res
-            {
-                Ok(cmd_res) =>
-                {
+        for (tool_id, tool_label, res) in raw_results {
+            match res {
+                Ok(cmd_res) => {
                     execution_results.push((tool_id, tool_label, cmd_res));
                 }
-                Err(e) =>
-                {
+                Err(e) => {
                     execution_results.push((
                         tool_id,
                         tool_label,
@@ -347,12 +317,9 @@ pub fn execute_mcp_tools_flow(
 
         // Generate custom labels
         let mut execution_info = Vec::new();
-        for (tool_id, tool_label, result) in &execution_results
-        {
-            let custom_tool_label = match std::str::FromStr::from_str(tool_id)
-            {
-                Ok(crate::mcp::ToolKind::AskUserChoice) =>
-                {
+        for (tool_id, tool_label, result) in &execution_results {
+            let custom_tool_label = match std::str::FromStr::from_str(tool_id) {
+                Ok(crate::mcp::ToolKind::AskUserChoice) => {
                     let q_msg = get_str_arg(
                         &tool_calls
                             .iter()
@@ -364,8 +331,7 @@ pub fn execute_mcp_tools_flow(
                     .unwrap_or_default();
                     format!("ask_user_choice: {}", q_msg)
                 }
-                Ok(crate::mcp::ToolKind::AskInterfaceChoice) =>
-                {
+                Ok(crate::mcp::ToolKind::AskInterfaceChoice) => {
                     let q_msg = get_str_arg(
                         &tool_calls
                             .iter()
@@ -377,8 +343,7 @@ pub fn execute_mcp_tools_flow(
                     .unwrap_or_default();
                     format!("ask_interface_choice: {}", q_msg)
                 }
-                Ok(crate::mcp::ToolKind::AskIpaddressChoice) =>
-                {
+                Ok(crate::mcp::ToolKind::AskIpaddressChoice) => {
                     let q_msg = get_str_arg(
                         &tool_calls
                             .iter()
@@ -396,34 +361,27 @@ pub fn execute_mcp_tools_flow(
         }
 
         let mut synthesized_task = None;
-        if has_choice_tool && pending_choices == 0 && pending_ifaces == 0 && pending_ips == 0
-        {
+        if has_choice_tool && pending_choices == 0 && pending_ifaces == 0 && pending_ips == 0 {
             let collected_choices = {
                 let shared_opt = llama_state.shared.lock().await;
-                if let Some(shared) = &*shared_opt
-                {
+                if let Some(shared) = &*shared_opt {
                     let mut builder = shared.builder.lock().unwrap();
-                    for (tool_id, custom_label, result) in &execution_info
-                    {
+                    for (tool_id, custom_label, result) in &execution_info {
                         let is_choice = std::str::FromStr::from_str(tool_id)
                             .map_or(false, |k: crate::mcp::ToolKind| k.is_choice_tool());
-                        if is_choice && result.output.trim() != "cancelled"
-                        {
+                        if is_choice && result.output.trim() != "cancelled" {
                             builder
                                 .collected_choices
                                 .push((custom_label.clone(), result.output.clone()));
                         }
                     }
                     builder.collected_choices.clone()
-                }
-                else
-                {
+                } else {
                     Vec::new()
                 }
             };
 
-            if !collected_choices.is_empty()
-            {
+            if !collected_choices.is_empty() {
                 let answers_block = collected_choices
                     .iter()
                     .map(|(lbl, ans)| format!("- **{}**: {}", lbl, ans))
@@ -440,17 +398,14 @@ pub fn execute_mcp_tools_flow(
         let mut combined_output = String::new();
         let mut combined_label_parts = Vec::new();
         let mut has_rag = false;
-        for (tool_id, custom_label, result) in &execution_info
-        {
+        for (tool_id, custom_label, result) in &execution_info {
             let kind = std::str::FromStr::from_str(tool_id).ok();
-            if kind.map_or(false, |k: crate::mcp::ToolKind| k.is_rag_tool())
-            {
+            if kind.map_or(false, |k: crate::mcp::ToolKind| k.is_rag_tool()) {
                 has_rag = true;
             }
             combined_label_parts.push(custom_label.clone());
 
-            if !combined_output.is_empty()
-            {
+            if !combined_output.is_empty() {
                 combined_output.push_str("\n\n");
             }
 
@@ -458,9 +413,7 @@ pub fn execute_mcp_tools_flow(
                 && result.success
             {
                 "Success: Network diagram generated successfully and saved to artifact.".to_string()
-            }
-            else
-            {
+            } else {
                 result.output.clone()
             };
 
@@ -522,8 +475,7 @@ pub fn execute_mcp_tools_flow(
 
         // 5. Generate and save summary
         let mut next_summaries = summaries.clone();
-        if response_str == "PENDING_DECISION"
-        {
+        if response_str == "PENDING_DECISION" {
             let summary_payload = SummarySavedPayload {
                 task_id: analysis_task_id.clone(),
                 summary_text: "".to_string(),
@@ -534,9 +486,7 @@ pub fn execute_mcp_tools_flow(
                 content: response_str.clone(),
             };
             let _ = window.emit("chat-event", ChatEvent::McpSummarySaved(summary_payload));
-        }
-        else
-        {
+        } else {
             let summary_prompt = format!(
                 "以下の内容を要約してください。\n\nユーザー入力: {}\n実行ツール: {}\n分析結果: {}",
                 user_message, combined_tool_label, response_str
@@ -571,14 +521,11 @@ pub fn execute_mcp_tools_flow(
             .any(|(tool_id, _, _)| *tool_id == "self_network_nwdiag");
         let max_depth = if has_nwdiag { 3 } else { 5 };
 
-        if is_builder_context && depth < max_depth
-        {
+        if is_builder_context && depth < max_depth {
             let json_blocks = extract_json_blocks(&response_str);
             let mut nested_tool_calls = Vec::new();
-            for block in json_blocks
-            {
-                if let Ok(parsed) = serde_json::from_str::<Value>(&block)
-                {
+            for block in json_blocks {
+                if let Ok(parsed) = serde_json::from_str::<Value>(&block) {
                     let tool = parsed
                         .get("tool_name")
                         .or_else(|| parsed.get("tool"))
@@ -589,8 +536,7 @@ pub fn execute_mcp_tools_flow(
                         .or_else(|| parsed.get("args"))
                         .cloned()
                         .unwrap_or(Value::Object(serde_json::Map::new()));
-                    if let Some(t) = tool
-                    {
+                    if let Some(t) = tool {
                         nested_tool_calls.push(ToolCall { tool: t, args });
                     }
                 }
@@ -600,7 +546,9 @@ pub fn execute_mcp_tools_flow(
             // it does not need to know the validator's MCP JSON schema. The
             // executor owns conversion to the existing approval workflow.
             if nested_tool_calls.is_empty() {
-                if let Some(config) = crate::llm::worker::builder::extract_config_block(&response_str) {
+                if let Some(config) =
+                    crate::llm::worker::builder::extract_config_block(&response_str)
+                {
                     let device_name = tool_calls.iter().find_map(|tool_call| {
                         get_str_arg(
                             &tool_call.args,
@@ -617,8 +565,7 @@ pub fn execute_mcp_tools_flow(
                 }
             }
 
-            if !nested_tool_calls.is_empty()
-            {
+            if !nested_tool_calls.is_empty() {
                 log::info!(
                     "Executing nested tools comprehensively: {:?}",
                     nested_tool_calls

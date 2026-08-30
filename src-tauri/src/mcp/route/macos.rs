@@ -1,21 +1,17 @@
 use crate::schema::route::{RouteEntry, RouteMetadata, UniversalRouteTable};
 use chrono::Utc;
 
-pub fn parse_macos_route(stdout: &str) -> Result<UniversalRouteTable, String>
-{
+pub fn parse_macos_route(stdout: &str) -> Result<UniversalRouteTable, String> {
     let mut entries = Vec::new();
     let mut in_routing_table = false;
 
-    for line in stdout.lines()
-    {
+    for line in stdout.lines() {
         let line = line.trim();
-        if line.is_empty()
-        {
+        if line.is_empty() {
             continue;
         }
 
-        if line.starts_with("Destination")
-        {
+        if line.starts_with("Destination") {
             in_routing_table = true;
             continue;
         }
@@ -27,15 +23,13 @@ pub fn parse_macos_route(stdout: &str) -> Result<UniversalRouteTable, String>
             continue;
         }
 
-        if !in_routing_table
-        {
+        if !in_routing_table {
             continue;
         }
 
         let parts: Vec<&str> = line.split_whitespace().collect();
         // BSD netstat -rn output has at least 4 fields for valid routes: Destination, Gateway, Flags, Netif
-        if parts.len() >= 4
-        {
+        if parts.len() >= 4 {
             let destination = parts[0].to_string();
             let gateway = parts[1].to_string();
             let flags = parts[2].to_string();
@@ -63,13 +57,11 @@ pub fn parse_macos_route(stdout: &str) -> Result<UniversalRouteTable, String>
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_macos_route_success()
-    {
+    fn test_parse_macos_route_success() {
         let sample_output = r#"
 Routing tables
 

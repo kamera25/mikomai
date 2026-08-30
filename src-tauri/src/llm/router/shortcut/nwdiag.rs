@@ -3,24 +3,20 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 
-fn default_nwdiag_action() -> String
-{
+fn default_nwdiag_action() -> String {
     "self_network_nwdiag".to_string()
 }
 
-fn default_nwdiag_message() -> String
-{
+fn default_nwdiag_message() -> String {
     "ネットワーク図(nwdiag)を生成します。".to_string()
 }
 
-fn default_nwdiag_pattern() -> String
-{
+fn default_nwdiag_pattern() -> String {
     r"(?i)nwdiag\s*\{".to_string()
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct NwdiagRegexConfig
-{
+pub struct NwdiagRegexConfig {
     #[serde(default = "default_nwdiag_action")]
     pub action: String,
     #[serde(default = "default_nwdiag_message")]
@@ -29,10 +25,8 @@ pub struct NwdiagRegexConfig
     pub pattern: String,
 }
 
-impl Default for NwdiagRegexConfig
-{
-    fn default() -> Self
-    {
+impl Default for NwdiagRegexConfig {
+    fn default() -> Self {
         Self {
             action: default_nwdiag_action(),
             message: default_nwdiag_message(),
@@ -44,21 +38,15 @@ impl Default for NwdiagRegexConfig
 pub fn detect_nwdiag_shortcut(
     input: &str,
     config: &ShortcutRulesConfig,
-) -> Option<(String, Value, String, f64)>
-{
+) -> Option<(String, Value, String, f64)> {
     let nwdiag_cfg = &config.fastroute.nwdiag;
     let lower_trimmed = input.trim();
-    if lower_trimmed.contains('{')
-    {
-        if let Ok(re_nwdiag) = Regex::new(&nwdiag_cfg.pattern)
-        {
-            if let Some(mat) = re_nwdiag.find(lower_trimmed)
-            {
+    if lower_trimmed.contains('{') {
+        if let Ok(re_nwdiag) = Regex::new(&nwdiag_cfg.pattern) {
+            if let Some(mat) = re_nwdiag.find(lower_trimmed) {
                 let start_idx = mat.start();
-                if let Some(end_idx) = lower_trimmed.rfind('}')
-                {
-                    if end_idx > start_idx
-                    {
+                if let Some(end_idx) = lower_trimmed.rfind('}') {
+                    if end_idx > start_idx {
                         let schema = lower_trimmed[start_idx..=end_idx].to_string();
                         let mut params = serde_json::Map::new();
                         params.insert("schema".to_string(), Value::String(schema));

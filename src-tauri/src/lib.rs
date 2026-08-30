@@ -1,7 +1,8 @@
-mod connections;
 pub mod audit;
+mod connections;
 pub(crate) mod crypto;
 pub(crate) mod error;
+pub(crate) mod graph;
 pub mod harness;
 mod history;
 mod llm;
@@ -17,12 +18,10 @@ pub(crate) mod snapshot;
 pub mod state;
 pub mod validator;
 
-
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run()
-{
+pub fn run() {
     logger::init().expect("Failed to initialize logger");
     let llama_state = llm::LlamaState::new().expect("Failed to initialize Llama backend");
     let rag_state = mcp::rag::RagState::new();
@@ -33,6 +32,10 @@ pub fn run()
             tauri::async_runtime::block_on(async move {
                 let sched_state = scheduled_tasks::init_scheduler(&app_handle).await;
                 app_handle.manage(sched_state);
+                let graph_state = graph::SurrealDbState::initialize(&app_handle)
+                    .await
+                    .expect("Failed to initialize embedded SurrealDB");
+                app_handle.manage(graph_state);
             });
 
             Ok(())
@@ -73,6 +76,7 @@ pub fn run()
             mcp::fetch::fetch_config::fetch_config,
             mcp::fetch::fetch_routing::fetch_routing,
             mcp::fetch::fetch_arp::fetch_arp,
+            graph::query_network_graph,
             history::load_history,
             history::save_history,
             history::load_summaries,
@@ -115,15 +119,12 @@ pub fn run()
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| match event
-        {
-            tauri::RunEvent::ExitRequested { .. } =>
-            {
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { .. } => {
                 let _ = history::cleanup_running_history_on_exit(app_handle);
                 let state = app_handle.state::<llm::LlamaState>();
                 let status = state.status.blocking_lock();
-                if let llm::ModelState::Loading = *status
-                {
+                if let llm::ModelState::Loading = *status {
                     log::info!("Exiting while model is loading; using fast exit to prevent crash.");
                     #[cfg(unix)]
                     unsafe {
@@ -139,15 +140,12 @@ pub fn run()
                         }
                         ExitProcess(0);
                     }
-                }
-                else
-                {
+                } else {
                     let mut shared = state.shared.blocking_lock();
                     *shared = None;
                     log::info!("Llama model cleared on exit.");
                 }
             }
-            _ =>
-            {}
+            _ => {}
         });
 }

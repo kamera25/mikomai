@@ -13,23 +13,19 @@ const MAX_NEW_TOKENS: u32 = 256;
 const N_CTX: u32 = 4096;
 
 #[derive(Debug, Clone)]
-pub struct RouteResult
-{
+pub struct RouteResult {
     pub routes: Vec<Route>,
     pub subsequent_task: Option<String>,
     pub confidence: f32,
     pub device_contexts: Vec<DeviceContext>,
 }
 
-pub struct Router
-{
+pub struct Router {
     pub ctx: AgentContext,
 }
 
-impl Router
-{
-    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>) -> Result<Self, String>
-    {
+impl Router {
+    pub fn new(model: &Arc<LlamaModel>, backend: &Arc<LlamaBackend>) -> Result<Self, String> {
         let ctx = AgentContext::new(
             model.clone(),
             backend.clone(),
@@ -48,8 +44,7 @@ impl Router
         _model: &Arc<LlamaModel>,
         query: &str,
         repetition_penalty: f32,
-    ) -> Result<RouteResult, String>
-    {
+    ) -> Result<RouteResult, String> {
         let schema = r#"{
             "type": "object",
             "properties": {
@@ -82,50 +77,38 @@ impl Router
 }
 
 #[derive(Deserialize, Debug)]
-struct RouterJsonResponse
-{
+struct RouterJsonResponse {
     first_route: String,
     subsequent_route: String,
     subsequent_task: String,
     confidence: f32,
 }
 
-fn clean_json_str(output: &str) -> &str
-{
+fn clean_json_str(output: &str) -> &str {
     let trimmed = output.trim();
-    if trimmed.starts_with("```json") && trimmed.ends_with("```")
-    {
+    if trimmed.starts_with("```json") && trimmed.ends_with("```") {
         trimmed["```json".len()..trimmed.len() - 3].trim()
-    }
-    else if trimmed.starts_with("```") && trimmed.ends_with("```")
-    {
+    } else if trimmed.starts_with("```") && trimmed.ends_with("```") {
         trimmed[3..trimmed.len() - 3].trim()
-    }
-    else
-    {
+    } else {
         trimmed
     }
 }
 
-fn to_route_result(parsed: RouterJsonResponse) -> RouteResult
-{
+fn to_route_result(parsed: RouterJsonResponse) -> RouteResult {
     let first = Route::from_str(&parsed.first_route).unwrap();
     let subsequent = Route::from_str(&parsed.subsequent_route).unwrap();
     let subsequent_task = {
         let task_val = parsed.subsequent_task.trim();
-        if task_val.is_empty() || task_val.to_uppercase() == "NONE"
-        {
+        if task_val.is_empty() || task_val.to_uppercase() == "NONE" {
             None
-        }
-        else
-        {
+        } else {
             Some(task_val.to_string())
         }
     };
 
     let mut routes = vec![first];
-    if subsequent != Route::None
-    {
+    if subsequent != Route::None {
         routes.push(subsequent);
     }
 
@@ -137,28 +120,21 @@ fn to_route_result(parsed: RouterJsonResponse) -> RouteResult
     }
 }
 
-pub fn parse_route_output(output: &str) -> RouteResult
-{
+pub fn parse_route_output(output: &str) -> RouteResult {
     let clean_json = clean_json_str(output);
 
-    if let Ok(parsed) = serde_json::from_str::<RouterJsonResponse>(clean_json)
-    {
+    if let Ok(parsed) = serde_json::from_str::<RouterJsonResponse>(clean_json) {
         to_route_result(parsed)
-    }
-    else
-    {
+    } else {
         fallback_parse_route_output(output)
     }
 }
 
-fn fallback_parse_route_output(output: &str) -> RouteResult
-{
+fn fallback_parse_route_output(output: &str) -> RouteResult {
     let clean_json = clean_json_str(output);
 
-    if let Ok(repaired_str) = jsonrepair_rs::jsonrepair(clean_json)
-    {
-        if let Ok(parsed) = serde_json::from_str::<RouterJsonResponse>(&repaired_str)
-        {
+    if let Ok(repaired_str) = jsonrepair_rs::jsonrepair(clean_json) {
+        if let Ok(parsed) = serde_json::from_str::<RouterJsonResponse>(&repaired_str) {
             return to_route_result(parsed);
         }
     }
@@ -172,13 +148,11 @@ fn fallback_parse_route_output(output: &str) -> RouteResult
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_route_output_json()
-    {
+    fn test_parse_route_output_json() {
         let json_input = r#"{
             "first_route": "KNOWLEDGE",
             "subsequent_route": "ANALYSIS",
@@ -195,8 +169,7 @@ mod tests
     }
 
     #[test]
-    fn test_parse_route_output_json_markdown()
-    {
+    fn test_parse_route_output_json_markdown() {
         let markdown_input = r#"```json
         {
             "first_route": "AGENT",
@@ -212,8 +185,7 @@ mod tests
     }
 
     #[test]
-    fn test_parse_route_output_fallback_repair()
-    {
+    fn test_parse_route_output_fallback_repair() {
         let fallback_input = r#"{
             'first_route': 'ANALYSIS',
             'subsequent_route': 'AGENT',
@@ -227,8 +199,7 @@ mod tests
     }
 
     #[test]
-    fn test_parse_route_output_fallback_failure()
-    {
+    fn test_parse_route_output_fallback_failure() {
         let invalid_input =
             "This is completely garbage text that cannot be repaired into a JSON object.";
         let res = parse_route_output(invalid_input);

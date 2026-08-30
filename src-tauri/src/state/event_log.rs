@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::state::events::HarnessEvent;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EventLog {

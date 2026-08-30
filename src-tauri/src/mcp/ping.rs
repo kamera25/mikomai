@@ -6,8 +6,7 @@ use surge_ping::{Client, Config, PingIdentifier, PingSequence, ICMP};
 use tokio::time::Duration;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct PingParams
-{
+pub struct PingParams {
     pub host: Option<String>,
     pub device: Option<String>,
     pub device_name: Option<String>,
@@ -19,8 +18,7 @@ pub struct PingParams
 
 pub type PingResult = McpToolResult;
 
-fn resolve_host(host: &str) -> Result<IpAddr, String>
-{
+fn resolve_host(host: &str) -> Result<IpAddr, String> {
     let addrs = format!("{}:80", host)
         .to_socket_addrs()
         .map_err(|e| e.to_string())?;
@@ -36,26 +34,22 @@ pub async fn network_ping_core(
     size: Option<usize>,
     count: Option<u32>,
     df: Option<bool>,
-) -> Result<PingResult, String>
-{
+) -> Result<PingResult, String> {
     let df_val = df.unwrap_or(false);
 
     // If DF is requested, use system ping fallback (macOS/Linux)
-    if df_val
-    {
+    if df_val {
         return run_system_ping(&resolved_host, size, count, true).await;
     }
 
-    let ip: IpAddr = match resolved_host.parse()
-    {
+    let ip: IpAddr = match resolved_host.parse() {
         Ok(ip) => ip,
         Err(_) => tokio::task::spawn_blocking(move || resolve_host(&resolved_host))
             .await
             .map_err(|e| e.to_string())??,
     };
 
-    let config = match ip
-    {
+    let config = match ip {
         IpAddr::V4(_) => Config::builder().kind(ICMP::V4).build(),
         IpAddr::V6(_) => Config::builder().kind(ICMP::V6).build(),
     };
@@ -70,23 +64,18 @@ pub async fn network_ping_core(
     let mut output = format!("Pinging {} with {} bytes of data:\n", ip, payload_size);
     let mut success_count = 0;
 
-    for seq in 0..ping_count
-    {
+    for seq in 0..ping_count {
         let payload = vec![0u8; payload_size];
-        match pinger.ping(PingSequence(seq as u16), &payload).await
-        {
-            Ok((_, duration)) =>
-            {
+        match pinger.ping(PingSequence(seq as u16), &payload).await {
+            Ok((_, duration)) => {
                 output.push_str(&format!("Reply from {}: time={:?}\n", ip, duration));
                 success_count += 1;
             }
-            Err(e) =>
-            {
+            Err(e) => {
                 output.push_str(&format!("Request timed out. ({})\n", e));
             }
         }
-        if seq < ping_count - 1
-        {
+        if seq < ping_count - 1 {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
@@ -108,8 +97,7 @@ pub async fn network_ping_core(
 pub async fn self_network_ping_with_params(
     app: tauri::AppHandle,
     params: PingParams,
-) -> Result<PingResult, String>
-{
+) -> Result<PingResult, String> {
     let host_args = crate::mcp::args::HostArgs {
         host: params.host,
         device: params.device,
@@ -133,8 +121,7 @@ pub async fn self_network_ping(
     size: Option<usize>,
     count: Option<u32>,
     df: Option<bool>,
-) -> Result<PingResult, String>
-{
+) -> Result<PingResult, String> {
     let dev_name = deviceName.or(device_name);
     self_network_ping_with_params(
         app,
@@ -156,8 +143,7 @@ async fn run_system_ping(
     size: Option<usize>,
     count: Option<u32>,
     df: bool,
-) -> Result<PingResult, String>
-{
+) -> Result<PingResult, String> {
     use crate::mcp::safe_cmd::resolve_safe_command_path;
     use std::process::Command;
 
@@ -167,26 +153,20 @@ async fn run_system_ping(
 
     let mut cmd = Command::new(&ping_path);
 
-    if let Some(s) = size
-    {
+    if let Some(s) = size {
         cmd.arg("-s").arg(s.to_string());
     }
 
-    if let Some(c) = count
-    {
+    if let Some(c) = count {
         cmd.arg("-c").arg(c.to_string());
-    }
-    else
-    {
+    } else {
         cmd.arg("-c").arg("4");
     }
 
-    if df
-    {
+    if df {
         #[cfg(target_os = "macos")]
         {
-            if !is_ipv6
-            {
+            if !is_ipv6 {
                 cmd.arg("-D");
             }
         }
@@ -210,13 +190,11 @@ async fn run_system_ping(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_ping_result_serialization()
-    {
+    fn test_ping_result_serialization() {
         let result = PingResult {
             success: true,
             output: "Ping successful".to_string(),
@@ -226,16 +204,14 @@ mod tests
     }
 
     #[test]
-    fn test_resolve_host_ip()
-    {
+    fn test_resolve_host_ip() {
         let ip = resolve_host("127.0.0.1");
         assert!(ip.is_ok());
         assert_eq!(ip.unwrap().to_string(), "127.0.0.1");
     }
 
     #[test]
-    fn test_resolve_host_domain()
-    {
+    fn test_resolve_host_domain() {
         let ip = resolve_host("localhost");
         assert!(ip.is_ok());
         let ip_str = ip.unwrap().to_string();
@@ -243,8 +219,7 @@ mod tests
     }
 
     #[tokio::test]
-    async fn test_network_ping_core_localhost()
-    {
+    async fn test_network_ping_core_localhost() {
         let result =
             network_ping_core("127.0.0.1".to_string(), Some(32), Some(1), Some(true)).await;
         assert!(result.is_ok());
@@ -254,8 +229,7 @@ mod tests
     }
 
     #[tokio::test]
-    async fn test_network_ping_core_invalid_host()
-    {
+    async fn test_network_ping_core_invalid_host() {
         let result = network_ping_core(
             "invalid.localdomain.test".to_string(),
             Some(32),
@@ -267,8 +241,7 @@ mod tests
     }
 
     #[tokio::test]
-    async fn test_run_system_ping_localhost()
-    {
+    async fn test_run_system_ping_localhost() {
         let result = run_system_ping("127.0.0.1", Some(56), Some(1), false).await;
         assert!(result.is_ok());
         let ping_res = result.unwrap();

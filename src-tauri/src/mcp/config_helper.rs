@@ -4,15 +4,12 @@ use std::io::Write;
 use std::process::Command;
 use std::sync::Mutex;
 
-pub struct ChoiceManager
-{
+pub struct ChoiceManager {
     pub txs: Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
 }
 
-impl ChoiceManager
-{
-    pub fn new() -> Self
-    {
+impl ChoiceManager {
+    pub fn new() -> Self {
         Self {
             txs: Mutex::new(std::collections::HashMap::new()),
         }
@@ -24,62 +21,54 @@ pub async fn submit_user_choice(
     id: Option<String>,
     choice: String,
     state: tauri::State<'_, ChoiceManager>,
-) -> Result<(), String>
-{
+) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
     let mut lock = state
         .txs
         .lock()
         .map_err(|_| "Mutex lock poisoned".to_string())?;
-    if let Some(tx) = lock.remove(&id)
-    {
+    if let Some(tx) = lock.remove(&id) {
         let _ = tx.send(choice);
     }
     Ok(())
 }
 
 #[derive(Serialize)]
-struct ValidatePayload
-{
+struct ValidatePayload {
     action: &'static str,
     config: String,
 }
 
 #[derive(Deserialize)]
-struct ValidateResponse
-{
+struct ValidateResponse {
     success: bool,
     errors: Vec<String>,
     warnings: Vec<String>,
 }
 
 #[derive(Serialize)]
-struct ConvertPayload
-{
+struct ConvertPayload {
     action: &'static str,
     config: String,
     target_vendor: String,
 }
 
 #[derive(Deserialize)]
-struct ConvertResponse
-{
+struct ConvertResponse {
     success: bool,
     converted_config: String,
     error: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DiffLine
-{
+pub struct DiffLine {
     pub r#type: String, // "normal", "insert", "delete"
     pub old_line: Option<usize>,
     pub new_line: Option<usize>,
     pub content: String,
 }
 
-pub fn normalize_config_for_diff(config: &str) -> String
-{
+pub fn normalize_config_for_diff(config: &str) -> String {
     let ignorable_keywords = [
         "info:",
         "building configuration",
@@ -100,10 +89,8 @@ pub fn normalize_config_for_diff(config: &str) -> String
             let trimmed = line.trim();
             let lower = trimmed.to_lowercase();
 
-            for kw in &ignorable_keywords
-            {
-                if lower.starts_with(kw) || lower.contains(kw)
-                {
+            for kw in &ignorable_keywords {
+                if lower.starts_with(kw) || lower.contains(kw) {
                     return false;
                 }
             }
@@ -120,29 +107,23 @@ pub fn normalize_config_for_diff(config: &str) -> String
         .collect();
 
     let mut start = 0;
-    while start < lines.len() && lines[start].trim().is_empty()
-    {
+    while start < lines.len() && lines[start].trim().is_empty() {
         start += 1;
     }
 
     let mut end = lines.len();
-    while end > start && lines[end - 1].trim().is_empty()
-    {
+    while end > start && lines[end - 1].trim().is_empty() {
         end -= 1;
     }
 
-    if start >= end
-    {
+    if start >= end {
         String::new()
-    }
-    else
-    {
+    } else {
         lines[start..end].join("\n")
     }
 }
 
-pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usize, usize)
-{
+pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usize, usize) {
     let norm_old = normalize_config_for_diff(old_text);
     let norm_new = normalize_config_for_diff(new_text);
     let old_lines: Vec<&str> = norm_old.lines().collect();
@@ -152,16 +133,11 @@ pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usiz
     let m = new_lines.len();
 
     let mut dp = vec![vec![0usize; m + 1]; n + 1];
-    for i in (0..n).rev()
-    {
-        for j in (0..m).rev()
-        {
-            if old_lines[i] == new_lines[j]
-            {
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            if old_lines[i] == new_lines[j] {
                 dp[i][j] = dp[i + 1][j + 1] + 1;
-            }
-            else
-            {
+            } else {
                 dp[i][j] = dp[i + 1][j].max(dp[i][j + 1]);
             }
         }
@@ -175,10 +151,8 @@ pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usiz
     let mut additions = 0;
     let mut deletions = 0;
 
-    while i < n && j < m
-    {
-        if old_lines[i] == new_lines[j]
-        {
+    while i < n && j < m {
+        if old_lines[i] == new_lines[j] {
             diff_lines.push(DiffLine {
                 r#type: "normal".to_string(),
                 old_line: Some(old_line_num),
@@ -189,9 +163,7 @@ pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usiz
             j += 1;
             old_line_num += 1;
             new_line_num += 1;
-        }
-        else if dp[i + 1][j] >= dp[i][j + 1]
-        {
+        } else if dp[i + 1][j] >= dp[i][j + 1] {
             diff_lines.push(DiffLine {
                 r#type: "delete".to_string(),
                 old_line: Some(old_line_num),
@@ -201,9 +173,7 @@ pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usiz
             i += 1;
             old_line_num += 1;
             deletions += 1;
-        }
-        else
-        {
+        } else {
             diff_lines.push(DiffLine {
                 r#type: "insert".to_string(),
                 old_line: None,
@@ -216,8 +186,7 @@ pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usiz
         }
     }
 
-    while i < n
-    {
+    while i < n {
         diff_lines.push(DiffLine {
             r#type: "delete".to_string(),
             old_line: Some(old_line_num),
@@ -229,8 +198,7 @@ pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usiz
         deletions += 1;
     }
 
-    while j < m
-    {
+    while j < m {
         diff_lines.push(DiffLine {
             r#type: "insert".to_string(),
             old_line: None,
@@ -245,12 +213,10 @@ pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usiz
     (diff_lines, additions, deletions)
 }
 
-fn run_config_helper(payload: serde_json::Value) -> Result<String, String>
-{
+fn run_config_helper(payload: serde_json::Value) -> Result<String, String> {
     let mut current_dir =
         std::env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?;
-    if current_dir.ends_with("src-tauri")
-    {
+    if current_dir.ends_with("src-tauri") {
         current_dir.pop();
     }
 
@@ -260,15 +226,13 @@ fn run_config_helper(payload: serde_json::Value) -> Result<String, String>
         .join("python")
         .join("config_helper.py");
 
-    if !python_path.exists()
-    {
+    if !python_path.exists() {
         return Err(format!(
             "Python virtual environment binary not found at {:?}",
             python_path
         ));
     }
-    if !wrapper_path.exists()
-    {
+    if !wrapper_path.exists() {
         return Err(format!(
             "config_helper script not found at {:?}",
             wrapper_path
@@ -297,8 +261,7 @@ fn run_config_helper(payload: serde_json::Value) -> Result<String, String>
         .wait_with_output()
         .map_err(|e| format!("Failed to wait on helper process: {}", e))?;
 
-    if !output.status.success()
-    {
+    if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         return Err(format!("config_helper failed with stderr: {}", stderr));
     }
@@ -312,10 +275,8 @@ pub async fn validate_cisco_config_impl(
     id: Option<String>,
     config: String,
     target_device: Option<(String, String)>,
-) -> Result<CommandResult, String>
-{
-    if config.trim().is_empty()
-    {
+) -> Result<CommandResult, String> {
+    if config.trim().is_empty() {
         return Err("Configuration text cannot be empty".to_string());
     }
 
@@ -324,16 +285,11 @@ pub async fn validate_cisco_config_impl(
         config: config.clone(),
     });
 
-    let (res_errors, res_warnings) = match run_config_helper(payload)
-    {
-        Ok(output_json) =>
-        {
-            if let Ok(res) = serde_json::from_str::<ValidateResponse>(&output_json)
-            {
+    let (res_errors, res_warnings) = match run_config_helper(payload) {
+        Ok(output_json) => {
+            if let Ok(res) = serde_json::from_str::<ValidateResponse>(&output_json) {
                 (res.errors, res.warnings)
-            }
-            else
-            {
+            } else {
                 (vec![], vec![])
             }
         }
@@ -348,37 +304,29 @@ pub async fn validate_cisco_config_impl(
 
     let mut md = String::new();
     md.push_str("### Cisco Config Validation Results\n");
-    if res.success
-    {
+    if res.success {
         md.push_str("- **Status**: ✅ Validation Passed\n");
-    }
-    else
-    {
+    } else {
         md.push_str("- **Status**: ❌ Validation Failed\n");
     }
 
-    if !res.errors.is_empty()
-    {
+    if !res.errors.is_empty() {
         md.push_str("\n#### Errors:\n");
-        for err in &res.errors
-        {
+        for err in &res.errors {
             md.push_str(&format!("- ❌ {}\n", err));
         }
     }
 
-    if !res.warnings.is_empty()
-    {
+    if !res.warnings.is_empty() {
         md.push_str("\n#### Warnings / Security Advice:\n");
-        for warn in &res.warnings
-        {
+        for warn in &res.warnings {
             md.push_str(&format!("- ⚠️ {}\n", warn));
         }
     }
 
     // Without a desktop app there is no approval UI, so validation remains
     // read-only (this path is also used by unit tests).
-    if !res.success || app.is_none()
-    {
+    if !res.success || app.is_none() {
         return Ok(CommandResult {
             success: res.success,
             output: md,
@@ -388,10 +336,8 @@ pub async fn validate_cisco_config_impl(
         });
     }
 
-    if res.success
-    {
-        if let Some(app_handle) = app
-        {
+    if res.success {
+        if let Some(app_handle) = app {
             use tauri::Emitter;
             use tauri::Manager;
 
@@ -408,19 +354,15 @@ pub async fn validate_cisco_config_impl(
 
             let mut hostname = None;
             let mut ip = None;
-            if let Some((h, i)) = target_device
-            {
+            if let Some((h, i)) = target_device {
                 hostname = Some(h);
                 ip = Some(i);
-            }
-            else if let Some(host) = crate::settings::load_settings(app_handle.clone())
+            } else if let Some(host) = crate::settings::load_settings(app_handle.clone())
                 .ok()
                 .and_then(|settings| settings.recent_ips.first().cloned())
             {
-                if let Ok(connections) = crate::connections::load_connections_raw(&app_handle)
-                {
-                    if let Some(conn) = connections.iter().find(|c| c.matches_host_or_ip(&host))
-                    {
+                if let Ok(connections) = crate::connections::load_connections_raw(&app_handle) {
+                    if let Some(conn) = connections.iter().find(|c| c.matches_host_or_ip(&host)) {
                         hostname = Some(conn.hostname.as_str().to_string());
                         let ip_s = conn.ip_string();
                         ip = if ip_s.is_empty() { None } else { Some(ip_s) };
@@ -439,32 +381,22 @@ pub async fn validate_cisco_config_impl(
             let _ = app_handle.emit("request-diff-commit", payload);
 
             // Wait for frontend response (commit or cancel)
-            match rx.await
-            {
-                Ok(c) =>
-                {
-                    if c == "commit"
-                    {
+            match rx.await {
+                Ok(c) => {
+                    if c == "commit" {
                         let target_name = hostname.clone().or_else(|| ip.clone());
-                        let device_name = match target_name
-                        {
+                        let device_name = match target_name {
                             Some(name) => name,
-                            None =>
-                            {
+                            None => {
                                 if let Ok(conns) =
                                     crate::connections::load_connections_raw(&app_handle)
                                 {
-                                    if let Some(conn) = conns.first()
-                                    {
+                                    if let Some(conn) = conns.first() {
                                         conn.hostname.as_str().to_string()
-                                    }
-                                    else
-                                    {
+                                    } else {
                                         "unknown".to_string()
                                     }
-                                }
-                                else
-                                {
+                                } else {
                                     "unknown".to_string()
                                 }
                             }
@@ -485,11 +417,9 @@ pub async fn validate_cisco_config_impl(
                             &device_name,
                         )
                         .await;
-                        let dev_config = match dev_config_res
-                        {
+                        let dev_config = match dev_config_res {
                             Ok(cfg) => cfg,
-                            Err(e) =>
-                            {
+                            Err(e) => {
                                 let err_msg = format!(
                                     "対象機器 ({}) の接続設定取得に失敗しました: {}",
                                     device_name, e
@@ -525,8 +455,7 @@ pub async fn validate_cisco_config_impl(
                         let before_config = match wrapper.execute_show(&dev_config, fetch_cmd).await
                         {
                             Ok(cfg) => cfg,
-                            Err(e) =>
-                            {
+                            Err(e) => {
                                 let err_msg = format!("現状のConfig取得に失敗しました: {}", e);
                                 let _ = app_handle.emit(
                                     "commit-status",
@@ -568,8 +497,7 @@ pub async fn validate_cisco_config_impl(
                         // Step 1.5: Automatic Dry-run check if enabled in settings
                         let app_settings =
                             crate::settings::load_settings(app_handle.clone()).unwrap_or_default();
-                        if app_settings.auto_dry_run
-                        {
+                        if app_settings.auto_dry_run {
                             let _ = app_handle.emit("commit-status", serde_json::json!({
                                 "id": id,
                                 "phase": "dry_running",
@@ -583,25 +511,19 @@ pub async fn validate_cisco_config_impl(
                                 }),
                             );
 
-                            match wrapper.execute_dry_run(&dev_config, commands.clone()).await
-                            {
-                                Ok(dry_res) =>
-                                {
+                            match wrapper.execute_dry_run(&dev_config, commands.clone()).await {
+                                Ok(dry_res) => {
                                     let errors: Vec<_> =
                                         dry_res.results.iter().filter(|r| !r.ok).collect();
-                                    for r in &dry_res.results
-                                    {
-                                        if r.ok
-                                        {
+                                    for r in &dry_res.results {
+                                        if r.ok {
                                             let _ = app_handle.emit(
                                                 "commit-log",
                                                 serde_json::json!({
                                                     "line": format!("[DRY-RUN OK] {}", r.line)
                                                 }),
                                             );
-                                        }
-                                        else
-                                        {
+                                        } else {
                                             let err_detail =
                                                 r.error.as_deref().unwrap_or("Error detected");
                                             let _ = app_handle.emit("commit-log", serde_json::json!({
@@ -610,8 +532,7 @@ pub async fn validate_cisco_config_impl(
                                         }
                                     }
 
-                                    if !errors.is_empty()
-                                    {
+                                    if !errors.is_empty() {
                                         let _ = app_handle.emit("commit-log", serde_json::json!({
                                             "line": format!("[SYSTEM] ⚠️ Dry-run検証で {} 件のエラーが検出されました。ユーザーに投入確認を要請します。", errors.len())
                                         }));
@@ -670,16 +591,13 @@ pub async fn validate_cisco_config_impl(
                                         let _ = app_handle.emit("commit-log", serde_json::json!({
                                             "line": "[SYSTEM] ユーザー承認により強制投入を開始します。"
                                         }));
-                                    }
-                                    else
-                                    {
+                                    } else {
                                         let _ = app_handle.emit("commit-log", serde_json::json!({
                                             "line": "[SYSTEM] ✅ 自動Dry-run全行成功。エラーなしで本番投入へ進みます。"
                                         }));
                                     }
                                 }
-                                Err(e) =>
-                                {
+                                Err(e) => {
                                     let _ = app_handle.emit("commit-log", serde_json::json!({
                                         "line": format!("[SYSTEM ⚠️] Dry-run実行スキップ (エラー: {})", e)
                                     }));
@@ -705,11 +623,9 @@ pub async fn validate_cisco_config_impl(
                             commands
                         );
                         let deploy_res = wrapper.execute_config(&dev_config, commands).await;
-                        let deploy_output = match deploy_res
-                        {
+                        let deploy_output = match deploy_res {
                             Ok(out) => out,
-                            Err(e) =>
-                            {
+                            Err(e) => {
                                 let err_msg = format!("Config投入中にエラーが発生しました: {}", e);
                                 let _ = app_handle.emit(
                                     "commit-status",
@@ -739,8 +655,7 @@ pub async fn validate_cisco_config_impl(
                             );
                         let mut deploy_output = deploy_output;
 
-                        if !apply_save.apply_command.trim().is_empty()
-                        {
+                        if !apply_save.apply_command.trim().is_empty() {
                             let _ = app_handle.emit("commit-status", serde_json::json!({
                                 "id": id,
                                 "phase": "deploying",
@@ -755,8 +670,7 @@ pub async fn validate_cisco_config_impl(
                             }
                         }
 
-                        if !apply_save.save_command.trim().is_empty()
-                        {
+                        if !apply_save.save_command.trim().is_empty() {
                             let _ = app_handle.emit("commit-status", serde_json::json!({
                                 "id": id,
                                 "phase": "deploying",
@@ -784,8 +698,7 @@ pub async fn validate_cisco_config_impl(
                         let after_config = match wrapper.execute_show(&dev_config, fetch_cmd).await
                         {
                             Ok(cfg) => cfg,
-                            Err(e) =>
-                            {
+                            Err(e) => {
                                 let err_msg = format!("投入後のConfig取得に失敗しました: {}", e);
                                 let _ = app_handle.emit(
                                     "commit-status",
@@ -836,15 +749,12 @@ pub async fn validate_cisco_config_impl(
                         );
 
                         // Step 4: Return result to user
-                        let status_str = if diff_applied
-                        {
+                        let status_str = if diff_applied {
                             format!(
                                 "🚀 Configの投入およびDiff検証が成功しました (+{} 行, -{} 行)",
                                 additions, deletions
                             )
-                        }
-                        else
-                        {
+                        } else {
                             "⚠️ Configの投入は完了しましたが、投入前後のConfigに差分は検出されませんでした。".to_string()
                         };
 
@@ -853,17 +763,12 @@ pub async fn validate_cisco_config_impl(
                         final_md.push_str(&deploy_output);
                         final_md.push_str("\n```\n");
 
-                        if diff_applied
-                        {
+                        if diff_applied {
                             final_md.push_str("\n#### 適用された差分 (Diff):\n```diff\n");
-                            for d in &diff_lines
-                            {
-                                if d.r#type == "insert"
-                                {
+                            for d in &diff_lines {
+                                if d.r#type == "insert" {
                                     final_md.push_str(&format!("+ {}\n", d.content));
-                                }
-                                else if d.r#type == "delete"
-                                {
+                                } else if d.r#type == "delete" {
                                     final_md.push_str(&format!("- {}\n", d.content));
                                 }
                             }
@@ -877,9 +782,7 @@ pub async fn validate_cisco_config_impl(
                             is_cached: None,
                             cache_time: None,
                         })
-                    }
-                    else
-                    {
+                    } else {
                         Ok(CommandResult {
                             success: false,
                             output: format!(
@@ -894,9 +797,7 @@ pub async fn validate_cisco_config_impl(
                 }
                 Err(_) => Err("Failed to receive user choice".to_string()),
             }
-        }
-        else
-        {
+        } else {
             Ok(CommandResult {
                 success: true,
                 output: md,
@@ -905,9 +806,7 @@ pub async fn validate_cisco_config_impl(
                 cache_time: None,
             })
         }
-    }
-    else
-    {
+    } else {
         Ok(CommandResult {
             success: false,
             output: md,
@@ -922,8 +821,7 @@ pub async fn validate_cisco_config_impl(
 pub async fn validate_cisco_config(
     app: tauri::AppHandle,
     config: String,
-) -> Result<CommandResult, String>
-{
+) -> Result<CommandResult, String> {
     validate_cisco_config_impl(Some(app), None, config, None).await
 }
 
@@ -931,15 +829,12 @@ pub async fn validate_cisco_config(
 pub async fn convert_cisco_config(
     config: String,
     target_vendor: String,
-) -> Result<CommandResult, String>
-{
-    if config.trim().is_empty()
-    {
+) -> Result<CommandResult, String> {
+    if config.trim().is_empty() {
         return Err("Configuration text cannot be empty".to_string());
     }
     let vendor = target_vendor.trim().to_lowercase();
-    if vendor != "juniper" && vendor != "arista"
-    {
+    if vendor != "juniper" && vendor != "arista" {
         return Err(format!(
             "Unsupported target vendor: '{}'. Supported: 'juniper', 'arista'",
             target_vendor
@@ -956,8 +851,7 @@ pub async fn convert_cisco_config(
     let res: ConvertResponse = serde_json::from_str(&output_json)
         .map_err(|e| format!("Failed to parse converter output: {}", e))?;
 
-    if !res.success
-    {
+    if !res.success {
         let err_msg = res
             .error
             .unwrap_or_else(|| "Unknown conversion error".to_string());
@@ -991,8 +885,7 @@ pub async fn ask_user_choice(
     title: String,
     message: String,
     options: Vec<String>,
-) -> Result<String, String>
-{
+) -> Result<String, String> {
     use tauri::Emitter;
     use tauri::Manager;
 
@@ -1019,22 +912,18 @@ pub async fn ask_user_choice(
     let _ = app.emit("request-user-choice", payload);
 
     // Wait for frontend response
-    match rx.await
-    {
+    match rx.await {
         Ok(c) => Ok(c),
         Err(_) => Ok("cancelled".to_string()),
     }
 }
 
-pub struct InterfaceChoiceManager
-{
+pub struct InterfaceChoiceManager {
     pub txs: Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
 }
 
-impl InterfaceChoiceManager
-{
-    pub fn new() -> Self
-    {
+impl InterfaceChoiceManager {
+    pub fn new() -> Self {
         Self {
             txs: Mutex::new(std::collections::HashMap::new()),
         }
@@ -1046,15 +935,13 @@ pub async fn submit_interface_choice(
     id: Option<String>,
     choice: String,
     state: tauri::State<'_, InterfaceChoiceManager>,
-) -> Result<(), String>
-{
+) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
     let mut lock = state
         .txs
         .lock()
         .map_err(|_| "Mutex lock poisoned".to_string())?;
-    if let Some(tx) = lock.remove(&id)
-    {
+    if let Some(tx) = lock.remove(&id) {
         let _ = tx.send(choice);
     }
     Ok(())
@@ -1066,8 +953,7 @@ pub async fn ask_interface_choice(
     id: Option<String>,
     vendor: String,
     message: Option<String>,
-) -> Result<String, String>
-{
+) -> Result<String, String> {
     use tauri::Emitter;
     use tauri::Manager;
 
@@ -1093,22 +979,18 @@ pub async fn ask_interface_choice(
     let _ = app.emit("request-interface-choice", payload);
 
     // Wait for frontend response
-    match rx.await
-    {
+    match rx.await {
         Ok(c) => Ok(c),
         Err(_) => Ok("cancelled".to_string()),
     }
 }
 
-pub struct IpAddressChoiceManager
-{
+pub struct IpAddressChoiceManager {
     pub txs: Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
 }
 
-impl IpAddressChoiceManager
-{
-    pub fn new() -> Self
-    {
+impl IpAddressChoiceManager {
+    pub fn new() -> Self {
         Self {
             txs: Mutex::new(std::collections::HashMap::new()),
         }
@@ -1120,15 +1002,13 @@ pub async fn submit_ipaddress_choice(
     id: Option<String>,
     choice: String,
     state: tauri::State<'_, IpAddressChoiceManager>,
-) -> Result<(), String>
-{
+) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
     let mut lock = state
         .txs
         .lock()
         .map_err(|_| "Mutex lock poisoned".to_string())?;
-    if let Some(tx) = lock.remove(&id)
-    {
+    if let Some(tx) = lock.remove(&id) {
         let _ = tx.send(choice);
     }
     Ok(())
@@ -1142,8 +1022,7 @@ pub async fn ask_ipaddress_choice(
     message: String,
     subnet: String,
     default_ip: Option<String>,
-) -> Result<String, String>
-{
+) -> Result<String, String> {
     use tauri::Emitter;
     use tauri::Manager;
 
@@ -1171,21 +1050,18 @@ pub async fn ask_ipaddress_choice(
     let _ = app.emit("request-ipaddress-choice", payload);
 
     // Wait for frontend response
-    match rx.await
-    {
+    match rx.await {
         Ok(c) => Ok(c),
         Err(_) => Ok("cancelled".to_string()),
     }
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_validate_cisco_config()
-    {
+    async fn test_validate_cisco_config() {
         let config = "hostname RouterA\ninterface GigabitEthernet0/1\n ip address 192.168.1.1 255.255.255.0\n".to_string();
         let result = validate_cisco_config_impl(None, None, config, None).await;
         assert!(result.is_ok(), "Expected success, got: {:?}", result);
@@ -1195,8 +1071,7 @@ mod tests
     }
 
     #[tokio::test]
-    async fn test_convert_cisco_config()
-    {
+    async fn test_convert_cisco_config() {
         let config = "hostname RouterA\ninterface GigabitEthernet0/1\n ip address 192.168.1.1 255.255.255.0\n".to_string();
         let result = convert_cisco_config(config, "juniper".to_string()).await;
         assert!(result.is_ok(), "Expected success, got: {:?}", result);
@@ -1206,8 +1081,7 @@ mod tests
     }
 
     #[test]
-    fn test_compute_line_diff()
-    {
+    fn test_compute_line_diff() {
         let old_text = "hostname RouterA\ninterface GigabitEthernet0/1\n shutdown\n";
         let new_text = "hostname RouterA\ninterface GigabitEthernet0/1\n no shutdown\n ip address 10.0.0.1 255.255.255.0\n";
         let (lines, additions, deletions) = compute_line_diff(old_text, new_text);
@@ -1222,8 +1096,7 @@ mod tests
     }
 
     #[test]
-    fn test_normalize_config_for_diff()
-    {
+    fn test_normalize_config_for_diff() {
         let raw_config = "\
 INFO: Connecting to device...
 INFO: Connected successfully.
