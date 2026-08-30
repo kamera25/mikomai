@@ -208,6 +208,13 @@ impl AgentLoop {
                 decision.objective = init_obj.clone();
             }
 
+            // FINISH is a user-facing terminal response. Keep its content in
+            // final_answer only, even if the planner or a fallback attached a
+            // diagnostic reason.
+            if decision.action_type == ActionType::Finish {
+                decision.reason.clear();
+            }
+
             log::info!(
                 "[AgentLoop] Step {}: Decision proposed -> action_type={:?}, objective='{}', tool={:?}, target={:?}, params={}",
                 self.state_machine.step_count(),
@@ -229,16 +236,23 @@ impl AgentLoop {
                 .event_log
                 .push(HarnessEvent::Decision(decision.clone()));
 
-            let _ = self.window.emit(
-                "chat-event",
-                ChatEvent::LlmChunk(format!(
+            let decision_log = if decision.action_type == ActionType::Finish {
+                format!(
+                    "\n```agent-decision\nstep: {}\naction: {}\nobjective: {}\n```\n",
+                    self.state_machine.step_count(),
+                    decision.action_type.as_str(),
+                    decision.objective.replace('\n', " ")
+                )
+            } else {
+                format!(
                     "\n```agent-decision\nstep: {}\naction: {}\nobjective: {}\nreason: {}\n```\n",
                     self.state_machine.step_count(),
                     decision.action_type.as_str(),
                     decision.objective.replace('\n', " "),
                     decision.reason.join(", ").replace('\n', " ")
-                )),
-            );
+                )
+            };
+            let _ = self.window.emit("chat-event", ChatEvent::LlmChunk(decision_log));
 
             if decision.action_type == ActionType::Finish {
                 self.state_machine.transition(HarnessState::Finished)?;

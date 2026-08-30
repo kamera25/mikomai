@@ -54,12 +54,12 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
     "resource": "arp"
   },
   "reason": [
-    "アクションを選択した理由 (例: 機器のARPエントリを確認するため)"
+    "アクションを選択した理由 (例: 機器のARPエントリを確認するため) ※FINISHの場合はこのフィールドを出力しない"
   ],
   "expected_observation": [
     "このアクションで期待される観察結果 (例: 最新のARPテーブル情報)"
   ],
-  "final_answer": "FINISHの場合にユーザーへ提示する最終報告サマリー（Markdown形式）"
+  "final_answer": "FINISHの場合にユーザーへ提示する最終報告サマリー（Markdown形式）。FINISHではreasonを書かず、このフィールドだけに集約する"
 }
 ```
 "#;
@@ -117,7 +117,7 @@ pub fn build_planner_schema(registered_devices: &[String]) -> String {
     }},
     "final_answer": {{ "type": ["string", "null"] }}
   }},
-  "required": ["action_type", "objective", "reason"]
+  "required": ["action_type", "objective"]
 }}"#
     )
 }
@@ -156,7 +156,7 @@ pub const DECISION_JSON_SCHEMA: &str = r#"{
     },
     "final_answer": { "type": ["string", "null"] }
   },
-  "required": ["action_type", "objective", "reason"]
+  "required": ["action_type", "objective"]
 }"#;
 
 pub struct LlmPlanner;

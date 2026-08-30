@@ -74,6 +74,7 @@ pub struct Decision {
     pub tool: Option<String>,
     pub target: Option<String>,
     pub parameters: serde_json::Value,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub reason: Vec<String>,
     pub expected_observation: Vec<String>,
     pub final_answer: Option<String>,

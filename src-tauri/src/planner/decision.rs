@@ -54,6 +54,12 @@ pub fn parse_decision_from_json(raw_json: &str) -> Result<Decision, String> {
         action_type = ActionType::Finish;
     }
 
+    let reason = if action_type == ActionType::Finish {
+        Vec::new()
+    } else {
+        parsed.reason
+    };
+
     Ok(Decision {
         id: uuid::Uuid::new_v4(),
         timestamp: chrono::Utc::now(),
@@ -66,7 +72,7 @@ pub fn parse_decision_from_json(raw_json: &str) -> Result<Decision, String> {
         tool: parsed.tool,
         target: parsed.target,
         parameters: parsed.parameters,
-        reason: parsed.reason,
+        reason,
         expected_observation: parsed.expected_observation,
         final_answer: parsed.final_answer,
     })
@@ -92,6 +98,21 @@ mod tests {
     }
 
     #[test]
+    fn test_finish_discards_reason_and_does_not_serialize_it() {
+        let json = r#"{
+            "action_type": "FINISH",
+            "objective": "完了",
+            "reason": ["内部的な補足"],
+            "final_answer": "ネットワーク調査が完了しました。"
+        }"#;
+        let decision = parse_decision_from_json(json).unwrap();
+
+        assert!(decision.reason.is_empty());
+        let serialized = serde_json::to_value(decision).unwrap();
+        assert!(serialized.get("reason").is_none());
+    }
+
+    #[test]
     fn test_schema_conversion() {
         let schema = r#"{
           "type": "object",
@@ -114,7 +135,7 @@ mod tests {
             },
             "final_answer": { "type": ["string", "null"] }
           },
-          "required": ["action_type", "objective", "reason"]
+          "required": ["action_type", "objective"]
         }"#;
 
         let res = llama_cpp_2::json_schema_to_grammar(schema);
