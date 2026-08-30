@@ -20,6 +20,21 @@ fn is_explanatory_request(normalized: &str) -> bool {
     .any(|marker| normalized.contains(marker))
 }
 
+fn is_configuration_change_request(normalized: &str) -> bool {
+    [
+        "設定する",
+        "設定して",
+        "設定を変更",
+        "変更する",
+        "追加する",
+        "削除する",
+        "投入する",
+        "hostname",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
 /// Returns the least-powerful execution model capable of handling `message`.
 ///
 /// This is deliberately deterministic. Live investigations always use
@@ -28,6 +43,12 @@ fn is_explanatory_request(normalized: &str) -> bool {
 /// request an observation of the current environment.
 pub fn select_dispatch_mode(message: &str) -> DispatchMode {
     let normalized = message.to_lowercase();
+
+    // Configuration changes always enter AgentLoop. The Agent uses the
+    // deterministic RAG-template builder, never the standalone Builder LLM.
+    if is_configuration_change_request(&normalized) {
+        return DispatchMode::Agent;
+    }
 
     let agent_markers = [
         // Explicit delegation
@@ -145,6 +166,14 @@ mod tests {
         assert_eq!(
             select_dispatch_mode("OSPF の状態遷移とは？"),
             DispatchMode::Worker
+        );
+    }
+
+    #[test]
+    fn configuration_changes_do_not_route_to_builder_worker() {
+        assert_eq!(
+            select_dispatch_mode("F220 に hostname aaa を設定する"),
+            DispatchMode::Agent
         );
     }
 }

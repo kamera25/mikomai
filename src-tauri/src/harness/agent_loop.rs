@@ -231,11 +231,10 @@ impl AgentLoop {
                 }),
             );
 
-            // A RAG lookup for a configuration request is a hand-off point:
-            // Builder owns config generation and its approval UI.  Continuing
-            // the harness planner here used to make it issue a show command
-            // after RAG, instead of presenting the generated change for
-            // review.
+            // A configuration-oriented RAG result is delegated to Builder as
+            // a co-worker. The Agent does not infer template values itself;
+            // Builder reasons over the request and RAG evidence, then starts
+            // the existing review/approval flow.
             if tool_kind_opt.map_or(false, |kind| kind.is_rag_tool())
                 && is_configuration_change_goal(&goal)
             {
@@ -255,7 +254,7 @@ impl AgentLoop {
                     true,
                 )
                 .await
-                .unwrap_or_else(|error| format!("Builderへの引き継ぎに失敗しました: {}", error));
+                .unwrap_or_else(|error| format!("Builder Co-Workerの実行に失敗しました: {}", error));
 
                 final_report = builder_result;
                 self.state_machine.transition(HarnessState::Finished)?;
@@ -343,7 +342,7 @@ mod tests {
     use super::is_configuration_change_goal;
 
     #[test]
-    fn only_change_requests_handoff_rag_to_builder() {
+    fn only_change_requests_handoff_rag_to_builder_coworker() {
         assert!(is_configuration_change_goal("F220 に hostname aaa を設定する"));
         assert!(!is_configuration_change_goal("F220 の設定を確認する"));
     }
