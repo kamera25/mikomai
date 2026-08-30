@@ -22,7 +22,7 @@ describe("Sidebar", () => {
     render(
       <Sidebar
         isSidebarOpen={true}
-        history={[{ id: "s1", title: "Session 1", type: "session" }]}
+        history={[{ id: "s1", title: "Session 1", type: "session", messages: [] }]}
         activeSessionId="s1"
         messages={messages}
         createNewFolder={vi.fn()}

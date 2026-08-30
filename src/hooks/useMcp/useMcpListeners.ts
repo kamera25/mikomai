@@ -52,12 +52,12 @@ export function useMcpListeners({
           setMessagesRef.current((prev) =>
             prev.map((msg) =>
               msg.task_id === targetTaskId
-                ? {
+                ? ({
                     ...msg,
                     content: targetContent,
                     isHidden: false,
                     summary_text: isAgent ? "エージェントによる解析を開始" : msg.summary_text,
-                  }
+                  } as Message)
                 : msg
             )
           );
