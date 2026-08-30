@@ -50,6 +50,18 @@ export function AppLayout() {
 
   const { state: uiState, dispatch: uiDispatch } = useUIContext();
 
+  const { diffCommitId, setDiffCommitId } = useConfigDiffEvents();
+
+  const handleCloseConfigDiff = useCallback(() => {
+    uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false });
+    if (diffCommitId) {
+      invoke("submit_user_choice", { id: diffCommitId, choice: "cancel" }).catch((err) => {
+        console.error("Failed to cancel user choice on close:", err);
+      });
+      setDiffCommitId(null);
+    }
+  }, [diffCommitId, setDiffCommitId, uiDispatch]);
+
   // Custom hooks for extracted concerns
   const {
     sidebarWidth,
@@ -58,7 +70,18 @@ export function AppLayout() {
     isResizingRight,
     handleLeftMouseDown,
     handleRightMouseDown,
-  } = useResizablePane();
+  } = useResizablePane({
+    onSidebarCollapse: (collapsed) => {
+      uiDispatch({ type: "SET_SIDEBAR_OPEN", payload: !collapsed });
+    },
+    onDiffCollapse: (collapsed) => {
+      if (collapsed) {
+        handleCloseConfigDiff();
+      } else {
+        uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: true });
+      }
+    },
+  });
 
   const {
     questionQueue,
@@ -70,8 +93,6 @@ export function AppLayout() {
     handleSelectIpAddress,
     handleCancelIpAddress,
   } = useQuestionQueue();
-
-  const { diffCommitId, setDiffCommitId } = useConfigDiffEvents();
 
   const {
     state: chatState,
@@ -341,16 +362,6 @@ export function AppLayout() {
     },
     [uiState.isSettingsOpen, uiDispatch]
   );
-
-  const handleCloseConfigDiff = useCallback(() => {
-    uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false });
-    if (diffCommitId) {
-      invoke("submit_user_choice", { id: diffCommitId, choice: "cancel" }).catch((err) => {
-        console.error("Failed to cancel user choice on close:", err);
-      });
-      setDiffCommitId(null);
-    }
-  }, [diffCommitId, setDiffCommitId, uiDispatch]);
 
   return (
     <div className="app-container">

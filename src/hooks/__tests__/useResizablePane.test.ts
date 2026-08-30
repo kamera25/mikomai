@@ -55,16 +55,16 @@ describe("useResizablePane", () => {
     expect(result.current.isResizingLeft).toBe(false);
   });
 
-  it("enforces sidebar minimum and maximum limits", () => {
+  it("enforces sidebar snag resistance at minimum width and maximum limits", () => {
     const { result } = renderHook(() => useResizablePane());
 
     act(() => {
       result.current.handleLeftMouseDown({ preventDefault: () => {} } as React.MouseEvent);
     });
 
-    // clientX = 100 -> 100 - 60 = 40, min is 160
+    // clientX = 180 -> rawWidth = 180 - 60 = 120 (between threshold 80 and min 160) -> snags at min (160)
     act(() => {
-      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 100 }));
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 180 }));
     });
     expect(result.current.sidebarWidth).toBe(160);
 
@@ -73,5 +73,92 @@ describe("useResizablePane", () => {
       window.dispatchEvent(new MouseEvent("mousemove", { clientX: 800 }));
     });
     expect(result.current.sidebarWidth).toBe(600);
+  });
+
+  it("collapses sidebar when pulled further past the collapse threshold", () => {
+    const onSidebarCollapse = vi.fn();
+    const { result } = renderHook(() =>
+      useResizablePane({
+        onSidebarCollapse,
+      })
+    );
+
+    act(() => {
+      result.current.handleLeftMouseDown({ preventDefault: () => {} } as React.MouseEvent);
+    });
+
+    // 1. Snag zone: clientX = 180 (rawWidth = 120 >= 80)
+    act(() => {
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 180 }));
+    });
+    expect(result.current.sidebarWidth).toBe(160);
+    expect(onSidebarCollapse).not.toHaveBeenCalledWith(true);
+
+    // 2. Pulled past snag threshold: clientX = 100 (rawWidth = 40 < 80) -> collapse!
+    act(() => {
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 100 }));
+    });
+    expect(onSidebarCollapse).toHaveBeenCalledWith(true);
+
+    // 3. Drag back to right -> re-expands
+    act(() => {
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 250 }));
+    });
+    expect(onSidebarCollapse).toHaveBeenCalledWith(false);
+    expect(result.current.sidebarWidth).toBe(190);
+
+    // 4. Pull past threshold again and release mouse
+    act(() => {
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 90 }));
+    });
+    expect(onSidebarCollapse).toHaveBeenCalledWith(true);
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent("mouseup"));
+    });
+    expect(result.current.isResizingLeft).toBe(false);
+    // Width is restored to last valid width on mouseup
+    expect(result.current.sidebarWidth).toBe(190);
+  });
+
+  it("handles diff panel resize, snag and collapse", () => {
+    const onDiffCollapse = vi.fn();
+    const { result } = renderHook(() =>
+      useResizablePane({
+        onDiffCollapse,
+      })
+    );
+
+    act(() => {
+      result.current.handleRightMouseDown({ preventDefault: () => {} } as React.MouseEvent);
+    });
+
+    // Mock innerWidth = 1000
+    vi.stubGlobal("innerWidth", 1000);
+
+    // clientX = 600 -> rawWidth = 1000 - 600 = 400
+    act(() => {
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 600 }));
+    });
+    expect(result.current.diffWidth).toBe(400);
+
+    // clientX = 800 -> rawWidth = 200 (between threshold 140 and min 280) -> snags at 280
+    act(() => {
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 800 }));
+    });
+    expect(result.current.diffWidth).toBe(280);
+    expect(onDiffCollapse).not.toHaveBeenCalledWith(true);
+
+    // clientX = 900 -> rawWidth = 100 (< 140) -> collapses!
+    act(() => {
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 900 }));
+    });
+    expect(onDiffCollapse).toHaveBeenCalledWith(true);
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent("mouseup"));
+    });
+    expect(result.current.isResizingRight).toBe(false);
+    expect(result.current.diffWidth).toBe(400);
   });
 });
