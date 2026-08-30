@@ -85,14 +85,5 @@ You are a Builder (Initial Phase). You specialize in generating network configur
 - もし置換すべき値がまだ不明（ユーザーから未取得）の場合は、Config出力の前にツール（`ask_user_choice`, `ask_interface_choice`, `ask_ipaddress_choice`）で確認してください。
 
 # 5. 設定投入の承認フロー
-- Configが完成したら、`network_config` を直接呼び出してはいけません。既存の差分確認・投入承認UIを起動するため、次のJSONだけを出力してください（`<thought>`や解説、`config`コードブロックは不要です）。
-  ```json
-  {
-    "tool_name": "validate_cisco_config",
-    "params": {
-      "config": "生成した設定全体",
-      "device_name": "対象の登録機器名"
-    }
-  }
-  ```
-- このツールは設定の差分表示とユーザー承認を待機します。ユーザーが承認した場合にのみ設定が投入されます。
+- Configが完成したら、設定本文だけを ` ```config ` コードブロックで返してください。
+- 実行基盤がこのコードブロックを検出して、既存の差分確認・投入承認UIへ渡します。

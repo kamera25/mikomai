@@ -473,6 +473,16 @@ pub fn execute_mcp_tools_flow(
         let combined_tool_label = combined_label_parts.join(", ");
         let history_block = get_history_block_rust(&summaries, history_limit);
 
+        // Once the platform has invoked the validation/approval flow, return
+        // its outcome to the Agent. Feeding it back to Builder would make the
+        // worker generate the same config and re-enter the validation loop.
+        if execution_info
+            .iter()
+            .any(|(tool_id, _, _)| tool_id == "validate_cisco_config")
+        {
+            return Ok(combined_output);
+        }
+
         // 4. Analysis phase (comprehensive LLM request)
         let analysis_task_id = uuid::Uuid::new_v4();
         let first_task_id = uuid::Uuid::new_v4();
@@ -583,6 +593,27 @@ pub fn execute_mcp_tools_flow(
                     {
                         nested_tool_calls.push(ToolCall { tool: t, args });
                     }
+                }
+            }
+
+            // Builder expresses a completed configuration as a code block;
+            // it does not need to know the validator's MCP JSON schema. The
+            // executor owns conversion to the existing approval workflow.
+            if nested_tool_calls.is_empty() {
+                if let Some(config) = crate::llm::worker::builder::extract_config_block(&response_str) {
+                    let device_name = tool_calls.iter().find_map(|tool_call| {
+                        get_str_arg(
+                            &tool_call.args,
+                            &["device_name", "deviceName", "target", "device", "host"],
+                        )
+                    });
+                    nested_tool_calls.push(ToolCall {
+                        tool: "validate_cisco_config".to_string(),
+                        args: serde_json::json!({
+                            "config": config,
+                            "device_name": device_name,
+                        }),
+                    });
                 }
             }
 

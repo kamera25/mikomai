@@ -550,7 +550,7 @@ impl LlmWorker for BuilderWorker
     }
 }
 
-fn extract_config_block(text: &str) -> Option<String>
+pub(crate) fn extract_config_block(text: &str) -> Option<String>
 {
     // 1. Remove <thought>...</thought> blocks
     let mut cleaned = String::new();
