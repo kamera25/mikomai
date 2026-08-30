@@ -94,7 +94,7 @@ export const ChatInput = memo(
         return [...prev, ...prepared.attachments.filter((attachment) => !existingNames.has(attachment.name))];
       });
       setAttachmentErrors(prepared.rejected.map((rejection) => `${rejection.name}: ${rejection.reason}`));
-      if (prepared.attachments.some((attachment) => attachment.type === "image") && !isVisionReadyRef.current) {
+      if (prepared.rejected.some((rejection) => rejection.reason.includes("Vision"))) {
         setShowVisionWarning(true);
       }
     };

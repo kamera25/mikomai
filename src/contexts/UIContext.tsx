@@ -17,6 +17,7 @@ export interface ConfigDiffData {
 }
 
 export interface UIState {
+  activePanel: "chat" | "settings" | "connections" | "scheduledTasks";
   isSidebarOpen: boolean;
   isSettingsOpen: boolean;
   isConnectionOpen: boolean;
@@ -38,7 +39,8 @@ export type UIAction =
   | { type: "SET_CONFIG_DIFF_OPEN"; payload: boolean }
   | { type: "SET_CONFIG_DIFF_DATA"; payload: ConfigDiffData | null };
 
-const initialState: UIState = {
+export const initialUIState: UIState = {
+  activePanel: "chat",
   isSidebarOpen: true,
   isSettingsOpen: false,
   isConnectionOpen: false,
@@ -49,7 +51,7 @@ const initialState: UIState = {
   configDiffData: null,
 };
 
-function uiReducer(state: UIState, action: UIAction): UIState {
+export function uiReducer(state: UIState, action: UIAction): UIState {
   switch (action.type) {
     case "SET_SIDEBAR_OPEN":
       return { ...state, isSidebarOpen: action.payload };
@@ -57,6 +59,7 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       const nextOpen = action.payload;
       return {
         ...state,
+        activePanel: nextOpen ? "settings" : state.activePanel === "settings" ? "chat" : state.activePanel,
         isSettingsOpen: nextOpen,
         ...(nextOpen ? { isConnectionOpen: false, isScheduledTasksOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
       };
@@ -65,6 +68,7 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       const nextOpen = action.payload;
       return {
         ...state,
+        activePanel: nextOpen ? "connections" : state.activePanel === "connections" ? "chat" : state.activePanel,
         isConnectionOpen: nextOpen,
         ...(nextOpen ? { isSettingsOpen: false, isScheduledTasksOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
       };
@@ -73,6 +77,7 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       const nextOpen = action.payload;
       return {
         ...state,
+        activePanel: nextOpen ? "scheduledTasks" : state.activePanel === "scheduledTasks" ? "chat" : state.activePanel,
         isScheduledTasksOpen: nextOpen,
         ...(nextOpen ? { isSettingsOpen: false, isConnectionOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
       };
@@ -100,7 +105,7 @@ interface UIContextType {
 const UIContext = createContext<UIContextType | undefined>(undefined);
 
 export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(uiReducer, initialState);
+  const [state, dispatch] = useReducer(uiReducer, initialUIState);
 
   return <UIContext.Provider value={{ state, dispatch }}>{children}</UIContext.Provider>;
 };

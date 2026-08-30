@@ -204,30 +204,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const initHistory = async () => {
       try {
-        const savedHistory: HistoryItem[] = await invoke("load_history");
-        if (savedHistory && savedHistory.length > 0) {
-          const firstSession = findFirstSession(savedHistory);
-          const firstSessionId = firstSession ? firstSession.id : "";
-          const firstSessionMessages = firstSession ? firstSession.messages : [];
-          dispatch({
-            type: "INIT_HISTORY",
-            payload: { history: savedHistory, sessionId: firstSessionId, messages: firstSessionMessages },
-          });
-        } else {
-          const defaultId = crypto.randomUUID();
-          const defaultHistory: HistoryItem[] = [
-            {
-              id: defaultId,
-              type: "session",
-              title: i18n.t("history.new_session"),
-              messages: [],
-            },
-          ];
-          dispatch({
-            type: "INIT_HISTORY",
-            payload: { history: defaultHistory, sessionId: defaultId, messages: [] },
-          });
-        }
+        const snapshot = await invoke<HistorySnapshot>("initialize_history");
+        const activeSession = findSession(snapshot.history, snapshot.activeSessionId);
+        dispatch({
+          type: "INIT_HISTORY",
+          payload: {
+            history: snapshot.history,
+            sessionId: snapshot.activeSessionId,
+            messages: activeSession?.messages || [],
+          },
+        });
       } catch (e) {
         console.error("Failed to load history:", e);
         dispatch({ type: "SET_LOADED", payload: true });

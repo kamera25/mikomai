@@ -29,6 +29,7 @@ pub use vendor_type::VendorType;
 use crate::crypto::{decrypt, encrypt};
 use crate::error::TauriError;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
@@ -143,6 +144,21 @@ pub struct McpHost {
     pub ip: IpAddress,
     pub device_type: DeviceType,
     pub username: Username,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CsvImportWarning {
+    pub row: usize,
+    pub reason: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CsvImportResult {
+    pub connections: Vec<Connection>,
+    pub imported_count: usize,
+    pub warnings: Vec<CsvImportWarning>,
 }
 
 fn get_connections_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
@@ -325,6 +341,69 @@ pub fn save_connections(
 
     let data = serde_json::to_string_pretty(&connections)?;
     fs::write(path, data)?;
+    Ok(())
+}
+
+fn csv_connection(record: &csv::StringRecord, headers: &csv::StringRecord) -> Result<Connection, String> {
+    let fields: HashMap<&str, &str> = headers.iter().zip(record.iter()).collect();
+    let value = |name: &str| fields.get(name).copied().unwrap_or("").trim();
+    let hostname = value("hostname");
+    let ip = value("ip");
+    if hostname.is_empty() || ip.is_empty() {
+        return Err("hostname と ip は必須です".to_string());
+    }
+    let connection = serde_json::json!({
+        "id": if value("id").is_empty() { uuid::Uuid::new_v4().to_string() } else { value("id").to_string() },
+        "status": if matches!(value("status"), "online" | "offline") { value("status") } else { "offline" },
+        "hostname": hostname,
+        "ip": ip,
+        "port": if value("port").is_empty() { serde_json::Value::Null } else { serde_json::json!(value("port").parse::<u16>().map_err(|_| "port が不正です")?) },
+        "type": if value("type").is_empty() { "SSH" } else { value("type") },
+        "lastConnected": if value("lastConnected").is_empty() { "Never" } else { value("lastConnected") },
+        "username": if value("username").is_empty() { serde_json::Value::Null } else { serde_json::Value::String(value("username").to_string()) },
+        "deviceType": if value("deviceType").is_empty() { serde_json::Value::Null } else { serde_json::Value::String(value("deviceType").to_string()) },
+        "vendorType": if value("vendorType").is_empty() { serde_json::Value::Null } else { serde_json::Value::String(value("vendorType").to_string()) },
+    });
+    serde_json::from_value(connection).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn import_connections_csv(app: tauri::AppHandle, path: String) -> Result<CsvImportResult, TauriError> {
+    let mut reader = csv::ReaderBuilder::new().flexible(true).from_path(path)
+        .map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
+    let headers = reader.headers().map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?.clone();
+    let mut warnings = Vec::new();
+    let mut imported = Vec::new();
+    for (index, row) in reader.records().enumerate() {
+        match row.map_err(|error| error.to_string()).and_then(|record| csv_connection(&record, &headers)) {
+            Ok(connection) => imported.push(connection),
+            Err(reason) => warnings.push(CsvImportWarning { row: index + 2, reason }),
+        }
+    }
+    let mut merged: HashMap<String, Connection> = load_connections_raw(&app)?.into_iter().map(|connection| (connection.id.to_string(), connection)).collect();
+    let imported_count = imported.len();
+    for connection in imported { merged.insert(connection.id.to_string(), connection); }
+    let connections: Vec<Connection> = merged.into_values().collect();
+    save_connections(app.clone(), connections)?;
+    Ok(CsvImportResult { connections: load_connections(app)?, imported_count, warnings })
+}
+
+#[tauri::command]
+pub fn export_connections_csv(app: tauri::AppHandle, path: String) -> Result<(), TauriError> {
+    let connections = load_connections_raw(&app)?;
+    let mut writer = csv::WriterBuilder::new().has_headers(true).from_path(path)
+        .map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
+    writer.write_record(["id", "status", "hostname", "ip", "port", "type", "lastConnected", "deviceType", "vendorType", "username"])
+        .map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
+    for connection in connections {
+        writer.write_record([
+            connection.id.to_string(), connection.status.to_string(), connection.hostname.to_string(), connection.ip_string(),
+            connection.port.map(|port| port.to_string()).unwrap_or_default(), connection.conn_type.to_string(), connection.last_connected.to_string(),
+            connection.device_type.map(|value| value.to_string()).unwrap_or_default(), connection.vendor_type.map(|value| value.to_string()).unwrap_or_default(),
+            connection.username.map(|value| value.to_string()).unwrap_or_default(),
+        ]).map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
+    }
+    writer.flush().map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
     Ok(())
 }
 
@@ -624,5 +703,22 @@ mod tests {
         assert_eq!(deserialized_again.len(), 2);
         assert_eq!(deserialized_again[0].ip, None);
         assert_eq!(deserialized_again[1].ip, None);
+    }
+
+    #[test]
+    fn csv_connection_generates_an_id_and_discards_password_columns() {
+        let headers = csv::StringRecord::from(vec!["hostname", "ip", "password", "type"]);
+        let row = csv::StringRecord::from(vec!["router-1", "192.168.10.1", "secret", "SSH"]);
+        let connection = csv_connection(&row, &headers).unwrap();
+        assert!(!connection.id.to_string().is_empty());
+        assert_eq!(connection.hostname.as_str(), "router-1");
+        assert!(connection.password.is_none());
+    }
+
+    #[test]
+    fn csv_connection_rejects_missing_required_address_data() {
+        let headers = csv::StringRecord::from(vec!["hostname", "ip"]);
+        let row = csv::StringRecord::from(vec!["router-1", ""]);
+        assert!(csv_connection(&row, &headers).is_err());
     }
 }

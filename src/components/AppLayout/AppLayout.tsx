@@ -21,6 +21,7 @@ import { QuestionPanel } from "./QuestionPanel";
 import { CustomModal } from "../CustomModal";
 import { SidebarIcon, ServerIcon, DiffIcon } from "../Icons";
 import { Attachment, Message } from "../../types";
+import { formatMessageTime } from "../../utils/messageTime";
 
 // These panels are not part of the chat's critical rendering path. Loading
 // them only when opened reduces startup parsing and keeps their effects idle.
@@ -180,28 +181,6 @@ export function AppLayout() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
     }
   }, [chatState.input]);
-
-  const formatMessageTime = useCallback((isoString?: string) => {
-    if (!isoString) return "";
-    const date = new Date(isoString);
-    const now = new Date();
-
-    const isToday =
-      date.getFullYear() === now.getFullYear() &&
-      date.getMonth() === now.getMonth() &&
-      date.getDate() === now.getDate();
-
-    const timeStr = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-    if (isToday) {
-      return timeStr;
-    } else {
-      const dateStr = date
-        .toLocaleDateString([], { year: "numeric", month: "2-digit", day: "2-digit" })
-        .replace(/\//g, "/");
-      return `${dateStr} ${timeStr}`;
-    }
-  }, []);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const isCurrentlyGenerating =

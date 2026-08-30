@@ -66,8 +66,8 @@ vi.mock("@tauri-apps/api/core", () => {
       if (cmd === "load_connections") {
         return [];
       }
-      if (cmd === "load_history") {
-        return [];
+      if (cmd === "initialize_history") {
+        return { history: [{ id: "test-session", type: "session", title: "新しいセッション", messages: [] }], activeSessionId: "test-session" };
       }
       if (cmd === "load_summaries") {
         return [];
@@ -88,4 +88,3 @@ vi.mock("@tauri-apps/api/event", () => {
     emit: vi.fn(async (_event, _payload) => {}),
   };
 });
-

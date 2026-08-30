@@ -458,6 +458,24 @@ pub fn mutate_history(
     })
 }
 
+#[tauri::command]
+pub fn initialize_history(app: tauri::AppHandle) -> Result<HistorySnapshot, TauriError> {
+    let mut history = load_history(app.clone())?;
+    if first_session_id(&history).is_none() {
+        history.push(HistoryItem::Session(ChatSession {
+            id: uuid::Uuid::new_v4(),
+            title: "New Session".to_string(),
+            messages: vec![],
+            recent_ips: None,
+        }));
+        save_history(app, history.clone())?;
+    }
+    Ok(HistorySnapshot {
+        active_session_id: first_session_id(&history).expect("history always has a session"),
+        history,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -633,7 +651,10 @@ mod tests {
             bin_path.to_string_lossy().to_string(),
         ];
 
-        let atts = read_files_as_attachments(paths).unwrap();
+        let atts = prepare_attachments_for_sources(
+            paths.into_iter().map(|path| AttachmentSource::Path { path }).collect(),
+            true,
+        ).attachments;
         assert_eq!(atts.len(), 2);
 
         let text_att = &atts[0];
@@ -654,7 +675,7 @@ mod tests {
 
     #[test]
     fn prepares_inline_attachments_and_rejects_duplicates_and_large_content() {
-        let result = prepare_attachments(vec![
+        let result = prepare_attachments_for_sources(vec![
             AttachmentSource::Inline {
                 name: "note.txt".to_string(),
                 content: "router configuration".to_string(),
@@ -670,10 +691,40 @@ mod tests {
                 content: "x".repeat(MAX_INLINE_ATTACHMENT_SIZE + 1),
                 media_type: Some("text/plain".to_string()),
             },
-        ]);
+        ], true);
         assert_eq!(result.attachments.len(), 1);
         assert_eq!(result.attachments[0].mime_type, AttachmentType::Text);
         assert_eq!(result.rejected.len(), 2);
+    }
+
+    #[test]
+    fn rejects_images_when_vision_is_not_ready() {
+        let result = prepare_attachments_for_sources(
+            vec![AttachmentSource::Inline {
+                name: "diagram.png".to_string(),
+                content: "data:image/png;base64,AA==".to_string(),
+                media_type: Some("image/png".to_string()),
+            }],
+            false,
+        );
+        assert!(result.attachments.is_empty());
+        assert_eq!(result.rejected.len(), 1);
+        assert!(result.rejected[0].reason.contains("Vision"));
+    }
+
+    #[test]
+    fn rejects_oversized_inline_attachments() {
+        let result = prepare_attachments_for_sources(
+            vec![AttachmentSource::Inline {
+                name: "large.txt".to_string(),
+                content: "x".repeat(MAX_INLINE_ATTACHMENT_SIZE + 1),
+                media_type: Some("text/plain".to_string()),
+            }],
+            true,
+        );
+        assert!(result.attachments.is_empty());
+        assert_eq!(result.rejected.len(), 1);
+        assert!(result.rejected[0].reason.contains("512 KB"));
     }
 
     #[test]
@@ -742,6 +793,7 @@ use base64::{engine::general_purpose, Engine as _};
 
 const MAX_TEXT_ATTACHMENT_SIZE: u64 = 512 * 1024;
 const MAX_INLINE_ATTACHMENT_SIZE: usize = 512 * 1024;
+const MAX_IMAGE_ATTACHMENT_SIZE: u64 = 10 * 1024 * 1024;
 
 fn attachment_from_path(path_str: String) -> Result<Attachment, AttachmentRejection> {
     let path = std::path::Path::new(&path_str);
@@ -770,6 +822,13 @@ fn attachment_from_path(path_str: String) -> Result<Attachment, AttachmentReject
     );
 
     if is_image {
+        let file_size = fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
+        if file_size > MAX_IMAGE_ATTACHMENT_SIZE {
+            return Err(AttachmentRejection {
+                name: file_name,
+                reason: "画像ファイルが大きすぎます (最大 10 MB)".to_string(),
+            });
+        }
         if let Ok(bytes) = fs::read(&path) {
             let mime = match extension.as_str() {
                 "png" => "image/png",
@@ -857,8 +916,7 @@ fn attachment_from_inline(
     })
 }
 
-#[tauri::command]
-pub fn prepare_attachments(sources: Vec<AttachmentSource>) -> AttachmentPreparation {
+fn prepare_attachments_for_sources(sources: Vec<AttachmentSource>, vision_ready: bool) -> AttachmentPreparation {
     let mut attachments = Vec::new();
     let mut rejected = Vec::new();
     let mut names = std::collections::HashSet::new();
@@ -872,6 +930,9 @@ pub fn prepare_attachments(sources: Vec<AttachmentSource>) -> AttachmentPreparat
             } => attachment_from_inline(name, content, media_type),
         };
         match result {
+            Ok(attachment) if attachment.mime_type == AttachmentType::Image && !vision_ready => {
+                rejected.push(AttachmentRejection { name: attachment.name, reason: "画像添付には Vision モデルの設定が必要です".to_string() });
+            }
             Ok(attachment) if names.insert(attachment.name.clone()) => attachments.push(attachment),
             Ok(attachment) => rejected.push(AttachmentRejection {
                 name: attachment.name,
@@ -887,12 +948,26 @@ pub fn prepare_attachments(sources: Vec<AttachmentSource>) -> AttachmentPreparat
 }
 
 #[tauri::command]
-pub fn read_files_as_attachments(paths: Vec<String>) -> Result<Vec<Attachment>, TauriError> {
-    Ok(prepare_attachments(
+pub fn prepare_attachments(app: tauri::AppHandle, sources: Vec<AttachmentSource>) -> AttachmentPreparation {
+    let settings = crate::settings::load_settings(app).unwrap_or_default();
+    let vision_ready = settings.vision_enabled
+        && settings.mmproj_path.as_deref().is_some_and(|path| !path.trim().is_empty());
+    prepare_attachments_for_sources(sources, vision_ready)
+}
+
+#[tauri::command]
+pub fn read_files_as_attachments(app: tauri::AppHandle, paths: Vec<String>) -> Result<Vec<Attachment>, TauriError> {
+    let settings = crate::settings::load_settings(app).unwrap_or_default();
+    Ok(prepare_attachments_for_sources(
         paths
             .into_iter()
             .map(|path| AttachmentSource::Path { path })
             .collect(),
+        settings.vision_enabled
+            && settings
+                .mmproj_path
+                .as_deref()
+                .is_some_and(|path| !path.trim().is_empty()),
     )
     .attachments)
 }

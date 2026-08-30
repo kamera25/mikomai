@@ -343,7 +343,6 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
               </svg>
             </button>
             <CsvImportExport
-              connections={connections}
               setConnections={setConnections}
               onConnectionsChanged={onConnectionsChanged}
             />

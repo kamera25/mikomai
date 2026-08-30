@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
 import { ChatInput } from "../ChatInput";
 import { SettingsProvider } from "../../../contexts/SettingsContext";
+import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("../../../hooks/useSettings", () => ({
   useSettings: () => ({
@@ -147,6 +148,21 @@ describe("ChatInput Component", () => {
 
     expect(setFilteredSuggestions).toHaveBeenCalledWith([]);
     expect(setShowSuggestions).toHaveBeenCalledWith(false);
+  });
+
+  it("shows a backend attachment rejection to the user", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({
+      attachments: [],
+      rejected: [{ name: "diagram.png", reason: "画像添付には Vision モデルの設定が必要です" }],
+    });
+    const { container } = render(<ChatInput {...defaultProps} />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["image"], "diagram.png", { type: "image/png" });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Vision モデルの設定が必要です");
+    expect(invoke).toHaveBeenCalledWith("prepare_attachments", expect.any(Object));
   });
 
   it("closes host suggestions with Escape without sending the message", () => {
