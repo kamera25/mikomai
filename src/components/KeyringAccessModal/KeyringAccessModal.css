@@ -1,0 +1,181 @@
+.keyring-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: 1.5rem;
+  user-select: none;
+}
+
+.keyring-modal-container {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  background-color: var(--bg-secondary, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 16px;
+  padding: 1.75rem;
+  box-shadow:
+    0 20px 40px -10px rgba(0, 0, 0, 0.15),
+    0 8px 16px -4px rgba(0, 0, 0, 0.08);
+  color: var(--text-primary, #1e293b);
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.keyring-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.keyring-modal-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background-color: var(--accent-glow, rgba(59, 130, 246, 0.1));
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 12px;
+  color: var(--accent-color, #3b82f6);
+  flex-shrink: 0;
+}
+
+.keyring-modal-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.keyring-modal-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.keyring-modal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary, #1e293b);
+}
+
+.keyring-modal-subtitle {
+  margin: 0;
+  font-size: 0.825rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.keyring-modal-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  background-color: #f0f7ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+}
+
+.keyring-modal-status-spinner {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: var(--accent-color, #3b82f6);
+  flex-shrink: 0;
+}
+
+.keyring-modal-status-text {
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.keyring-modal-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.keyring-modal-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background-color: var(--bg-primary, #f8fafc);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+}
+
+.keyring-modal-card.highlight-card {
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.keyring-modal-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.keyring-modal-card-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.purpose-icon {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.password-icon {
+  background-color: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
+.security-icon {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.keyring-modal-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.keyring-modal-card-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+}
+
+.keyring-modal-card-desc {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary, #475569);
+}
+
+.keyring-modal-footer {
+  margin-top: 0.1rem;
+  text-align: center;
+}
+
+.keyring-modal-footer-note {
+  margin: 0;
+  font-size: 0.775rem;
+  color: var(--text-muted, #94a3b8);
+}

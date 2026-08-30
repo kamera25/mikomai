@@ -75,7 +75,32 @@ fn save_key_to_file(key_path: &std::path::Path, key: &Key<Aes256Gcm>) -> Result<
     Ok(())
 }
 
-pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, CryptoError> {
+use std::sync::Mutex;
+use tauri::Emitter;
+
+static IN_MEMORY_KEY: Mutex<Option<Key<Aes256Gcm>>> = Mutex::new(None);
+
+struct KeyringEventGuard<'a, R: tauri::Runtime> {
+    app: &'a tauri::AppHandle<R>,
+}
+
+impl<'a, R: tauri::Runtime> KeyringEventGuard<'a, R> {
+    fn new(app: &'a tauri::AppHandle<R>) -> Self {
+        let _ = app.emit("keyring-access-start", ());
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        Self { app }
+    }
+}
+
+impl<'a, R: tauri::Runtime> Drop for KeyringEventGuard<'a, R> {
+    fn drop(&mut self) {
+        let _ = self.app.emit("keyring-access-end", ());
+    }
+}
+
+fn get_or_create_key_internal<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<Key<Aes256Gcm>, CryptoError> {
     let path = tauri::Manager::path(app)
         .app_data_dir()
         .expect("Failed to get app data dir");
@@ -137,6 +162,27 @@ pub fn get_or_create_key(app: &tauri::AppHandle) -> Result<Key<Aes256Gcm>, Crypt
     }
 }
 
+pub fn get_or_create_key<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<Key<Aes256Gcm>, CryptoError> {
+    let mut lock = IN_MEMORY_KEY.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(key) = *lock {
+        return Ok(key);
+    }
+
+    let _guard = KeyringEventGuard::new(app);
+    let key = get_or_create_key_internal(app)?;
+    *lock = Some(key);
+    Ok(key)
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub fn clear_key_cache_for_testing() {
+    let mut lock = IN_MEMORY_KEY.lock().unwrap_or_else(|e| e.into_inner());
+    *lock = None;
+}
+
 pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, CryptoError> {
     if data.is_empty() {
         return Ok("".to_string());
@@ -177,7 +223,7 @@ pub fn decrypt_with_key(key: &Key<Aes256Gcm>, encrypted_data: &str) -> Result<St
     Ok(String::from_utf8(plaintext)?)
 }
 
-pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, CryptoError> {
+pub fn encrypt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, data: &str) -> Result<String, CryptoError> {
     if data.is_empty() {
         return Ok("".to_string());
     }
@@ -186,7 +232,7 @@ pub fn encrypt(app: &tauri::AppHandle, data: &str) -> Result<String, CryptoError
     encrypt_with_key(&key, data)
 }
 
-pub fn decrypt(app: &tauri::AppHandle, encrypted_data: &str) -> Result<String, CryptoError> {
+pub fn decrypt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, encrypted_data: &str) -> Result<String, CryptoError> {
     if encrypted_data.is_empty() {
         return Ok("".to_string());
     }

@@ -298,5 +298,16 @@
     "network_ftp_upload": "FTP Upload",
     "network_tftp_download": "TFTP Download",
     "network_tftp_upload": "TFTP Upload"
+  },
+  "keyring_modal": {
+    "title": "macOS Keychain Access",
+    "subtitle": "Credential Protection & Cryptographic Processing",
+    "waiting_status": "Waiting for system authorization dialog...",
+    "section_purpose_title": "Secure Credential Storage",
+    "section_purpose_desc": "mikomai uses macOS Keychain (Keyring) to securely encrypt and decrypt stored device passwords and SSH passphrases.",
+    "section_prompt_title": "Password Entry Notice",
+    "section_prompt_desc": "When the macOS security confirmation dialog appears, please verify the request. If this is intended, enter your Mac login password and click 'Allow' or 'Always Allow'.",
+    "section_security_title": "Startup & Security Verification",
+    "section_security_desc": "Due to macOS security policies, a system confirmation prompt is required when accessing secure credentials upon application startup or access."
   }
 }

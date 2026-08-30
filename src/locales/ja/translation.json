@@ -298,5 +298,16 @@
     "network_ftp_upload": "FTPアップロード",
     "network_tftp_download": "TFTPダウンロード",
     "network_tftp_upload": "TFTPアップロード"
+  },
+  "keyring_modal": {
+    "title": "macOS キーチェーンへのアクセス",
+    "subtitle": "認証情報の保護と暗号化処理",
+    "waiting_status": "システム認証ダイアログの応答を待機中...",
+    "section_purpose_title": "認証情報の安全な保護",
+    "section_purpose_desc": "mikomaiは、登録された接続先機器のパスワードや秘密鍵のパスフレーズを安全に暗号化・復号化するために、macOSのキーチェーン（キーリング）を利用しています。",
+    "section_prompt_title": "パスワード入力のご案内",
+    "section_prompt_desc": "macOSのセキュリティ確認ダイアログが表示された場合は、内容をご確認の上、意図した操作であればMacのログインパスワード（キーチェーンパスワード）を入力し、「許可」または「常に許可」をクリックしてください。",
+    "section_security_title": "起動時・アクセス時の確認について",
+    "section_security_desc": "macOSのセキュリティ保護機能により、安全なデータへのアクセス時やアプリケーション起動時にシステムから確認が求められます。"
   }
 }

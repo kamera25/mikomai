@@ -5,6 +5,7 @@ import { ModelProvider } from "./contexts/ModelContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { AppLayout } from "./components/AppLayout/AppLayout";
 import { WatchNotificationToast } from "./components/WatchNotificationToast";
+import { KeyringAccessModal } from "./components/KeyringAccessModal";
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <ChatProvider>
           <AppLayout />
           <WatchNotificationToast />
+          <KeyringAccessModal />
         </ChatProvider>
       </ModelProvider>
     </UIProvider>
