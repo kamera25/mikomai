@@ -419,7 +419,7 @@
 @media (max-width: 768px) {
   .sidebar {
     position: absolute;
-    left: 54px; /* offset of activity bar */
+    left: 44px; /* offset of activity bar */
     top: 0;
     bottom: 0;
     z-index: 15;
@@ -428,7 +428,7 @@
 }
 @media (max-width: 640px) {
   .sidebar {
-    left: 48px;
+    left: 38px;
     width: 240px;
   }
 }

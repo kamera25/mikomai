@@ -43,7 +43,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = React.memo(({
           }
         }}
       >
-        <MessageIcon size={24} />
+        <MessageIcon size={20} />
       </div>
       <div
         className={`activity-item ${isConnectionOpen ? "active" : ""}`}
@@ -64,7 +64,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = React.memo(({
           }
         }}
       >
-        <NetworkTopologyIcon size={24} />
+        <NetworkTopologyIcon size={20} />
       </div>
       <div
         className={`activity-item ${isScheduledTasksOpen ? "active" : ""}`}
@@ -85,7 +85,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = React.memo(({
           }
         }}
       >
-        <ClockIcon size={24} />
+        <ClockIcon size={20} />
       </div>
       <div className="spacer"></div>
       <div
@@ -107,7 +107,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = React.memo(({
           }
         }}
       >
-        <GearIcon size={24} />
+        <GearIcon size={20} />
       </div>
     </nav>
   );
