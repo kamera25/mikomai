@@ -105,10 +105,9 @@ impl AgentLoop {
             ChatEvent::AgentSelected("エージェントによる解析を開始".to_string()),
         );
 
-        let mut final_report = String::new();
         let mut initial_objective: Option<String> = None;
 
-        loop {
+        let final_report = loop {
             let current_step = self.state_machine.step_count() + 1;
             log::info!("[AgentLoop] === Step {}: Starting Cycle ===", current_step);
 
@@ -123,8 +122,7 @@ impl AgentLoop {
                     self.state_machine.step_count()
                 );
                 log::warn!("[AgentLoop] {}", msg);
-                final_report = msg;
-                break;
+                break msg;
             }
 
             let _ = self.window.emit(
@@ -268,8 +266,7 @@ impl AgentLoop {
                     self.state_machine.step_count(),
                     summary_text
                 );
-                final_report = summary_text;
-                break;
+                break summary_text;
             }
 
             if decision.action_type == ActionType::AskHuman {
@@ -279,8 +276,7 @@ impl AgentLoop {
                     self.state_machine.step_count(),
                     decision.objective
                 );
-                final_report = format!("### ❓ 確認要求\n\n{}\n", decision.objective);
-                break;
+                break format!("### ❓ 確認要求\n\n{}\n", decision.objective);
             }
 
             // 2. Validating Phase (Schema & Policy Validator)
@@ -443,7 +439,6 @@ impl AgentLoop {
                 self.window.clone(),
                 tool_task_id,
                 tool_name.clone(),
-                tool_kind_opt.map_or(tool_name.clone(), |k| k.label().to_string()),
                 goal.clone(),
                 tool_args.clone(),
                 vec![],
@@ -501,7 +496,7 @@ impl AgentLoop {
             // 5. State Update & Evaluation Phase
             self.network_state.apply_observation(observation);
             self.state_machine.transition(HarnessState::Evaluating)?;
-        }
+        };
 
         let _ = self.window.emit(
             "chat-event",

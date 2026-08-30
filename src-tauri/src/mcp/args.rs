@@ -49,41 +49,7 @@ pub struct HostArgs {
     pub ip: Option<IpAddress>,
 }
 
-impl HostArgs {
-    pub fn new(
-        host: Option<String>,
-        device: Option<String>,
-        device_name: Option<String>,
-        ip: Option<IpAddress>,
-    ) -> Self {
-        Self {
-            host,
-            device,
-            device_name,
-            ip,
-        }
-    }
-}
 
-pub fn normalize_host_args<R: Runtime>(
-    app: &AppHandle<R>,
-    host: Option<String>,
-    device: Option<String>,
-    device_name_camel: Option<String>,
-    device_name: Option<String>,
-    ip: Option<IpAddress>,
-) -> Result<String, String> {
-    let dev_name = device_name.or(device_name_camel);
-    normalize_host_args_struct(
-        app,
-        &HostArgs {
-            host,
-            device,
-            device_name: dev_name,
-            ip,
-        },
-    )
-}
 
 pub fn normalize_host_args_struct<R: Runtime>(
     app: &AppHandle<R>,
@@ -207,24 +173,22 @@ mod tests {
         let app = mock_app();
         let handle = app.handle();
 
-        let res = normalize_host_args(
-            handle,
-            Some("192.168.1.1".to_string()),
-            None,
-            None,
-            None,
-            None,
-        );
+        let host_args = HostArgs {
+            host: Some("192.168.1.1".to_string()),
+            ..Default::default()
+        };
+        let res = normalize_host_args_struct(handle, &host_args);
         assert_eq!(res.unwrap(), "192.168.1.1");
 
-        let res = normalize_host_args(handle, None, None, None, None, None);
+        let empty_args = HostArgs::default();
+        let res = normalize_host_args_struct(handle, &empty_args);
         assert!(res.is_err());
 
-        let host_args = HostArgs {
+        let host_args2 = HostArgs {
             host: Some("10.0.0.1".to_string()),
             ..Default::default()
         };
-        let res2 = normalize_host_args_struct(handle, &host_args);
+        let res2 = normalize_host_args_struct(handle, &host_args2);
         assert_eq!(res2.unwrap(), "10.0.0.1");
     }
 

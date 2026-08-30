@@ -182,20 +182,7 @@ pub async fn query_nw_db(
     format_hybrid_search_results(vector_batches, fts_batches, &vendor_context.query)
 }
 
-fn has_valid_results(batches: &[RecordBatch]) -> bool {
-    for batch in batches {
-        let dist_col = batch.column_by_name("_distance");
-        let dist_array = dist_col.and_then(|col| col.as_any().downcast_ref::<Float32Array>());
 
-        for i in 0..batch.num_rows() {
-            let distance = dist_array.map(|arr| arr.value(i)).unwrap_or(0.0);
-            if distance <= 1.2 {
-                return true;
-            }
-        }
-    }
-    false
-}
 
 #[derive(Debug, Clone)]
 struct RetrievedChunk {
@@ -390,59 +377,7 @@ mod tests {
         assert!(state.model.lock().unwrap().is_none());
     }
 
-    #[test]
-    fn test_has_valid_results() {
-        use arrow::datatypes::{DataType, Field, Schema};
-        use std::sync::Arc;
 
-        // Empty batches
-        assert!(!has_valid_results(&[]));
-
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("text", DataType::Utf8, false),
-            Field::new("path", DataType::Utf8, false),
-            Field::new("_distance", DataType::Float32, false),
-        ]));
-
-        // Batch with distance <= 1.2 (valid)
-        let batch_valid = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(StringArray::from(vec!["sample text"])),
-                Arc::new(StringArray::from(vec!["sample path"])),
-                Arc::new(Float32Array::from(vec![0.8])),
-            ],
-        )
-        .unwrap();
-        assert!(has_valid_results(&[batch_valid]));
-
-        // Batch with distance > 1.2 (invalid / low similarity)
-        let batch_invalid = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(StringArray::from(vec!["sample text"])),
-                Arc::new(StringArray::from(vec!["sample path"])),
-                Arc::new(Float32Array::from(vec![1.5])),
-            ],
-        )
-        .unwrap();
-        assert!(!has_valid_results(&[batch_invalid]));
-
-        // Batch without distance column (e.g. FTS result)
-        let schema_no_dist = Arc::new(Schema::new(vec![
-            Field::new("text", DataType::Utf8, false),
-            Field::new("path", DataType::Utf8, false),
-        ]));
-        let batch_no_dist = RecordBatch::try_new(
-            schema_no_dist,
-            vec![
-                Arc::new(StringArray::from(vec!["sample text"])),
-                Arc::new(StringArray::from(vec!["sample path"])),
-            ],
-        )
-        .unwrap();
-        assert!(has_valid_results(&[batch_no_dist]));
-    }
 
     #[test]
     fn citation_keeps_source_and_rank_visible_to_callers() {

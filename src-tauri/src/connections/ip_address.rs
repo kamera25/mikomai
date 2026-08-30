@@ -20,18 +20,6 @@ impl IpAddress {
     pub fn v6(ip: Ipv6Addr) -> Self {
         Self(IpAddr::V6(ip))
     }
-
-    pub fn ip(&self) -> IpAddr {
-        self.0
-    }
-
-    pub fn is_ipv4(&self) -> bool {
-        self.0.is_ipv4()
-    }
-
-    pub fn is_ipv6(&self) -> bool {
-        self.0.is_ipv6()
-    }
 }
 
 impl From<IpAddr> for IpAddress {
@@ -123,7 +111,7 @@ mod tests {
         assert!(ip.is_ipv4());
         assert!(!ip.is_ipv6());
         assert_eq!(ip.to_string(), "192.168.1.1");
-        assert_eq!(ip.ip(), "192.168.1.1".parse::<IpAddr>().unwrap());
+        assert_eq!(*ip, "192.168.1.1".parse::<IpAddr>().unwrap());
     }
 
     #[test]
@@ -132,7 +120,7 @@ mod tests {
         assert!(!ip.is_ipv4());
         assert!(ip.is_ipv6());
         assert_eq!(ip.to_string(), "2001:db8::1");
-        assert_eq!(ip.ip(), "2001:db8::1".parse::<IpAddr>().unwrap());
+        assert_eq!(*ip, "2001:db8::1".parse::<IpAddr>().unwrap());
     }
 
     #[test]

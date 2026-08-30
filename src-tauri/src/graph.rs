@@ -495,95 +495,7 @@ pub fn normalize_yaml(kind: GraphDataKind, yaml: &str) -> Option<Value> {
     Some(value)
 }
 
-/// Conservative deterministic fallback used when a local model is unavailable.
-/// The raw configuration remains the authority; extracted values are limited to
-/// unambiguous, common command forms.
-pub fn normalize_config(raw: &str) -> Value {
-    let mut interfaces = Vec::new();
-    let mut ips = Vec::new();
-    let mut vlans = Vec::new();
-    let mut routes = Vec::new();
-    let mut acls = Vec::new();
-    let mut ntp_servers = Vec::new();
-    let mut current_interface: Option<String> = None;
-    for line in raw.lines().map(str::trim) {
-        if let Some(name) = line.strip_prefix("interface ") {
-            current_interface = Some(name.trim().to_string());
-            interfaces.push(json!({"name":name.trim()}));
-        } else if let Some(rest) = line.strip_prefix("ip address ") {
-            let address = rest.split_whitespace().next().unwrap_or("");
-            if !address.is_empty() {
-                ips.push(json!({"address":address,"interface":current_interface}));
-            }
-        } else if let Some(vlan) = line
-            .strip_prefix("switchport access vlan ")
-            .and_then(|v| v.trim().parse::<u32>().ok())
-        {
-            vlans.push(json!({"id":vlan,"interface":current_interface}));
-        } else if let Some(server) = line.strip_prefix("ntp server ").map(str::trim) {
-            if !server.is_empty() {
-                ntp_servers
-                    .push(json!({"address":server.split_whitespace().next().unwrap_or(server)}));
-            }
-        } else if let Some(name) = line
-            .strip_prefix("access-list ")
-            .and_then(|v| v.split_whitespace().next())
-        {
-            acls.push(json!({"name":name,"line":line}));
-        } else if let Some(rest) = line.strip_prefix("ip route ") {
-            let mut values = rest.split_whitespace();
-            if let Some(destination) = values.next() {
-                routes
-                    .push(json!({"destination":destination,"gateway":values.nth(1).unwrap_or("")}));
-            }
-        }
-    }
-    json!({"interfaces":interfaces,"ip_addresses":ips,"vlans":vlans,"routes":routes,"acls":acls,"ntp_servers":ntp_servers,"normalization":"deterministic_fallback"})
-}
 
-/// Prefer the bundled local model for multi-vendor configuration extraction.
-/// Model failures retain the raw snapshot and fall back to conservative parsing.
-pub async fn normalize_config_with_llm(
-    raw: &str,
-    app: &tauri::AppHandle,
-    state: &crate::llm::llm::LlamaState,
-) -> Value {
-    const SCHEMA: &str = r#"{"type":"object","properties":{"interfaces":{"type":"array"},"ip_addresses":{"type":"array"},"vlans":{"type":"array"},"routes":{"type":"array"},"acls":{"type":"array"},"ntp_servers":{"type":"array"}},"required":["interfaces","ip_addresses","vlans","routes","acls","ntp_servers"]}"#;
-    let prompt = format!(
-        "Convert this network device configuration into JSON. Extract only explicit facts; never infer values. Use arrays named interfaces, ip_addresses, vlans, routes, acls, and ntp_servers.\n\nCONFIGURATION:\n{}",
-        raw
-    );
-    match crate::llm::llm::ask_llm_internal_with_schema(
-        &prompt,
-        "You are a network configuration normalizer. Return valid JSON matching the supplied schema.",
-        Some(SCHEMA),
-        app,
-        state,
-    )
-    .await
-    {
-        Ok(output) => serde_json::from_str::<Value>(&output)
-            .ok()
-            .filter(valid_normalized_config)
-            .unwrap_or_else(|| normalize_config(raw)),
-        Err(_) => normalize_config(raw),
-    }
-}
-
-fn valid_normalized_config(value: &Value) -> bool {
-    value.as_object().is_some_and(|object| {
-        [
-            "interfaces",
-            "ip_addresses",
-            "vlans",
-            "routes",
-            "acls",
-            "ntp_servers",
-        ]
-        .iter()
-        .all(|field| object.get(*field).is_some_and(Value::is_array))
-    })
-}
 
 /// Chat/MCP entry point.  It deliberately returns structured JSON rather than
 /// SurrealQL so callers cannot bypass freshness and provenance rules.
@@ -685,14 +597,7 @@ fn fnv1a(input: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn config_normalizer_extracts_common_facts() {
-        let value = normalize_config("interface Gi0/1\n ip address 10.0.0.1 255.255.255.0\n switchport access vlan 10\nntp server 10.0.0.10\naccess-list EDGE permit ip any any");
-        assert_eq!(array(&value, "interfaces").len(), 1);
-        assert_eq!(array(&value, "ip_addresses").len(), 1);
-        assert_eq!(array(&value, "vlans").len(), 1);
-        assert_eq!(array(&value, "ntp_servers").len(), 1);
-    }
+
     #[test]
     fn yaml_normalizer_maps_arp_to_ip_facts() {
         let value = normalize_yaml(
