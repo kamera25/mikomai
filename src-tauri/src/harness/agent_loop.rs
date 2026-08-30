@@ -1,4 +1,5 @@
 use crate::harness::state_machine::{HarnessState, HarnessStateMachine};
+use crate::harness::{execution, intent};
 use crate::llm::llm::LlamaState;
 use crate::mcp::protocol::{ChatEvent, InitialFinishedPayload, InitialStartedPayload};
 use crate::mcp::ToolKind;
@@ -19,22 +20,6 @@ pub struct AgentLoop {
     pub window: Window,
     pub state_machine: HarnessStateMachine,
     pub network_state: NetworkState,
-}
-
-fn is_configuration_change_goal(goal: &str) -> bool {
-    let goal = goal.to_lowercase();
-    [
-        "設定する",
-        "設定して",
-        "設定を変更",
-        "変更する",
-        "追加する",
-        "削除する",
-        "投入する",
-        "hostname",
-    ]
-    .iter()
-    .any(|marker| goal.contains(marker))
 }
 
 fn builder_handoff_action(output: &str) -> ActionType {
@@ -250,7 +235,9 @@ impl AgentLoop {
                     decision.reason.join(", ").replace('\n', " ")
                 )
             };
-            let _ = self.window.emit("chat-event", ChatEvent::LlmChunk(decision_log));
+            let _ = self
+                .window
+                .emit("chat-event", ChatEvent::LlmChunk(decision_log));
 
             if decision.action_type == ActionType::Finish {
                 self.state_machine.transition(HarnessState::Finished)?;
@@ -322,45 +309,8 @@ impl AgentLoop {
             let tool_kind_opt = ToolKind::from_str(&tool_name).ok();
             let tool_task_id = uuid::Uuid::new_v4();
 
-            let mut tool_args = action.parameters.clone();
-            if let Some(target) = &action.target {
-                if let serde_json::Value::Object(ref mut map) = tool_args {
-                    if !map.contains_key("target") {
-                        map.insert(
-                            "target".to_string(),
-                            serde_json::Value::String(target.clone()),
-                        );
-                    }
-                    if !map.contains_key("device_name") && !map.contains_key("deviceName") {
-                        map.insert(
-                            "device_name".to_string(),
-                            serde_json::Value::String(target.clone()),
-                        );
-                    }
-                    if !map.contains_key("host") {
-                        map.insert(
-                            "host".to_string(),
-                            serde_json::Value::String(target.clone()),
-                        );
-                    }
-                    if !map.contains_key("device") {
-                        map.insert(
-                            "device".to_string(),
-                            serde_json::Value::String(target.clone()),
-                        );
-                    }
-                }
-            }
-
-            // MCPツールの引数にも強制的にSTEP 1の当初objectiveを挿入
-            if let Some(ref init_obj) = initial_objective {
-                if let serde_json::Value::Object(ref mut map) = tool_args {
-                    map.insert(
-                        "objective".to_string(),
-                        serde_json::Value::String(init_obj.clone()),
-                    );
-                }
-            }
+            let tool_args =
+                execution::prepare_tool_arguments(&action, initial_objective.as_deref());
 
             log::info!(
                 "[AgentLoop] Step {}: [MCP EXECUTE] tool='{}', target={:?}, params={}",
@@ -383,7 +333,7 @@ impl AgentLoop {
             // Builder reasons over the request and RAG evidence, then starts
             // the existing review/approval flow.
             if tool_kind_opt.map_or(false, |kind| kind.is_rag_tool())
-                && is_configuration_change_goal(&goal)
+                && intent::is_configuration_change_request(&goal)
                 && !self.has_builder_coworker_result()
             {
                 let builder_result = crate::mcp::executor::flow::execute_mcp_tools_flow(
@@ -471,30 +421,17 @@ impl AgentLoop {
 
             // 4. Observing Phase (Wrap raw output into Observation)
             self.state_machine.transition(HarnessState::Observing)?;
-            let observation = Observation {
-                id: uuid::Uuid::new_v4(),
-                timestamp: chrono::Utc::now(),
-                raw: cmd_result.output.clone(),
-                parsed: None,
-                source: ObservationSource {
-                    device: action.target.clone(),
-                    command: action
-                        .parameters
-                        .get("command")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    tool_name: Some(tool_name.clone()),
-                    tool_kind: tool_kind_opt,
-                    parameters: Some(action.parameters.clone()),
-                },
-                provenance: Provenance {
-                    origin: ProvenanceOrigin::Tool,
-                    confidence: Some(1.0),
-                },
-            };
+            let observation = execution::tool_observation(
+                &action,
+                tool_name,
+                tool_kind_opt,
+                tool_args,
+                cmd_result.output,
+            );
 
             // 5. State Update & Evaluation Phase
-            self.network_state.apply_observation(observation);
+            self.network_state
+                .record_action_result(action, cmd_result.success, observation);
             self.state_machine.transition(HarnessState::Evaluating)?;
         };
 
@@ -512,15 +449,16 @@ impl AgentLoop {
 
 #[cfg(test)]
 mod tests {
-    use super::{builder_handoff_action, is_configuration_change_goal};
+    use super::builder_handoff_action;
+    use crate::harness::intent::is_configuration_change_request;
     use crate::state::events::ActionType;
 
     #[test]
     fn only_change_requests_handoff_rag_to_builder_coworker() {
-        assert!(is_configuration_change_goal(
+        assert!(is_configuration_change_request(
             "F220 に hostname aaa を設定する"
         ));
-        assert!(!is_configuration_change_goal("F220 の設定を確認する"));
+        assert!(!is_configuration_change_request("F220 の設定を確認する"));
     }
 
     #[test]

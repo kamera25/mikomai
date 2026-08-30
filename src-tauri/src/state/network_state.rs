@@ -1,6 +1,6 @@
 use crate::state::desired::DesiredState;
 use crate::state::event_log::EventLog;
-use crate::state::events::{HarnessEvent, Observation};
+use crate::state::events::{Action, ActionResult, HarnessEvent, Observation};
 use crate::state::hypothesis::Hypothesis;
 use crate::state::observed::ObservedState;
 use serde::{Deserialize, Serialize};
@@ -37,6 +37,32 @@ impl NetworkState {
     }
 
     pub fn apply_observation(&mut self, obs: Observation) {
+        self.incorporate_observation(&obs);
+        self.event_log.push(HarnessEvent::Observation(obs));
+    }
+
+    /// Records the result of an executed action as one causal event.
+    ///
+    /// Direct observations (for example, imported facts) use
+    /// `apply_observation`; tool execution must use this method so a replay can
+    /// retain the action-result relationship without duplicating facts.
+    pub fn record_action_result(
+        &mut self,
+        action: Action,
+        success: bool,
+        observation: Observation,
+    ) {
+        self.incorporate_observation(&observation);
+        self.event_log.push(HarnessEvent::Result(ActionResult {
+            id: uuid::Uuid::new_v4(),
+            action_id: action.id,
+            timestamp: chrono::Utc::now(),
+            success,
+            observation,
+        }));
+    }
+
+    fn incorporate_observation(&mut self, obs: &Observation) {
         if let Some(device_name) = &obs.source.device {
             let device_fact = self
                 .observed
@@ -64,7 +90,6 @@ impl NetworkState {
         }
 
         self.observed.observations.push(obs.clone());
-        self.event_log.push(HarnessEvent::Observation(obs));
     }
 
     pub fn rebuild_from_log(log: &EventLog) -> Self {
@@ -77,9 +102,8 @@ impl NetworkState {
                         requirements: Vec::new(),
                     });
                 }
-                HarnessEvent::Observation(obs) => {
-                    state.apply_observation(obs.clone());
-                }
+                HarnessEvent::Observation(obs) => state.incorporate_observation(obs),
+                HarnessEvent::Result(result) => state.incorporate_observation(&result.observation),
                 _ => {}
             }
         }
@@ -148,5 +172,60 @@ impl NetworkState {
         }
 
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::events::{
+        Action, ActionType, ObservationSource, Provenance, ProvenanceOrigin,
+    };
+
+    fn observation(raw: &str) -> Observation {
+        Observation {
+            id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            raw: raw.to_string(),
+            parsed: None,
+            source: ObservationSource {
+                device: Some("R1".to_string()),
+                command: Some("show version".to_string()),
+                tool_name: Some("network_show".to_string()),
+                tool_kind: None,
+                parameters: None,
+            },
+            provenance: Provenance {
+                origin: ProvenanceOrigin::Tool,
+                confidence: Some(1.0),
+            },
+        }
+    }
+
+    #[test]
+    fn action_result_replays_once_without_an_extra_observation_event() {
+        let mut state = NetworkState::with_goal("R1 を確認".to_string());
+        let action = Action {
+            id: uuid::Uuid::new_v4(),
+            decision_id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            action_type: ActionType::Observe,
+            tool: Some("network_show".to_string()),
+            target: Some("R1".to_string()),
+            parameters: serde_json::json!({"command": "show version"}),
+        };
+        state.record_action_result(action, true, observation("IOS XE"));
+
+        assert_eq!(state.observed.observations.len(), 1);
+        assert!(matches!(
+            state.event_log.events().last(),
+            Some(HarnessEvent::Result(_))
+        ));
+        let rebuilt = NetworkState::rebuild_from_log(&state.event_log);
+        assert_eq!(rebuilt.observed.observations.len(), 1);
+        assert_eq!(
+            rebuilt.observed.devices["R1"].raw_snapshots["show version"],
+            "IOS XE"
+        );
     }
 }

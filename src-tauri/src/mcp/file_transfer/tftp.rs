@@ -593,6 +593,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires localhost UDP bind permission; run explicitly in an integration environment"]
     async fn test_local_tftp_mock_loopback() {
         // Spin up a mock TFTP server on UDP localhost
         let server_socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();

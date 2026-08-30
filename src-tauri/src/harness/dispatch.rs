@@ -28,18 +28,7 @@ fn is_explanatory_request(normalized: &str) -> bool {
 }
 
 fn is_configuration_change_request(normalized: &str) -> bool {
-    [
-        "設定する",
-        "設定して",
-        "設定を変更",
-        "変更する",
-        "追加する",
-        "削除する",
-        "投入する",
-        "hostname",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
+    crate::harness::intent::is_configuration_change_request(normalized)
 }
 
 /// Returns the least-powerful execution model capable of handling `message`.

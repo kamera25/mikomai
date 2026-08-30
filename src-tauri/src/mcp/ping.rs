@@ -219,6 +219,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires raw ICMP socket permission; run explicitly in an integration environment"]
     async fn test_network_ping_core_localhost() {
         let result =
             network_ping_core("127.0.0.1".to_string(), Some(32), Some(1), Some(true)).await;
@@ -241,6 +242,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires the host ping command and ICMP permission; run explicitly in an integration environment"]
     async fn test_run_system_ping_localhost() {
         let result = run_system_ping("127.0.0.1", Some(56), Some(1), false).await;
         assert!(result.is_ok());
