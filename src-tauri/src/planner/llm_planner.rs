@@ -64,7 +64,65 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
 ```
 "#;
 
-const DECISION_JSON_SCHEMA: &str = r#"{
+pub fn build_planner_schema(registered_devices: &[String]) -> String {
+    let device_schema = if !registered_devices.is_empty() {
+        let enum_json = serde_json::to_string(registered_devices).unwrap_or_else(|_| "[]".to_string());
+        format!(r#"{{ "type": "string", "enum": {} }}"#, enum_json)
+    } else {
+        r#"{ "type": "string" }"#.to_string()
+    };
+
+    let target_schema = if !registered_devices.is_empty() {
+        let enum_json = serde_json::to_string(registered_devices).unwrap_or_else(|_| "[]".to_string());
+        format!(
+            r#"{{ "anyOf": [ {{ "type": "string", "enum": {} }}, {{ "type": "null" }} ] }}"#,
+            enum_json
+        )
+    } else {
+        r#"{ "type": ["string", "null"] }"#.to_string()
+    };
+
+    format!(
+        r#"{{
+  "type": "object",
+  "properties": {{
+    "action_type": {{
+      "type": "string",
+      "enum": ["OBSERVE", "VERIFY", "CONFIGURE", "ROLLBACK", "ASK_HUMAN", "FINISH"]
+    }},
+    "objective": {{ "type": "string" }},
+    "tool": {{ "type": ["string", "null"] }},
+    "target": {target_schema},
+    "parameters": {{
+      "type": "object",
+      "properties": {{
+        "device": {device_schema},
+        "resource": {{
+          "type": "string",
+          "enum": ["arp", "routes", "interfaces", "lldp", "mac_table", "bgp", "ospf"]
+        }},
+        "query": {{ "type": "string" }},
+        "command": {{ "type": "string" }},
+        "host": {{ "type": "string" }},
+        "id": {{ "type": "string" }}
+      }}
+    }},
+    "reason": {{
+      "type": "array",
+      "items": {{ "type": "string" }}
+    }},
+    "expected_observation": {{
+      "type": "array",
+      "items": {{ "type": "string" }}
+    }},
+    "final_answer": {{ "type": ["string", "null"] }}
+  }},
+  "required": ["action_type", "objective", "reason"]
+}}"#
+    )
+}
+
+pub const DECISION_JSON_SCHEMA: &str = r#"{
   "type": "object",
   "properties": {
     "action_type": {
@@ -74,7 +132,20 @@ const DECISION_JSON_SCHEMA: &str = r#"{
     "objective": { "type": "string" },
     "tool": { "type": ["string", "null"] },
     "target": { "type": ["string", "null"] },
-    "parameters": {},
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "device": { "type": "string" },
+        "resource": {
+          "type": "string",
+          "enum": ["arp", "routes", "interfaces", "lldp", "mac_table", "bgp", "ospf"]
+        },
+        "query": { "type": "string" },
+        "command": { "type": "string" },
+        "host": { "type": "string" },
+        "id": { "type": "string" }
+      }
+    },
     "reason": {
       "type": "array",
       "items": { "type": "string" }
@@ -204,10 +275,32 @@ impl LlmPlanner {
             devices_context, state_prompt, initial_goal
         );
 
+        let mut registered_devices: Vec<String> = Vec::new();
+        for conn in &connections {
+            let hostname = conn.hostname.trim().to_string();
+            if !hostname.is_empty() && !registered_devices.contains(&hostname) {
+                registered_devices.push(hostname);
+            }
+            let ip = conn.ip_string().trim().to_string();
+            if !ip.is_empty() && !registered_devices.contains(&ip) {
+                registered_devices.push(ip);
+            }
+        }
+        if let Ok(settings) = crate::settings::load_settings(app.clone()) {
+            for ip in settings.recent_ips {
+                let ip_trim = ip.trim().to_string();
+                if !ip_trim.is_empty() && !registered_devices.contains(&ip_trim) {
+                    registered_devices.push(ip_trim);
+                }
+            }
+        }
+
+        let dynamic_schema = build_planner_schema(&registered_devices);
+
         let response = crate::llm::llm::ask_llm_internal_with_schema(
             &full_prompt,
             PLANNER_SYSTEM_PROMPT,
-            Some(DECISION_JSON_SCHEMA),
+            Some(&dynamic_schema),
             app,
             llama_state,
         )
@@ -291,5 +384,21 @@ mod tests {
             decision.action_type,
             crate::state::events::ActionType::AskHuman
         );
+    }
+
+    #[test]
+    fn test_build_planner_schema_conversion() {
+        let empty_schema = build_planner_schema(&[]);
+        assert!(llama_cpp_2::json_schema_to_grammar(&empty_schema).is_ok());
+
+        let devices = vec![
+            "NakaokuGW".to_string(),
+            "192.168.50.1".to_string(),
+            "rt01".to_string(),
+        ];
+        let dynamic_schema = build_planner_schema(&devices);
+        assert!(dynamic_schema.contains(r#""enum": ["NakaokuGW","192.168.50.1","rt01"]"#));
+        let res = llama_cpp_2::json_schema_to_grammar(&dynamic_schema);
+        assert!(res.is_ok(), "Schema conversion failed: {:?}", res);
     }
 }
