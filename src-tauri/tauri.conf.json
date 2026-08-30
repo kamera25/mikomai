@@ -31,6 +31,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/netmiko_wrapper"]
+    "externalBin": ["binaries/netmiko_wrapper"],
+    "macOS": {
+      "infoPlist": "Info.plist"
+    }
   }
 }

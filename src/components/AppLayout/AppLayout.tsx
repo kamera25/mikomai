@@ -19,7 +19,6 @@ import { useQuestionQueue } from "../../hooks/useQuestionQueue";
 import { useConfigDiffEvents } from "../../hooks/useConfigDiffEvents";
 import { QuestionPanel } from "./QuestionPanel";
 import { CustomModal } from "../CustomModal";
-import { ContextMenu } from "../ContextMenu";
 import { SidebarIcon, ServerIcon, DiffIcon } from "../Icons";
 import { Attachment, Message } from "../../types";
 
@@ -579,7 +578,6 @@ export function AppLayout() {
       </div>
       <StatusBar modelStatus={modelState.modelStatus} modelPath={modelPath} />
       {chatState.modalConfig && <CustomModal {...chatState.modalConfig} />}
-      <ContextMenu />
     </div>
   );
 }
