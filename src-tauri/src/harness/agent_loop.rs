@@ -34,6 +34,21 @@ fn is_configuration_change_goal(goal: &str) -> bool {
     .any(|marker| goal.contains(marker))
 }
 
+fn builder_handoff_action(output: &str) -> ActionType {
+    let output = output.to_lowercase();
+    if ["不足", "missing", "parameter", "入力してください", "ask_user_choice"]
+        .iter()
+        .any(|marker| output.contains(marker))
+    {
+        ActionType::AskHuman
+    } else {
+        // Cancellation, validation/dry-run failure, connection errors, and
+        // successful deployments all terminate this agent run. In each case
+        // the Builder result is the authoritative user-facing outcome.
+        ActionType::Finish
+    }
+}
+
 impl AgentLoop {
     pub fn new(app: AppHandle, window: Window, max_steps: usize) -> Self {
         Self {
@@ -42,6 +57,24 @@ impl AgentLoop {
             state_machine: HarnessStateMachine::new(max_steps),
             network_state: NetworkState::new(),
         }
+    }
+
+    fn has_builder_coworker_result(&self) -> bool {
+        self.network_state.observed.observations.iter().any(|observation| {
+            observation.source.tool_name.as_deref() == Some("builder_co_worker")
+        })
+    }
+
+    fn latest_builder_coworker_result(&self) -> Option<&str> {
+        self.network_state
+            .observed
+            .observations
+            .iter()
+            .rev()
+            .find(|observation| {
+                observation.source.tool_name.as_deref() == Some("builder_co_worker")
+            })
+            .map(|observation| observation.raw.as_str())
     }
 
     pub async fn run(&mut self, goal: String, llama_state: &LlamaState) -> Result<String, String> {
@@ -99,6 +132,37 @@ impl AgentLoop {
                     }
                 }
             };
+
+            // Builder is a bounded co-worker. Once it returns, its outcome is
+            // handed to the user or used to request missing input; the Agent
+            // must not resume live commands, RAG, or a second configuration
+            // attempt from that result.
+            if let Some(builder_output) = self.latest_builder_coworker_result() {
+                let action_type = builder_handoff_action(builder_output);
+                let is_missing_input = action_type == ActionType::AskHuman;
+                decision.action_type = action_type;
+                decision.objective = if is_missing_input {
+                    format!(
+                        "Builderの結果で不足している値を確認してください。\n\n{}",
+                        builder_output
+                    )
+                } else {
+                    "Builder Co-Workerの結果を報告する".to_string()
+                };
+                decision.tool = None;
+                decision.target = None;
+                decision.parameters = serde_json::Value::Null;
+                decision.reason = vec![
+                    "Builder Co-Workerの処理が完了または中断したため、ネットワーク操作を再試行せず結果を返す。"
+                        .to_string(),
+                ];
+                decision.expected_observation = Vec::new();
+                decision.final_answer = if is_missing_input {
+                    None
+                } else {
+                    Some(builder_output.to_string())
+                };
+            }
 
             // STEP 1のobjectiveをキャプチャし、STEP 2以降は当初のobjectiveを強制的に継承・挿入
             if initial_objective.is_none() {
@@ -237,6 +301,7 @@ impl AgentLoop {
             // the existing review/approval flow.
             if tool_kind_opt.map_or(false, |kind| kind.is_rag_tool())
                 && is_configuration_change_goal(&goal)
+                && !self.has_builder_coworker_result()
             {
                 let builder_result = crate::mcp::executor::flow::execute_mcp_tools_flow(
                     self.app.clone(),
@@ -244,7 +309,7 @@ impl AgentLoop {
                     goal.clone(),
                     vec![crate::mcp::executor::flow::ToolCall {
                         tool: tool_name.clone(),
-                        args: tool_args,
+                        args: tool_args.clone(),
                     }],
                     vec![],
                     vec![],
@@ -256,9 +321,31 @@ impl AgentLoop {
                 .await
                 .unwrap_or_else(|error| format!("Builder Co-Workerの実行に失敗しました: {}", error));
 
-                final_report = builder_result;
-                self.state_machine.transition(HarnessState::Finished)?;
-                break;
+                // Co-worker output is a fact for the Agent, not a terminal
+                // answer. This lets the Agent decide how to recover from a
+                // rejected commit, cancelled approval, or inconsistent input.
+                self.network_state.apply_observation(Observation {
+                    id: uuid::Uuid::new_v4(),
+                    timestamp: chrono::Utc::now(),
+                    raw: builder_result,
+                    parsed: None,
+                    source: ObservationSource {
+                        device: action.target.clone(),
+                        command: None,
+                        tool_name: Some("builder_co_worker".to_string()),
+                        tool_kind: None,
+                        parameters: Some(serde_json::json!({
+                            "delegated_tool": tool_name,
+                            "delegated_parameters": tool_args,
+                        })),
+                    },
+                    provenance: Provenance {
+                        origin: ProvenanceOrigin::Llm,
+                        confidence: None,
+                    },
+                });
+                self.state_machine.transition(HarnessState::Evaluating)?;
+                continue;
             }
 
             // Execute via existing tool executor (it emits McpToolStarted and McpToolFinished internally)
@@ -339,11 +426,24 @@ impl AgentLoop {
 
 #[cfg(test)]
 mod tests {
-    use super::is_configuration_change_goal;
+    use super::{builder_handoff_action, is_configuration_change_goal};
+    use crate::state::events::ActionType;
 
     #[test]
     fn only_change_requests_handoff_rag_to_builder_coworker() {
         assert!(is_configuration_change_goal("F220 に hostname aaa を設定する"));
         assert!(!is_configuration_change_goal("F220 の設定を確認する"));
+    }
+
+    #[test]
+    fn builder_failure_never_resumes_network_commands() {
+        assert_eq!(
+            builder_handoff_action("Config投入中にエラーが発生しました"),
+            ActionType::Finish
+        );
+        assert_eq!(
+            builder_handoff_action("設定に必要な値が不足しています: vlan_id"),
+            ActionType::AskHuman
+        );
     }
 }

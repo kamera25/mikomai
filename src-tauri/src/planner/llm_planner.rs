@@ -17,6 +17,7 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
      * **直ちに `tool: "query_nw_db"` (RAG検索) を action_type: "OBSERVE" で実行し、対象機種の正しいコマンド仕様を調査してください。**
      * RAG検索で正しいコマンド（例: Yamahaなら `show config`）が判明したら、その次のステップでその正しいコマンドを `network_show` で再実行してください。
    - 同じツール・同じ引数の無意味な再実行ループは絶対に避けてください。
+   - `builder_co_worker` の実行結果が存在する場合、それはBuilderからAgentへの引き継ぎです。**Builderや同じRAG検索を再実行してはいけません。** 結果がコミット拒否・キャンセル・エラー・入力不足を示す場合は、結果を踏まえて `ASK_HUMAN` で必要最小限の確認を求めてください。設定投入が成功した場合は `FINISH` を選択してください。
 3. 【RAG検索（query_nw_db）の必須規則】
    - 検索クエリ（`query` 引数）は英語の文章ではなく、必ず**日本語のキーワードベース**（例: `[Context: Yamaha] NTP 設定 確認`）で出力してください。
    - **特定のメーカーまたは登録機器が判明している場合は、必ず `query` 引数の冒頭に `[Context: メーカー名または機器名]` （例: `[Context: Yamaha] NTP 設定 確認`、`[Context: Cisco] ルーティング 確認`、`[Context: NakaokuGW] 設定 表示`）を付与してください。**
@@ -208,7 +209,12 @@ impl LlmPlanner {
         log::info!("================ [LLM Planner JSON Output] ================\n{}\n===========================================================", response);
 
         let mut decision = parse_decision_from_json(&response)?;
-        fallback_to_rag_for_known_vendor(&mut decision, &device_vendors, initial_goal);
+        let has_builder_handoff = network_state.observed.observations.iter().any(|observation| {
+            observation.source.tool_name.as_deref() == Some("builder_co_worker")
+        });
+        if !has_builder_handoff {
+            fallback_to_rag_for_known_vendor(&mut decision, &device_vendors, initial_goal);
+        }
         Ok(decision)
     }
 }
