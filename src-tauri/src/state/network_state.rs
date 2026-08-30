@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Central Network State tracking Observed, Desired, Hypotheses, and EventLog
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NetworkState {
+    pub task_id: Option<uuid::Uuid>,
     pub observed: ObservedState,
     pub desired: Option<DesiredState>,
     pub hypotheses: Vec<Hypothesis>,
@@ -23,6 +24,15 @@ impl NetworkState {
         let mut state = Self::default();
         state.set_goal(goal);
         state
+    }
+
+    pub fn start_task(&mut self, task_id: uuid::Uuid, goal: String) {
+        self.task_id = Some(task_id);
+        self.event_log.push(HarnessEvent::TaskStarted {
+            task_id,
+            timestamp: chrono::Utc::now(),
+        });
+        self.set_goal(goal);
     }
 
     pub fn set_goal(&mut self, goal: String) {
@@ -96,6 +106,7 @@ impl NetworkState {
         let mut state = Self::new();
         for event in log.events() {
             match event {
+                HarnessEvent::TaskStarted { task_id, .. } => state.task_id = Some(*task_id),
                 HarnessEvent::GoalSet { goal, .. } => {
                     state.desired = Some(DesiredState {
                         raw_goal: goal.clone(),
@@ -227,5 +238,16 @@ mod tests {
             rebuilt.observed.devices["R1"].raw_snapshots["show version"],
             "IOS XE"
         );
+    }
+
+    #[test]
+    fn task_identity_survives_event_replay() {
+        let task_id = uuid::Uuid::new_v4();
+        let mut state = NetworkState::new();
+        state.start_task(task_id, "R1 を確認".to_string());
+
+        let rebuilt = NetworkState::rebuild_from_log(&state.event_log);
+        assert_eq!(rebuilt.task_id, Some(task_id));
+        assert_eq!(rebuilt.desired.unwrap().raw_goal, "R1 を確認");
     }
 }

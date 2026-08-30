@@ -31,8 +31,8 @@ Event-sourced NetworkState <- Tool executor port -> MCP / device
 - `state_machine`: 不正なフェーズ遷移と上限超過を拒否する。
 - `NetworkState`: 直接観測と Action の実行結果を区別してイベント化し、ログから再生できる。
 
-今回のリファクタリングは、このうち `intent`、`execution`、状態遷移、ActionResult の
-因果記録を実装している。
+今回のリファクタリングでは、`intent`、`execution`、状態遷移、ActionResult の因果記録に
+加え、`PlannerPort`、`ToolExecutorPort`、`ReporterPort` と既存実装のアダプタを実装している。
 
 ## 目標アーキテクチャ
 
@@ -60,8 +60,8 @@ Event-sourced NetworkState <- Tool executor port -> MCP / device
 
 ## 段階的な移行
 
-1. `AgentLoop` から `Planner` / `ToolExecutor` / `Reporter` trait を抽出し、既存実装を adapter にする。
-2. `EventLog` をタスク ID 単位で永続化し、開始・再開・監査表示を replay に統一する。
+1. ~~`AgentLoop` から `Planner` / `ToolExecutor` / `Reporter` trait を抽出し、既存実装を adapter にする。~~ 完了
+2. ~~`EventLog` をタスク ID 単位で永続化し、開始・再開・監査表示を replay に統一する。~~ タスクごとの永続化と replay を実装済み。再開・監査 UI は次の UI 段階で接続する。
 3. Action の idempotency key、タイムアウト、キャンセル、リトライ方針を ActionResult に追加する。
 4. フェイクポートを用いた「調査成功」「ポリシー拒否」「承認待ち」「ツール失敗」のシナリオテストを追加する。
 

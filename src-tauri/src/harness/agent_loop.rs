@@ -1,11 +1,12 @@
+use crate::harness::ports::{
+    AgentReport, LlmPlannerPort, McpToolExecutorPort, PlannerPort, ReporterPort, TauriReporterPort,
+    ToolExecutorPort,
+};
 use crate::harness::state_machine::{HarnessState, HarnessStateMachine};
 use crate::harness::{execution, intent};
 use crate::llm::llm::LlamaState;
 use crate::mcp::protocol::{ChatEvent, InitialFinishedPayload, InitialStartedPayload};
 use crate::mcp::ToolKind;
-use tauri::{AppHandle, Emitter, Window};
-
-use crate::planner::llm_planner::LlmPlanner;
 use crate::state::events::{
     Action, ActionType, Decision, HarnessEvent, Observation, ObservationSource, Provenance,
     ProvenanceOrigin,
@@ -14,6 +15,7 @@ use crate::state::network_state::NetworkState;
 use crate::validator::policy::PolicyValidator;
 use crate::validator::schema::SchemaValidator;
 use std::str::FromStr;
+use tauri::{AppHandle, Manager, Window};
 
 pub struct AgentLoop {
     pub app: AppHandle,
@@ -74,21 +76,39 @@ impl AgentLoop {
     }
 
     pub async fn run(&mut self, goal: String, llama_state: &LlamaState) -> Result<String, String> {
+        let planner = LlmPlannerPort;
+        let executor = McpToolExecutorPort;
+        let reporter = TauriReporterPort::new(self.window.clone());
+        self.run_with(goal, llama_state, &planner, &executor, &reporter)
+            .await
+    }
+
+    pub async fn run_with<P, E, R>(
+        &mut self,
+        goal: String,
+        llama_state: &LlamaState,
+        planner: &P,
+        executor: &E,
+        reporter: &R,
+    ) -> Result<String, String>
+    where
+        P: PlannerPort,
+        E: ToolExecutorPort,
+        R: ReporterPort,
+    {
         let task_id = uuid::Uuid::new_v4();
-        self.network_state.set_goal(goal.clone());
+        self.network_state.start_task(task_id, goal.clone());
         self.state_machine.transition(HarnessState::Observing)?;
 
-        let _ = self.window.emit(
-            "chat-event",
-            ChatEvent::McpInitialStarted(InitialStartedPayload {
+        reporter.report(AgentReport::Chat(ChatEvent::McpInitialStarted(
+            InitialStartedPayload {
                 task_id,
                 has_image: false,
-            }),
-        );
-        let _ = self.window.emit(
-            "chat-event",
-            ChatEvent::AgentSelected("エージェントによる解析を開始".to_string()),
-        );
+            },
+        )));
+        reporter.report(AgentReport::Chat(ChatEvent::AgentSelected(
+            "エージェントによる解析を開始".to_string(),
+        )));
 
         let mut initial_objective: Option<String> = None;
 
@@ -110,42 +130,41 @@ impl AgentLoop {
                 break msg;
             }
 
-            let _ = self.window.emit(
-                "chat-event",
-                ChatEvent::LlmChunk(format!(
-                    "\n```agent-step\nphase: planning\nstep: {}\n```\n",
-                    self.state_machine.step_count()
-                )),
-            );
+            reporter.report(AgentReport::Chat(ChatEvent::LlmChunk(format!(
+                "\n```agent-step\nphase: planning\nstep: {}\n```\n",
+                self.state_machine.step_count()
+            ))));
 
-            let mut decision: Decision =
-                match LlmPlanner::plan(&self.app, llama_state, &self.network_state).await {
-                    Ok(d) => d,
-                    Err(e) => {
-                        log::warn!(
-                            "[AgentLoop] Planner failed at step {}: {}",
-                            self.state_machine.step_count(),
+            let mut decision: Decision = match planner
+                .plan(&self.app, llama_state, &self.network_state)
+                .await
+            {
+                Ok(d) => d,
+                Err(e) => {
+                    log::warn!(
+                        "[AgentLoop] Planner failed at step {}: {}",
+                        self.state_machine.step_count(),
+                        e
+                    );
+                    Decision {
+                        id: uuid::Uuid::new_v4(),
+                        timestamp: chrono::Utc::now(),
+                        action_type: ActionType::Finish,
+                        objective: initial_objective
+                            .clone()
+                            .unwrap_or_else(|| "目標達成または計画停止".to_string()),
+                        tool: None,
+                        target: None,
+                        parameters: serde_json::Value::Null,
+                        reason: vec![format!("Planning encountered error: {}", e)],
+                        expected_observation: vec![],
+                        final_answer: Some(format!(
+                            "計画処理中にエラーが発生したため停止しました: {}",
                             e
-                        );
-                        Decision {
-                            id: uuid::Uuid::new_v4(),
-                            timestamp: chrono::Utc::now(),
-                            action_type: ActionType::Finish,
-                            objective: initial_objective
-                                .clone()
-                                .unwrap_or_else(|| "目標達成または計画停止".to_string()),
-                            tool: None,
-                            target: None,
-                            parameters: serde_json::Value::Null,
-                            reason: vec![format!("Planning encountered error: {}", e)],
-                            expected_observation: vec![],
-                            final_answer: Some(format!(
-                                "計画処理中にエラーが発生したため停止しました: {}",
-                                e
-                            )),
-                        }
+                        )),
                     }
-                };
+                }
+            };
 
             // Builder is a bounded co-worker. Once it returns, its outcome is
             // handed to the user or used to request missing input; the Agent
@@ -235,9 +254,7 @@ impl AgentLoop {
                     decision.reason.join(", ").replace('\n', " ")
                 )
             };
-            let _ = self
-                .window
-                .emit("chat-event", ChatEvent::LlmChunk(decision_log));
+            reporter.report(AgentReport::Chat(ChatEvent::LlmChunk(decision_log)));
 
             if decision.action_type == ActionType::Finish {
                 self.state_machine.transition(HarnessState::Finished)?;
@@ -286,13 +303,10 @@ impl AgentLoop {
                     self.state_machine.step_count(),
                     policy_err
                 );
-                let _ = self.window.emit(
-                    "chat-event",
-                    ChatEvent::LlmChunk(format!(
-                        "\n```agent-warning\nmessage: ポリシー違反により中断: {}\n```\n",
-                        policy_err.replace('\n', " ")
-                    )),
-                );
+                reporter.report(AgentReport::Chat(ChatEvent::LlmChunk(format!(
+                    "\n```agent-warning\nmessage: ポリシー違反により中断: {}\n```\n",
+                    policy_err.replace('\n', " ")
+                ))));
                 continue;
             }
 
@@ -320,13 +334,13 @@ impl AgentLoop {
                 tool_args
             );
 
-            let _ = self.window.emit(
-                "commit-log",
-                serde_json::json!({
-                    "line": format!("[AgentLoop Step {}] 🚀 MCP Tool 実行開始: {} (対象: {:?}, 引数: {})", self.state_machine.step_count(), tool_name, action.target.as_deref().unwrap_or("localhost"), tool_args),
-                    "stream": "stdout"
-                }),
-            );
+            reporter.report(AgentReport::CommitLog(format!(
+                "[AgentLoop Step {}] 🚀 MCP Tool 実行開始: {} (対象: {:?}, 引数: {})",
+                self.state_machine.step_count(),
+                tool_name,
+                action.target.as_deref().unwrap_or("localhost"),
+                tool_args
+            )));
 
             // A configuration-oriented RAG result is delegated to Builder as
             // a co-worker. The Agent does not infer template values itself;
@@ -336,25 +350,18 @@ impl AgentLoop {
                 && intent::is_configuration_change_request(&goal)
                 && !self.has_builder_coworker_result()
             {
-                let builder_result = crate::mcp::executor::flow::execute_mcp_tools_flow(
-                    self.app.clone(),
-                    self.window.clone(),
-                    goal.clone(),
-                    vec![crate::mcp::executor::flow::ToolCall {
-                        tool: tool_name.clone(),
-                        args: tool_args.clone(),
-                    }],
-                    vec![],
-                    vec![],
-                    0,
-                    120,
-                    0,
-                    true,
-                )
-                .await
-                .unwrap_or_else(|error| {
-                    format!("Builder Co-Workerの実行に失敗しました: {}", error)
-                });
+                let builder_result = executor
+                    .execute_builder(
+                        self.app.clone(),
+                        self.window.clone(),
+                        goal.clone(),
+                        tool_name.clone(),
+                        tool_args.clone(),
+                    )
+                    .await
+                    .unwrap_or_else(|error| {
+                        format!("Builder Co-Workerの実行に失敗しました: {}", error)
+                    });
 
                 // Co-worker output is a fact for the Agent, not a terminal
                 // answer. This lets the Agent decide how to recover from a
@@ -384,24 +391,23 @@ impl AgentLoop {
             }
 
             // Execute via existing tool executor (it emits McpToolStarted and McpToolFinished internally)
-            let cmd_result = crate::mcp::executor::flow::execute_mcp_tool_raw(
-                self.app.clone(),
-                self.window.clone(),
-                tool_task_id,
-                tool_name.clone(),
-                goal.clone(),
-                tool_args.clone(),
-                vec![],
-                120,
-            )
-            .await
-            .unwrap_or_else(|e| crate::network::CommandResult {
-                success: false,
-                output: format!("Execution error: {}", e),
-                saved_path: None,
-                is_cached: None,
-                cache_time: None,
-            });
+            let cmd_result = executor
+                .execute_tool(
+                    self.app.clone(),
+                    self.window.clone(),
+                    tool_task_id,
+                    tool_name.clone(),
+                    goal.clone(),
+                    tool_args.clone(),
+                )
+                .await
+                .unwrap_or_else(|e| crate::network::CommandResult {
+                    success: false,
+                    output: format!("Execution error: {}", e),
+                    saved_path: None,
+                    is_cached: None,
+                    cache_time: None,
+                });
 
             log::info!(
                 "[AgentLoop] Step {}: [MCP FINISHED] tool='{}', success={}, output_len={} chars",
@@ -411,13 +417,16 @@ impl AgentLoop {
                 cmd_result.output.len()
             );
 
-            let _ = self.window.emit(
-                "commit-log",
-                serde_json::json!({
-                    "line": format!("[AgentLoop Step {}] ✅ MCP Tool 実行完了: {} (成否: {})", self.state_machine.step_count(), tool_name, if cmd_result.success { "成功" } else { "失敗" }),
-                    "stream": "stdout"
-                }),
-            );
+            reporter.report(AgentReport::CommitLog(format!(
+                "[AgentLoop Step {}] ✅ MCP Tool 実行完了: {} (成否: {})",
+                self.state_machine.step_count(),
+                tool_name,
+                if cmd_result.success {
+                    "成功"
+                } else {
+                    "失敗"
+                }
+            )));
 
             // 4. Observing Phase (Wrap raw output into Observation)
             self.state_machine.transition(HarnessState::Observing)?;
@@ -435,15 +444,38 @@ impl AgentLoop {
             self.state_machine.transition(HarnessState::Evaluating)?;
         };
 
-        let _ = self.window.emit(
-            "chat-event",
-            ChatEvent::McpInitialFinished(InitialFinishedPayload {
+        reporter.report(AgentReport::Chat(ChatEvent::McpInitialFinished(
+            InitialFinishedPayload {
                 task_id,
                 content: final_report.clone(),
-            }),
-        );
+            },
+        )));
+
+        self.persist_event_log(task_id);
 
         Ok(final_report)
+    }
+
+    fn persist_event_log(&self, task_id: uuid::Uuid) {
+        let result = (|| -> Result<(), String> {
+            let directory = self
+                .app
+                .path()
+                .app_data_dir()
+                .map_err(|error| format!("Failed to resolve app data directory: {error}"))?
+                .join("agent-events");
+            std::fs::create_dir_all(&directory)
+                .map_err(|error| format!("Failed to create event log directory: {error}"))?;
+            self.network_state
+                .event_log
+                .save_to_path(&directory.join(format!("{task_id}.json")))
+        })();
+
+        if let Err(error) = result {
+            // The live task result must never be lost merely because auditing
+            // storage is unavailable; retain the failure in application logs.
+            log::warn!("[AgentLoop] Could not persist task event log: {error}");
+        }
     }
 }
 

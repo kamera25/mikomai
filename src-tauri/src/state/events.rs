@@ -106,6 +106,10 @@ pub struct ActionResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "event_type", rename_all = "snake_case")]
 pub enum HarnessEvent {
+    TaskStarted {
+        task_id: Uuid,
+        timestamp: DateTime<Utc>,
+    },
     GoalSet {
         goal: String,
         timestamp: DateTime<Utc>,
