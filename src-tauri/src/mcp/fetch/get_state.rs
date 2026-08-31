@@ -139,6 +139,7 @@ async fn fetch_and_ingest_state<F: McpCommandFetcher>(
                 kind,
                 raw: result.output.clone(),
                 normalized: None,
+                canonical: None,
                 evidence: None,
                 normalizer_version: normalizer_version.to_string(),
             })

@@ -1,5 +1,6 @@
 use super::fetch_base::{CommandTemplate, McpCommandFetcher};
 use crate::network::CommandResult;
+use serde_json::Value;
 use tauri::Manager;
 
 struct ArpFetcher;
@@ -59,21 +60,26 @@ pub async fn fetch_arp(
         }
     };
 
-    // SurrealDB is the authoritative read-through cache for fetched state.
-    // A fresh graph observation is returned to the Agent; otherwise we must
-    // contact the device and commit the new observation before returning.
-    if let Some((raw, collected_at)) = app
-        .state::<crate::graph::SurrealDbState>()
-        .fresh_raw(&registered_name, crate::graph::GraphDataKind::Arp)
+    let graph = app.state::<crate::graph::SurrealDbState>();
+    if let Some(canonical) = graph
+        .fresh_canonical(&registered_name, crate::graph::GraphDataKind::Arp)
         .await?
     {
-        return Ok(CommandResult {
-            success: true,
-            output: raw,
-            saved_path: None,
-            is_cached: Some(true),
-            cache_time: Some(collected_at),
-        });
+        return Ok(canonical_command_result(canonical, true));
+    }
+    if graph
+        .fresh_raw(&registered_name, crate::graph::GraphDataKind::Arp)
+        .await?
+        .is_some()
+    {
+        crate::graph::canonicalize_arp_on_read(&app, &graph, &registered_name).await?;
+        if let Some(canonical) = graph
+            .fresh_canonical(&registered_name, crate::graph::GraphDataKind::Arp)
+            .await?
+        {
+            return Ok(canonical_command_result(canonical, true));
+        }
+        return Err("ARP raw observation could not be canonicalized".to_string());
     }
 
     // 1. Fetch raw ARP table output using the registered host name
@@ -83,7 +89,7 @@ pub async fn fetch_arp(
         return Ok(command_res);
     }
 
-    app.state::<crate::graph::SurrealDbState>()
+    graph
         .ingest(crate::graph::GraphIngestInput {
             source_id: "mcp.fetch_arp".to_string(),
             collected_at: chrono::Utc::now(),
@@ -91,22 +97,26 @@ pub async fn fetch_arp(
             kind: crate::graph::GraphDataKind::Arp,
             raw: command_res.output.clone(),
             normalized: None,
+            canonical: None,
             evidence: None,
             normalizer_version: "arp-raw-v1".to_string(),
         })
         .await?;
 
-    // LLM canonicalization must not be enqueued here. The Agent loop uses the
-    // same single inference worker for its next planning step; a background
-    // normalization request can otherwise block that loop even after its
-    // timeout fires (queued llama.cpp inference is not cancellable).
-    //
-    // The raw observation is already persisted above. Canonicalization remains
-    // available as an explicit, low-priority operation after the agent run.
-    log::info!(
-        "ARP raw observation stored for {}; deferred canonicalization to avoid blocking the Agent loop",
-        registered_name
-    );
+    crate::graph::canonicalize_arp_on_read(&app, &graph, &registered_name).await?;
+    let canonical = graph
+        .fresh_canonical(&registered_name, crate::graph::GraphDataKind::Arp)
+        .await?
+        .ok_or_else(|| "ARP canonicalization did not produce a canonical observation".to_string())?;
+    Ok(canonical_command_result(canonical, false))
+}
 
-    Ok(command_res)
+fn canonical_command_result(canonical: Value, cached: bool) -> CommandResult {
+    CommandResult {
+        success: true,
+        output: serde_json::to_string_pretty(&canonical).unwrap_or_else(|_| canonical.to_string()),
+        saved_path: None,
+        is_cached: Some(cached),
+        cache_time: None,
+    }
 }
