@@ -83,6 +83,7 @@ pub async fn fetch_routing(
             kind: crate::graph::GraphDataKind::Routing,
             raw: command_res.output.clone(),
             normalized: None,
+            evidence: None,
             normalizer_version: "route-raw-v1".to_string(),
         })
         .await?;
@@ -157,6 +158,7 @@ pub async fn fetch_routing(
                             crate::graph::GraphDataKind::Routing,
                             &validated_yaml,
                         ),
+                        evidence: None,
                         normalizer_version: "route-llm-yaml-v1".to_string(),
                     })
                     .await

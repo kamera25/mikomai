@@ -56,7 +56,7 @@ pub fn parse_macos_arp(stdout: &str) -> Result<UniversalArpTable, String> {
 
         // Standardize MAC address to standard colon-separated lowercase with padded octets
         let mac_address = if is_incomplete {
-            "00:00:00:00:00:00".to_string()
+            None
         } else {
             // E.g., e:5a:d9:cf:f3:7c -> 0e:5a:d9:cf:f3:7c
             let parts: Vec<&str> = raw_mac.split(':').collect();
@@ -69,9 +69,9 @@ pub fn parse_macos_arp(stdout: &str) -> Result<UniversalArpTable, String> {
                         padded_parts.push(part.to_lowercase());
                     }
                 }
-                padded_parts.join(":")
+                Some(padded_parts.join(":"))
             } else {
-                raw_mac.to_lowercase()
+                Some(raw_mac.to_lowercase())
             }
         };
 
@@ -79,7 +79,7 @@ pub fn parse_macos_arp(stdout: &str) -> Result<UniversalArpTable, String> {
             ip_address,
             mac_address,
             r#type: entry_type,
-            interface,
+            interface: Some(interface),
             age_seconds: None,
         });
     }
@@ -112,22 +112,22 @@ mod tests {
 
         // Check normal entry with standard MAC
         assert_eq!(parsed.arp_table[0].ip_address, "192.168.50.1");
-        assert_eq!(parsed.arp_table[0].mac_address, "ac:44:f2:91:fa:f8");
+        assert_eq!(parsed.arp_table[0].mac_address.as_deref(), Some("ac:44:f2:91:fa:f8"));
         assert_eq!(parsed.arp_table[0].r#type, ArpEntryType::Dynamic);
-        assert_eq!(parsed.arp_table[0].interface, "en0");
+        assert_eq!(parsed.arp_table[0].interface.as_deref(), Some("en0"));
 
         // Check padded MAC
         assert_eq!(parsed.arp_table[1].ip_address, "192.168.50.18");
-        assert_eq!(parsed.arp_table[1].mac_address, "0e:5a:d9:cf:f3:7c");
+        assert_eq!(parsed.arp_table[1].mac_address.as_deref(), Some("0e:5a:d9:cf:f3:7c"));
 
         // Check incomplete
         assert_eq!(parsed.arp_table[2].ip_address, "192.168.50.220");
-        assert_eq!(parsed.arp_table[2].mac_address, "00:00:00:00:00:00");
+        assert_eq!(parsed.arp_table[2].mac_address, None);
         assert_eq!(parsed.arp_table[2].r#type, ArpEntryType::Incomplete);
 
         // Check permanent and padded MAC
         assert_eq!(parsed.arp_table[3].ip_address, "224.0.0.251");
-        assert_eq!(parsed.arp_table[3].mac_address, "01:00:5e:00:00:fb");
+        assert_eq!(parsed.arp_table[3].mac_address.as_deref(), Some("01:00:5e:00:00:fb"));
         assert_eq!(parsed.arp_table[3].r#type, ArpEntryType::Permanent);
     }
 }

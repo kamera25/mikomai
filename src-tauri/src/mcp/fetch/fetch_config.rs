@@ -50,6 +50,7 @@ pub async fn fetch_config(
                 // The immutable raw snapshot is immediately useful for
                 // provenance, diffing, and later asynchronous normalization.
                 normalized: None,
+                evidence: None,
                 normalizer_version: "config-raw-v1".to_string(),
             })
             .await?;

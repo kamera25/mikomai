@@ -55,6 +55,8 @@ pub struct GraphIngestInput {
     pub kind: GraphDataKind,
     pub raw: String,
     pub normalized: Option<Value>,
+    /// Candidate vectors and source-line references for a canonical result.
+    pub evidence: Option<Value>,
     pub normalizer_version: String,
 }
 
@@ -183,6 +185,7 @@ DEFINE INDEX edge_key ON TABLE graph_edge FIELDS key UNIQUE;
                 "collected_at": input.collected_at,
                 "raw": input.raw,
                 "normalized": input.normalized,
+                "evidence": input.evidence,
                 "normalizer_version": input.normalizer_version,
             }),
         )

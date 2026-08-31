@@ -47,7 +47,7 @@ pub fn parse_windows_arp(stdout: &str) -> Result<UniversalArpTable, String> {
 
             // Normalization of MAC Address: Windows uses hyphens (e.g. ac-44-f2-91-fa-f8). We need to convert it to colons.
             let mac_address = if raw_mac == "---" || raw_mac.to_lowercase() == "invalid" {
-                "00:00:00:00:00:00".to_string()
+                None
             } else {
                 let colons_mac = raw_mac.replace('-', ":").to_lowercase();
                 // Ensure proper padding (e.g., if any octet is single digit, which is rare on Windows but just in case)
@@ -61,9 +61,9 @@ pub fn parse_windows_arp(stdout: &str) -> Result<UniversalArpTable, String> {
                             padded_parts.push(part.to_string());
                         }
                     }
-                    padded_parts.join(":")
+                    Some(padded_parts.join(":"))
                 } else {
-                    colons_mac
+                    Some(colons_mac)
                 }
             };
 
@@ -77,7 +77,7 @@ pub fn parse_windows_arp(stdout: &str) -> Result<UniversalArpTable, String> {
                 ip_address,
                 mac_address,
                 r#type: entry_type,
-                interface: current_interface.clone(),
+                interface: Some(current_interface.clone()),
                 age_seconds: None,
             });
         }
@@ -110,12 +110,12 @@ Interface: 192.168.50.15 --- 0x12
         assert_eq!(parsed.arp_table.len(), 2);
 
         assert_eq!(parsed.arp_table[0].ip_address, "192.168.50.1");
-        assert_eq!(parsed.arp_table[0].mac_address, "ac:44:f2:91:fa:f8");
+        assert_eq!(parsed.arp_table[0].mac_address.as_deref(), Some("ac:44:f2:91:fa:f8"));
         assert_eq!(parsed.arp_table[0].r#type, ArpEntryType::Dynamic);
-        assert_eq!(parsed.arp_table[0].interface, "192.168.50.15");
+        assert_eq!(parsed.arp_table[0].interface.as_deref(), Some("192.168.50.15"));
 
         assert_eq!(parsed.arp_table[1].ip_address, "192.168.50.22");
-        assert_eq!(parsed.arp_table[1].mac_address, "01:00:5e:00:00:16");
+        assert_eq!(parsed.arp_table[1].mac_address.as_deref(), Some("01:00:5e:00:00:16"));
         assert_eq!(parsed.arp_table[1].r#type, ArpEntryType::Static);
     }
 }

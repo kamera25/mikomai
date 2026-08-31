@@ -428,8 +428,10 @@ impl AgentLoop {
                 }
             )));
 
-            // 4. Observing Phase (Wrap raw output into Observation)
-            self.state_machine.transition(HarnessState::Observing)?;
+            // 4. Wrap the completed tool result into an observation.
+            // The state machine moves directly from Acting to Evaluating;
+            // transitioning through Observing here would make the following
+            // Observing -> Evaluating transition invalid and abort the loop.
             let observation = execution::tool_observation(
                 &action,
                 tool_name,

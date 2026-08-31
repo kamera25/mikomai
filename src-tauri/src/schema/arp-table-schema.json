@@ -45,7 +45,7 @@
             "description": "The IP address of the ARP entry"
           },
           "mac_address": {
-            "type": "string",
+            "type": ["string", "null"],
             "pattern": "^([0-9a-f]{2}:){5}[0-9a-f]{2}$",
             "description": "The MAC address of the ARP entry in standard colon-separated lowercase format"
           },
@@ -55,7 +55,7 @@
             "description": "The type of the ARP entry (dynamic, static, incomplete, permanent)"
           },
           "interface": {
-            "type": "string",
+            "type": ["string", "null"],
             "minLength": 1,
             "description": "The network interface associated with the ARP entry"
           },

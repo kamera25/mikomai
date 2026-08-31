@@ -1,6 +1,6 @@
 use super::fetch_base::{CommandTemplate, McpCommandFetcher};
 use crate::network::CommandResult;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 struct ArpFetcher;
 
@@ -91,104 +91,22 @@ pub async fn fetch_arp(
             kind: crate::graph::GraphDataKind::Arp,
             raw: command_res.output.clone(),
             normalized: None,
+            evidence: None,
             normalizer_version: "arp-raw-v1".to_string(),
         })
         .await?;
 
-    // 2. Spawn background task to resolve OS, convert to YAML via LLM, validate and save
-    let app_clone = app.clone();
-    let name_clone = registered_name.clone();
-    let raw_output_clone = command_res.output.clone();
-
-    tauri::async_runtime::spawn(async move {
-        // Delay slightly to allow the subsequent agent (triggered by the frontend) to acquire the LLM inference lock first.
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-        // Resolve OS type for metadata
-        let target_device =
-            match crate::mcp::fetch::fetch_base::resolve_device_config(&app_clone, &name_clone)
-                .await
-            {
-                Ok(cfg) => cfg,
-                Err(e) => {
-                    log::warn!(
-                        "Warning: failed to resolve device config for metadata in background: {}",
-                        e
-                    );
-                    return;
-                }
-            };
-
-        let os_type = target_device.device_type.clone();
-        let llama_state = app_clone.state::<crate::llm::llm::LlamaState>();
-
-        // Convert raw output to YAML using the LLM and validate it
-        let validated_yaml = match tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            crate::mcp::arp::llm::convert_raw_to_yaml(
-                &app_clone,
-                &llama_state,
-                &raw_output_clone,
-                &name_clone,
-                &os_type,
-            ),
-        )
-        .await
-        {
-            Ok(Ok(yaml)) => yaml,
-            Ok(Err(e)) => {
-                log::error!("LLM ARP conversion/validation failed in background: {}", e);
-                return;
-            }
-            Err(_) => {
-                log::warn!("LLM ARP normalization timed out; raw graph observation was retained");
-                return;
-            }
-        };
-
-        // Save YAML log
-        match crate::mcp::arp::yaml::save_validated_yaml(&app_clone, &name_clone, &validated_yaml) {
-            Ok(saved_path) => {
-                if let Err(e) = app_clone
-                    .state::<crate::graph::SurrealDbState>()
-                    .ingest(crate::graph::GraphIngestInput {
-                        source_id: "mcp.fetch_arp".to_string(),
-                        collected_at: chrono::Utc::now(),
-                        device_name: name_clone.clone(),
-                        kind: crate::graph::GraphDataKind::Arp,
-                        raw: raw_output_clone.clone(),
-                        normalized: crate::graph::normalize_yaml(
-                            crate::graph::GraphDataKind::Arp,
-                            &validated_yaml,
-                        ),
-                        normalizer_version: "arp-llm-yaml-v1".to_string(),
-                    })
-                    .await
-                {
-                    log::error!("Failed to ingest normalized ARP graph data: {}", e);
-                }
-                log::info!(
-                    "Background YAML normalization succeeded, saved to: {}",
-                    saved_path.display()
-                );
-                if let Err(e) = app_clone.emit(
-                    "chat-event",
-                    crate::mcp::protocol::ChatEvent::ArpYamlSaved {
-                        device_name: name_clone,
-                        saved_path,
-                    },
-                ) {
-                    log::error!("Error emitting arp-yaml-saved event: {}", e);
-                }
-            }
-            Err(e) => {
-                log::warn!(
-                    "Warning: failed to save validated YAML artifact in background: {}",
-                    e
-                );
-            }
-        }
-    });
+    // LLM canonicalization must not be enqueued here. The Agent loop uses the
+    // same single inference worker for its next planning step; a background
+    // normalization request can otherwise block that loop even after its
+    // timeout fires (queued llama.cpp inference is not cancellable).
+    //
+    // The raw observation is already persisted above. Canonicalization remains
+    // available as an explicit, low-priority operation after the agent run.
+    log::info!(
+        "ARP raw observation stored for {}; deferred canonicalization to avoid blocking the Agent loop",
+        registered_name
+    );
 
     Ok(command_res)
 }

@@ -90,7 +90,7 @@ mod tests {
             HarnessState::Deciding,
             HarnessState::Validating,
             HarnessState::Acting,
-            HarnessState::Observing,
+            HarnessState::Evaluating,
             HarnessState::Deciding,
             HarnessState::Finished,
         ] {

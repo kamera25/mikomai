@@ -1,3 +1,4 @@
+pub mod canonical;
 pub mod llm;
 pub mod macos;
 pub mod windows;
