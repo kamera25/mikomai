@@ -740,22 +740,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
 
 [[package]]
-name = "async-tftp"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f24aee9a5a63c41e6720d2ab8e12947d3b9386b2d21f770f890b19b20e0173f0"
-dependencies = [
- "async-executor",
- "async-io",
- "async-lock",
- "blocking",
- "bytes",
- "futures-lite",
- "log",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1517,17 +1501,6 @@ name = "cfg_block"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "18758054972164c3264f7c8386f5fc6da6114cb46b619fd365d4e3b2dc3ae487"
-
-[[package]]
-name = "chacha20"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f8d983286843e49675a4b7a2d174efe136dc93a18d69130dd18198a6c167601"
-dependencies = [
- "cfg-if",
- "cpufeatures 0.3.0",
- "rand_core 0.10.1",
-]
 
 [[package]]
 name = "chrono"
@@ -4051,7 +4024,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "r-efi 6.0.0",
- "rand_core 0.10.1",
  "wasip2",
  "wasip3",
 ]
@@ -6433,10 +6405,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
- "arrow",
  "arrow-array",
- "arrow-json",
- "async-tftp",
  "base64 0.22.1",
  "chrono",
  "clap",
@@ -6445,15 +6414,12 @@ dependencies = [
  "dns-lookup",
  "fastembed",
  "futures",
- "getrandom 0.4.2",
  "jsonrepair-rs",
  "keyring",
  "keyring-core",
  "lancedb",
  "llama-cpp-2",
  "log",
- "rand 0.10.1",
- "rand_core 0.10.1",
  "regex",
  "reqwest 0.12.28",
  "ring",
@@ -8235,17 +8201,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rand"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
-dependencies = [
- "chacha20",
- "getrandom 0.4.2",
- "rand_core 0.10.1",
-]
-
-[[package]]
 name = "rand_chacha"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8282,12 +8237,6 @@ checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 dependencies = [
  "getrandom 0.3.4",
 ]
-
-[[package]]
-name = "rand_core"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
 name = "rand_distr"
