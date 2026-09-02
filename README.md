@@ -42,6 +42,21 @@ npm run tauri dev
 npm run tauri build
 ```
 
+### CLI
+
+GUIと同じRust Coreを利用するCLIは `src-tauri` 内にあります。
+
+```bash
+cd src-tauri
+cargo run --bin mikomai-cli -- resources
+cargo run --bin mikomai-cli -- devices
+cargo run --bin mikomai-cli -- get-state <device> <resource>
+cargo run --bin mikomai-cli -- --json get-state <device> arp
+```
+
+`get-state` は登録済み機器に対する読み取り専用の操作です。対応resourceは
+`resources` で確認できます。
+
 ### キャッシュのクリーンアップ
 
 プロジェクト内の不要なビルドキャッシュや一時ファイルを一括で削除し、ディスク容量を解放するためのスクリプトが用意されています。

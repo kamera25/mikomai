@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod cli;
 mod connections;
 pub(crate) mod crypto;
 pub(crate) mod error;
@@ -23,6 +24,40 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logger::init().expect("Failed to initialize logger");
+    build_app()
+        .expect("error while building tauri application")
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { .. } => {
+                let _ = history::cleanup_running_history_on_exit(app_handle);
+                let state = app_handle.state::<llm::LlamaState>();
+                let status = state.status.blocking_lock();
+                if let llm::ModelState::Loading = *status {
+                    log::info!("Exiting while model is loading; using fast exit to prevent crash.");
+                    #[cfg(unix)]
+                    unsafe {
+                        extern "C" {
+                            fn _exit(status: std::os::raw::c_int) -> !;
+                        }
+                        _exit(0);
+                    }
+                    #[cfg(windows)]
+                    unsafe {
+                        extern "system" {
+                            fn ExitProcess(uExitCode: u32) -> !;
+                        }
+                        ExitProcess(0);
+                    }
+                } else {
+                    let mut shared = state.shared.blocking_lock();
+                    *shared = None;
+                    log::info!("Llama model cleared on exit.");
+                }
+            }
+            _ => {}
+        });
+}
+
+pub(crate) fn build_app() -> tauri::Result<tauri::App> {
     let llama_state = llm::LlamaState::new().expect("Failed to initialize Llama backend");
     let rag_state = mcp::rag::RagState::new();
 
@@ -126,34 +161,4 @@ pub fn run() {
             mcp::tftp::network_tftp_upload
         ])
         .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app_handle, event| match event {
-            tauri::RunEvent::ExitRequested { .. } => {
-                let _ = history::cleanup_running_history_on_exit(app_handle);
-                let state = app_handle.state::<llm::LlamaState>();
-                let status = state.status.blocking_lock();
-                if let llm::ModelState::Loading = *status {
-                    log::info!("Exiting while model is loading; using fast exit to prevent crash.");
-                    #[cfg(unix)]
-                    unsafe {
-                        extern "C" {
-                            fn _exit(status: std::os::raw::c_int) -> !;
-                        }
-                        _exit(0);
-                    }
-                    #[cfg(windows)]
-                    unsafe {
-                        extern "system" {
-                            fn ExitProcess(uExitCode: u32) -> !;
-                        }
-                        ExitProcess(0);
-                    }
-                } else {
-                    let mut shared = state.shared.blocking_lock();
-                    *shared = None;
-                    log::info!("Llama model cleared on exit.");
-                }
-            }
-            _ => {}
-        });
 }

@@ -10,6 +10,7 @@
     "check": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
+    "cli": "cargo run --manifest-path src-tauri/Cargo.toml --bin mikomai-cli --",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test --config=e2e/playwright.config.ts",
