@@ -2,6 +2,7 @@ pub mod args;
 pub mod arp;
 pub mod brands;
 pub mod canonicalization;
+pub mod interface;
 pub mod config_helper;
 pub mod console;
 pub mod devices;

@@ -183,16 +183,7 @@ pub async fn dispatch_get_state(
             )
             .await
         }
-        StateResource::Interfaces => {
-            fetch_and_ingest_state(
-                app,
-                InterfacesFetcher,
-                device_name,
-                GraphDataKind::Interfaces,
-                "interfaces-raw-v1",
-            )
-            .await
-        }
+        StateResource::Interfaces => fetch_and_canonicalize_interfaces(app, device_name).await,
         StateResource::Lldp => {
             fetch_and_ingest_state(
                 app,
@@ -244,6 +235,59 @@ pub async fn dispatch_get_state(
             })
         }
     }
+}
+
+async fn fetch_and_canonicalize_interfaces(
+    app: &tauri::AppHandle,
+    device_name: &str,
+) -> Result<CommandResult, String> {
+    let graph = app.state::<SurrealDbState>();
+    if let Some(canonical) = graph
+        .fresh_canonical(device_name, GraphDataKind::Interfaces)
+        .await?
+    {
+        return Ok(CommandResult {
+            success: true,
+            output: serde_json::to_string_pretty(&canonical)
+                .unwrap_or_else(|_| canonical.to_string()),
+            saved_path: None,
+            is_cached: Some(true),
+            cache_time: None,
+        });
+    }
+    let result = InterfacesFetcher
+        .fetch_device_info(app, device_name)
+        .await?;
+    if !result.success || result.output.trim().is_empty() {
+        return Ok(result);
+    }
+    graph
+        .ingest(GraphIngestInput {
+            source_id: "mcp.get_state.interfaces".to_string(),
+            collected_at: chrono::Utc::now(),
+            device_name: device_name.to_string(),
+            kind: GraphDataKind::Interfaces,
+            raw: result.output.clone(),
+            normalized: None,
+            canonical: None,
+            evidence: None,
+            normalizer_version: "interfaces-raw-v1".to_string(),
+        })
+        .await?;
+    crate::graph::canonicalize_interfaces_on_read(app, &graph, device_name).await?;
+    let canonical = graph
+        .fresh_canonical(device_name, GraphDataKind::Interfaces)
+        .await?
+        .ok_or_else(|| {
+            "interface canonicalization did not produce a canonical observation".to_string()
+        })?;
+    Ok(CommandResult {
+        success: true,
+        output: serde_json::to_string_pretty(&canonical).unwrap_or_else(|_| canonical.to_string()),
+        saved_path: None,
+        is_cached: Some(false),
+        cache_time: None,
+    })
 }
 
 #[tauri::command]

@@ -107,7 +107,9 @@ pub async fn fetch_arp(
     let canonical = graph
         .fresh_canonical(&registered_name, crate::graph::GraphDataKind::Arp)
         .await?
-        .ok_or_else(|| "ARP canonicalization did not produce a canonical observation".to_string())?;
+        .ok_or_else(|| {
+            "ARP canonicalization did not produce a canonical observation".to_string()
+        })?;
     Ok(canonical_command_result(canonical, false))
 }
 

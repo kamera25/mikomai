@@ -1,6 +1,7 @@
 use super::fetch_base::{CommandTemplate, McpCommandFetcher};
 use crate::network::CommandResult;
-use tauri::{Emitter, Manager};
+use serde_json::Value;
+use tauri::Manager;
 
 pub(crate) struct RoutingFetcher;
 
@@ -59,9 +60,26 @@ pub async fn fetch_routing(
         }
     };
 
-    // Check if within cache expiry duration
-    if let Some(cached_res) = super::fetch_base::check_yaml_cache(&app, &registered_name, "route") {
-        return Ok(cached_res);
+    let graph = app.state::<crate::graph::SurrealDbState>();
+    if let Some(canonical) = graph
+        .fresh_canonical(&registered_name, crate::graph::GraphDataKind::Routing)
+        .await?
+    {
+        return Ok(canonical_command_result(canonical, true));
+    }
+    if graph
+        .fresh_raw(&registered_name, crate::graph::GraphDataKind::Routing)
+        .await?
+        .is_some()
+    {
+        crate::graph::canonicalize_route_on_read(&app, &graph, &registered_name).await?;
+        if let Some(canonical) = graph
+            .fresh_canonical(&registered_name, crate::graph::GraphDataKind::Routing)
+            .await?
+        {
+            return Ok(canonical_command_result(canonical, true));
+        }
+        return Err("routing raw observation could not be canonicalized".to_string());
     }
 
     // 1. Fetch raw routing table output using the registered host name
@@ -75,7 +93,7 @@ pub async fn fetch_routing(
 
     // Preserve the authoritative raw result immediately. The validated
     // normalized form is added by the conversion task below.
-    app.state::<crate::graph::SurrealDbState>()
+    graph
         .ingest(crate::graph::GraphIngestInput {
             source_id: "mcp.fetch_routing".to_string(),
             collected_at: chrono::Utc::now(),
@@ -89,106 +107,22 @@ pub async fn fetch_routing(
         })
         .await?;
 
-    // 2. Spawn background task to resolve OS, convert to YAML via LLM, validate and save
-    let app_clone = app.clone();
-    let name_clone = registered_name.clone();
-    let raw_output_clone = command_res.output.clone();
+    crate::graph::canonicalize_route_on_read(&app, &graph, &registered_name).await?;
+    let canonical = graph
+        .fresh_canonical(&registered_name, crate::graph::GraphDataKind::Routing)
+        .await?
+        .ok_or_else(|| {
+            "routing canonicalization did not produce a canonical observation".to_string()
+        })?;
+    Ok(canonical_command_result(canonical, false))
+}
 
-    tauri::async_runtime::spawn(async move {
-        // Delay slightly to allow the subsequent agent (triggered by the frontend) to acquire the LLM inference lock first.
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-        // Resolve OS type for metadata
-        let target_device =
-            match crate::mcp::fetch::fetch_base::resolve_device_config(&app_clone, &name_clone)
-                .await
-            {
-                Ok(cfg) => cfg,
-                Err(e) => {
-                    log::warn!(
-                        "Warning: failed to resolve device config for metadata in background: {}",
-                        e
-                    );
-                    return;
-                }
-            };
-
-        let os_type = target_device.device_type.clone();
-        let llama_state = app_clone.state::<crate::llm::llm::LlamaState>();
-
-        // Convert raw output to YAML using the LLM and validate it
-        let validated_yaml = match tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            crate::mcp::route::llm::convert_raw_to_yaml(
-                &app_clone,
-                &llama_state,
-                &raw_output_clone,
-                &name_clone,
-                &os_type,
-            ),
-        )
-        .await
-        {
-            Ok(Ok(yaml)) => yaml,
-            Ok(Err(e)) => {
-                log::error!(
-                    "LLM route conversion/validation failed in background: {}",
-                    e
-                );
-                return;
-            }
-            Err(_) => {
-                log::warn!("LLM route normalization timed out; raw graph observation was retained");
-                return;
-            }
-        };
-
-        // Save YAML log
-        match crate::mcp::route::yaml::save_validated_yaml(&app_clone, &name_clone, &validated_yaml)
-        {
-            Ok(saved_path) => {
-                if let Err(e) = app_clone
-                    .state::<crate::graph::SurrealDbState>()
-                    .ingest(crate::graph::GraphIngestInput {
-                        source_id: "mcp.fetch_routing".to_string(),
-                        collected_at: chrono::Utc::now(),
-                        device_name: name_clone.clone(),
-                        kind: crate::graph::GraphDataKind::Routing,
-                        raw: raw_output_clone.clone(),
-                        normalized: crate::graph::normalize_yaml(
-                            crate::graph::GraphDataKind::Routing,
-                            &validated_yaml,
-                        ),
-                        canonical: None,
-                        evidence: None,
-                        normalizer_version: "route-llm-yaml-v1".to_string(),
-                    })
-                    .await
-                {
-                    log::error!("Failed to ingest normalized routing graph data: {}", e);
-                }
-                log::info!(
-                    "Background YAML normalization succeeded, saved to: {}",
-                    saved_path.display()
-                );
-                if let Err(e) = app_clone.emit(
-                    "chat-event",
-                    crate::mcp::protocol::ChatEvent::RouteYamlSaved {
-                        device_name: name_clone,
-                        saved_path,
-                    },
-                ) {
-                    log::error!("Error emitting route-yaml-saved event: {}", e);
-                }
-            }
-            Err(e) => {
-                log::warn!(
-                    "Warning: failed to save validated YAML artifact in background: {}",
-                    e
-                );
-            }
-        }
-    });
-
-    Ok(command_res)
+fn canonical_command_result(canonical: Value, cached: bool) -> CommandResult {
+    CommandResult {
+        success: true,
+        output: serde_json::to_string_pretty(&canonical).unwrap_or_else(|_| canonical.to_string()),
+        saved_path: None,
+        is_cached: Some(cached),
+        cache_time: None,
+    }
 }

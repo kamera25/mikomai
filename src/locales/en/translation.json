@@ -72,6 +72,8 @@
     "btn_load_model": "Load Model",
     "btn_settings": "Settings",
     "btn_send": "Send",
+    "btn_queue": "Queue",
+    "queue_hint": "This message will be sent automatically when the model is ready.",
     "btn_stop": "Stop Response",
     "vision_disabled_warning_title": "Vision processing is disabled",
     "vision_disabled_warning_desc": "To load and analyze images, please enable Vision processing in settings.",

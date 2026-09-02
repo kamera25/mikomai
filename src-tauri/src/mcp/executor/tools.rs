@@ -340,12 +340,25 @@ fn resolve_device_config_from_args(
 define_tool!(NetworkShowTool, "network_show", |app, args| {
     let device = resolve_device_config_from_args(&app, &args)?;
     let command = get_str_arg(&args, &["command"]).unwrap_or_default();
-    // Route ARP requests through the read-through graph interface even when
-    // the Agent selected a generic show command. This prevents `network_show`
-    // from bypassing TTL checks and provenance storage.
+    // Route ARP and routing-table requests through the read-through graph
+    // interface even when the Agent selected a generic show command.
     if is_arp_show_command(&command) {
         let llama_state = app.state::<crate::llm::llm::LlamaState>();
         return crate::mcp::fetch::fetch_arp::fetch_arp(
+            app.clone(),
+            llama_state,
+            None,
+            None,
+            Some(device.host),
+            None,
+            None,
+            None,
+        )
+        .await;
+    }
+    if is_route_show_command(&command) {
+        let llama_state = app.state::<crate::llm::llm::LlamaState>();
+        return crate::mcp::fetch::fetch_routing::fetch_routing(
             app.clone(),
             llama_state,
             None,
@@ -365,6 +378,14 @@ define_tool!(NetworkShowTool, "network_show", |app, args| {
 fn is_arp_show_command(command: &str) -> bool {
     let normalized = command.trim().to_ascii_lowercase();
     normalized.starts_with("show ") && normalized.split_whitespace().any(|word| word == "arp")
+}
+
+fn is_route_show_command(command: &str) -> bool {
+    let normalized = command.trim().to_ascii_lowercase();
+    normalized.starts_with("show ")
+        && normalized
+            .split_whitespace()
+            .any(|word| word == "route" || word == "routing")
 }
 
 define_tool!(NetworkConfigTool, "network_config", |app, args| {

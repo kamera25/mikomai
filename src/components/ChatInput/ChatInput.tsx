@@ -368,7 +368,7 @@ export const ChatInput = memo(
       }
 
       if (e.key === "Enter") {
-        if (!e.shiftKey && modelStatus === "Loaded") {
+        if (!e.shiftKey) {
           e.preventDefault();
           onSend();
         }
@@ -446,6 +446,7 @@ export const ChatInput = memo(
               {modelStatus === "Error" &&
                 t("chat_input.status_failed_model")}
             </span>
+            <p className="model-queue-hint">{t("chat_input.queue_hint")}</p>
             {(modelStatus === "NotLoaded" || modelStatus === "Error") && (
               <div className="banner-actions">
                 {modelPath && (
@@ -600,10 +601,13 @@ export const ChatInput = memo(
                 type="button"
                 className="send-button"
                 onClick={onSend}
-                disabled={modelStatus !== "Loaded" || (!input.trim() && attachments.length === 0)}
-                title={t("chat_input.btn_send")}
+                disabled={!input.trim() && attachments.length === 0}
+                title={modelStatus === "Loaded" ? t("chat_input.btn_send") : t("chat_input.btn_queue")}
               >
                 <SendIcon size={16} />
+                {modelStatus !== "Loaded" && (
+                  <span className="send-button-label">{t("chat_input.btn_queue")}</span>
+                )}
               </button>
             )}
           </div>

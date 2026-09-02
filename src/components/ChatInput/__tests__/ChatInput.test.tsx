@@ -66,6 +66,15 @@ describe("ChatInput Component", () => {
     expect(setInput).toHaveBeenCalledWith("");
   });
 
+  it("allows queueing a message when the model is not loaded", () => {
+    const handleSend = vi.fn();
+    render(<ChatInput {...defaultProps} modelStatus="NotLoaded" input="hello" handleSend={handleSend} />);
+    const button = screen.getByTitle("送信予約");
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+    expect(handleSend).toHaveBeenCalledWith("hello", []);
+  });
+
   it("renders stop button when isGenerating is true and calls handleStop on click", () => {
     const handleStop = vi.fn();
     render(<ChatInput {...defaultProps} isGenerating={true} handleStop={handleStop} />);

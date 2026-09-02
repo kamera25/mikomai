@@ -1,4 +1,13 @@
-use validator::Validate;
+use crate::mcp::route::canonical::{
+    evidence, extract, prompt_contract, reconstruct_and_validate, RouteCanonicalizationEvidence,
+    RouteSelection,
+};
+
+#[derive(Debug, Clone)]
+pub struct CanonicalRouteResult {
+    pub yaml: String,
+    pub evidence: RouteCanonicalizationEvidence,
+}
 
 fn clean_yaml_output(output: &str) -> String {
     let mut cleaned = output.trim().to_string();
@@ -26,24 +35,16 @@ pub async fn convert_raw_to_yaml(
     raw_output: &str,
     device_name: &str,
     os_type: &str,
-) -> Result<String, String> {
-    let schema_json = include_str!("../../schema/route-table-schema.json");
-    let generated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-
-    let system_prompt = format!(
-        include_str!("../config/route_system_prompt.txt"),
-        schema_json, generated_at, device_name, os_type
-    );
-
-    let mut current_user_prompt = format!(
-        "Convert this raw routing table command output to YAML:\n\n{}",
-        raw_output
-    );
-
-    let mut retry_count = 0;
+) -> Result<CanonicalRouteResult, String> {
+    let extracted = extract(raw_output);
+    if extracted.evidence.is_empty() {
+        return Err("route candidate extraction found no route lines".to_string());
+    }
+    let system_prompt = "You map pre-extracted network CLI candidates. Never invent values: return only YAML index selections that follow the supplied contract. No prose or code fences.";
+    let mut current_user_prompt = prompt_contract(&extracted, raw_output);
+    let generated_at = chrono::Utc::now();
     let max_retries = 3;
-
-    while retry_count <= max_retries {
+    for retry_count in 0..=max_retries {
         log::info!(
             "Prompting LLM to convert route table (Attempt {})...",
             retry_count + 1
@@ -65,46 +66,28 @@ pub async fn convert_raw_to_yaml(
 
         let clean_yaml = clean_yaml_output(&llm_res);
 
-        // Validate YAML
-        match serde_yaml::from_str::<crate::schema::route::UniversalRouteTable>(&clean_yaml) {
-            Ok(parsed) => match parsed.validate() {
-                Ok(_) => {
-                    log::info!("Route table successfully parsed and validated!");
-                    return Ok(clean_yaml);
-                }
-                Err(validation_errors) => {
-                    log::warn!("Validation failed: {:?}", validation_errors);
-                    if retry_count < max_retries {
-                        retry_count += 1;
-                        current_user_prompt = format!(
-                                "The previous output failed validation with the following errors:\n{:?}\n\nPlease fix the errors and output the complete corrected YAML. DO NOT output any comments, just output the corrected YAML.",
-                                validation_errors
-                            );
-                    } else {
-                        return Err(format!(
-                            "Route table validation failed after {} retries. Errors: {:?}",
-                            max_retries, validation_errors
-                        ));
-                    }
-                }
-            },
-            Err(parse_err) => {
-                log::warn!("YAML parsing failed: {}", parse_err);
-                if retry_count < max_retries {
-                    retry_count += 1;
-                    current_user_prompt = format!(
-                        "The previous output was not valid YAML. Parsing error:\n{}\n\nPlease fix the syntax and output the complete corrected YAML. DO NOT output any comments, just output the corrected YAML.",
-                        parse_err
-                    );
-                } else {
-                    return Err(format!(
-                        "Route table parsing failed after {} retries. Error: {}",
-                        max_retries, parse_err
-                    ));
-                }
+        match serde_yaml::from_str::<RouteSelection>(&clean_yaml)
+            .map_err(|error| format!("invalid constrained route selection: {error}"))
+            .and_then(|selection| {
+                reconstruct_and_validate(selection, &extracted, device_name, os_type, generated_at)
+            }) {
+            Ok(table) => {
+                return Ok(CanonicalRouteResult {
+                    yaml: serde_yaml::to_string(&table).map_err(|error| error.to_string())?,
+                    evidence: evidence(&extracted),
+                })
+            }
+            Err(error) if retry_count < max_retries => {
+                log::warn!("Constrained route selection validation failed: {error}");
+                current_user_prompt = format!("The prior index selection was rejected: {error}. Return the complete corrected YAML selection only.\n\n{}", prompt_contract(&extracted, raw_output));
+            }
+            Err(error) => {
+                return Err(format!(
+                    "route canonicalization failed after {} attempts: {error}",
+                    max_retries + 1
+                ))
             }
         }
     }
-
-    Err("Unknown validation state reached".to_string())
+    unreachable!("retry loop always returns")
 }

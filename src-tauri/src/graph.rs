@@ -423,7 +423,15 @@ DEFINE INDEX edge_key ON TABLE graph_edge FIELDS key UNIQUE;
         } else {
             Vec::new()
         };
-        let canonical = citations.iter().filter_map(|citation| citation.get("canonical").filter(|value| !value.is_null()).cloned()).collect();
+        let canonical = citations
+            .iter()
+            .filter_map(|citation| {
+                citation
+                    .get("canonical")
+                    .filter(|value| !value.is_null())
+                    .cloned()
+            })
+            .collect();
         Ok(GraphQueryResult {
             fresh,
             requires_refresh: !fresh && device.is_some(),
@@ -445,12 +453,25 @@ DEFINE INDEX edge_key ON TABLE graph_edge FIELDS key UNIQUE;
             .bind(("device", device_name.to_owned()))
             .bind(("kind", kind.as_str()))
             .await.map_err(|error| format!("Failed to read graph observation: {error}"))?;
-        let records: Vec<Value> = response.take(0).map_err(|error| format!("Failed to decode graph observation: {error}"))?;
+        let records: Vec<Value> = response
+            .take(0)
+            .map_err(|error| format!("Failed to decode graph observation: {error}"))?;
         for record in records {
-            if record.get("normalized").is_some_and(|value| !value.is_null()) { continue; }
-            let Some(raw) = record.get("raw").and_then(Value::as_str) else { continue; };
-            let Some(collected_at) = record.get("collected_at").and_then(Value::as_str) else { continue; };
-            let collected_at = DateTime::parse_from_rfc3339(collected_at).map_err(|error| format!("Invalid graph observation timestamp: {error}"))?.with_timezone(&Utc);
+            if record
+                .get("normalized")
+                .is_some_and(|value| !value.is_null())
+            {
+                continue;
+            }
+            let Some(raw) = record.get("raw").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(collected_at) = record.get("collected_at").and_then(Value::as_str) else {
+                continue;
+            };
+            let collected_at = DateTime::parse_from_rfc3339(collected_at)
+                .map_err(|error| format!("Invalid graph observation timestamp: {error}"))?
+                .with_timezone(&Utc);
             return Ok(Some((raw.to_string(), collected_at)));
         }
         Ok(None)
@@ -465,12 +486,22 @@ DEFINE INDEX edge_key ON TABLE graph_edge FIELDS key UNIQUE;
             .bind(("device", device_name.to_owned()))
             .bind(("kind", kind.as_str()))
             .await.map_err(|error| format!("Failed to read canonical observation: {error}"))?;
-        let records: Vec<Value> = response.take(0).map_err(|error| format!("Failed to decode canonical observation: {error}"))?;
+        let records: Vec<Value> = response
+            .take(0)
+            .map_err(|error| format!("Failed to decode canonical observation: {error}"))?;
         for record in records {
-            let Some(canonical) = record.get("canonical").filter(|value| !value.is_null()) else { continue; };
-            let Some(collected_at) = record.get("collected_at").and_then(Value::as_str) else { continue; };
-            let collected_at = DateTime::parse_from_rfc3339(collected_at).map_err(|error| format!("Invalid graph observation timestamp: {error}"))?.with_timezone(&Utc);
-            if Utc::now() - collected_at <= Duration::minutes(GRAPH_TTL_MINUTES) { return Ok(Some(canonical.clone())); }
+            let Some(canonical) = record.get("canonical").filter(|value| !value.is_null()) else {
+                continue;
+            };
+            let Some(collected_at) = record.get("collected_at").and_then(Value::as_str) else {
+                continue;
+            };
+            let collected_at = DateTime::parse_from_rfc3339(collected_at)
+                .map_err(|error| format!("Invalid graph observation timestamp: {error}"))?
+                .with_timezone(&Utc);
+            if Utc::now() - collected_at <= Duration::minutes(GRAPH_TTL_MINUTES) {
+                return Ok(Some(canonical.clone()));
+            }
         }
         Ok(None)
     }
@@ -546,8 +577,6 @@ pub fn normalize_yaml(kind: GraphDataKind, yaml: &str) -> Option<Value> {
     Some(value)
 }
 
-
-
 /// Chat/MCP entry point.  It deliberately returns structured JSON rather than
 /// SurrealQL so callers cannot bypass freshness and provenance rules.
 pub async fn canonicalize_arp_on_read(
@@ -566,14 +595,9 @@ pub async fn canonicalize_arp_on_read(
         .map(|config| config.device_type)
         .unwrap_or_else(|_| "unknown".to_string());
     let llama_state = app.state::<crate::llm::llm::LlamaState>();
-    let canonicalized = crate::mcp::arp::llm::convert_raw_to_yaml(
-        app,
-        &llama_state,
-        &raw,
-        device_name,
-        &os_type,
-    )
-    .await?;
+    let canonicalized =
+        crate::mcp::arp::llm::convert_raw_to_yaml(app, &llama_state, &raw, device_name, &os_type)
+            .await?;
     state
         .ingest(GraphIngestInput {
             source_id: "graph.read_through_canonicalization".to_string(),
@@ -590,6 +614,95 @@ pub async fn canonicalize_arp_on_read(
                     .map_err(|error| format!("Failed to serialize ARP evidence: {error}"))?,
             ),
             normalizer_version: "arp-constrained-index-v1".to_string(),
+        })
+        .await?;
+    Ok(true)
+}
+
+/// Route counterpart to ARP's read-through canonicalization. Raw command
+/// output remains authoritative; the constrained result and its line evidence
+/// are stored as a distinct observation.
+pub async fn canonicalize_route_on_read(
+    app: &tauri::AppHandle,
+    state: &SurrealDbState,
+    device_name: &str,
+) -> Result<bool, String> {
+    let Some((raw, collected_at)) = state
+        .latest_raw_without_normalized(device_name, GraphDataKind::Routing)
+        .await?
+    else {
+        return Ok(false);
+    };
+    let os_type = crate::mcp::fetch::fetch_base::resolve_device_config(app, device_name)
+        .await
+        .map(|config| config.device_type)
+        .unwrap_or_else(|_| "unknown".to_string());
+    let llama_state = app.state::<crate::llm::llm::LlamaState>();
+    let canonicalized =
+        crate::mcp::route::llm::convert_raw_to_yaml(app, &llama_state, &raw, device_name, &os_type)
+            .await?;
+    state
+        .ingest(GraphIngestInput {
+            source_id: "graph.read_through_canonicalization".to_string(),
+            collected_at,
+            device_name: device_name.to_string(),
+            kind: GraphDataKind::Routing,
+            raw,
+            normalized: normalize_yaml(GraphDataKind::Routing, &canonicalized.yaml),
+            canonical: serde_yaml::from_str::<serde_yaml::Value>(&canonicalized.yaml)
+                .ok()
+                .and_then(|value| serde_json::to_value(value).ok()),
+            evidence: Some(
+                serde_json::to_value(canonicalized.evidence)
+                    .map_err(|error| format!("Failed to serialize route evidence: {error}"))?,
+            ),
+            normalizer_version: "route-constrained-index-v1".to_string(),
+        })
+        .await?;
+    Ok(true)
+}
+
+pub async fn canonicalize_interfaces_on_read(
+    app: &tauri::AppHandle,
+    state: &SurrealDbState,
+    device_name: &str,
+) -> Result<bool, String> {
+    let Some((raw, collected_at)) = state
+        .latest_raw_without_normalized(device_name, GraphDataKind::Interfaces)
+        .await?
+    else {
+        return Ok(false);
+    };
+    let os_type = crate::mcp::fetch::fetch_base::resolve_device_config(app, device_name)
+        .await
+        .map(|config| config.device_type)
+        .unwrap_or_else(|_| "unknown".to_string());
+    let llama_state = app.state::<crate::llm::llm::LlamaState>();
+    let canonicalized = crate::mcp::interface::llm::convert_raw_to_yaml(
+        app,
+        &llama_state,
+        &raw,
+        device_name,
+        &os_type,
+    )
+    .await?;
+    let canonical = serde_yaml::from_str::<serde_yaml::Value>(&canonicalized.yaml)
+        .ok()
+        .and_then(|value| serde_json::to_value(value).ok());
+    state
+        .ingest(GraphIngestInput {
+            source_id: "graph.read_through_canonicalization".to_string(),
+            collected_at,
+            device_name: device_name.to_string(),
+            kind: GraphDataKind::Interfaces,
+            raw,
+            normalized: normalize_yaml(GraphDataKind::Interfaces, &canonicalized.yaml),
+            canonical,
+            evidence: Some(
+                serde_json::to_value(canonicalized.evidence)
+                    .map_err(|e| format!("Failed to serialize interface evidence: {e}"))?,
+            ),
+            normalizer_version: "interfaces-constrained-index-v1".to_string(),
         })
         .await?;
     Ok(true)
@@ -667,8 +780,14 @@ pub async fn query_network_graph(
     // synchronous by design: it cannot compete with the Agent's next planner
     // inference, and callers receive the persisted canonical document.
     if let Some(device) = request.device_name.as_deref() {
-        let query_mentions_arp = request.query.to_ascii_lowercase().contains("arp");
+        let normalized_query = request.query.to_ascii_lowercase();
+        let query_mentions_arp = normalized_query.contains("arp");
         if query_mentions_arp && canonicalize_arp_on_read(&app, &state, device).await? {
+            result = state.query_network(request.clone()).await?;
+        }
+        let query_mentions_route =
+            normalized_query.contains("route") || normalized_query.contains("routing");
+        if query_mentions_route && canonicalize_route_on_read(&app, &state, device).await? {
             result = state.query_network(request.clone()).await?;
         }
     }

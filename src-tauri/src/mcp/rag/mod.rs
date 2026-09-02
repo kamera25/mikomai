@@ -172,17 +172,17 @@ pub async fn query_nw_db(
     // command names, while an FTS-only fallback loses paraphrases in Japanese.
     let model = state.get_model()?;
     let vector_searcher = VectorSearcher::new(model, vendor::get_vector_search_instruction());
+    // Keep a broad candidate pool: lexical search protects exact command
+    // names, while vectors protect Japanese paraphrases.
     let vector_batches = vector_searcher
-        .search(&table, &vendor_context.query, final_filter.as_deref(), 12)
+        .search(&table, &vendor_context.query, final_filter.as_deref(), 30)
         .await?;
     let fts_batches = FullTextSearcher::new()
-        .search(&table, &vendor_context.query, final_filter.as_deref(), 12)
+        .search(&table, &vendor_context.query, final_filter.as_deref(), 30)
         .await?;
 
     format_hybrid_search_results(vector_batches, fts_batches, &vendor_context.query)
 }
-
-
 
 #[derive(Debug, Clone)]
 struct RetrievedChunk {
@@ -247,25 +247,60 @@ fn collect_candidates(
     Ok(())
 }
 
+fn is_japanese(c: char) -> bool {
+    ('\u{3040}'..='\u{30ff}').contains(&c) || ('\u{4e00}'..='\u{9fff}').contains(&c)
+}
+
+/// Produce useful lexical terms for both Japanese prose and command syntax.
+/// Japanese queries are commonly written without spaces, so each Japanese run
+/// also contributes two-character terms.  ASCII command tokens stay intact.
+fn lexical_terms(query: &str) -> Vec<String> {
+    let mut terms = Vec::new();
+    let mut token = String::new();
+    let mut japanese_token = false;
+    let flush = |token: &mut String, japanese: bool, terms: &mut Vec<String>| {
+        if token.chars().count() >= 2 {
+            let normalized = token.to_lowercase();
+            terms.push(normalized.clone());
+            if japanese {
+                let chars: Vec<_> = normalized.chars().collect();
+                for pair in chars.windows(2) {
+                    terms.push(pair.iter().collect());
+                }
+            }
+        }
+        token.clear();
+    };
+
+    for c in query.chars() {
+        let japanese = is_japanese(c);
+        let is_term_char = c.is_alphanumeric() || c == '-' || c == '_' || japanese;
+        if !is_term_char {
+            flush(&mut token, japanese_token, &mut terms);
+            japanese_token = false;
+        } else {
+            if !token.is_empty() && japanese != japanese_token {
+                flush(&mut token, japanese_token, &mut terms);
+            }
+            token.push(c);
+            japanese_token = japanese;
+        }
+    }
+    flush(&mut token, japanese_token, &mut terms);
+    terms.sort();
+    terms.dedup();
+    terms
+}
+
 fn lexical_overlap(query: &str, text: &str) -> f32 {
-    let terms: Vec<_> = query
-        .split_whitespace()
-        .map(|term| {
-            term.trim_matches(|c: char| {
-                !c.is_alphanumeric()
-                    && !('\u{3040}'..='\u{30ff}').contains(&c)
-                    && !('\u{4e00}'..='\u{9fff}').contains(&c)
-            })
-        })
-        .filter(|term| term.chars().count() >= 2)
-        .collect();
+    let terms = lexical_terms(query);
     if terms.is_empty() {
         return 0.0;
     }
     let text = text.to_lowercase();
     let matches = terms
         .iter()
-        .filter(|term| text.contains(&term.to_lowercase()))
+        .filter(|term| text.contains(term.as_str()))
         .count();
     matches as f32 / terms.len() as f32
 }
@@ -276,12 +311,24 @@ fn rerank_score(candidate: &RetrievedChunk, query: &str) -> f32 {
         .map(|distance| (1.0 - distance / 1.2).clamp(0.0, 1.0))
         .unwrap_or(0.0);
     let lexical = lexical_overlap(query, &candidate.text);
-    let rrf = [candidate.vector_rank, candidate.fts_rank]
+    let rank_quality = [candidate.vector_rank, candidate.fts_rank]
         .into_iter()
         .flatten()
         .map(|rank| RRF_K / (RRF_K + rank as f32))
-        .fold(0.0_f32, f32::max);
-    0.50 * semantic + 0.30 * lexical + 0.20 * rrf
+        .sum::<f32>()
+        / if candidate.vector_rank.is_some() && candidate.fts_rank.is_some() {
+            2.0
+        } else {
+            1.0
+        };
+    let agreement = if candidate.vector_rank.is_some() && candidate.fts_rank.is_some() {
+        1.0
+    } else {
+        0.0
+    };
+    // Agreement is deliberately bounded: it should resolve close candidates,
+    // never turn an irrelevant hit into evidence.
+    0.45 * semantic + 0.35 * lexical + 0.10 * rank_quality + 0.10 * agreement
 }
 
 fn is_supported(candidate: &RetrievedChunk, query: &str) -> Option<f32> {
@@ -324,13 +371,26 @@ fn format_hybrid_search_results(
         }
     }
 
-    for (rank, (candidate, score)) in ranked.into_iter().take(5).enumerate() {
+    // Avoid spending every context slot on one long manual, while retaining a
+    // neighbouring chunk when it supplies a prerequisite or warning.
+    let mut chunks_per_path: HashMap<String, usize> = HashMap::new();
+    let mut emitted = 0;
+    for (candidate, score) in ranked.into_iter() {
+        let count = chunks_per_path.entry(candidate.path.clone()).or_default();
+        if *count >= 2 {
+            continue;
+        }
+        *count += 1;
+        emitted += 1;
         let citation = RagCitation {
             source_path: candidate.path,
             similarity_score: score,
-            rank: rank + 1,
+            rank: emitted,
         };
         context.push_str(&format_citation(&citation, &candidate.text));
+        if emitted == 5 {
+            break;
+        }
     }
 
     if context.is_empty() {
@@ -377,8 +437,6 @@ mod tests {
         assert!(state.model.lock().unwrap().is_none());
     }
 
-
-
     #[test]
     fn citation_keeps_source_and_rank_visible_to_callers() {
         let citation = RagCitation {
@@ -422,5 +480,45 @@ mod tests {
             fts_rank: None,
         };
         assert!(is_supported(&candidate, "QuantumRouter9000 独自コマンド").is_none());
+    }
+
+    #[test]
+    fn lexical_overlap_handles_japanese_without_spaces() {
+        assert!(
+            lexical_overlap(
+                "ヤマハのルーティングテーブル確認",
+                "IPルーティングテーブルを表示します"
+            ) > 0.3
+        );
+    }
+
+    #[test]
+    fn lexical_terms_preserve_command_tokens() {
+        let terms = lexical_terms("show ip route で経路を確認");
+        assert!(terms.contains(&"show".to_string()));
+        assert!(terms.contains(&"route".to_string()));
+        assert!(terms.contains(&"経路".to_string()));
+    }
+
+    #[test]
+    fn agreement_between_retrievers_improves_a_close_candidate() {
+        let both = RetrievedChunk {
+            path: "both".into(),
+            text: "show ip route で経路を確認".into(),
+            vector_distance: Some(0.7),
+            vector_rank: Some(3),
+            fts_rank: Some(3),
+        };
+        let vector_only = RetrievedChunk {
+            path: "vector".into(),
+            text: "show ip route で経路を確認".into(),
+            vector_distance: Some(0.7),
+            vector_rank: Some(1),
+            fts_rank: None,
+        };
+        assert!(
+            rerank_score(&both, "show ip route 確認")
+                > rerank_score(&vector_only, "show ip route 確認")
+        );
     }
 }

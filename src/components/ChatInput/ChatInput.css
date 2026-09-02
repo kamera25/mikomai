@@ -149,6 +149,18 @@
   color: var(--danger);
 }
 
+.model-queue-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.send-button-label {
+  margin-left: 6px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
 .banner-actions {
   display: flex;
   gap: 8px;
@@ -247,7 +259,9 @@
   background-color: var(--accent-color);
   color: white;
   border: none;
-  width: 40px;
+  width: auto;
+  min-width: 40px;
+  padding: 0 10px;
   height: 40px;
   border-radius: 8px;
   display: flex;
