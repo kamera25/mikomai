@@ -6,9 +6,7 @@
 use crate::mcp::canonicalization::ensure_unique;
 use crate::schema::route::{RouteEntry, RouteMetadata, UniversalRouteTable};
 use chrono::{DateTime, Utc};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
 use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -54,11 +52,24 @@ pub struct RouteCanonicalizationEvidence {
     pub lines: Vec<RouteEvidenceLine>,
 }
 
-fn ipv4_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r"\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b")
-            .unwrap()
+fn is_ip_or_network_token(token: &str) -> bool {
+    let token = token.trim_matches(|c: char| matches!(c, '(' | ')' | ',' | ';' | '[' | ']'));
+    let (address, prefix) = token
+        .split_once('/')
+        .map_or((token, None), |(address, prefix)| (address, Some(prefix)));
+    let address = address
+        .split_once('%')
+        .map_or(address, |(address, _zone)| address);
+    if address.parse::<std::net::IpAddr>().is_err() {
+        return false;
+    }
+    prefix.map_or(true, |prefix| {
+        prefix.parse::<u8>().is_ok_and(|prefix| {
+            match address.parse::<std::net::IpAddr>().unwrap() {
+                std::net::IpAddr::V4(_) => prefix <= 32,
+                std::net::IpAddr::V6(_) => prefix <= 128,
+            }
+        })
     })
 }
 
@@ -74,7 +85,8 @@ fn looks_like_route_line(line: &str) -> bool {
     {
         return false;
     }
-    lower.split_whitespace().any(|word| word == "default") || ipv4_re().is_match(line)
+    lower.split_whitespace().any(|word| word == "default")
+        || line.split_whitespace().any(is_ip_or_network_token)
 }
 
 fn cleaned_tokens(line: &str) -> Vec<String> {
@@ -316,5 +328,42 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("does not occur"));
+    }
+
+    #[test]
+    fn canonicalizes_ipv6_destinations_gateways_and_zone_ids() {
+        let raw = "Destination Gateway Flags Netif\n2001:db8:1::/64 fe80::1%en0 UG en0\n::/0 fe80::2%en0 UG en0";
+        let extracted = extract(raw);
+        assert_eq!(extracted.evidence.len(), 2);
+        let table = reconstruct_and_validate(
+            RouteSelection {
+                entries: vec![
+                    RouteEntrySelection {
+                        line_idx: 0,
+                        destination_idx: 0,
+                        gateway_idx: 1,
+                        interface_idx: 3,
+                        flags_idx: Some(2),
+                        metric: None,
+                    },
+                    RouteEntrySelection {
+                        line_idx: 1,
+                        destination_idx: 4,
+                        gateway_idx: 5,
+                        interface_idx: 3,
+                        flags_idx: Some(2),
+                        metric: None,
+                    },
+                ],
+            },
+            &extracted,
+            "r1",
+            "ios",
+            Utc::now(),
+        )
+        .unwrap();
+        assert_eq!(table.routes[0].destination, "2001:db8:1::/64");
+        assert_eq!(table.routes[0].gateway, "fe80::1%en0");
+        assert_eq!(table.routes[1].destination, "::/0");
     }
 }
