@@ -1,4 +1,5 @@
 pub mod audit;
+pub(crate) mod background_work;
 pub mod cli;
 mod connections;
 pub(crate) mod crypto;
@@ -10,6 +11,7 @@ mod llm;
 mod logger;
 pub(crate) mod mcp;
 mod network;
+pub(crate) mod node_refresh;
 pub mod operations;
 pub mod planner;
 pub(crate) mod schema;
@@ -79,6 +81,7 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(llama_state)
+        .manage(background_work::BackgroundWorkState::default())
         .manage(rag_state)
         .manage(mcp::config_helper::ChoiceManager::new())
         .manage(operations::OperationStore::new())
@@ -113,6 +116,7 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
             mcp::fetch::fetch_arp::fetch_arp,
             mcp::fetch::get_state::get_state,
             graph::query_network_graph,
+            node_refresh::start_node_db_bulk_refresh,
             history::load_history,
             history::save_history,
             history::mutate_history,

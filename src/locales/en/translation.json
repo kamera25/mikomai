@@ -87,8 +87,9 @@
     "tab_endpoint": "Connection Parameters",
     "hostname_label": "Connection Hostname (for display)",
     "hostname_placeholder": "e.g., Core-Switch-01",
-    "mcp_fetch": "Get info from MCP",
-    "mcp_fetch_btn": "Get from MCP",
+    "node_db_refresh_btn": "Bulk fetch to Node DB",
+    "node_db_refresh_starting": "Starting…",
+    "node_db_refresh_description": "Fetch information for every registered node in the background",
     "connection_type": "Connection Type",
     "vendor_type": "Vendor Type",
     "vendor_placeholder": "e.g., Cisco, Juniper, Yamaha",
@@ -132,8 +133,8 @@
     "err_ip_required": "Please enter an IP address or hostname",
     "err_ip_invalid": "Please enter a valid IPv4 or IPv6 address",
     "save_failed": "Failed to save host settings: {{error}}",
-    "msg_mcp_found": "Retrieved info for \"{{hostname}}\" from MCP.",
-    "msg_mcp_not_found": "\"{{hostname}}\" was not found in MCP registry.",
+    "msg_node_db_refresh_started": "Started a background refresh for {{count}} nodes. User queries have priority.",
+    "msg_node_db_refresh_failed": "Could not start the Node DB refresh: {{error}}",
     "msg_csv_imported": "{{count}} hosts imported."
   },
   "scheduled_tasks": {

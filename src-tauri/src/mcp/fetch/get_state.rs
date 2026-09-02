@@ -6,7 +6,7 @@ use regex::Regex;
 use std::str::FromStr;
 use tauri::Manager;
 
-pub struct InterfacesFetcher;
+pub(crate) struct InterfacesFetcher;
 impl McpCommandFetcher for InterfacesFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
         if !template.fetch_interfaces.is_empty() {
@@ -21,7 +21,7 @@ impl McpCommandFetcher for InterfacesFetcher {
     }
 }
 
-pub struct LldpFetcher;
+pub(crate) struct LldpFetcher;
 impl McpCommandFetcher for LldpFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
         if !template.fetch_lldp.is_empty() {
@@ -36,7 +36,7 @@ impl McpCommandFetcher for LldpFetcher {
     }
 }
 
-pub struct MacTableFetcher;
+pub(crate) struct MacTableFetcher;
 impl McpCommandFetcher for MacTableFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
         if !template.fetch_mac_table.is_empty() {
@@ -51,7 +51,7 @@ impl McpCommandFetcher for MacTableFetcher {
     }
 }
 
-pub struct BgpFetcher;
+pub(crate) struct BgpFetcher;
 impl McpCommandFetcher for BgpFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
         if !template.fetch_bgp.is_empty() {
@@ -66,7 +66,7 @@ impl McpCommandFetcher for BgpFetcher {
     }
 }
 
-pub struct OspfFetcher;
+pub(crate) struct OspfFetcher;
 impl McpCommandFetcher for OspfFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
         if !template.fetch_ospf.is_empty() {

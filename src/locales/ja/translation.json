@@ -87,8 +87,9 @@
     "tab_endpoint": "接続通信設定",
     "hostname_label": "接続ホスト名 (表示用)",
     "hostname_placeholder": "例: Core-Switch-01",
-    "mcp_fetch": "MCPから情報を取得",
-    "mcp_fetch_btn": "MCPから取得",
+    "node_db_refresh_btn": "ノードDBへ一括取得",
+    "node_db_refresh_starting": "開始中…",
+    "node_db_refresh_description": "全登録ノードの情報をバックグラウンドで取得します",
     "connection_type": "接続方式",
     "vendor_type": "ベンダー種別",
     "vendor_placeholder": "例: Cisco, Juniper, Yamaha",
@@ -132,8 +133,8 @@
     "err_ip_required": "IPアドレスまたはホスト名を入力してください",
     "err_ip_invalid": "有効なIPv4またはIPv6アドレスを入力してください",
     "save_failed": "ホスト設定の保存に失敗しました: {{error}}",
-    "msg_mcp_found": "MCPから「{{hostname}}」の情報を取得しました。",
-    "msg_mcp_not_found": "MCPレジストリに「{{hostname}}」は見つかりませんでした。",
+    "msg_node_db_refresh_started": "{{count}}台のノード情報の一括取得をバックグラウンドで開始しました。ユーザークエリが優先されます。",
+    "msg_node_db_refresh_failed": "ノードDBの一括取得を開始できませんでした: {{error}}",
     "msg_csv_imported": "{{count}}件 of hosts imported."
   },
   "scheduled_tasks": {

@@ -2,7 +2,7 @@ use super::fetch_base::{CommandTemplate, McpCommandFetcher};
 use crate::network::CommandResult;
 use tauri::Manager;
 
-struct ConfigFetcher;
+pub(crate) struct ConfigFetcher;
 
 impl McpCommandFetcher for ConfigFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {

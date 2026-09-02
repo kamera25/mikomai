@@ -71,6 +71,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const [mcpHosts, setMcpHosts] = useState<McpHost[]>([]);
   const [deviceTypes, setDeviceTypes] = useState<string[]>([]);
   const [deviceTypeAliases, setDeviceTypeAliases] = useState<{ [key: string]: string }>({});
+  const [isNodeRefreshStarting, setIsNodeRefreshStarting] = useState(false);
 
   useEffect(() => {
     const fetchDeviceTypes = async () => {
@@ -276,6 +277,21 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
 
   const getAliasHelper = (dt: string) => getDeviceTypeAlias(dt, deviceTypeAliases);
 
+  const handleNodeDbBulkRefresh = async () => {
+    setIsNodeRefreshStarting(true);
+    try {
+      const result = await invoke<{ nodeCount: number }>("start_node_db_bulk_refresh");
+      await message(t("connection_panel.msg_node_db_refresh_started", { count: result.nodeCount }));
+    } catch (e) {
+      await message(t("connection_panel.msg_node_db_refresh_failed", { error: String(e) }), {
+        title: t("common.error"),
+        kind: "error",
+      });
+    } finally {
+      setIsNodeRefreshStarting(false);
+    }
+  };
+
   return (
     <div className="connection-settings-overlay">
       <div className="connection-settings-panel">
@@ -315,6 +331,16 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
             </div>
           </div>
           <div className="toolbar-right">
+            <button
+              className="toolbar-btn node-db-refresh-btn"
+              onClick={handleNodeDbBulkRefresh}
+              disabled={connections.length === 0 || isNodeRefreshStarting}
+              title={t("connection_panel.node_db_refresh_description")}
+            >
+              {isNodeRefreshStarting
+                ? t("connection_panel.node_db_refresh_starting")
+                : t("connection_panel.node_db_refresh_btn")}
+            </button>
             <button className="toolbar-btn">
               <svg
                 width="14"
@@ -384,7 +410,6 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
           <ConnectionForm
             editingId={editingId}
             connections={connections}
-            mcpHosts={mcpHosts}
             deviceTypes={deviceTypes}
             getDeviceTypeAlias={getAliasHelper}
             onClose={() => setIsEditing(false)}

@@ -54,56 +54,27 @@ describe("ConnectionSettingsPanel", () => {
     expect(screen.getByText("接続設定")).toBeInTheDocument();
   });
 
-  it("handles MCP lookup success and calls message dialog", async () => {
+  it("starts a bulk Node DB refresh in the background", async () => {
+    vi.mocked(tauriApi.invoke).mockImplementation(async (cmd, _args) => {
+      if (cmd === "get_device_types") return { deviceTypes: [], deviceTypeAliases: {} };
+      if (cmd === "get_mcp_hosts") return [];
+      if (cmd === "load_connections") {
+        return [{ id: "1", hostname: "Router-01", ip: "192.0.2.1", type: "SSH", status: "offline" }];
+      }
+      if (cmd === "start_node_db_bulk_refresh") return { nodeCount: 1 };
+      return null;
+    });
     render(<ConnectionSettingsPanel {...defaultProps} />);
 
-    // Wait for initial loads (mcp hosts and connections) to finish
     await waitFor(() => {
-      expect(tauriApi.invoke).toHaveBeenCalledWith("get_mcp_hosts");
+      expect(screen.getByText("ノードDBへ一括取得")).toBeEnabled();
     });
-
-    // Click Add Host button to open the form
-    const addBtn = screen.getByText("ホスト追加");
-    fireEvent.click(addBtn);
-
-    // Enter hostname
-    const hostnameInput = screen.getByPlaceholderText("例: Core-Switch-01");
-    fireEvent.change(hostnameInput, { target: { value: "Mcp-Host-01" } });
-
-    // Click MCP Lookup
-    const lookupBtn = screen.getByText("MCPから取得");
-    fireEvent.click(lookupBtn);
+    fireEvent.click(screen.getByText("ノードDBへ一括取得"));
 
     await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith("start_node_db_bulk_refresh");
       expect(tauriDialog.message).toHaveBeenCalledWith(
-        expect.stringContaining("MCPから「Mcp-Host-01」の情報を取得しました。")
-      );
-    });
-  });
-
-  it("handles MCP lookup failure and calls message dialog", async () => {
-    render(<ConnectionSettingsPanel {...defaultProps} />);
-
-    // Wait for initial loads (mcp hosts and connections) to finish
-    await waitFor(() => {
-      expect(tauriApi.invoke).toHaveBeenCalledWith("get_mcp_hosts");
-    });
-
-    // Click Add Host button to open the form
-    const addBtn = screen.getByText("ホスト追加");
-    fireEvent.click(addBtn);
-
-    // Enter hostname not in MCP registry
-    const hostnameInput = screen.getByPlaceholderText("例: Core-Switch-01");
-    fireEvent.change(hostnameInput, { target: { value: "Unknown-Host" } });
-
-    // Click MCP Lookup
-    const lookupBtn = screen.getByText("MCPから取得");
-    fireEvent.click(lookupBtn);
-
-    await waitFor(() => {
-      expect(tauriDialog.message).toHaveBeenCalledWith(
-        expect.stringContaining("MCPレジストリに「Unknown-Host」は見つかりませんでした。")
+        expect.stringContaining("1台のノード情報の一括取得")
       );
     });
   });

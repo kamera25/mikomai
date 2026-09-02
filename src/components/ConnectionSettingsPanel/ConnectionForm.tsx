@@ -2,8 +2,8 @@ import React from "react";
 import { useForm, Controller } from "react-hook-form";
 import Select from "react-select";
 import { useTranslation } from "react-i18next";
-import { message, open } from "@tauri-apps/plugin-dialog";
-import { Connection, McpHost } from "../../types";
+import { open } from "@tauri-apps/plugin-dialog";
+import { Connection } from "../../types";
 
 const customSelectStyles = {
   control: (provided: any, state: any) => ({
@@ -74,7 +74,6 @@ const customSelectStyles = {
 interface ConnectionFormProps {
   editingId: string | null;
   connections: Connection[];
-  mcpHosts: McpHost[];
   deviceTypes: string[];
   getDeviceTypeAlias: (deviceType: string) => string;
   onClose: () => void;
@@ -90,7 +89,6 @@ interface ConnectionFormProps {
 export const ConnectionForm: React.FC<ConnectionFormProps> = ({
   editingId,
   connections,
-  mcpHosts,
   deviceTypes,
   getDeviceTypeAlias,
   onClose,
@@ -128,45 +126,17 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
     control,
     setValue,
     watch,
-    getValues,
     formState: { errors, dirtyFields },
   } = useForm({
     defaultValues,
   });
 
   const connectionType = watch("type");
-  const hostname = watch("hostname");
 
   const deviceTypeOptions = deviceTypes.map((dt) => ({
     value: dt,
     label: `${getDeviceTypeAlias(dt)} (${dt})`,
   }));
-
-  const handleMcpLookup = async () => {
-    const hostVal = getValues("hostname");
-    const mcpMatch = mcpHosts.find(
-      (h) => h.hostname.toLowerCase() === hostVal.toLowerCase()
-    );
-    if (mcpMatch) {
-      let vendor = "";
-      const lowerDt = mcpMatch.deviceType.toLowerCase();
-      if (lowerDt.includes("cisco")) vendor = "Cisco";
-      else if (lowerDt.includes("juniper")) vendor = "Juniper";
-      else if (lowerDt.includes("arista")) vendor = "Arista";
-      else if (lowerDt.includes("yamaha")) vendor = "Yamaha";
-      else if (lowerDt.includes("linux")) vendor = "Linux";
-
-      setValue("ip", mcpMatch.ip, { shouldDirty: true });
-      setValue("type", mcpMatch.deviceType.split(" ")[0], { shouldDirty: true });
-      setValue("username", mcpMatch.username, { shouldDirty: true });
-      setValue("deviceType", mcpMatch.deviceType, { shouldDirty: true });
-      setValue("vendorType", vendor, { shouldDirty: true });
-
-      await message(t("connection_panel.msg_mcp_found", { hostname: mcpMatch.hostname }));
-    } else {
-      await message(t("connection_panel.msg_mcp_not_found", { hostname: hostVal }));
-    }
-  };
 
   const handleSelectKeyFile = async () => {
     try {
@@ -210,29 +180,6 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
                   {...register("hostname")}
                   placeholder={t("connection_panel.hostname_placeholder")}
                 />
-                <button
-                  type="button"
-                  className="btn-mcp-lookup"
-                  onClick={handleMcpLookup}
-                  disabled={!hostname}
-                  title={t("connection_panel.mcp_fetch")}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                  </svg>
-                  {t("connection_panel.mcp_fetch_btn")}
-                </button>
               </div>
               <div className="form-group">
                 <label>{t("connection_panel.connection_type")}</label>

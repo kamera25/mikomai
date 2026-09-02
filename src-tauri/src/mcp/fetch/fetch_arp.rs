@@ -3,7 +3,7 @@ use crate::network::CommandResult;
 use serde_json::Value;
 use tauri::Manager;
 
-struct ArpFetcher;
+pub(crate) struct ArpFetcher;
 
 impl McpCommandFetcher for ArpFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {

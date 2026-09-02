@@ -2,7 +2,7 @@ use super::fetch_base::{CommandTemplate, McpCommandFetcher};
 use crate::network::CommandResult;
 use tauri::{Emitter, Manager};
 
-struct RoutingFetcher;
+pub(crate) struct RoutingFetcher;
 
 impl McpCommandFetcher for RoutingFetcher {
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {

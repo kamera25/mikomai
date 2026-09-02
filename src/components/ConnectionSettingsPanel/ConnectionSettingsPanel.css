@@ -124,6 +124,21 @@
   background-color: #f1f5f9;
 }
 
+.toolbar-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.node-db-refresh-btn {
+  color: #7c3aed;
+  border-color: #ddd6fe;
+  background-color: #f5f3ff;
+}
+
+.node-db-refresh-btn:hover:not(:disabled) {
+  background-color: #ede9fe;
+}
+
 .csv-actions {
   display: flex;
   gap: 8px;
@@ -482,33 +497,6 @@
 .form-group input:focus,
 .form-group select:focus {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.btn-mcp-lookup {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 8px 12px;
-  background-color: #fdf2f8;
-  border: 1px solid #fbcfe8;
-  color: #db2777;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-mcp-lookup:hover:not(:disabled) {
-  background-color: #fce7f3;
-  border-color: #f9a8d4;
-}
-
-.btn-mcp-lookup:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .form-group input.error {

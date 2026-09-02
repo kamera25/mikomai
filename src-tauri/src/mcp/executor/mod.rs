@@ -7,7 +7,7 @@ pub use extract::*;
 pub use flow::*;
 pub use registry::*;
 
-use tauri::{AppHandle, Emitter, State, Window};
+use tauri::{AppHandle, Emitter, Manager, State, Window};
 
 use crate::mcp::protocol::ChatRequest;
 
@@ -48,6 +48,11 @@ pub async fn handle_mcp_message(
     payload: ChatRequest,
 ) -> Result<(), String> {
     crate::llm::llm::reset_cancel();
+    // Keep foreground priority for the complete request, including routing,
+    // device I/O, and response generation.
+    let _foreground_guard = app
+        .state::<crate::background_work::BackgroundWorkState>()
+        .begin_foreground_query();
 
     let ChatRequest {
         user_message,
