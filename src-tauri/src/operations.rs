@@ -9,7 +9,10 @@ use crate::mcp::ToolKind;
 use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Mutex;
+use tauri::Manager;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -106,20 +109,66 @@ fn plan_hash(
 
 pub struct OperationStore {
     plans: Mutex<HashMap<uuid::Uuid, OperationPlan>>,
+    storage_path: Option<PathBuf>,
 }
 
 impl OperationStore {
     pub fn new() -> Self {
         Self {
             plans: Mutex::new(HashMap::new()),
+            storage_path: None,
         }
     }
 
+    /// Restores plans so a pending approval is not silently lost when the app
+    /// restarts.  A corrupt cache is ignored rather than preventing startup.
+    pub fn load(app: &tauri::AppHandle) -> Result<Self, String> {
+        let directory = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| format!("Failed to resolve operation-plan storage: {error}"))?;
+        fs::create_dir_all(&directory)
+            .map_err(|error| format!("Failed to create operation-plan storage: {error}"))?;
+        let storage_path = directory.join("operation-plans.json");
+        let plans = match fs::read_to_string(&storage_path) {
+            Ok(contents) => match serde_json::from_str::<Vec<OperationPlan>>(&contents) {
+                Ok(plans) => plans,
+                Err(error) => {
+                    log::warn!("Ignoring corrupt operation-plan storage: {error}");
+                    Vec::new()
+                }
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(error) => return Err(format!("Failed to read operation plans: {error}")),
+        };
+        Ok(Self {
+            plans: Mutex::new(plans.into_iter().map(|plan| (plan.id, plan)).collect()),
+            storage_path: Some(storage_path),
+        })
+    }
+
+    fn persist(&self, plans: &HashMap<uuid::Uuid, OperationPlan>) -> Result<(), String> {
+        let Some(path) = &self.storage_path else {
+            return Ok(());
+        };
+        let serialized = serde_json::to_string_pretty(
+            &plans.values().cloned().collect::<Vec<OperationPlan>>(),
+        )
+        .map_err(|error| format!("Failed to serialize operation plans: {error}"))?;
+        let temporary_path = path.with_extension("json.tmp");
+        fs::write(&temporary_path, serialized)
+            .map_err(|error| format!("Failed to write operation plans: {error}"))?;
+        fs::rename(&temporary_path, path)
+            .map_err(|error| format!("Failed to save operation plans: {error}"))
+    }
+
     fn insert(&self, plan: OperationPlan) -> Result<OperationPlan, String> {
-        self.plans
+        let mut plans = self
+            .plans
             .lock()
-            .map_err(|_| "Operation plan store is unavailable".to_string())?
-            .insert(plan.id, plan.clone());
+            .map_err(|_| "Operation plan store is unavailable".to_string())?;
+        plans.insert(plan.id, plan.clone());
+        self.persist(&plans)?;
         Ok(plan)
     }
 
@@ -145,7 +194,9 @@ impl OperationStore {
             return Err("Change plan has changed or the approval hash is invalid".to_string());
         }
         plan.approval_status = ApprovalStatus::Approved;
-        Ok(plan.clone())
+        let updated = plan.clone();
+        self.persist(&plans)?;
+        Ok(updated)
     }
 
     pub fn take_approved(&self, id: uuid::Uuid, plan_hash: &str) -> Result<OperationPlan, String> {
@@ -161,23 +212,31 @@ impl OperationStore {
             return Err("Change plan hash does not match the approved plan".to_string());
         }
         plan.approval_status = ApprovalStatus::Executing;
-        Ok(plan.clone())
+        let updated = plan.clone();
+        self.persist(&plans)?;
+        Ok(updated)
     }
 
-    pub fn mark_executed(&self, id: uuid::Uuid) {
-        if let Ok(mut plans) = self.plans.lock() {
-            if let Some(plan) = plans.get_mut(&id) {
-                plan.approval_status = ApprovalStatus::Executed;
-            }
+    pub fn mark_executed(&self, id: uuid::Uuid) -> Result<(), String> {
+        let mut plans = self
+            .plans
+            .lock()
+            .map_err(|_| "Operation plan store is unavailable".to_string())?;
+        if let Some(plan) = plans.get_mut(&id) {
+            plan.approval_status = ApprovalStatus::Executed;
         }
+        self.persist(&plans)
     }
 
-    pub fn mark_failed(&self, id: uuid::Uuid) {
-        if let Ok(mut plans) = self.plans.lock() {
-            if let Some(plan) = plans.get_mut(&id) {
-                plan.approval_status = ApprovalStatus::Failed;
-            }
+    pub fn mark_failed(&self, id: uuid::Uuid) -> Result<(), String> {
+        let mut plans = self
+            .plans
+            .lock()
+            .map_err(|_| "Operation plan store is unavailable".to_string())?;
+        if let Some(plan) = plans.get_mut(&id) {
+            plan.approval_status = ApprovalStatus::Failed;
         }
+        self.persist(&plans)
     }
 }
 
@@ -196,6 +255,34 @@ pub fn create_operation_plan(
     store: tauri::State<'_, OperationStore>,
 ) -> Result<OperationPlan, String> {
     store.insert(ChangePlanner::create(tool_id, target, args, rationale)?)
+}
+
+/// Creates a change plan from a registered device name. Credentials are
+/// resolved only at execution time and are never stored in the plan or
+/// exposed to the webview.
+#[tauri::command]
+pub async fn create_network_config_operation_plan(
+    app: tauri::AppHandle,
+    device_name: String,
+    commands: Vec<String>,
+    rationale: String,
+    store: tauri::State<'_, OperationStore>,
+) -> Result<OperationPlan, String> {
+    if device_name.trim().is_empty() {
+        return Err("A registered target device is required".to_string());
+    }
+    if commands.iter().all(|command| command.trim().is_empty()) {
+        return Err("At least one configuration command is required".to_string());
+    }
+    // Validate the target while intentionally keeping its connection details
+    // out of the persisted plan.
+    crate::mcp::fetch::fetch_base::resolve_device_config(&app, &device_name).await?;
+    store.insert(ChangePlanner::create(
+        "network_config".to_string(),
+        Some(device_name.clone()),
+        serde_json::json!({ "deviceName": device_name, "commands": commands }),
+        rationale,
+    )?)
 }
 
 /// Read-only access for the AgentLoop and UI. This never authorizes a change.
@@ -227,17 +314,29 @@ pub async fn execute_approved_operation_plan(
 ) -> Result<crate::network::CommandResult, String> {
     let plan = store.take_approved(id, &plan_hash)?;
     if plan.tool_id != "network_config" {
-        store.mark_failed(id);
+        let _ = store.mark_failed(id);
         return Err(format!("Unsupported change-plan tool: {}", plan.tool_id));
     }
-    let device: crate::network::NetmikoDeviceConfig = plan
+    let device_name = plan
         .args
-        .get("device")
+        .get("deviceName")
+        .or_else(|| plan.args.get("device_name"))
         .cloned()
-        .ok_or_else(|| "Change plan is missing device".to_string())
+        .or_else(|| plan.target.clone().map(serde_json::Value::String))
+        .ok_or_else(|| "Change plan is missing device name".to_string())
         .and_then(|value| {
-            serde_json::from_value(value)
-                .map_err(|_| "Change plan has an invalid device".to_string())
+            serde_json::from_value::<String>(value)
+                .map_err(|_| "Change plan has an invalid device name".to_string())
+        })
+        .map_err(|error| {
+            let _ = store.mark_failed(id);
+            error
+        })?;
+    let device = crate::mcp::fetch::fetch_base::resolve_device_config(&app, &device_name)
+        .await
+        .map_err(|error| {
+            let _ = store.mark_failed(id);
+            error
         })?;
     let commands: Vec<String> = plan
         .args
@@ -247,6 +346,10 @@ pub async fn execute_approved_operation_plan(
         .and_then(|value| {
             serde_json::from_value::<Vec<String>>(value)
                 .map_err(|_| "Change plan has invalid commands".to_string())
+        })
+        .map_err(|error| {
+            let _ = store.mark_failed(id);
+            error
         })?;
 
     // Dry-run is mandatory for a ChangePlan. A planner or agent cannot opt
@@ -255,12 +358,12 @@ pub async fn execute_approved_operation_plan(
         .execute_dry_run(&device, commands.clone())
         .await
         .map_err(|error| {
-            store.mark_failed(id);
+            let _ = store.mark_failed(id);
             format!("Change plan dry-run failed: {error}")
         })?;
     let dry_run_errors: Vec<_> = dry_run.results.iter().filter(|line| !line.ok).collect();
     if !dry_run.success || !dry_run_errors.is_empty() {
-        store.mark_failed(id);
+        let _ = store.mark_failed(id);
         return Err(format!(
             "Change plan dry-run rejected execution: {}",
             dry_run_errors
@@ -278,9 +381,9 @@ pub async fn execute_approved_operation_plan(
         .await
         .map_err(|error| error.to_string())?;
     if result.success {
-        store.mark_executed(id);
+        store.mark_executed(id)?;
     } else {
-        store.mark_failed(id);
+        store.mark_failed(id)?;
     }
     Ok(result)
 }
@@ -352,5 +455,33 @@ mod tests {
             ApprovalStatus::Executing
         );
         assert!(store.take_approved(plan.id, &plan.plan_hash).is_err());
+    }
+
+    #[test]
+    fn persists_approval_status_before_execution() {
+        let directory = std::env::temp_dir().join(format!("mikomai-operation-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let storage_path = directory.join("operation-plans.json");
+        let store = OperationStore {
+            plans: Mutex::new(HashMap::new()),
+            storage_path: Some(storage_path.clone()),
+        };
+        let plan = store
+            .insert(
+                ChangePlanner::create(
+                    "network_config".into(),
+                    Some("router-1".into()),
+                    serde_json::json!({"commands": ["hostname router-1"]}),
+                    "Set the device hostname".into(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        store.approve(plan.id, &plan.plan_hash).unwrap();
+
+        let saved: Vec<OperationPlan> = serde_json::from_str(&std::fs::read_to_string(&storage_path).unwrap()).unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].approval_status, ApprovalStatus::Approved);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

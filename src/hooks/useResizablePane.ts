@@ -33,9 +33,12 @@ export function useResizablePane(options?: UseResizablePaneOptions) {
   const isCollapsedRightRef = useRef<boolean>(false);
 
   const onSidebarCollapseRef = useRef(options?.onSidebarCollapse);
-  onSidebarCollapseRef.current = options?.onSidebarCollapse;
   const onDiffCollapseRef = useRef(options?.onDiffCollapse);
-  onDiffCollapseRef.current = options?.onDiffCollapse;
+
+  useEffect(() => {
+    onSidebarCollapseRef.current = options?.onSidebarCollapse;
+    onDiffCollapseRef.current = options?.onDiffCollapse;
+  }, [options?.onSidebarCollapse, options?.onDiffCollapse]);
 
   const animationFrameId = useRef<number | null>(null);
 
@@ -159,4 +162,3 @@ export function useResizablePane(options?: UseResizablePaneOptions) {
     handleRightMouseDown,
   };
 }
-

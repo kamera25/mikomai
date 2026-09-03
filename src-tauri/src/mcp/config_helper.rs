@@ -383,7 +383,21 @@ pub async fn validate_cisco_config_impl(
             // Wait for frontend response (commit or cancel)
             match rx.await {
                 Ok(c) => {
-                    if c == "commit" {
+                    // The panel executes a persisted, hash-bound operation plan
+                    // itself.  Keep this conversion worker read-only so this
+                    // older choice channel cannot bypass the approval boundary.
+                    if c == "operation_submitted" {
+                        Ok(CommandResult {
+                            success: true,
+                            output: format!(
+                                "{}\n\n**Status**: 変更計画を承認し、安全な実行フローへ送信しました。",
+                                md
+                            ),
+                            saved_path: None,
+                            is_cached: None,
+                            cache_time: None,
+                        })
+                    } else if c == "legacy_commit_disabled" {
                         let target_name = hostname.clone().or_else(|| ip.clone());
                         let device_name = match target_name {
                             Some(name) => name,

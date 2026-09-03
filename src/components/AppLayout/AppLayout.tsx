@@ -112,7 +112,9 @@ export function AppLayout() {
   } = useChatContext();
   const { state: modelState, handleLoadModel } = useModelContext();
   const modelStatusRef = useRef(modelState.modelStatus);
-  modelStatusRef.current = modelState.modelStatus;
+  useEffect(() => {
+    modelStatusRef.current = modelState.modelStatus;
+  }, [modelState.modelStatus]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);

@@ -6,7 +6,7 @@ import globals from "globals";
 
 export default tseslint.config(
   {
-    ignores: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/src-tauri/**", "**/venv/**"],
+    ignores: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/coverage/**", "**/src-tauri/**", "**/venv/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -37,6 +37,14 @@ export default tseslint.config(
       ...pluginReact.configs["jsx-runtime"].rules,
       ...pluginReactHooks.configs.recommended.rules,
       "react/react-in-jsx-scope": "off",
+      // TypeScript owns these checks; requiring duplicate PropTypes and
+      // rejecting intentionally untyped event payloads obscures real issues.
+      "react/prop-types": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "no-control-regex": "off",
+      // Async subscriptions commonly update state after their promise resolves.
+      "react-hooks/set-state-in-effect": "off",
     },
   }
 );

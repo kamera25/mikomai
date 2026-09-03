@@ -66,6 +66,9 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
     tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle().clone();
+            let operation_store = operations::OperationStore::load(&app_handle)
+                .expect("Failed to initialize operation-plan storage");
+            app_handle.manage(operation_store);
             tauri::async_runtime::block_on(async move {
                 let watch_state = watch::init_watch_scheduler(&app_handle).await;
                 app_handle.manage(watch_state);
@@ -84,7 +87,6 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
         .manage(background_work::BackgroundWorkState::default())
         .manage(rag_state)
         .manage(mcp::config_helper::ChoiceManager::new())
-        .manage(operations::OperationStore::new())
         .manage(mcp::config_helper::InterfaceChoiceManager::new())
         .manage(mcp::config_helper::IpAddressChoiceManager::new())
         .invoke_handler(tauri::generate_handler![
@@ -151,6 +153,7 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
             mcp::config_helper::convert_cisco_config,
             mcp::config_helper::submit_user_choice,
             operations::create_operation_plan,
+            operations::create_network_config_operation_plan,
             operations::get_operation_plan,
             operations::approve_operation_plan,
             operations::execute_approved_operation_plan,

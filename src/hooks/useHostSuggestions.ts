@@ -66,7 +66,7 @@ export function useHostSuggestions({
             if (resolvedName) {
               hostMap.set(resolvedName, hostToResolve);
             }
-          } catch (e) {
+          } catch {
             // Silently fail if resolution fails
           }
         }
