@@ -229,7 +229,7 @@ export function AppLayout() {
           type: "SET_MESSAGE_STATUS",
           payload: { sessionId: next.sessionId, taskId: next.task_id, status: undefined },
         });
-        executeMessage(next.content, next.attachments);
+        void executeMessage(next.content, next.attachments);
       } else {
         isExecutingRef.current = false;
         setIsGenerating(false);

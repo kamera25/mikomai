@@ -73,7 +73,6 @@
     "btn_settings": "設定",
     "btn_send": "送信",
     "btn_queue": "送信予約",
-    "queue_hint": "モデルの準備ができ次第、自動的に送信します。",
     "btn_stop": "応答を停止",
     "vision_disabled_warning_title": "Vision 機能が無効化されています",
     "vision_disabled_warning_desc": "画像を解析・読み込むには設定からVision機能を有効にしてください。",

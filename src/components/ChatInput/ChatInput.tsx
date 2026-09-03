@@ -446,7 +446,6 @@ export const ChatInput = memo(
               {modelStatus === "Error" &&
                 t("chat_input.status_failed_model")}
             </span>
-            <p className="model-queue-hint">{t("chat_input.queue_hint")}</p>
             {(modelStatus === "NotLoaded" || modelStatus === "Error") && (
               <div className="banner-actions">
                 {modelPath && (
@@ -605,9 +604,6 @@ export const ChatInput = memo(
                 title={modelStatus === "Loaded" ? t("chat_input.btn_send") : t("chat_input.btn_queue")}
               >
                 <SendIcon size={16} />
-                {modelStatus !== "Loaded" && (
-                  <span className="send-button-label">{t("chat_input.btn_queue")}</span>
-                )}
               </button>
             )}
           </div>
