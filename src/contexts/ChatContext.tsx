@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect } from "react";
+import React, { createContext, useContext, useReducer, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Message, ChatSession, HistoryItem, SummaryItem, HistoryMutation, HistorySnapshot } from "../types";
 import { useSettingsContext } from "./SettingsContext";
@@ -89,7 +89,7 @@ export const updateSessionMessagesInHistory = (
   });
 };
 
-function chatReducer(state: ChatState, action: ChatAction): ChatState {
+export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
     case "INIT_HISTORY":
       return {
@@ -128,18 +128,26 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case "SET_MESSAGE_STATUS": {
       const { sessionId, taskId, status } = action.payload;
       const isCurrentActive = state.activeSessionId === sessionId;
-      let updatedMessages: Message[] | null = null;
+      const updateStatus = (messages: Message[]) =>
+        messages.map((msg) => {
+          if (msg.task_id === taskId && msg.role === "user") {
+            return { ...msg, status } as Message;
+          }
+          return msg;
+        });
+
+      // A queued message can be started before the asynchronous history save
+      // has completed.  For the active session, state.messages is therefore
+      // newer than the copy currently held in state.history.
+      const currentMessages = isCurrentActive ? updateStatus(state.messages) : state.messages;
 
       const updateMessageStatusInHistory = (items: HistoryItem[]): HistoryItem[] => {
         return items.map((item) => {
           if (item.id === sessionId && item.type === "session") {
-            updatedMessages = item.messages.map((msg) => {
-              if (msg.task_id === taskId && msg.role === "user") {
-                return { ...msg, status } as Message;
-              }
-              return msg;
-            });
-            return { ...item, messages: updatedMessages };
+            return {
+              ...item,
+              messages: isCurrentActive ? currentMessages : updateStatus(item.messages),
+            };
           }
           if (item.type === "folder") {
             return { ...item, items: updateMessageStatusInHistory(item.items) };
@@ -149,13 +157,10 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
 
       const nextHistory = updateMessageStatusInHistory(state.history);
-      const nextMessages = isCurrentActive && updatedMessages
-        ? updatedMessages
-        : state.messages;
 
       return {
         ...state,
-        messages: nextMessages,
+        messages: currentMessages,
         history: nextHistory,
       };
     }
@@ -168,7 +173,7 @@ interface ChatContextType {
   state: ChatState;
   dispatch: React.Dispatch<ChatAction>;
   createNewFolder: () => void;
-  createNewSession: () => void;
+  createNewSession: () => Promise<ChatSession | undefined>;
   toggleFolder: (folderId: string) => void;
   switchSession: (sessionId: string) => void;
   renameSession: (sessionId: string, newTitle: string) => void;
@@ -185,6 +190,7 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const { recentIPs, setRecentIPs } = useSettingsContext();
+  const historyMutationQueue = useRef<Promise<void>>(Promise.resolve());
 
   const setInput = (input: string) => dispatch({ type: "SET_INPUT", payload: input });
   const setMessages = (update: Message[] | ((prev: Message[]) => Message[])) =>
@@ -194,10 +200,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const activeSession = findSession(state.history, state.activeSessionId);
 
-  const commitHistoryMutation = async (mutation: HistoryMutation) => {
-    const snapshot = await invoke<HistorySnapshot>("mutate_history", { mutation });
-    dispatch({ type: "SET_HISTORY", payload: snapshot.history });
-    return snapshot;
+  const commitHistoryMutation = (mutation: HistoryMutation) => {
+    // Streaming responses update messages rapidly. Serializing mutations keeps a
+    // slower, older disk write from overwriting a later session update.
+    const mutationPromise = historyMutationQueue.current.then(async () => {
+      const snapshot = await invoke<HistorySnapshot>("mutate_history", { mutation });
+      dispatch({ type: "SET_HISTORY", payload: snapshot.history });
+      return snapshot;
+    });
+
+    // Keep the queue usable after a failed mutation; the caller still receives
+    // the original rejection and can report it.
+    historyMutationQueue.current = mutationPromise.then(
+      () => undefined,
+      () => undefined
+    );
+    return mutationPromise;
   };
 
   // Load history on mount
@@ -225,7 +243,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Message persistence is owned by the backend. Structural changes use the
   // same mutation API below, so the webview never writes history.json directly.
   useEffect(() => {
-    if (!state.isLoaded) return;
+    if (!state.isLoaded || !state.activeSessionId) return;
     const save = async () => {
       try {
         await commitHistoryMutation({
@@ -307,10 +325,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (newSession && newSession.type === "session") {
         dispatch({ type: "SET_ACTIVE_SESSION_ID", payload: newSession.id });
         dispatch({ type: "SET_MESSAGES", payload: [] });
+        return newSession;
       }
     } catch (error) {
       console.error("Failed to create session:", error);
     }
+    return undefined;
   };
 
   const toggleFolder = async (folderId: string) => {

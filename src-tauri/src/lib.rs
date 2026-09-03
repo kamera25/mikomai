@@ -7,6 +7,7 @@ pub(crate) mod error;
 pub(crate) mod graph;
 pub mod harness;
 mod history;
+mod history_store;
 mod llm;
 mod logger;
 pub(crate) mod mcp;
@@ -30,7 +31,10 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
-                let _ = history::cleanup_running_history_on_exit(app_handle);
+                let history_app_handle = app_handle.clone();
+                let _ = tauri::async_runtime::block_on(async move {
+                    history::cleanup_running_history_on_exit(history_app_handle).await
+                });
                 let state = app_handle.state::<llm::LlamaState>();
                 let status = state.status.blocking_lock();
                 if let llm::ModelState::Loading = *status {
@@ -75,6 +79,9 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
                 let graph_state = graph::SurrealDbState::initialize(&app_handle)
                     .await
                     .expect("Failed to initialize embedded SurrealDB");
+                history_store::initialize(&graph_state)
+                    .await
+                    .expect("Failed to initialize chat history storage");
                 app_handle.manage(graph_state);
             });
 

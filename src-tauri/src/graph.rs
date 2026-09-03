@@ -16,7 +16,7 @@ pub const GRAPH_TTL_MINUTES: i64 = 20;
 
 #[derive(Clone)]
 pub struct SurrealDbState {
-    db: Surreal<Db>,
+    pub(crate) db: Surreal<Db>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -831,4 +831,5 @@ mod tests {
         .unwrap();
         assert_eq!(array(&value, "ip_addresses")[0]["address"], "192.0.2.1");
     }
+
 }

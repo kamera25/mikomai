@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
+use crate::graph::SurrealDbState;
+use crate::history_store;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -219,18 +221,7 @@ pub enum HistoryMutation {
 #[serde(rename_all = "camelCase")]
 pub struct HistorySnapshot {
     pub history: Vec<HistoryItem>,
-    pub active_session_id: uuid::Uuid,
-}
-
-fn get_history_path(app: &tauri::AppHandle) -> PathBuf {
-    let path = app
-        .path()
-        .app_data_dir()
-        .expect("Failed to get app data dir");
-    if !path.exists() {
-        let _ = fs::create_dir_all(&path);
-    }
-    path.join("history.json")
+    pub active_session_id: String,
 }
 
 use crate::error::TauriError;
@@ -241,6 +232,8 @@ pub enum HistoryError {
     Io(#[from] std::io::Error),
     #[error("Serialization/Deserialization error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("Database error: {0}")]
+    Database(String),
 }
 
 pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool {
@@ -299,40 +292,56 @@ pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool {
     modified
 }
 
-pub fn cleanup_running_history_on_exit(app: &tauri::AppHandle) -> Result<(), TauriError> {
-    let path = get_history_path(app);
-    if !path.exists() {
-        return Ok(());
-    }
-    let data = fs::read_to_string(&path)?;
-    let mut history: Vec<HistoryItem> = serde_json::from_str(&data)?;
-    if sanitize_history_items(&mut history) {
-        let data = serde_json::to_string_pretty(&history)?;
-        fs::write(path, data)?;
-    }
+async fn save_history_to_store(
+    db: &SurrealDbState,
+    history: &[HistoryItem],
+) -> Result<(), TauriError> {
+    let value = serde_json::to_value(history)?;
+    history_store::save(db, value)
+        .await
+        .map_err(HistoryError::Database)?;
     Ok(())
 }
 
-#[tauri::command]
-pub fn load_history(app: tauri::AppHandle) -> Result<Vec<HistoryItem>, TauriError> {
-    let path = get_history_path(&app);
-    if !path.exists() {
-        return Ok(vec![]);
-    }
-    let data = fs::read_to_string(path)?;
-    let mut history: Vec<HistoryItem> = serde_json::from_str(&data)?;
+async fn load_history_from_store(
+    db: &SurrealDbState,
+) -> Result<Vec<HistoryItem>, TauriError> {
+    let stored = history_store::load(db)
+        .await
+        .map_err(HistoryError::Database)?;
+    let mut history = match stored {
+        Some(value) => serde_json::from_value(value)?,
+        None => vec![],
+    };
     if sanitize_history_items(&mut history) {
-        let _ = save_history(app, history.clone());
+        save_history_to_store(db, &history).await?;
     }
     Ok(history)
 }
 
 #[tauri::command]
-pub fn save_history(app: tauri::AppHandle, history: Vec<HistoryItem>) -> Result<(), TauriError> {
-    let path = get_history_path(&app);
-    let data = serde_json::to_string_pretty(&history)?;
-    fs::write(path, data)?;
+pub async fn cleanup_running_history_on_exit(app: tauri::AppHandle) -> Result<(), TauriError> {
+    let db = app.state::<SurrealDbState>();
+    let mut history = load_history_from_store(&db).await?;
+    if sanitize_history_items(&mut history) {
+        save_history_to_store(&db, &history).await?;
+    }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn load_history(
+    db: tauri::State<'_, SurrealDbState>,
+) -> Result<Vec<HistoryItem>, TauriError> {
+    load_history_from_store(&db).await
+}
+
+#[tauri::command]
+pub async fn save_history(
+    db: tauri::State<'_, SurrealDbState>,
+    history: Vec<HistoryItem>,
+) -> Result<(), TauriError> {
+    save_history_to_store(&db, &history).await
 }
 
 fn first_session_id(items: &[HistoryItem]) -> Option<uuid::Uuid> {
@@ -412,11 +421,11 @@ fn mutate_items(items: &mut Vec<HistoryItem>, mutation: &HistoryMutation) -> boo
 /// still owns selection and rendering, while identifiers and persisted tree
 /// invariants are owned by the backend.
 #[tauri::command]
-pub fn mutate_history(
-    app: tauri::AppHandle,
+pub async fn mutate_history(
+    db: tauri::State<'_, SurrealDbState>,
     mutation: HistoryMutation,
 ) -> Result<HistorySnapshot, TauriError> {
-    let mut history = load_history(app.clone())?;
+    let mut history = load_history_from_store(&db).await?;
     match &mutation {
         HistoryMutation::CreateSession { title } => {
             history.push(HistoryItem::Session(ChatSession {
@@ -442,16 +451,10 @@ pub fn mutate_history(
             mutate_items(&mut history, &mutation);
         }
     }
-    if first_session_id(&history).is_none() {
-        history.push(HistoryItem::Session(ChatSession {
-            id: uuid::Uuid::new_v4(),
-            title: "New Session".to_string(),
-            messages: vec![],
-            recent_ips: None,
-        }));
-    }
-    let active_session_id = first_session_id(&history).expect("history always has a session");
-    save_history(app, history.clone())?;
+    let active_session_id = first_session_id(&history)
+        .map(|id| id.to_string())
+        .unwrap_or_default();
+    save_history_to_store(&db, &history).await?;
     Ok(HistorySnapshot {
         history,
         active_session_id,
@@ -459,19 +462,14 @@ pub fn mutate_history(
 }
 
 #[tauri::command]
-pub fn initialize_history(app: tauri::AppHandle) -> Result<HistorySnapshot, TauriError> {
-    let mut history = load_history(app.clone())?;
-    if first_session_id(&history).is_none() {
-        history.push(HistoryItem::Session(ChatSession {
-            id: uuid::Uuid::new_v4(),
-            title: "New Session".to_string(),
-            messages: vec![],
-            recent_ips: None,
-        }));
-        save_history(app, history.clone())?;
-    }
+pub async fn initialize_history(
+    db: tauri::State<'_, SurrealDbState>,
+) -> Result<HistorySnapshot, TauriError> {
+    let history = load_history_from_store(&db).await?;
     Ok(HistorySnapshot {
-        active_session_id: first_session_id(&history).expect("history always has a session"),
+        active_session_id: first_session_id(&history)
+            .map(|id| id.to_string())
+            .unwrap_or_default(),
         history,
     })
 }
@@ -728,7 +726,7 @@ mod tests {
     }
 
     #[test]
-    fn history_mutation_keeps_a_session_after_deletion() {
+    fn deleting_the_last_session_leaves_an_empty_history() {
         let id = uuid::Uuid::new_v4();
         let mut items = vec![HistoryItem::Session(ChatSession {
             id,
@@ -738,15 +736,7 @@ mod tests {
         })];
         assert!(mutate_items(&mut items, &HistoryMutation::DeleteSession { session_id: id }));
         assert!(items.is_empty());
-        if first_session_id(&items).is_none() {
-            items.push(HistoryItem::Session(ChatSession {
-                id: uuid::Uuid::new_v4(),
-                title: "New Session".to_string(),
-                messages: vec![],
-                recent_ips: None,
-            }));
-        }
-        assert!(first_session_id(&items).is_some());
+        assert!(first_session_id(&items).is_none());
     }
 }
 

@@ -265,7 +265,12 @@ export function AppLayout() {
 
     const timestamp = new Date().toISOString();
     const taskId = crypto.randomUUID();
-    const sessionId = chatState.activeSessionId;
+    let sessionId = chatState.activeSessionId;
+    if (!sessionId) {
+      const newSession = await createNewSession();
+      if (!newSession) return;
+      sessionId = newSession.id;
+    }
 
     const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
     const mentionRegex = /@([a-zA-Z0-9.-]+)/g;
