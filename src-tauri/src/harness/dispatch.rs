@@ -84,6 +84,27 @@ pub fn select_dispatch_mode(message: &str) -> DispatchMode {
         "経路を確認",
         "arpを確認",
         "arp を確認",
+        // Network troubles, connectivity issues, and unreachability
+        "繋がらない",
+        "つながらない",
+        "接続できない",
+        "通信できない",
+        "通信不可",
+        "届かない",
+        "通らない",
+        "アクセスできない",
+        "不通",
+        "切断",
+        "パケットロス",
+        "パケロス",
+        "タイムアウト",
+        "timeout",
+        "unreachable",
+        "cannot connect",
+        "failed",
+        "トラブル",
+        "エラー",
+        "異常",
     ];
 
     let explicitly_live = agent_markers
@@ -150,6 +171,14 @@ mod tests {
         );
         assert_eq!(
             select_dispatch_mode("NakaokuGW の設定を確認して"),
+            DispatchMode::Agent
+        );
+        assert_eq!(
+            select_dispatch_mode("8.8.8.8へ繋がらない"),
+            DispatchMode::Agent
+        );
+        assert_eq!(
+            select_dispatch_mode("ルータと通信できない"),
             DispatchMode::Agent
         );
     }

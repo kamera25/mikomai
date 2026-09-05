@@ -177,6 +177,7 @@ pub async fn handle_chat_request(
         }
         crate::harness::dispatch::DispatchMode::Worker => {
             run_worker_request(
+                app,
                 window,
                 final_user_message,
                 llama_state,
@@ -196,6 +197,7 @@ pub async fn handle_chat_request(
 /// Workers may provide guidance or a draft, but they do not execute MCP tools
 /// from this entry point. Device I/O must enter through `AgentLoop` above.
 async fn run_worker_request(
+    app: AppHandle,
     window: Window,
     user_message: String,
     llama_state: &crate::llm::llm::LlamaState,
@@ -233,6 +235,11 @@ async fn run_worker_request(
     )
     .await
     {
+        Ok((_, crate::llm::worker::Route::Agent)) => {
+            log::info!("[run_worker_request] LLM router identified Route::Agent; handing off to AgentLoop");
+            let mut agent_loop = crate::harness::agent_loop::AgentLoop::new(app, window, 10);
+            return agent_loop.run(user_message, llama_state).await;
+        }
         Ok((response, crate::llm::worker::Route::Knowledge)) => {
             run_knowledge_retrieval(
                 window.clone(),
