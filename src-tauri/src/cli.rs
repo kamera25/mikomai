@@ -69,6 +69,21 @@ pub fn run() -> Result<(), String> {
     run_from(Cli::parse())
 }
 
+/// `App::run()` executes Tauri's setup hook, whereas CLI commands only build
+/// an app handle. Initialise the embedded store explicitly before a CLI RAG
+/// command asks the handle for its managed graph state.
+fn ensure_graph_state(handle: &tauri::AppHandle) -> Result<(), String> {
+    if handle.try_state::<crate::graph::SurrealDbState>().is_some() {
+        return Ok(());
+    }
+    let state = tauri::async_runtime::block_on(crate::graph::SurrealDbState::initialize(handle))?;
+    if handle.manage(state) {
+        Ok(())
+    } else {
+        Err("Failed to register SurrealDB state for CLI RAG command".to_string())
+    }
+}
+
 fn run_from(cli: Cli) -> Result<(), String> {
     crate::logger::init().map_err(|error| error.to_string())?;
 
@@ -76,6 +91,7 @@ fn run_from(cli: Cli) -> Result<(), String> {
         Command::RagIngest { path } => {
             let app = crate::build_app().map_err(|error| error.to_string())?;
             let handle = app.handle().clone();
+            ensure_graph_state(&handle)?;
             let rag = handle.state::<crate::mcp::rag::RagState>();
             let graph = handle.state::<crate::graph::SurrealDbState>();
             let chunks = tauri::async_runtime::block_on(crate::mcp::rag::ingest_path(
@@ -91,6 +107,7 @@ fn run_from(cli: Cli) -> Result<(), String> {
         Command::RagSearch { query } => {
             let app = crate::build_app().map_err(|error| error.to_string())?;
             let handle = app.handle().clone();
+            ensure_graph_state(&handle)?;
             let state_handle = handle.clone();
             let rag = state_handle.state::<crate::mcp::rag::RagState>();
             let result = tauri::async_runtime::block_on(crate::mcp::rag::query_nw_db(
