@@ -12,20 +12,13 @@ use tauri::{AppHandle, Emitter, Window};
 
 #[allow(async_fn_in_trait)]
 pub trait PlannerPort {
-    async fn plan(
-        &self,
-        app: &AppHandle,
-        llama: &LlamaState,
-        state: &NetworkState,
-    ) -> Result<Decision, String>;
+    async fn plan(&self, state: &NetworkState) -> Result<Decision, String>;
 }
 
 #[allow(async_fn_in_trait)]
 pub trait ToolExecutorPort {
     async fn execute_tool(
         &self,
-        app: AppHandle,
-        window: Window,
         task_id: uuid::Uuid,
         tool: String,
         goal: String,
@@ -33,14 +26,20 @@ pub trait ToolExecutorPort {
     ) -> Result<crate::network::CommandResult, String>;
     async fn execute_builder(
         &self,
-        app: AppHandle,
-        window: Window,
         goal: String,
         tool: String,
         arguments: serde_json::Value,
     ) -> Result<String, String>;
+    async fn execute_rag_co_worker(
+        &self,
+        _goal: String,
+        raw_output: String,
+    ) -> Result<String, String> {
+        Ok(raw_output)
+    }
 }
 
+#[derive(Clone, Debug)]
 pub enum AgentReport {
     Chat(ChatEvent),
     CommitLog(String),
@@ -50,32 +49,46 @@ pub trait ReporterPort {
     fn report(&self, report: AgentReport);
 }
 
-pub struct LlmPlannerPort;
-impl PlannerPort for LlmPlannerPort {
-    async fn plan(
-        &self,
-        app: &AppHandle,
-        llama: &LlamaState,
-        state: &NetworkState,
-    ) -> Result<Decision, String> {
-        LlmPlanner::plan(app, llama, state).await
+pub struct LlmPlannerPort<'a> {
+    app: AppHandle,
+    llama: &'a LlamaState,
+}
+
+impl<'a> LlmPlannerPort<'a> {
+    pub fn new(app: AppHandle, llama: &'a LlamaState) -> Self {
+        Self { app, llama }
     }
 }
 
-pub struct McpToolExecutorPort;
-impl ToolExecutorPort for McpToolExecutorPort {
+impl<'a> PlannerPort for LlmPlannerPort<'a> {
+    async fn plan(&self, state: &NetworkState) -> Result<Decision, String> {
+        LlmPlanner::plan(&self.app, self.llama, state).await
+    }
+}
+
+pub struct McpToolExecutorPort<'a> {
+    app: AppHandle,
+    window: Window,
+    llama: &'a LlamaState,
+}
+
+impl<'a> McpToolExecutorPort<'a> {
+    pub fn new(app: AppHandle, window: Window, llama: &'a LlamaState) -> Self {
+        Self { app, window, llama }
+    }
+}
+
+impl<'a> ToolExecutorPort for McpToolExecutorPort<'a> {
     async fn execute_tool(
         &self,
-        app: AppHandle,
-        window: Window,
         task_id: uuid::Uuid,
         tool: String,
         goal: String,
         arguments: serde_json::Value,
     ) -> Result<crate::network::CommandResult, String> {
         crate::mcp::executor::flow::execute_mcp_tool_raw(
-            app,
-            window,
+            self.app.clone(),
+            self.window.clone(),
             task_id,
             tool,
             goal,
@@ -87,15 +100,13 @@ impl ToolExecutorPort for McpToolExecutorPort {
     }
     async fn execute_builder(
         &self,
-        app: AppHandle,
-        window: Window,
         goal: String,
         tool: String,
         arguments: serde_json::Value,
     ) -> Result<String, String> {
         crate::mcp::executor::flow::execute_mcp_tools_flow(
-            app,
-            window,
+            self.app.clone(),
+            self.window.clone(),
             goal,
             vec![crate::mcp::executor::flow::ToolCall {
                 tool,
@@ -109,6 +120,15 @@ impl ToolExecutorPort for McpToolExecutorPort {
             true,
         )
         .await
+    }
+    async fn execute_rag_co_worker(
+        &self,
+        goal: String,
+        raw_output: String,
+    ) -> Result<String, String> {
+        crate::llm::llm::ask_rag_co_worker(&self.app, goal, raw_output, self.llama)
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 

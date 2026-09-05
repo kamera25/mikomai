@@ -71,6 +71,7 @@ impl HarnessStateMachine {
                 | (Deciding, AskingHuman)
                 | (Deciding, Finished)
                 | (Validating, Acting)
+                | (Validating, Deciding)
                 | (Acting, Observing)
                 | (Acting, Evaluating)
                 | (Evaluating, Deciding)

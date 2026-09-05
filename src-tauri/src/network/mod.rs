@@ -57,7 +57,7 @@ pub struct NetmikoDeviceConfig {
     pub agent_forwarding: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CommandResult {
     pub success: bool,
     pub output: String,

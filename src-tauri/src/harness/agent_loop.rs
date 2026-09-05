@@ -18,8 +18,8 @@ use std::str::FromStr;
 use tauri::{AppHandle, Manager, Window};
 
 pub struct AgentLoop {
-    pub app: AppHandle,
-    pub window: Window,
+    pub app: Option<AppHandle>,
+    pub window: Option<Window>,
     pub state_machine: HarnessStateMachine,
     pub network_state: NetworkState,
 }
@@ -48,8 +48,17 @@ fn builder_handoff_action(output: &str) -> ActionType {
 impl AgentLoop {
     pub fn new(app: AppHandle, window: Window, max_steps: usize) -> Self {
         Self {
-            app,
-            window,
+            app: Some(app),
+            window: Some(window),
+            state_machine: HarnessStateMachine::new(max_steps),
+            network_state: NetworkState::new(),
+        }
+    }
+
+    pub fn new_headless(max_steps: usize) -> Self {
+        Self {
+            app: None,
+            window: None,
             state_machine: HarnessStateMachine::new(max_steps),
             network_state: NetworkState::new(),
         }
@@ -76,17 +85,24 @@ impl AgentLoop {
     }
 
     pub async fn run(&mut self, goal: String, llama_state: &LlamaState) -> Result<String, String> {
-        let planner = LlmPlannerPort;
-        let executor = McpToolExecutorPort;
-        let reporter = TauriReporterPort::new(self.window.clone());
-        self.run_with(goal, llama_state, &planner, &executor, &reporter)
+        let app = self
+            .app
+            .clone()
+            .ok_or_else(|| "AppHandle is required for live AgentLoop execution".to_string())?;
+        let window = self
+            .window
+            .clone()
+            .ok_or_else(|| "Window is required for live AgentLoop execution".to_string())?;
+        let planner = LlmPlannerPort::new(app.clone(), llama_state);
+        let executor = McpToolExecutorPort::new(app, window.clone(), llama_state);
+        let reporter = TauriReporterPort::new(window);
+        self.run_with(goal, &planner, &executor, &reporter)
             .await
     }
 
     pub async fn run_with<P, E, R>(
         &mut self,
         goal: String,
-        llama_state: &LlamaState,
         planner: &P,
         executor: &E,
         reporter: &R,
@@ -136,7 +152,7 @@ impl AgentLoop {
             ))));
 
             let mut decision: Decision = match planner
-                .plan(&self.app, llama_state, &self.network_state)
+                .plan(&self.network_state)
                 .await
             {
                 Ok(d) => d,
@@ -207,7 +223,12 @@ impl AgentLoop {
                 initial_objective = Some(captured);
             } else if let Some(ref init_obj) = initial_objective {
                 // Step 2以降: LLMが生成したobjectiveが乖離するのを防ぐため、STEP1の当初objectiveを強制固定/継承
-                decision.objective = init_obj.clone();
+                // ただし、AskHuman（ユーザーへの確認要求）やBuilder Co-Workerからのハンドオフ時は上書きしない
+                if decision.action_type != ActionType::AskHuman
+                    && self.latest_builder_coworker_result().is_none()
+                {
+                    decision.objective = init_obj.clone();
+                }
             }
 
             // FINISH is a user-facing terminal response. Keep its content in
@@ -352,8 +373,6 @@ impl AgentLoop {
             {
                 let builder_result = executor
                     .execute_builder(
-                        self.app.clone(),
-                        self.window.clone(),
                         goal.clone(),
                         tool_name.clone(),
                         tool_args.clone(),
@@ -393,8 +412,6 @@ impl AgentLoop {
             // Execute via existing tool executor (it emits McpToolStarted and McpToolFinished internally)
             let cmd_result = executor
                 .execute_tool(
-                    self.app.clone(),
-                    self.window.clone(),
                     tool_task_id,
                     tool_name.clone(),
                     goal.clone(),
@@ -442,16 +459,15 @@ impl AgentLoop {
                         self.state_machine.step_count()
                     ))));
 
-                    let co_worker_result = crate::llm::llm::ask_rag_co_worker(
-                        &self.app,
-                        goal.clone(),
-                        cmd_result.output.clone(),
-                        llama_state,
-                    )
-                    .await
-                    .unwrap_or_else(|error| {
-                        format!("RAG Co-Workerの資料選定に失敗しました: {error}")
-                    });
+                    let co_worker_result = executor
+                        .execute_rag_co_worker(
+                            goal.clone(),
+                            cmd_result.output.clone(),
+                        )
+                        .await
+                        .unwrap_or_else(|error| {
+                            format!("RAG Co-Workerの資料選定に失敗しました: {error}")
+                        });
 
                     log::info!(
                         "[AgentLoop] Step {}: RAG co-worker returned {} chars of selected document text",
@@ -498,9 +514,11 @@ impl AgentLoop {
     }
 
     fn persist_event_log(&self, task_id: uuid::Uuid) {
+        let Some(ref app) = self.app else {
+            return;
+        };
         let result = (|| -> Result<(), String> {
-            let directory = self
-                .app
+            let directory = app
                 .path()
                 .app_data_dir()
                 .map_err(|error| format!("Failed to resolve app data directory: {error}"))?
