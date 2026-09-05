@@ -18,6 +18,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
+    /// Show debug and internal logs.
+    #[arg(long, short = 'd', visible_alias = "verbose", global = true)]
+    debug: bool,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -194,7 +198,7 @@ fn run_chat(message: String) -> Result<String, String> {
 }
 
 fn run_from(cli: Cli) -> Result<(), String> {
-    crate::logger::init().map_err(|error| error.to_string())?;
+    crate::logger::init_cli(cli.debug).map_err(|error| error.to_string())?;
 
     match cli.command {
         Command::RagIngest { path } => {
@@ -374,4 +378,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn parses_chat_debug_flag() {
+        let cli1 = Cli::try_parse_from(["mikomai", "chat", "hello", "--debug"]).unwrap();
+        assert!(cli1.debug);
+
+        let cli2 = Cli::try_parse_from(["mikomai", "--debug", "chat", "hello"]).unwrap();
+        assert!(cli2.debug);
+
+        let cli3 = Cli::try_parse_from(["mikomai", "chat", "hello", "-d"]).unwrap();
+        assert!(cli3.debug);
+
+        let cli4 = Cli::try_parse_from(["mikomai", "chat", "hello", "--verbose"]).unwrap();
+        assert!(cli4.debug);
+
+        let cli_default = Cli::try_parse_from(["mikomai", "chat", "hello"]).unwrap();
+        assert!(!cli_default.debug);
+    }
 }
+
+
+

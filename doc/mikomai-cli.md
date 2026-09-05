@@ -64,6 +64,7 @@ cargo build --release --manifest-path src-tauri/Cargo.toml --bin mikomai-cli
 | オプション | 説明 |
 | --- | --- |
 | `--json` | 出力を機械可読な JSON 形式で標準出力に表示します（スクリプトや CI 連携向け）。 |
+| `-d`, `--debug` | デバッグログおよび内部動作ログを標準エラー出力に表示します（エイリアス: `--verbose`）。デフォルトは無効（内部出力なし）です。 |
 | `-h`, `--help` | ヘルプメッセージを表示します。 |
 | `-V`, `--version` | バージョン情報を表示します。 |
 

@@ -23,6 +23,7 @@ cargo run --manifest-path src-tauri/Cargo.toml --bin mikomai-cli -- chat "<メ�
 | オプション | 説明 |
 | --- | --- |
 | `--json` | 出力を機械可読な JSON 形式（`{"ok": true, "data": {"response": "..."}}`）で出力します。 |
+| `-d`, `--debug` | AgentLoop やモデル読み込み等のデバッグ・内部動作ログを標準エラー出力に表示します（エイリアス: `--verbose`）。デフォルトは無効（内部出力なし）で、最終回答のみが出力されます。 |
 | `-h`, `--help` | ヘルプメッセージを表示します。 |
 
 ---

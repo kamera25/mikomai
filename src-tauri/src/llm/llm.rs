@@ -93,8 +93,19 @@ pub struct LlamaState {
     pub inference_tx: tokio::sync::mpsc::Sender<InferenceRequest>,
 }
 
+static LLAMA_LOGS_INIT: std::sync::Once = std::sync::Once::new();
+
+pub fn configure_llama_logs(enabled: bool) {
+    LLAMA_LOGS_INIT.call_once(|| {
+        llama_cpp_2::send_logs_to_tracing(
+            llama_cpp_2::LogOptions::default().with_logs_enabled(enabled),
+        );
+    });
+}
+
 impl LlamaState {
     pub fn new() -> Result<Self, LlmError> {
+        configure_llama_logs(false);
         let backend = LlamaBackend::init().map_err(|_| LlmError::BackendInit)?;
         let backend_arc = Arc::new(backend);
         let shared: Arc<tokio::sync::Mutex<Option<Arc<SharedModel>>>> =

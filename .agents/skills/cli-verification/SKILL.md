@@ -13,8 +13,13 @@ description: >-
 ## 実行コマンド
 
 ```bash
+# 基本実行（デフォルト: デバッグ出力なし、回答テキストのみ出力）
 npm run cli -- chat "F220のVLAN設定方法を教えて"
+
+# デバッグログを表示する場合
+npm run cli -- chat "F220のVLAN設定方法を教えて" --debug
 ```
 
 ## 確認ポイント
-- 出力に `[AgentLoop] Step X: Goal reached / Completed:` および適切な回答テキストが含まれていることを確認する。
+- 出力に適切な回答テキストが含まれていることを確認する（`--debug` 指定時は `[AgentLoop] Step X: Goal reached / Completed:` などの内部ログも確認可能）。
+

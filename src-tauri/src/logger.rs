@@ -32,17 +32,35 @@ impl<'a> Write for SharedFileWriterLock<'a> {
 }
 
 pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    init_internal(true)
+}
+
+pub fn init_cli(debug: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    init_internal(debug)
+}
+
+fn init_internal(console: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    crate::llm::configure_llama_logs(console);
+
     // Redirect standard log crate events to tracing, ignoring error if already set
     let _ = LogTracer::init();
 
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::new("info,mikomai=debug,mikomai_lib=debug,surrealdb_core=warn,surrealdb=warn")
+    });
 
-    let console_layer = fmt::layer()
-        .with_writer(std::io::stdout)
-        .with_ansi(true)
-        .with_target(false)
-        .with_file(true)
-        .with_line_number(true);
+    let console_layer = if console {
+        Some(
+            fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_ansi(true)
+                .with_target(false)
+                .with_file(true)
+                .with_line_number(true),
+        )
+    } else {
+        None
+    };
 
     let file_layer = if let Some(dir) = get_app_data_dir() {
         let _ = fs::create_dir_all(&dir);
