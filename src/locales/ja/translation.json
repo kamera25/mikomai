@@ -40,6 +40,7 @@
     "chat": "チャット",
     "connection_settings": "接続設定",
     "scheduled_tasks": "Watch",
+    "task_audit": "実行履歴",
     "settings": "設定"
   },
   "chat": {

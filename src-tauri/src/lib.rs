@@ -19,6 +19,7 @@ pub(crate) mod schema;
 pub(crate) mod settings;
 pub(crate) mod snapshot;
 pub mod state;
+pub mod task_audit;
 pub mod validator;
 pub(crate) mod watch;
 
@@ -163,6 +164,9 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
             operations::get_operation_plan,
             operations::approve_operation_plan,
             operations::execute_approved_operation_plan,
+            task_audit::list_agent_tasks,
+            task_audit::get_agent_task_audit,
+            task_audit::resume_agent_task,
             mcp::config_helper::ask_user_choice,
             mcp::config_helper::submit_interface_choice,
             mcp::config_helper::ask_interface_choice,

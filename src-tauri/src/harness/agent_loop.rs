@@ -488,6 +488,10 @@ impl AgentLoop {
             },
         )));
 
+        self.network_state.event_log.push(HarnessEvent::Finished {
+            reason: final_report.clone(),
+            timestamp: chrono::Utc::now(),
+        });
         self.persist_event_log(task_id);
 
         Ok(final_report)

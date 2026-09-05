@@ -17,11 +17,12 @@ export interface ConfigDiffData {
 }
 
 export interface UIState {
-  activePanel: "chat" | "settings" | "connections" | "scheduledTasks";
+  activePanel: "chat" | "settings" | "connections" | "scheduledTasks" | "taskAudit";
   isSidebarOpen: boolean;
   isSettingsOpen: boolean;
   isConnectionOpen: boolean;
   isScheduledTasksOpen: boolean;
+  isTaskAuditOpen: boolean;
   isEditingHeader: boolean;
   headerTitle: string;
   isConfigDiffOpen: boolean;
@@ -33,6 +34,7 @@ export type UIAction =
   | { type: "SET_SETTINGS_OPEN"; payload: boolean }
   | { type: "SET_CONNECTION_OPEN"; payload: boolean }
   | { type: "SET_SCHEDULED_TASKS_OPEN"; payload: boolean }
+  | { type: "SET_TASK_AUDIT_OPEN"; payload: boolean }
   | { type: "START_EDITING_HEADER"; payload: string }
   | { type: "SET_HEADER_TITLE"; payload: string }
   | { type: "STOP_EDITING_HEADER" }
@@ -45,6 +47,7 @@ export const initialUIState: UIState = {
   isSettingsOpen: false,
   isConnectionOpen: false,
   isScheduledTasksOpen: false,
+  isTaskAuditOpen: false,
   isEditingHeader: false,
   headerTitle: "",
   isConfigDiffOpen: false,
@@ -61,7 +64,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         ...state,
         activePanel: nextOpen ? "settings" : state.activePanel === "settings" ? "chat" : state.activePanel,
         isSettingsOpen: nextOpen,
-        ...(nextOpen ? { isConnectionOpen: false, isScheduledTasksOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
+        ...(nextOpen ? { isConnectionOpen: false, isScheduledTasksOpen: false, isTaskAuditOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
       };
     }
     case "SET_CONNECTION_OPEN": {
@@ -70,7 +73,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         ...state,
         activePanel: nextOpen ? "connections" : state.activePanel === "connections" ? "chat" : state.activePanel,
         isConnectionOpen: nextOpen,
-        ...(nextOpen ? { isSettingsOpen: false, isScheduledTasksOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
+        ...(nextOpen ? { isSettingsOpen: false, isScheduledTasksOpen: false, isTaskAuditOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
       };
     }
     case "SET_SCHEDULED_TASKS_OPEN": {
@@ -79,7 +82,16 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         ...state,
         activePanel: nextOpen ? "scheduledTasks" : state.activePanel === "scheduledTasks" ? "chat" : state.activePanel,
         isScheduledTasksOpen: nextOpen,
-        ...(nextOpen ? { isSettingsOpen: false, isConnectionOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
+        ...(nextOpen ? { isSettingsOpen: false, isConnectionOpen: false, isTaskAuditOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
+      };
+    }
+    case "SET_TASK_AUDIT_OPEN": {
+      const nextOpen = action.payload;
+      return {
+        ...state,
+        activePanel: nextOpen ? "taskAudit" : state.activePanel === "taskAudit" ? "chat" : state.activePanel,
+        isTaskAuditOpen: nextOpen,
+        ...(nextOpen ? { isSettingsOpen: false, isConnectionOpen: false, isScheduledTasksOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
       };
     }
     case "SET_CONFIG_DIFF_OPEN":

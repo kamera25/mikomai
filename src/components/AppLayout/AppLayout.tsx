@@ -43,6 +43,9 @@ const ConfigDiffPanel = lazy(() =>
     default: ConfigDiffPanel,
   }))
 );
+const TaskAuditPanel = lazy(() =>
+  import("../TaskAuditPanel").then(({ TaskAuditPanel }) => ({ default: TaskAuditPanel }))
+);
 
 export function AppLayout() {
   const { t } = useTranslation();
@@ -371,6 +374,36 @@ export function AppLayout() {
     [uiState.isSettingsOpen, uiDispatch]
   );
 
+  const handleSetTaskAuditOpen = useCallback(
+    (valueOrFn: React.SetStateAction<boolean>) => {
+      uiDispatch({
+        type: "SET_TASK_AUDIT_OPEN",
+        payload: typeof valueOrFn === "function" ? valueOrFn(uiState.isTaskAuditOpen) : valueOrFn,
+      });
+    },
+    [uiState.isTaskAuditOpen, uiDispatch]
+  );
+
+  const resumeTask = useCallback(async (task: { taskId: string; goal: string }) => {
+    if (isCurrentlyGenerating) return;
+    uiDispatch({ type: "SET_TASK_AUDIT_OPEN", payload: false });
+    setMessages((previous) => [...previous, {
+      role: "user", content: `前回の調査を再開: ${task.goal}`, timestamp: new Date().toISOString(),
+      event_type: "UserInput", task_id: crypto.randomUUID(),
+    }]);
+    setIsGenerating(true);
+    try {
+      await invoke("resume_agent_task", { taskId: task.taskId });
+    } catch (reason) {
+      setMessages((previous) => [...previous, {
+        role: "ai", content: `調査を再開できませんでした: ${String(reason)}`,
+        timestamp: new Date().toISOString(), event_type: "SystemMessage",
+      }]);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [isCurrentlyGenerating, setMessages, uiDispatch]);
+
   return (
     <div className="app-container">
       <div className="main-layout">
@@ -379,6 +412,8 @@ export function AppLayout() {
           setIsConnectionOpen={handleSetConnectionOpen}
           isScheduledTasksOpen={uiState.isScheduledTasksOpen}
           setIsScheduledTasksOpen={handleSetScheduledTasksOpen}
+          isTaskAuditOpen={uiState.isTaskAuditOpen}
+          setIsTaskAuditOpen={handleSetTaskAuditOpen}
           isSettingsOpen={uiState.isSettingsOpen}
           setIsSettingsOpen={handleSetSettingsOpen}
         />
@@ -420,6 +455,11 @@ export function AppLayout() {
             ) : uiState.isScheduledTasksOpen ? (
               <ScheduledTasksPanel
                 onClose={() => uiDispatch({ type: "SET_SCHEDULED_TASKS_OPEN", payload: false })}
+              />
+            ) : uiState.isTaskAuditOpen ? (
+              <TaskAuditPanel
+                onClose={() => uiDispatch({ type: "SET_TASK_AUDIT_OPEN", payload: false })}
+                onResume={resumeTask}
               />
             ) : (
               <div className="chat-workspace-container">
