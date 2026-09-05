@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
 #[derive(Debug, Parser)]
@@ -89,6 +90,89 @@ fn ensure_graph_state(handle: &tauri::AppHandle) -> Result<(), String> {
     }
 }
 
+fn configured_model_path(settings: &crate::settings::AppSettings) -> Result<String, String> {
+    settings
+        .model_path
+        .as_deref()
+        .filter(|path| !path.trim().is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            "No model is configured. Set a model path in the Mikomai desktop app before using `mikomai-cli chat`."
+                .to_string()
+        })
+}
+
+async fn ensure_cli_model_loaded(
+    app: &tauri::AppHandle,
+    settings: &crate::settings::AppSettings,
+) -> Result<(), String> {
+    let state = app.state::<crate::llm::llm::LlamaState>();
+    if state.shared.lock().await.is_some() {
+        return Ok(());
+    }
+
+    let path = configured_model_path(settings)?;
+    crate::llm::loader::load_model_internal(app.clone(), path, &state)
+        .await
+        .map(|_| ())
+        .map_err(|error| format!("Failed to load the configured model for CLI chat: {error}"))
+}
+
+/// Chat still emits GUI timeline events as it runs. Unlike the other CLI
+/// commands, it therefore needs Tauri's event loop to initialize that window.
+/// The window is immediately hidden; the final response remains stdout-only.
+fn run_chat(message: String) -> Result<String, String> {
+    let app = crate::build_app().map_err(|error| error.to_string())?;
+    let result = Arc::new(Mutex::new(None));
+    let result_for_event = result.clone();
+
+    app.run(move |handle, event| {
+        if !matches!(event, tauri::RunEvent::Ready) {
+            return;
+        }
+
+        let result = result_for_event.clone();
+        let message = message.clone();
+        let handle = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let response = async {
+                let window = handle.get_window("main").ok_or_else(|| {
+                    "The Mikomai chat window was not initialized by the Tauri runtime".to_string()
+                })?;
+                let _ = window.hide();
+                let settings = crate::settings::load_settings(handle.clone()).unwrap_or_default();
+                ensure_cli_model_loaded(&handle, &settings).await?;
+                let summaries = crate::history::load_summaries(handle.clone()).unwrap_or_default();
+                let llama_state = handle.state::<crate::llm::llm::LlamaState>();
+                crate::mcp::executor::handle_chat_request(
+                    handle.clone(),
+                    window,
+                    &llama_state,
+                    crate::mcp::protocol::ChatRequest {
+                        user_message: message,
+                        summaries,
+                        recent_ips: settings.recent_ips,
+                        history_limit: settings.history_limit,
+                        mcp_timeout: settings.mcp_timeout.unwrap_or(30),
+                        attachments: None,
+                    },
+                )
+                .await
+            }
+            .await;
+            *result.lock().expect("CLI chat result lock poisoned") = Some(response);
+            handle.exit(0);
+        });
+    });
+
+    let response = result
+        .lock()
+        .expect("CLI chat result lock poisoned")
+        .take()
+        .ok_or_else(|| "The Tauri event loop exited before the chat command completed".to_string())?;
+    response
+}
+
 fn run_from(cli: Cli) -> Result<(), String> {
     crate::logger::init().map_err(|error| error.to_string())?;
 
@@ -126,28 +210,7 @@ fn run_from(cli: Cli) -> Result<(), String> {
             }
         }
         Command::Chat { message } => {
-            let app = crate::build_app().map_err(|error| error.to_string())?;
-            let handle = app.handle().clone();
-            let window = app.get_window("main").ok_or_else(|| {
-                "The Mikomai chat window could not be initialized for the chat command".to_string()
-            })?;
-            let settings = crate::settings::load_settings(handle.clone()).unwrap_or_default();
-            let summaries = crate::history::load_summaries(handle.clone()).unwrap_or_default();
-            let llama_state = handle.state::<crate::llm::llm::LlamaState>();
-            let response =
-                tauri::async_runtime::block_on(crate::mcp::executor::handle_chat_request(
-                    handle.clone(),
-                    window,
-                    &llama_state,
-                    crate::mcp::protocol::ChatRequest {
-                        user_message: message,
-                        summaries,
-                        recent_ips: settings.recent_ips,
-                        history_limit: settings.history_limit,
-                        mcp_timeout: settings.mcp_timeout.unwrap_or(30),
-                        attachments: None,
-                    },
-                ))?;
+            let response = run_chat(message)?;
             if cli.json {
                 print_json(&CliResult {
                     ok: true,
@@ -274,4 +337,21 @@ mod tests {
             Command::Chat { message } if message == "show edge-01 interfaces"
         ));
     }
+
+    #[test]
+    fn requires_a_configured_model_for_chat() {
+        let error = configured_model_path(&crate::settings::AppSettings::default()).unwrap_err();
+        assert!(error.contains("No model is configured"));
+    }
+
+    #[test]
+    fn uses_the_configured_model_path_for_chat() {
+        let mut settings = crate::settings::AppSettings::default();
+        settings.model_path = Some("/models/mikomai.gguf".to_string());
+        assert_eq!(
+            configured_model_path(&settings).unwrap(),
+            "/models/mikomai.gguf"
+        );
+    }
+
 }

@@ -16,10 +16,20 @@ pub async fn load_model(
     path: String,
     state: tauri::State<'_, LlamaState>,
 ) -> Result<String, TauriError> {
+    load_model_internal(app, path, &state)
+        .await
+        .map_err(TauriError::from)
+}
+
+/// Loads a configured model without requiring a Tauri command argument.
+/// Desktop and CLI adapters share this entry point.
+pub async fn load_model_internal(
+    app: tauri::AppHandle,
+    path: String,
+    state: &LlamaState,
+) -> Result<String, LlmError> {
     if path.contains("..") {
-        return Err(TauriError(crate::error::MikomaiError::Validation(
-            "Path traversal detected".to_string(),
-        )));
+        return Err(LlmError::ModelLoad("Path traversal detected".to_string()));
     }
     {
         let mut status_lock = state.status.lock().await;
@@ -50,7 +60,7 @@ pub async fn load_model(
                 *status_lock = ModelState::Error(err_msg.clone());
                 let _ = app.emit("model-status-changed", &*status_lock);
             }
-            return Err(LlmError::ModelLoad(e.to_string()).into());
+            return Err(LlmError::ModelLoad(e.to_string()));
         }
     };
 

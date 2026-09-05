@@ -52,9 +52,10 @@ npm run cli -- resources
 npm run cli -- devices
 npm run cli -- get-state <device> <resource>
 npm run cli -- rag-search "VLAN"
+npm run cli -- chat "NakaokuGWのインターフェース状態を診断して"
 
 # cargo経由
-cargo run --manifest-path src-tauri/Cargo.toml --bin mikomai-cli -- resources
+cargo run --manifest-path src-tauri/Cargo.toml --bin mikomai-cli -- chat "VLAN設定のコマンド例"
 ```
 
 より詳細なコマンド一覧や使用例については、[CLI 実行マニュアル](doc/mikomai-cli.md) を参照してください。

@@ -79,10 +79,11 @@ cargo build --release --manifest-path src-tauri/Cargo.toml --bin mikomai-cli
 
 ## 3. サブコマンド一覧
 
-`mikomai-cli` には以下の 5 つの主要サブコマンドがあります。
+`mikomai-cli` には以下の 6 つの主要サブコマンドがあります。
 
 | サブコマンド | 概要 | 主な用途 |
 | --- | --- | --- |
+| `chat` | AI アシスタント対話・エージェント実行 | 質問回答、コンフィグ生成、自律的機器診断 |
 | `devices` | 登録済み機器一覧の表示 | ホスト名、IPアドレス、接続種別の確認 |
 | `resources` | 対応状態リソース一覧の表示 | `get-state` で利用可能なリソース名の確認 |
 | `get-state` | 機器の状態観測（読み取り専用） | ARP、ルーティング、インターフェース等の取得 |
@@ -214,6 +215,36 @@ npm run cli -- rag-search "FITELnet F220 trunk vlan"
 npm run cli -- --json rag-search "IP アドレス 設定"
 ```
 
+### 4.6 `chat`（AI アシスタント対話・エージェント実行）
+
+デスクトップアプリのチャット画面と同じ統合パイプライン（LLM、SurrealDB RAG、登録機器情報、過去履歴、MCP ツール実行エンジン）を CLI から直接実行します。
+
+入力されたメッセージの内容に応じて、システムが以下の 2 つの実行モードを自動的に選択します：
+- **Worker モード**: ドキュメント解説やコンフィグ生成など、機器の直接観測を伴わないタスク（Router / Knowledge Worker による高速生成）。
+- **Agent モード**: 実機の状態確認やトラブルシューティングなど（`AgentLoop` が自律的に安全ポリシー検査を行い、MCP ツールで状態を取得して総合診断）。
+
+```bash
+npm run cli -- chat "<MESSAGE>" [OPTIONS]
+```
+
+#### 引数:
+- `<MESSAGE>`: ネットワークアシスタントへの指示、質問、またはトラブル調査依頼。
+
+#### 実行例:
+
+```bash
+# ドキュメントベースの質問・コンフィグ生成（Worker モード）
+npm run cli -- chat "YAMAHA RTX1210 で LAN1 に 192.168.100.1/24 を設定するコマンドを教えて"
+
+# 実機状態の確認と自律診断（Agent モード: 登録済みホスト名を含める）
+npm run cli -- chat "NakaokuGW のインターフェース状態を確認して問題がないか要約して"
+
+# JSON 形式で回答を取得（スクリプトやボット連携向け）
+npm run cli -- --json chat "FITELnet F220 の VLAN 設定手順の要約"
+```
+
+> 詳しい内部アーキテクチャや自律実行の流れは [mikomai-cli-chat.md](file:///Users/kamera25/mikomai/doc/mikomai-cli-chat.md) を参照してください。
+
 ---
 
 ## 5. スクリプト・自動化での活用例
@@ -234,11 +265,27 @@ RAG の検索精度評価スクリプト `scripts/rag_eval.py` は、内部で `
 python scripts/rag_eval.py --cases eval/rag_cases.json --report eval/rag-report.json
 ```
 
+### 5.3 `chat` を用いた定期ヘルスチェック・自動レポート
+
+シェルスクリプトや cron と組み合わせることで、実機の状態確認と AI による自然言語サマリーを自動生成できます。
+
+```bash
+#!/bin/bash
+# 毎朝のネットワーク簡易診断
+REPORT=$(npm run cli -- --json chat "NakaokuGW のルートテーブルとインターフェースを確認して異常の有無を教えて" | jq -r '.data.response')
+echo "=== 診断結果 ==="
+echo "$REPORT"
+```
+
 ---
 
 ## 6. 注意点
 
 1. **SurrealDB の排他制御**:
    SurrealDB は組み込み RocksDB（`~/Library/Application Support/com.mikomai.agent/surrealdb`）を使用しています。Tauri GUI アプリが起動中の状態で `rag-ingest` などの書き込み系 CLI を実行すると、DB ロック競合が発生する場合があります。DB 操作を行う際は、GUI アプリを終了してから実行することを推奨します。
-2. **ログ出力**:
+2. **LLM 設定の事前準備**:
+   `chat` コマンドはデスクトップアプリと共通の LLM 設定（`settings.json`）を参照します。ローカルモデル（GGUF）または API キー（OpenAI, Claude, Ollama 等）が正しく設定されていない場合、回答の生成に失敗します。事前に GUI アプリの設定画面で LLM の接続を確認してください。
+3. **モデル読み込みと初回実行時間**:
+   ローカル LLM（llama.cpp）を使用している場合、初回起動時にモデルファイルのロードに数秒〜十数秒を要することがあります。
+4. **ログ出力**:
    初回のモデル読み込み時や ONNX Runtime（ort）初期化時に、デバッグログが標準エラー／標準出力に出力される場合があります。JSON 連携する際は、`--json` モードでのパースに標準出力の JSON 部分をご利用ください。
