@@ -232,7 +232,7 @@
     "btn_downloading": "Downloading...",
     "btn_open_folder_title": "Opens the folder containing the models",
     "btn_open_folder": "Open Folder",
-    "sub_kb": "Knowledge Base (LanceDB)",
+    "sub_kb": "Knowledge Base (SurrealDB)",
     "label_db_dir": "Database Directory",
     "btn_browse": "Browse",
     "label_embed_model": "Embedding Model",

@@ -55,7 +55,6 @@ vi.mock("@tauri-apps/api/core", () => {
         return {
           repoPath: "",
           modelFilename: "",
-          dbPath: "",
           consolePort: null,
           consoleBaudRate: 9600,
           ipVersion: "auto",

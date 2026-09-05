@@ -20,7 +20,7 @@
 - **Core**: Tauri / Rust
 - **Frontend**: React / TypeScript
 - **Inference**: Llama.cpp
-- **Storage**: LanceDB (Vector Store)
+- **Storage**: SurrealDB (network graph, history, and RAG vector store)
 
 ## セットアップ
 

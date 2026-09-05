@@ -84,6 +84,7 @@ pub struct GraphQueryResult {
 
 impl SurrealDbState {
     pub async fn initialize(app: &tauri::AppHandle) -> Result<Self, String> {
+        // RAG, graph, and history deliberately share one managed local-first database.
         let dir = app
             .path()
             .app_data_dir()
@@ -127,10 +128,16 @@ DEFINE TABLE observation SCHEMALESS;
 DEFINE TABLE config_snapshot SCHEMALESS;
 DEFINE TABLE config_change SCHEMALESS;
 DEFINE TABLE conflict SCHEMALESS;
+DEFINE TABLE rag_chunk SCHEMALESS;
+DEFINE ANALYZER rag_text TOKENIZERS class, punct FILTERS lowercase;
 DEFINE INDEX device_key ON TABLE device FIELDS key UNIQUE;
 DEFINE INDEX observation_device_time ON TABLE observation FIELDS device_name, collected_at;
 DEFINE INDEX snapshot_device_time ON TABLE config_snapshot FIELDS device_name, collected_at;
 DEFINE INDEX edge_key ON TABLE graph_edge FIELDS key UNIQUE;
+DEFINE INDEX rag_chunk_path ON TABLE rag_chunk FIELDS path;
+DEFINE INDEX rag_chunk_brand ON TABLE rag_chunk FIELDS brand;
+DEFINE INDEX rag_chunk_text ON TABLE rag_chunk FIELDS text FULLTEXT ANALYZER rag_text BM25;
+DEFINE INDEX rag_chunk_embedding ON TABLE rag_chunk FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
 "#,
             )
             .await

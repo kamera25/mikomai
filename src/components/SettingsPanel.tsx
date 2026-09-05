@@ -59,8 +59,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
     setMcpTimeout,
     cacheExpiryMinutes,
     setCacheExpiryMinutes,
-    dbPath,
-    setDbPath,
     ipVersion,
     setIpVersion,
     consolePort,
@@ -175,11 +173,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
   const handleCacheExpiryMinutesChange = (val: number) => {
     setCacheExpiryMinutes(val);
     saveAllSettings({ cacheExpiryMinutes: val });
-  };
-
-  const handleDbPathChange = (val: string) => {
-    setDbPath(val);
-    saveAllSettings({ dbPath: val });
   };
 
   const handleIpVersionChange = (val: string) => {
@@ -356,21 +349,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
       await invoke("open_model_dir", { modelPath: _savedModelPath });
     } catch (e: unknown) {
       setDownloadStatus(`Error: ${getErrorMessage(e)}`);
-    }
-  };
-
-  const handleSelectDbDir = async () => {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: t("settings.title_select_db_dir"),
-      });
-      if (selected) {
-        handleDbPathChange(selected as string);
-      }
-    } catch (e) {
-      console.error("Failed to select directory:", e);
     }
   };
 
@@ -843,21 +821,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
 
           <section id="settings-section-kb" className="settings-group">
             <h3>{t("settings.sub_kb")}</h3>
-            <div className="form-control">
-              <label>{t("settings.label_db_dir")}</label>
-              <div className="input-with-button">
-                <input
-                  type="text"
-                  placeholder="/path/to/lancedb"
-                  value={dbPath}
-                  onChange={(e) => handleDbPathChange(e.target.value)}
-                />
-
-                <button className="btn btn-secondary" onClick={handleSelectDbDir}>
-                  {t("settings.btn_browse")}
-                </button>
-              </div>
-            </div>
             <div className="form-control">
               <label>{t("settings.label_embed_model")}</label>
               <select>

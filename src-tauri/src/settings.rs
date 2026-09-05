@@ -39,7 +39,6 @@ pub struct AppSettings {
     #[serde(default)]
     #[validate(range(min = 1, max = 300))]
     pub mcp_timeout: Option<u64>,
-    pub db_path: Option<String>,
     #[serde(default)]
     pub ip_version: Option<String>,
     #[serde(default)]
@@ -88,7 +87,6 @@ impl Default for AppSettings {
             model_path: None,
             recent_ips: Vec::new(),
             mcp_timeout: Some(30),
-            db_path: None,
             ip_version: Some("auto".to_string()),
             console_port: None,
             console_baud_rate: Some(9600),
@@ -115,8 +113,6 @@ pub enum SettingsError {
     Io(#[from] std::io::Error),
     #[error("Serialization/Deserialization error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("Tauri path resolution failed")]
-    TauriPath,
 }
 
 impl serde::Serialize for SettingsError {
@@ -144,24 +140,12 @@ pub fn load_settings<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<AppSettings, TauriError> {
     let path = get_settings_path(&app);
-    let mut settings = if !path.exists() {
+    let settings = if !path.exists() {
         AppSettings::default()
     } else {
         let data = fs::read_to_string(path)?;
         serde_json::from_str(&data)?
     };
-
-    let has_no_db_path = settings
-        .db_path
-        .as_ref()
-        .map_or(true, |s| s.trim().is_empty());
-    if has_no_db_path {
-        let app_data_dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|_| SettingsError::TauriPath)?;
-        settings.db_path = Some(app_data_dir.join("lancedb").to_string_lossy().to_string());
-    }
 
     Ok(settings)
 }
@@ -193,7 +177,6 @@ mod tests {
         assert!(settings.model_path.is_none());
         assert!(settings.recent_ips.is_empty());
         assert_eq!(settings.mcp_timeout, Some(30));
-        assert!(settings.db_path.is_none());
         assert_eq!(settings.ip_version, Some("auto".to_string()));
         assert!(settings.console_port.is_none());
         assert_eq!(settings.console_baud_rate, Some(9600));
@@ -216,7 +199,6 @@ mod tests {
             model_path: Some("/path/to/model".to_string()),
             recent_ips: vec!["192.168.1.1".to_string()],
             mcp_timeout: Some(60),
-            db_path: Some("/path/to/db".to_string()),
             ip_version: Some("ipv6".to_string()),
             console_port: Some("/dev/ttyUSB0".to_string()),
             console_baud_rate: Some(115200),
@@ -242,7 +224,6 @@ mod tests {
         assert!(serialized.contains(r#""modelPath":"/path/to/model""#));
         assert!(serialized.contains(r#""recentIps":["192.168.1.1"]"#));
         assert!(serialized.contains(r#""mcpTimeout":60"#));
-        assert!(serialized.contains(r#""dbPath":"/path/to/db""#));
         assert!(serialized.contains(r#""ipVersion":"ipv6""#));
         assert!(serialized.contains(r#""consolePort":"/dev/ttyUSB0""#));
         assert!(serialized.contains(r#""consoleBaudRate":115200"#));
@@ -260,7 +241,6 @@ mod tests {
             model_path: None,
             recent_ips: Vec::new(),
             mcp_timeout: Some(30),
-            db_path: None,
             ip_version: Some("auto".to_string()),
             console_port: None,
             console_baud_rate: Some(9600),

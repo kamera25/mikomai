@@ -6,7 +6,9 @@
 use crate::mcp::fetch::state_resource::StateResource;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
+use std::path::PathBuf;
 use std::str::FromStr;
+use tauri::Manager;
 
 #[derive(Debug, Parser)]
 #[command(name = "mikomai", version, about = "Mikomai network runtime CLI")]
@@ -21,6 +23,17 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Rebuild the SurrealDB knowledge base from Markdown source documents.
+    RagIngest {
+        /// Markdown file or directory. Defaults to ./nw-docs.
+        #[arg(default_value = "nw-docs")]
+        path: PathBuf,
+    },
+    /// Search the SurrealDB knowledge base.
+    RagSearch {
+        /// Natural-language or command query.
+        query: String,
+    },
     /// List devices registered by the Mikomai desktop app.
     Devices,
     /// List state resources supported by the runtime.
@@ -60,6 +73,36 @@ fn run_from(cli: Cli) -> Result<(), String> {
     crate::logger::init().map_err(|error| error.to_string())?;
 
     match cli.command {
+        Command::RagIngest { path } => {
+            let app = crate::build_app().map_err(|error| error.to_string())?;
+            let handle = app.handle().clone();
+            let rag = handle.state::<crate::mcp::rag::RagState>();
+            let graph = handle.state::<crate::graph::SurrealDbState>();
+            let chunks = tauri::async_runtime::block_on(crate::mcp::rag::ingest_path(
+                &path, &rag, &graph,
+            ))?;
+            if cli.json {
+                print_json(&CliResult { ok: true, data: serde_json::json!({ "chunks": chunks }) })
+            } else {
+                println!("Ingested {chunks} knowledge chunks into SurrealDB.");
+                Ok(())
+            }
+        }
+        Command::RagSearch { query } => {
+            let app = crate::build_app().map_err(|error| error.to_string())?;
+            let handle = app.handle().clone();
+            let state_handle = handle.clone();
+            let rag = state_handle.state::<crate::mcp::rag::RagState>();
+            let result = tauri::async_runtime::block_on(crate::mcp::rag::query_nw_db(
+                query, None, rag, handle,
+            ))?;
+            if cli.json {
+                print_json(&CliResult { ok: result.success, data: result })
+            } else {
+                print!("{}", result.output);
+                Ok(())
+            }
+        }
         Command::Devices => {
             let app = crate::build_app().map_err(|error| error.to_string())?;
             let handle = app.handle().clone();

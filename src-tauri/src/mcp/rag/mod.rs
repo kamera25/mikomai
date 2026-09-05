@@ -1,30 +1,21 @@
-pub mod full_text;
-pub mod traits;
-pub mod vector;
 pub mod vendor;
 
-pub use full_text::FullTextSearcher;
-pub use traits::RagSearcher;
-pub use vector::VectorSearcher;
-
-use arrow_array::{Array, Float32Array, LargeStringArray, RecordBatch, StringArray};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
-use lancedb::connect;
-use lancedb::connection::Connection;
 use serde::{Deserialize, Serialize};
+use surrealdb::types::SurrealValue;
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
 pub struct RagState {
-    pub db: Mutex<Option<Connection>>,
     pub model: Mutex<Option<Arc<TextEmbedding>>>,
 }
 
 impl RagState {
     pub fn new() -> Self {
         Self {
-            db: Mutex::new(None),
             model: Mutex::new(None),
         }
     }
@@ -50,54 +41,6 @@ impl RagState {
         Ok(arc_model)
     }
 
-    pub async fn get_db(&self, app: &tauri::AppHandle) -> Result<Connection, String> {
-        {
-            let db_lock = self
-                .db
-                .lock()
-                .map_err(|_| "Mutex lock poisoned".to_string())?;
-            if let Some(conn) = &*db_lock {
-                return Ok(conn.clone());
-            }
-        }
-
-        let db_path = if let Ok(settings) = crate::settings::load_settings(app.clone()) {
-            settings
-                .db_path
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| {
-                    let app_data_dir = app
-                        .path()
-                        .app_data_dir()
-                        .expect("Failed to get app data dir");
-                    app_data_dir.join("lancedb").to_string_lossy().to_string()
-                })
-        } else {
-            let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-            app_data_dir.join("lancedb").to_string_lossy().to_string()
-        };
-
-        let lancedb_dir = std::path::PathBuf::from(&db_path);
-
-        if !lancedb_dir.exists() {
-            std::fs::create_dir_all(&lancedb_dir)
-                .map_err(|e| format!("Failed to create DB directory: {}", e))?;
-        }
-
-        let path = lancedb_dir.to_string_lossy().to_string();
-
-        let conn = connect(&path)
-            .execute()
-            .await
-            .map_err(|e| format!("DB auto-connect error: {}", e))?;
-
-        let mut db_lock = self
-            .db
-            .lock()
-            .map_err(|_| "Mutex lock poisoned".to_string())?;
-        *db_lock = Some(conn.clone());
-        Ok(conn)
-    }
 }
 
 impl Default for RagState {
@@ -107,26 +50,14 @@ impl Default for RagState {
 }
 
 #[tauri::command]
-pub async fn connect_db(path: String, state: tauri::State<'_, RagState>) -> Result<String, String> {
-    let conn = connect(&path)
-        .execute()
-        .await
-        .map_err(|e| format!("DB connect error: {}", e))?;
-
-    let mut db_lock = state
-        .db
-        .lock()
-        .map_err(|_| "Mutex lock poisoned".to_string())?;
-    *db_lock = Some(conn);
-
-    let _ = state.get_model()?;
-
-    Ok("Connected to LanceDB successfully".to_string())
-}
-
-#[tauri::command]
-pub async fn ingest_document(_path: String) -> Result<String, String> {
-    Ok("Document ingested successfully (stub)".to_string())
+pub async fn ingest_document(
+    path: String,
+    state: tauri::State<'_, RagState>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let graph = app.state::<crate::graph::SurrealDbState>();
+    let count = ingest_path(Path::new(&path), &state, &graph).await?;
+    Ok(format!("Ingested {count} knowledge chunks into SurrealDB"))
 }
 
 use crate::mcp::protocol::McpToolResult;
@@ -140,6 +71,17 @@ pub struct RagCitation {
     pub source_path: String,
     pub similarity_score: f32,
     pub rank: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, SurrealValue)]
+struct RagChunk {
+    path: String,
+    text: String,
+    brand: String,
+    #[serde(default)]
+    chunk_index: usize,
+    #[serde(default)]
+    distance: f32,
 }
 
 #[tauri::command]
@@ -159,92 +101,28 @@ pub async fn query_nw_db(
 
     // Parse vendor-specific context & brand filters (resolving registered devices to vendor)
     let vendor_context = vendor::parse_vendor_context_with_app(&query, &app);
-    let final_filter = vendor_context.brand_filter.or(filter);
+    // Raw query fragments are intentionally unsupported; vendor context is the
+    // parameter-bound metadata filter.
+    if filter.is_some_and(|value| !value.trim().is_empty()) {
+        return Err("Raw RAG filters are no longer supported; use a vendor context".to_string());
+    }
+    let brand = vendor_context.brand_filter;
 
-    let db = state.get_db(&app).await?;
-    let table = db
-        .open_table("documents")
-        .execute()
-        .await
-        .map_err(|e| format!("Failed to open table: {}", e))?;
-
-    // Retrieve broadly from both indexes.  A vector-only fallback loses exact
-    // command names, while an FTS-only fallback loses paraphrases in Japanese.
     let model = state.get_model()?;
-    let vector_searcher = VectorSearcher::new(model, vendor::get_vector_search_instruction());
-    // Keep a broad candidate pool: lexical search protects exact command
-    // names, while vectors protect Japanese paraphrases.
-    let vector_batches = vector_searcher
-        .search(&table, &vendor_context.query, final_filter.as_deref(), 30)
-        .await?;
-    let fts_batches = FullTextSearcher::new()
-        .search(&table, &vendor_context.query, final_filter.as_deref(), 30)
-        .await?;
-
-    format_hybrid_search_results(vector_batches, fts_batches, &vendor_context.query)
-}
-
-#[derive(Debug, Clone)]
-struct RetrievedChunk {
-    path: String,
-    text: String,
-    vector_distance: Option<f32>,
-    vector_rank: Option<usize>,
-    fts_rank: Option<usize>,
-}
-
-const MAX_VECTOR_DISTANCE: f32 = 0.85;
-const MIN_RERANK_SCORE: f32 = 0.32;
-const RRF_K: f32 = 60.0;
-
-fn read_string_column(batch: &RecordBatch, name: &str, row: usize) -> Result<String, String> {
-    let column = batch
-        .column_by_name(name)
-        .ok_or_else(|| format!("Column '{}' not found in results", name))?;
-    if let Some(values) = column.as_any().downcast_ref::<LargeStringArray>() {
-        Ok(values.value(row).to_string())
-    } else if let Some(values) = column.as_any().downcast_ref::<StringArray>() {
-        Ok(values.value(row).to_string())
-    } else {
-        Err(format!(
-            "Column '{}' is not a string (actual: {:?})",
-            name,
-            column.data_type()
-        ))
-    }
-}
-
-fn collect_candidates(
-    batches: Vec<RecordBatch>,
-    is_vector: bool,
-    candidates: &mut HashMap<String, RetrievedChunk>,
-) -> Result<(), String> {
-    let mut rank = 1;
-    for batch in batches {
-        let distances = batch
-            .column_by_name("_distance")
-            .and_then(|column| column.as_any().downcast_ref::<Float32Array>());
-        for row in 0..batch.num_rows() {
-            let path = read_string_column(&batch, "path", row)?;
-            let text = read_string_column(&batch, "text", row)?;
-            let key = format!("{}\u{0}{}", path, text);
-            let candidate = candidates.entry(key).or_insert_with(|| RetrievedChunk {
-                path: path.clone(),
-                text: text.clone(),
-                vector_distance: None,
-                vector_rank: None,
-                fts_rank: None,
-            });
-            if is_vector {
-                candidate.vector_distance = distances.map(|values| values.value(row));
-                candidate.vector_rank = Some(rank);
-            } else {
-                candidate.fts_rank = Some(rank);
-            }
-            rank += 1;
-        }
-    }
-    Ok(())
+    let instructional_query = format!(
+        "Instruct: {}\nQuery: {}",
+        vendor::get_vector_search_instruction(),
+        vendor_context.query
+    );
+    let embedding = model
+        .embed(vec![instructional_query], None)
+        .map_err(|e| format!("Embedding error: {e}"))?
+        .into_iter()
+        .next()
+        .ok_or("Failed to generate embedding")?;
+    let graph = app.state::<crate::graph::SurrealDbState>();
+    let chunks = search_chunks(&graph, embedding, brand, &vendor_context.query).await?;
+    format_search_results(chunks, &vendor_context.query)
 }
 
 fn is_japanese(c: char) -> bool {
@@ -305,53 +183,22 @@ fn lexical_overlap(query: &str, text: &str) -> f32 {
     matches as f32 / terms.len() as f32
 }
 
-fn rerank_score(candidate: &RetrievedChunk, query: &str) -> f32 {
-    let semantic = candidate
-        .vector_distance
-        .map(|distance| (1.0 - distance / 1.2).clamp(0.0, 1.0))
-        .unwrap_or(0.0);
+fn rerank_score(candidate: &RagChunk, query: &str) -> f32 {
+    let semantic = (1.0 - candidate.distance / 2.0).clamp(0.0, 1.0);
     let lexical = lexical_overlap(query, &candidate.text);
-    let rank_quality = [candidate.vector_rank, candidate.fts_rank]
-        .into_iter()
-        .flatten()
-        .map(|rank| RRF_K / (RRF_K + rank as f32))
-        .sum::<f32>()
-        / if candidate.vector_rank.is_some() && candidate.fts_rank.is_some() {
-            2.0
-        } else {
-            1.0
-        };
-    let agreement = if candidate.vector_rank.is_some() && candidate.fts_rank.is_some() {
-        1.0
-    } else {
-        0.0
-    };
-    // Agreement is deliberately bounded: it should resolve close candidates,
-    // never turn an irrelevant hit into evidence.
-    0.45 * semantic + 0.35 * lexical + 0.10 * rank_quality + 0.10 * agreement
+    0.60 * semantic + 0.40 * lexical
 }
 
-fn is_supported(candidate: &RetrievedChunk, query: &str) -> Option<f32> {
+fn is_supported(candidate: &RagChunk, query: &str) -> Option<f32> {
     let lexical = lexical_overlap(query, &candidate.text);
-    let vector_is_relevant = candidate
-        .vector_distance
-        .map(|distance| distance <= MAX_VECTOR_DISTANCE)
-        .unwrap_or(false);
     let score = rerank_score(candidate, query);
-    ((vector_is_relevant || lexical >= 0.5) && score >= MIN_RERANK_SCORE).then_some(score)
+    ((candidate.distance <= 0.85 || lexical >= 0.5) && score >= 0.32).then_some(score)
 }
 
-fn format_hybrid_search_results(
-    vector_batches: Vec<RecordBatch>,
-    fts_batches: Vec<RecordBatch>,
-    query: &str,
-) -> Result<RagResult, String> {
+fn format_search_results(chunks: Vec<RagChunk>, query: &str) -> Result<RagResult, String> {
     let mut context = String::new();
-    let mut candidates = HashMap::new();
-    collect_candidates(vector_batches, true, &mut candidates)?;
-    collect_candidates(fts_batches, false, &mut candidates)?;
-    let mut ranked: Vec<_> = candidates
-        .into_values()
+    let mut ranked: Vec<_> = chunks
+        .into_iter()
         .filter_map(|candidate| is_supported(&candidate, query).map(|score| (candidate, score)))
         .collect();
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
@@ -396,7 +243,7 @@ fn format_hybrid_search_results(
     if context.is_empty() {
         Ok(RagResult {
             success: true,
-            output: "LanceDBに該当する情報が見つかりませんでした。".to_string(),
+            output: "SurrealDBに該当する情報が見つかりませんでした。".to_string(),
         })
     } else {
         Ok(RagResult {
@@ -404,6 +251,117 @@ fn format_hybrid_search_results(
             output: context,
         })
     }
+}
+
+async fn search_chunks(graph: &crate::graph::SurrealDbState, embedding: Vec<f32>, brand: Option<String>, query: &str) -> Result<Vec<RagChunk>, String> {
+    let sql = if brand.is_some() {
+        "SELECT path, text, brand, chunk_index, vector::distance::knn() AS distance FROM rag_chunk WHERE brand = $brand AND embedding <|30,100|> $embedding LIMIT 30;"
+    } else {
+        "SELECT path, text, brand, chunk_index, vector::distance::knn() AS distance FROM rag_chunk WHERE embedding <|30,100|> $embedding LIMIT 30;"
+    };
+    let mut response = graph.db.query(sql).bind(("embedding", embedding)).bind(("brand", brand.clone().unwrap_or_default())).await
+        .map_err(|e| format!("SurrealDB vector search failed: {e}"))?;
+    let mut chunks: Vec<RagChunk> = response.take(0)
+        .map_err(|e| format!("Failed to decode SurrealDB vector search results: {e}"))?;
+
+    // FTS supplies exact command-name candidates; the post-query lexical
+    // reranker below prevents a weak keyword hit from becoming evidence.
+    let lexical_query = lexical_terms(query).join(" ");
+    if !lexical_query.is_empty() {
+        let sql = if brand.is_some() {
+            "SELECT path, text, brand, chunk_index, 2.0 AS distance FROM rag_chunk WHERE brand = $brand AND text @1@ $query LIMIT 30;"
+        } else {
+            "SELECT path, text, brand, chunk_index, 2.0 AS distance FROM rag_chunk WHERE text @1@ $query LIMIT 30;"
+        };
+        let mut response = graph.db.query(sql).bind(("brand", brand.unwrap_or_default())).bind(("query", lexical_query)).await
+            .map_err(|e| format!("SurrealDB full-text search failed: {e}"))?;
+        let lexical: Vec<RagChunk> = response.take(0)
+            .map_err(|e| format!("Failed to decode SurrealDB full-text search results: {e}"))?;
+        let mut seen: std::collections::HashSet<_> = chunks.iter().map(|chunk| (chunk.path.clone(), chunk.chunk_index)).collect();
+        chunks.extend(lexical.into_iter().filter(|chunk| seen.insert((chunk.path.clone(), chunk.chunk_index))));
+    }
+    Ok(chunks)
+}
+
+pub(crate) async fn ingest_path(path: &Path, state: &RagState, graph: &crate::graph::SurrealDbState) -> Result<usize, String> {
+    let mut files = Vec::new();
+    collect_markdown_files(path, &mut files)?;
+    let model = state.get_model()?;
+    let mut count = 0;
+    for file in files {
+        let raw = fs::read_to_string(&file).map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
+        let (metadata, content) = parse_frontmatter(&raw);
+        let chunks = split_chunks(&replace_metadata_placeholders(content, &metadata), 1400, 180)?;
+        let embeddings = model.embed(chunks.iter().map(|chunk| format!("passage: {chunk}")).collect(), None)
+            .map_err(|e| format!("Embedding {} failed: {e}", file.display()))?;
+        let path = file.to_string_lossy().to_string();
+        let brand = metadata.get("brand")
+            .map(|value| crate::mcp::brands::get_brand(value).unwrap_or(value).to_string())
+            .unwrap_or_default();
+        graph.db.query("DELETE rag_chunk WHERE path = $path;").bind(("path", path.clone())).await
+            .map_err(|e| format!("Failed to replace existing chunks for {path}: {e}"))?;
+        for (index, (text, embedding)) in chunks.into_iter().zip(embeddings).enumerate() {
+            let id = stable_id(&format!("{path}:{index}"));
+            graph.db.query("UPSERT type::record('rag_chunk', $id) CONTENT $record;")
+                .bind(("id", id)).bind(("record", serde_json::json!({
+                    "path": path, "text": text, "brand": brand,
+                    "os_version": metadata.get("os_version").cloned().unwrap_or_default(),
+                    "category": metadata.get("category").cloned().unwrap_or_default(),
+                    "command_type": metadata.get("command_type").cloned().unwrap_or_default(),
+                    "target_model": metadata.get("target_model").cloned().unwrap_or_default(),
+                    "chunk_index": index, "embedding": embedding,
+                }))).await.map_err(|e| format!("Failed to ingest {path}: {e}"))?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+fn collect_markdown_files(path: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    if path.is_file() {
+        if path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("md")) { files.push(path.to_path_buf()); }
+        return Ok(());
+    }
+    for entry in fs::read_dir(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))? {
+        collect_markdown_files(&entry.map_err(|e| e.to_string())?.path(), files)?;
+    }
+    Ok(())
+}
+
+fn parse_frontmatter(raw: &str) -> (HashMap<String, String>, &str) {
+    let Some(rest) = raw.strip_prefix("---\n") else { return (HashMap::new(), raw); };
+    let Some(end) = rest.find("\n---\n") else { return (HashMap::new(), raw); };
+    let metadata = rest[..end].lines().filter_map(|line| line.split_once(':'))
+        .map(|(key, value)| (key.trim().to_owned(), value.trim().to_owned())).collect();
+    (metadata, &rest[end + 5..])
+}
+
+fn replace_metadata_placeholders(content: &str, metadata: &HashMap<String, String>) -> String {
+    metadata.iter().fold(content.to_owned(), |result, (key, value)| result.replace(&format!("{{{key}}}"), value))
+}
+
+fn split_chunks(content: &str, chunk_size: usize, overlap: usize) -> Result<Vec<String>, String> {
+    if chunk_size == 0 || overlap >= chunk_size { return Err("Invalid RAG chunk size configuration".to_string()); }
+    let mut chunks = Vec::new();
+    for section in content.split("\n#").filter(|section| !section.trim().is_empty()) {
+        let section = if content.starts_with(section) { section.to_owned() } else { format!("#{section}") };
+        if section.len() <= chunk_size { chunks.push(section.trim().to_owned()); continue; }
+        let mut start = 0;
+        while start < section.len() {
+            let mut end = (start + chunk_size).min(section.len());
+            while end > start && !section.is_char_boundary(end) { end -= 1; }
+            if end < section.len() { if let Some(boundary) = section[start..end].rfind('\n').filter(|boundary| *boundary > chunk_size / 2) { end = start + boundary + 1; } }
+            chunks.push(section[start..end].trim().to_owned());
+            if end == section.len() { break; }
+            start = end.saturating_sub(overlap);
+        }
+    }
+    Ok(chunks)
+}
+
+fn stable_id(value: &str) -> String {
+    let hash = value.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3));
+    format!("{hash:016x}")
 }
 
 fn format_citation(citation: &RagCitation, text: &str) -> String {
@@ -433,7 +391,6 @@ mod tests {
     #[test]
     fn test_rag_state_instantiation() {
         let state = RagState::new();
-        assert!(state.db.lock().unwrap().is_none());
         assert!(state.model.lock().unwrap().is_none());
     }
 
@@ -450,20 +407,16 @@ mod tests {
     }
 
     #[test]
-    fn hybrid_reranker_prefers_exact_command_over_weak_semantic_match() {
-        let exact = RetrievedChunk {
+    fn reranker_prefers_exact_command_over_weak_semantic_match() {
+        let exact = RagChunk {
             path: "exact".into(),
             text: "show ip route でルーティングを確認".into(),
-            vector_distance: Some(0.7),
-            vector_rank: Some(2),
-            fts_rank: Some(1),
+            brand: "Cisco".into(), chunk_index: 0, distance: 0.7,
         };
-        let weak = RetrievedChunk {
+        let weak = RagChunk {
             path: "weak".into(),
             text: "VLAN の基本説明".into(),
-            vector_distance: Some(0.8),
-            vector_rank: Some(1),
-            fts_rank: None,
+            brand: "Cisco".into(), chunk_index: 0, distance: 0.8,
         };
         assert!(
             rerank_score(&exact, "show ip route 確認") > rerank_score(&weak, "show ip route 確認")
@@ -472,12 +425,10 @@ mod tests {
 
     #[test]
     fn unsupported_result_is_not_exposed_as_evidence() {
-        let candidate = RetrievedChunk {
+        let candidate = RagChunk {
             path: "irrelevant".into(),
             text: "VLAN の基本説明".into(),
-            vector_distance: Some(1.05),
-            vector_rank: Some(1),
-            fts_rank: None,
+            brand: "Cisco".into(), chunk_index: 0, distance: 1.05,
         };
         assert!(is_supported(&candidate, "QuantumRouter9000 独自コマンド").is_none());
     }
@@ -501,24 +452,23 @@ mod tests {
     }
 
     #[test]
-    fn agreement_between_retrievers_improves_a_close_candidate() {
-        let both = RetrievedChunk {
-            path: "both".into(),
-            text: "show ip route で経路を確認".into(),
-            vector_distance: Some(0.7),
-            vector_rank: Some(3),
-            fts_rank: Some(3),
-        };
-        let vector_only = RetrievedChunk {
-            path: "vector".into(),
-            text: "show ip route で経路を確認".into(),
-            vector_distance: Some(0.7),
-            vector_rank: Some(1),
-            fts_rank: None,
-        };
-        assert!(
-            rerank_score(&both, "show ip route 確認")
-                > rerank_score(&vector_only, "show ip route 確認")
-        );
+    fn frontmatter_and_chunks_keep_vendor_context() {
+        let (metadata, content) = parse_frontmatter("---\nbrand: Cisco\n---\n# {brand} command");
+        assert_eq!(replace_metadata_placeholders(content, &metadata), "# Cisco command");
+        assert_eq!(split_chunks("# one\nbody\n# two\nbody", 1400, 180).unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn surreal_vector_search_returns_bound_metadata() {
+        let path = std::env::temp_dir().join(format!("mikomai-rag-test-{}", uuid::Uuid::new_v4()));
+        let graph = crate::graph::SurrealDbState::initialize_at(&path).await.unwrap();
+        let mut embedding = vec![0.0_f32; 1024];
+        embedding[0] = 1.0;
+        graph.db.query("CREATE rag_chunk:test CONTENT { path: 'manual.md', text: 'show ip route', brand: 'cisco_ios', chunk_index: 0, embedding: $embedding };")
+            .bind(("embedding", embedding.clone())).await.unwrap();
+        let results = search_chunks(&graph, embedding, Some("cisco_ios".to_string()), "show ip route").await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "manual.md");
+        std::fs::remove_dir_all(path).unwrap();
     }
 }

@@ -6,16 +6,17 @@ Run after ingestion, for example:
 import argparse
 import json
 import subprocess
-import sys
+import re
 from pathlib import Path
 
 
 def search(query, limit, filter_value=None):
-    command = [sys.executable, "scripts/search_docs.py", query, "--limit", str(limit)]
     if filter_value:
-        command.extend(["--filter", filter_value])
+        query = f"[Context: {filter_value}] {query}"
+    command = ["cargo", "run", "--quiet", "--manifest-path", "src-tauri/Cargo.toml", "--bin", "mikomai-cli", "--", "--json", "rag-search", query]
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
-    return json.loads(completed.stdout)
+    output = json.loads(completed.stdout).get("data", {}).get("output", "")
+    return [{"path": path, "score": float(score)} for path, score in re.findall(r"ソース: ([^,]+), 類似度スコア: ([0-9.]+)", output)]
 
 
 def main():

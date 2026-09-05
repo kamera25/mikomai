@@ -232,7 +232,7 @@
     "btn_downloading": "ダウンロード中...",
     "btn_open_folder_title": "モデルが格納されているフォルダを開きます",
     "btn_open_folder": "フォルダを開く",
-    "sub_kb": "ナレッジベース (LanceDB)",
+    "sub_kb": "ナレッジベース (SurrealDB)",
     "label_db_dir": "データベースディレクトリ",
     "btn_browse": "参照",
     "label_embed_model": "埋め込みモデル",

@@ -32,10 +32,7 @@ pub fn parse_vendor_context_with_connections(
             let candidate = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             // 1-a. Direct brand check (e.g. Cisco, Yamaha, etc.)
             if let Some(matched_brand) = brands::get_brand(candidate) {
-                brand_filter = Some(format!(
-                    "brand = '{0}' OR brand = '{1}'",
-                    matched_brand, candidate
-                ));
+                brand_filter = Some(matched_brand.to_string());
                 detected_vendor = Some(matched_brand.to_string());
                 processed_query = context_re
                     .replace_all(query, "")
@@ -49,10 +46,7 @@ pub fn parse_vendor_context_with_connections(
                     if let Some(ref v_type) = conn.vendor_type {
                         let v_str = v_type.as_str();
                         let matched_brand = brands::get_brand(v_str).unwrap_or(v_str);
-                        brand_filter = Some(format!(
-                            "brand = '{0}' OR brand = '{1}'",
-                            matched_brand, v_str
-                        ));
+                        brand_filter = Some(matched_brand.to_string());
                         detected_vendor = Some(matched_brand.to_string());
                     }
                     processed_query = context_re
@@ -73,10 +67,7 @@ pub fn parse_vendor_context_with_connections(
                         if let Some(ref v_type) = conn.vendor_type {
                             let v_str = v_type.as_str();
                             let matched_brand = brands::get_brand(v_str).unwrap_or(v_str);
-                            brand_filter = Some(format!(
-                                "brand = '{0}' OR brand = '{1}'",
-                                matched_brand, v_str
-                            ));
+                            brand_filter = Some(matched_brand.to_string());
                             detected_vendor = Some(matched_brand.to_string());
                             break;
                         }
@@ -87,11 +78,8 @@ pub fn parse_vendor_context_with_connections(
 
         // 3. Fallback: check if any known brand alias defined in brands.yaml is mentioned in the query string
         if brand_filter.is_none() {
-            if let Some((matched_brand, matched_alias)) = brands::detect_brand_in_text(query) {
-                brand_filter = Some(format!(
-                    "brand = '{0}' OR brand = '{1}'",
-                    matched_brand, matched_alias
-                ));
+            if let Some((matched_brand, _matched_alias)) = brands::detect_brand_in_text(query) {
+                brand_filter = Some(matched_brand.to_string());
                 detected_vendor = Some(matched_brand.to_string());
             }
         }
@@ -162,8 +150,7 @@ mod tests {
         let processed = parse_vendor_context_with_connections(query, Some(&connections));
 
         assert!(processed.brand_filter.is_some());
-        let filter = processed.brand_filter.unwrap();
-        assert!(filter.contains("yamaha"));
+        assert_eq!(processed.brand_filter.as_deref(), Some("yamaha"));
         // AND検索用にクエリにも yamaha が付加されていること
         assert!(processed.query.contains("yamaha"));
         assert!(processed.query.contains("NTP 設定 確認"));

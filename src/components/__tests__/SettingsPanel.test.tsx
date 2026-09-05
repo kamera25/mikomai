@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SettingsPanel } from "../SettingsPanel.tsx";
 import * as tauriApi from "@tauri-apps/api/core";
-import * as tauriDialog from "@tauri-apps/plugin-dialog";
 
 const mockSaveAllSettings = vi.fn();
 const mockSetHistoryLimit = vi.fn();
@@ -11,7 +10,6 @@ const mockSetRepetitionPenalty = vi.fn();
 const mockSetModelPath = vi.fn();
 const mockSetMcpTimeout = vi.fn();
 const mockSetCacheExpiryMinutes = vi.fn();
-const mockSetDbPath = vi.fn();
 const mockSetIpVersion = vi.fn();
 const mockSetConsolePort = vi.fn();
 const mockSetConsoleBaudRate = vi.fn();
@@ -35,8 +33,6 @@ vi.mock("../../contexts/SettingsContext", () => ({
     setMcpTimeout: mockSetMcpTimeout,
     cacheExpiryMinutes: 10,
     setCacheExpiryMinutes: mockSetCacheExpiryMinutes,
-    dbPath: "",
-    setDbPath: mockSetDbPath,
     ipVersion: "auto",
     setIpVersion: mockSetIpVersion,
     consolePort: null,
@@ -60,10 +56,6 @@ vi.mock("../../contexts/SettingsContext", () => ({
 // Mock Tauri invoke and dialog functions
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
-}));
-
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  open: vi.fn(),
 }));
 
 describe("SettingsPanel", () => {
@@ -212,24 +204,6 @@ describe("SettingsPanel", () => {
     });
   });
 
-  it("handles selecting db directory", async () => {
-    vi.mocked(tauriDialog.open).mockResolvedValue("/selected/db/path");
-
-    render(<SettingsPanel {...defaultProps} />);
-    const button = screen.getAllByText("参照")[1];
-    fireEvent.click(button);
-
-    expect(tauriDialog.open).toHaveBeenCalledWith({
-      directory: true,
-      multiple: false,
-      title: "データベースディレクトリを選択",
-    });
-
-    await waitFor(() => {
-      expect(mockSetDbPath).toHaveBeenCalledWith("/selected/db/path");
-    });
-  });
-
   it("disables repoPath and modelFilename inputs when preset is selected and enables when custom is selected", () => {
     render(<SettingsPanel {...defaultProps} />);
 
@@ -249,7 +223,7 @@ describe("SettingsPanel", () => {
     expect(filenameInput).not.toBeDisabled();
   });
 
-  it("handles input changes for repoPath, modelFilename, and dbPath when custom is selected", () => {
+  it("handles input changes for repoPath and modelFilename when custom is selected", () => {
     render(<SettingsPanel {...defaultProps} />);
 
     const presetSelect = screen.getByLabelText("モデル選択 (プリセット)");
@@ -265,40 +239,6 @@ describe("SettingsPanel", () => {
     fireEvent.change(filenameInput, { target: { value: "new_model.gguf" } });
     expect(filenameInput).toHaveValue("new_model.gguf");
 
-    // dbPath input
-    const dbInput = screen.getByPlaceholderText("/path/to/lancedb");
-    fireEvent.change(dbInput, { target: { value: "/new/db/path" } });
-    expect(mockSetDbPath).toHaveBeenCalledWith("/new/db/path");
-  });
-
-  it("handles db directory selection cancellation", async () => {
-    vi.mocked(tauriDialog.open).mockResolvedValue(null);
-
-    render(<SettingsPanel {...defaultProps} />);
-    const button = screen.getAllByText("参照")[1];
-    fireEvent.click(button);
-
-    // wait briefly to ensure the promise resolves
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(mockSetDbPath).not.toHaveBeenCalled();
-  });
-
-  it("handles db directory selection error", async () => {
-    // mock console.error to prevent it from cluttering the test output
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.mocked(tauriDialog.open).mockRejectedValue(new Error("Dialog failed"));
-
-    render(<SettingsPanel {...defaultProps} />);
-    const button = screen.getAllByText("参照")[1];
-    fireEvent.click(button);
-
-    await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith("Failed to select directory:", expect.any(Error));
-    });
-    expect(mockSetDbPath).not.toHaveBeenCalled();
-
-    consoleSpy.mockRestore();
   });
 
   it("displays model download status correctly", async () => {

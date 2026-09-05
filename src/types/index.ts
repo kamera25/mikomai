@@ -244,7 +244,6 @@ export interface SystemSettings {
   recentIps?: string[];
   mcpTimeout?: number;
   cacheExpiryMinutes?: number;
-  dbPath?: string;
   ipVersion?: string;
   consolePort?: string | null;
   consoleBaudRate?: number;

@@ -21,7 +21,6 @@ describe("useSettings", () => {
       recentIps: ["8.8.8.8"],
       mcpTimeout: 20,
       cacheExpiryMinutes: 5,
-      dbPath: "/db",
       ipVersion: "ipv4",
       consolePort: "COM3",
       consoleBaudRate: 115200,

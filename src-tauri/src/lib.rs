@@ -108,7 +108,6 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
             llm::ask_llm_background,
             llm::get_model_status,
             llm::stop_llm,
-            mcp::rag::connect_db,
             mcp::rag::ingest_document,
             mcp::rag::query_nw_db,
             network::network_show,

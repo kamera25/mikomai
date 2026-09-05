@@ -20,6 +20,22 @@ a retrieval regression. Re-ingest the corpus, then run:
 python scripts/rag_eval.py --cases eval/rag_cases.json --report eval/rag-report.json
 ```
 
+## SurrealDB migration
+
+RAG chunks now live in the embedded SurrealDB store alongside graph and
+history data. Rebuild the knowledge base from the versioned Markdown source:
+
+```bash
+./ingest.sh
+```
+
+Rebuild the managed local knowledge-base store from the versioned Markdown
+source whenever the corpus changes.
+
+HNSW keeps its graph in memory. Monitor memory and recall as the corpus grows;
+if the knowledge base no longer fits comfortably in memory, migrate the
+`rag_chunk_embedding` index to SurrealDB 3.1 DiskANN and rerun this suite.
+
 The command exits non-zero when any case fails and produces Recall@k in the
 report. Add production failures as cases before changing the retriever. For
 answer-grounding checks, retain the returned citation blocks and verify that

@@ -7,7 +7,6 @@ import {
   DEFAULT_REPETITION_PENALTY,
   DEFAULT_MODEL_PATH,
   DEFAULT_MCP_TIMEOUT,
-  DEFAULT_DB_PATH,
   DEFAULT_IP_VERSION,
   DEFAULT_CACHE_EXPIRY_MINUTES,
 } from "../constants/defaults";
@@ -19,7 +18,6 @@ export interface SettingsState {
   modelPath: string | null;
   mcpTimeout: number;
   cacheExpiryMinutes: number;
-  dbPath: string;
   ipVersion: string;
   consolePort: string | null;
   consoleBaudRate: number;
@@ -42,7 +40,6 @@ const INITIAL_SETTINGS_STATE: SettingsState = {
   modelPath: DEFAULT_MODEL_PATH,
   mcpTimeout: DEFAULT_MCP_TIMEOUT,
   cacheExpiryMinutes: DEFAULT_CACHE_EXPIRY_MINUTES,
-  dbPath: DEFAULT_DB_PATH,
   ipVersion: DEFAULT_IP_VERSION,
   consolePort: null,
   consoleBaudRate: 9600,
@@ -76,7 +73,6 @@ export function useSettings() {
             ...(loaded.recentIps !== undefined && { recentIps: loaded.recentIps }),
             ...(loaded.mcpTimeout !== undefined && { mcpTimeout: loaded.mcpTimeout }),
             ...(loaded.cacheExpiryMinutes !== undefined && { cacheExpiryMinutes: loaded.cacheExpiryMinutes }),
-            ...(loaded.dbPath !== undefined && { dbPath: loaded.dbPath }),
             ...(loaded.ipVersion !== undefined && { ipVersion: loaded.ipVersion }),
             ...(loaded.consolePort !== undefined && { consolePort: loaded.consolePort }),
             ...(loaded.consoleBaudRate !== undefined && { consoleBaudRate: loaded.consoleBaudRate }),
@@ -122,7 +118,6 @@ export function useSettings() {
       recentIps: updated.recentIps,
       mcpTimeout: updated.mcpTimeout,
       cacheExpiryMinutes: updated.cacheExpiryMinutes,
-      dbPath: updated.dbPath,
       ipVersion: updated.ipVersion,
       consolePort: updated.consolePort,
       consoleBaudRate: updated.consoleBaudRate,
@@ -157,8 +152,6 @@ export function useSettings() {
     setMcpTimeout: (val: number | ((prev: number) => number)) => updateSetting("mcpTimeout", val),
     cacheExpiryMinutes: settings.cacheExpiryMinutes,
     setCacheExpiryMinutes: (val: number | ((prev: number) => number)) => updateSetting("cacheExpiryMinutes", val),
-    dbPath: settings.dbPath,
-    setDbPath: (val: string | ((prev: string) => string)) => updateSetting("dbPath", val),
     ipVersion: settings.ipVersion,
     setIpVersion: (val: string | ((prev: string) => string)) => updateSetting("ipVersion", val),
     consolePort: settings.consolePort,
