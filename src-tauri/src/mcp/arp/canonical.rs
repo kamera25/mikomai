@@ -41,30 +41,36 @@ pub fn extract(raw: &str) -> ExtractedCandidates {
 
 pub fn prompt_contract(extracted: &ExtractedCandidates, raw: &str) -> String {
     format!(
-        "Return YAML only, exactly this shape:\n\
-entries:\n\
-  - ip_idx: 0\n\
-    mac_idx: 0\n\
-    interface_idx: 0\n\
-    type: dynamic\n\
-    age_seconds: 0\n\
-\n\
-Rules:\n\
-- ip_idx MUST be an integer index into IP candidates.\n\
-- mac_idx MUST be an integer index into MAC candidates, or null when no MAC exists.\n\
-- interface_idx MUST be an integer index into Interface candidates, or null when no interface exists.\n\
-- Do not emit IP, MAC, or interface strings directly.\n\
-- age_seconds MUST be a non-negative integer or null.\n\
-- type MUST be one of: dynamic, static, incomplete, permanent.\n\
-- Use the Raw CLI only to determine relationships and scalar attributes.\n\
-- Emit each ARP relationship exactly once.\n\
-- Never invent values or relationships that are not supported by the Raw CLI.\n\
-\n\
-IP candidates: {:?}\n\
-MAC candidates: {:?}\n\
-Interface candidates: {:?}\n\
-Raw CLI:\n{}",
-        extracted.candidates.ip_addresses, extracted.candidates.mac_addresses, extracted.candidates.interfaces, raw
+        r#"Return YAML only, exactly this shape:
+entries:
+  - ip_idx: 0
+    mac_idx: 0
+    interface_idx: 0
+    type: dynamic
+    age_seconds: 0
+
+Rules:
+- ip_idx MUST be an integer index into IP candidates.
+- mac_idx MUST be an integer index into MAC candidates, or null when no MAC exists.
+- interface_idx MUST be an integer index into Interface candidates, or null when no interface exists.
+- Do not emit IP, MAC, or interface strings directly.
+- age_seconds MUST be a non-negative integer or null.
+- type MUST be one of: dynamic, static, incomplete, permanent.
+- Use the Raw CLI only to determine relationships and scalar attributes.
+- Emit each ARP relationship exactly once.
+- Never invent values or relationships that are not supported by the Raw CLI.
+
+IP candidates: {:?}
+MAC candidates: {:?}
+Interface candidates: {:?}
+Evidence lines: {:?}
+Raw CLI:
+{}"#,
+        extracted.candidates.ip_addresses,
+        extracted.candidates.mac_addresses,
+        extracted.candidates.interfaces,
+        extracted.evidence,
+        raw
     )
 }
 

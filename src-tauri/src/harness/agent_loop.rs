@@ -112,6 +112,7 @@ impl AgentLoop {
         E: ToolExecutorPort,
         R: ReporterPort,
     {
+        crate::llm::llm::reset_cancel();
         let task_id = uuid::Uuid::new_v4();
         self.network_state.start_task(task_id, goal.clone());
         self.state_machine.transition(HarnessState::Observing)?;

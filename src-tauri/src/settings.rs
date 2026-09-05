@@ -18,7 +18,7 @@ fn default_prompt_keep_tokens() -> usize {
 }
 
 fn default_n_ctx() -> usize {
-    4096
+    8192
 }
 
 fn default_max_gen() -> usize {
@@ -97,7 +97,7 @@ impl Default for AppSettings {
             preload_builder: false,
             preload_summarization: false,
             cache_expiry_minutes: Some(10),
-            n_ctx: 4096,
+            n_ctx: 8192,
             max_gen: 2048,
             prompt_keep_tokens: 500,
             vision_enabled: false,

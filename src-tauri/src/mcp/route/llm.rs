@@ -26,7 +26,8 @@ fn clean_yaml_output(output: &str) -> String {
             .to_string();
     }
 
-    cleaned.trim().to_string()
+    let trimmed = cleaned.trim();
+    crate::mcp::canonicalization::normalize_yaml_indentation(trimmed)
 }
 
 pub async fn convert_raw_to_yaml(
@@ -91,3 +92,22 @@ pub async fn convert_raw_to_yaml(
     }
     unreachable!("retry loop always returns")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clean_yaml_output_with_unindented_properties() {
+        let raw_llm_output = "```yaml\nentries:\n- line_idx: 0\ndestination_idx: 0\ngateway_idx: 1\ninterface_idx: 2\nflags_idx: null\nmetric: null\n```";
+        let cleaned = clean_yaml_output(raw_llm_output);
+        let parsed: Result<RouteSelection, _> = serde_yaml::from_str(&cleaned);
+        assert!(parsed.is_ok(), "Failed to parse cleaned YAML: {:?}", parsed.err());
+        let selection = parsed.unwrap();
+        assert_eq!(selection.entries.len(), 1);
+        assert_eq!(selection.entries[0].line_idx, 0);
+        assert_eq!(selection.entries[0].destination_idx, 0);
+        assert_eq!(selection.entries[0].gateway_idx, 1);
+    }
+}
+

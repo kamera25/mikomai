@@ -23,7 +23,8 @@ fn clean_yaml_output(output: &str) -> String {
             .to_string();
     }
 
-    cleaned.trim().to_string()
+    let trimmed = cleaned.trim();
+    crate::mcp::canonicalization::normalize_yaml_indentation(trimmed)
 }
 
 pub async fn convert_raw_to_yaml(

@@ -518,6 +518,7 @@ pub async fn ask_llm_internal_with_schema(
     app: &tauri::AppHandle,
     state: &LlamaState,
 ) -> Result<String, LlmError> {
+    reset_cancel();
     let (tx, rx) = tokio::sync::oneshot::channel();
     state
         .inference_tx

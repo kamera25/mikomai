@@ -141,27 +141,28 @@ pub fn extract(raw: &str) -> ExtractedRouteCandidates {
 
 pub fn prompt_contract(extracted: &ExtractedRouteCandidates, raw: &str) -> String {
     format!(
-        "Return YAML only, exactly this shape:\n\
-entries:\n\
-  - line_idx: 0\n\
-    destination_idx: 0\n\
-    gateway_idx: 1\n\
-    interface_idx: 2\n\
-    flags_idx: null\n\
-    metric: null\n\
-\n\
-Rules:\n\
-- Emit exactly one entry for every Route evidence line.\n\
-- line_idx MUST be an integer index into Route evidence lines, used exactly once.\n\
-- destination_idx, gateway_idx, interface_idx, and flags_idx MUST index Route value candidates.\n\
-- The selected destination, gateway, interface, and optional flags MUST all occur on the selected evidence line.\n\
-- flags_idx is null when no flags value exists on the line.\n\
-- metric is a non-negative integer present as a standalone scalar on the selected line, or null.\n\
-- Never invent values, normalize strings, or select a relationship not supported by the Raw CLI.\n\
-\n\
-Route value candidates: {:?}\n\
-Route evidence lines: {:?}\n\
-Raw CLI:\n{}",
+        r#"Return YAML only, exactly this shape:
+entries:
+  - line_idx: 0
+    destination_idx: 0
+    gateway_idx: 1
+    interface_idx: 2
+    flags_idx: null
+    metric: null
+
+Rules:
+- Emit exactly one entry for every Route evidence line.
+- line_idx MUST be an integer index into Route evidence lines, used exactly once.
+- destination_idx, gateway_idx, interface_idx, and flags_idx MUST index Route value candidates.
+- The selected destination, gateway, interface, and optional flags MUST all occur on the selected evidence line.
+- flags_idx is null when no flags value exists on the line.
+- metric is a non-negative integer present as a standalone scalar on the selected line, or null.
+- Never invent values, normalize strings, or select a relationship not supported by the Raw CLI.
+
+Route value candidates: {:?}
+Route evidence lines: {:?}
+Raw CLI:
+{}"#,
         extracted.candidates.values, extracted.evidence, raw
     )
 }

@@ -97,3 +97,85 @@ pub fn ensure_unique<T: std::hash::Hash + Eq>(values: impl IntoIterator<Item = T
     }
     Ok(())
 }
+
+/// Normalizes YAML output from LLMs where list items or properties may have lost indentation.
+/// For example:
+/// ```yaml
+/// entries:
+/// - line_idx: 0
+/// destination_idx: 0
+/// ```
+/// is normalized to:
+/// ```yaml
+/// entries:
+///   - line_idx: 0
+///     destination_idx: 0
+/// ```
+pub fn normalize_yaml_indentation(text: &str) -> String {
+    let mut normalized = String::new();
+    let mut in_list_entry = false;
+    let mut entry_indent = 4;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            normalized.push('\n');
+            continue;
+        }
+
+        // Detect if line starts a list entry (e.g. "- line_idx:" or "- ")
+        if let Some(rest) = trimmed.strip_prefix("- ") {
+            in_list_entry = true;
+            let leading_spaces = line.len() - line.trim_start().len();
+            if leading_spaces == 0 {
+                normalized.push_str("  - ");
+                entry_indent = 4;
+            } else {
+                normalized.push_str(&line[..leading_spaces]);
+                normalized.push_str("- ");
+                entry_indent = leading_spaces + 2;
+            }
+            normalized.push_str(rest);
+            normalized.push('\n');
+            continue;
+        }
+
+        // If inside list entry and line is a key: value property
+        if in_list_entry && trimmed.contains(':') && !trimmed.starts_with('#') {
+            let leading_spaces = line.len() - line.trim_start().len();
+            if leading_spaces < entry_indent {
+                for _ in 0..entry_indent {
+                    normalized.push(' ');
+                }
+                normalized.push_str(trimmed);
+                normalized.push('\n');
+                continue;
+            }
+        } else if !trimmed.starts_with('#') && trimmed.ends_with(':') && !trimmed.starts_with('-') {
+            // New top-level block like "entries:"
+            in_list_entry = false;
+        }
+
+        normalized.push_str(line);
+        normalized.push('\n');
+    }
+    normalized
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_yaml_indentation() {
+        let unindented = "entries:\n- line_idx: 0\ndestination_idx: 0\ngateway_idx: 1\n- line_idx: 1\ndestination_idx: 4\n";
+        let normalized = normalize_yaml_indentation(unindented);
+        let expected = "entries:\n  - line_idx: 0\n    destination_idx: 0\n    gateway_idx: 1\n  - line_idx: 1\n    destination_idx: 4\n";
+        assert_eq!(normalized, expected);
+
+        // Already properly indented should remain intact
+        let proper = "entries:\n  - line_idx: 0\n    destination_idx: 0\n";
+        assert_eq!(normalize_yaml_indentation(proper), proper);
+    }
+}
+

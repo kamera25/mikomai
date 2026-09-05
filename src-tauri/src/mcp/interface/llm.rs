@@ -10,14 +10,14 @@ pub struct CanonicalInterfaceResult {
 }
 
 fn clean_yaml_output(output: &str) -> String {
-    output
+    let trimmed = output
         .trim()
         .trim_start_matches("```yaml")
         .trim_start_matches("```yml")
         .trim_start_matches("```")
         .trim_end_matches("```")
-        .trim()
-        .to_string()
+        .trim();
+    crate::mcp::canonicalization::normalize_yaml_indentation(trimmed)
 }
 
 pub async fn convert_raw_to_yaml(

@@ -66,6 +66,11 @@ async fn download_model_inner(
 
     let dest_path = target_dir.join(&repo).join(&filename);
 
+    if dest_path.exists() && dest_path.metadata().map(|m| m.len() > 0).unwrap_or(false) {
+        tracing::info!("Model already exists, skipping download: {:?}", dest_path);
+        return Ok(dest_path.to_string_lossy().to_string());
+    }
+
     if let Some(parent) = dest_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
