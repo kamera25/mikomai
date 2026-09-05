@@ -182,10 +182,38 @@ async fn run_worker_request(
     );
 
     let prompt = format!("【ユーザー入力】\n{}{}", user_message, history_block);
-    let response = crate::llm::llm::ask_llm_initial_internal(window.clone(), prompt, llama_state)
-        .await
-        .map(|(response, _route)| response)
-        .unwrap_or_else(|error| format!("回答の生成に失敗しました: {}", error));
+    // Use the same timeline primitives as AgentLoop.  The constrained JSON
+    // decision stays internal; the user sees progress, not protocol data.
+    let _ = window.emit(
+        "chat-event",
+        crate::mcp::protocol::ChatEvent::AgentSelected("エージェントによる解析を開始".to_string()),
+    );
+    let _ = window.emit(
+        "chat-event",
+        crate::mcp::protocol::ChatEvent::LlmChunk(
+            "\n```agent-step\nphase: planning\nstep: 1\n```\n".to_string(),
+        ),
+    );
+    let response = match crate::llm::llm::ask_llm_initial_internal(
+        window.clone(),
+        prompt,
+        llama_state,
+    )
+    .await
+    {
+        Ok((response, crate::llm::worker::Route::Knowledge)) => {
+            run_knowledge_retrieval(
+                window.clone(),
+                user_message,
+                history_block,
+                response,
+                llama_state,
+            )
+            .await
+        }
+        Ok((response, _)) => response,
+        Err(error) => format!("回答の生成に失敗しました: {}", error),
+    };
 
     let _ = window.emit(
         "chat-event",
@@ -197,4 +225,89 @@ async fn run_worker_request(
         ),
     );
     Ok(())
+}
+
+/// Completes the Knowledge Worker's constrained SEARCH decision without going
+/// through the MCP tool-call parser.  The same retrieval implementation is
+/// used directly, then the existing RAG answer worker turns the evidence into
+/// a user-facing answer.
+async fn run_knowledge_retrieval(
+    window: Window,
+    user_message: String,
+    history_block: String,
+    decision_json: String,
+    llama_state: &crate::llm::llm::LlamaState,
+) -> String {
+    use crate::llm::worker::knowledge::{parse_knowledge_decision, KnowledgeAction};
+
+    let decision = match parse_knowledge_decision(&decision_json) {
+        Ok(decision) => decision,
+        Err(error) => return format!("知識検索の判断を処理できませんでした: {error}"),
+    };
+
+    match decision.action {
+        KnowledgeAction::Answer => decision.answer,
+        KnowledgeAction::Search => {
+            if decision.query.trim().is_empty() {
+                return "知識検索のクエリが空のため、検索できませんでした。".to_string();
+            }
+
+            let query = decision.query;
+            let keyword = query.trim().to_string();
+            let _ = window.emit(
+                "chat-event",
+                crate::mcp::protocol::ChatEvent::LlmChunk(format!(
+                    "\n```agent-decision\nstep: 1\naction: NW-DB検索\nobjective: キーワード「{}」で検索しています…\nreason: 確認可能な技術資料に基づいて回答するため\n```\n",
+                    keyword.replace('\n', " ")
+                )),
+            );
+
+            let app = window.app_handle();
+            let rag_state = app.state::<crate::mcp::rag::RagState>();
+            let result =
+                match crate::mcp::rag::query_nw_db(query, None, rag_state, app.clone()).await {
+                    Ok(result) => result,
+                    Err(error) => return format!("NW-DB検索に失敗しました: {error}"),
+                };
+
+            // A search decision is not evidence that the database query
+            // completed. Surface the actual result so users can distinguish
+            // a zero-hit query from an unavailable database or a model-only
+            // answer.
+            let result_count = result.output.matches("--- 根拠 [").count();
+            let result_status = if result_count == 0 {
+                "NW-DBを照会しましたが、該当資料は0件でした。".to_string()
+            } else {
+                format!("NW-DBを照会し、該当資料を{}件取得しました。", result_count)
+            };
+            log::info!(
+                "[KnowledgeWorker] NW-DB query completed: query={:?}, citations={}",
+                keyword,
+                result_count
+            );
+            let _ = window.emit(
+                "chat-event",
+                crate::mcp::protocol::ChatEvent::LlmChunk(format!(
+                    "\n```agent-decision\nstep: 1\naction: NW-DB検索完了\nobjective: {}\nreason: 検索結果を確認済み\n```\n",
+                    result_status
+                )),
+            );
+
+            crate::llm::llm::analyze_tool_output_internal(
+                window,
+                crate::llm::llm::AnalyzePayload {
+                    user_message,
+                    tool_label: "NW-DB検索".to_string(),
+                    output: result.output,
+                    is_rag: true,
+                    is_builder: Some(false),
+                    history_block: Some(history_block),
+                    subsequent_task: None,
+                },
+                llama_state,
+            )
+            .await
+            .unwrap_or_else(|error| format!("検索結果の回答生成に失敗しました: {error}"))
+        }
+    }
 }

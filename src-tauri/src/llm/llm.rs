@@ -364,6 +364,18 @@ pub async fn analyze_tool_output(
     payload: AnalyzePayload,
     llama_state: tauri::State<'_, LlamaState>,
 ) -> Result<String, TauriError> {
+    analyze_tool_output_internal(window, payload, &llama_state)
+        .await
+        .map_err(TauriError::from)
+}
+
+/// Internal counterpart of the Tauri command.  Retrieval workers use this to
+/// submit the answer-generation turn without manufacturing an MCP request.
+pub async fn analyze_tool_output_internal(
+    window: tauri::Window,
+    payload: AnalyzePayload,
+    llama_state: &LlamaState,
+) -> Result<String, LlmError> {
     let AnalyzePayload {
         user_message,
         tool_label,
@@ -392,19 +404,11 @@ pub async fn analyze_tool_output(
             respond_to: tx,
         })
         .await
-        .map_err(|e| {
-            TauriError::from(LlmError::Worker(format!(
-                "Failed to send inference request: {}",
-                e
-            )))
-        })?;
+        .map_err(|e| LlmError::Worker(format!("Failed to send inference request: {}", e)))?;
 
-    let inference_result = rx.await.map_err(|e| {
-        TauriError::from(LlmError::Worker(format!(
-            "Failed to receive inference result: {}",
-            e
-        )))
-    })??;
+    let inference_result = rx
+        .await
+        .map_err(|e| LlmError::Worker(format!("Failed to receive inference result: {}", e)))??;
 
     log::info!(
         "LLM Analysis User Message: {:?}\nResponse: {}",

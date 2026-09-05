@@ -3,12 +3,46 @@ use crate::llm::llm_manager::AgentContext;
 use crate::llm::worker::{build_common_worker_prompt, LlmWorker};
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::model::LlamaModel;
+use llama_cpp_2::sampling::LlamaSampler;
+use serde::Deserialize;
 use std::sync::Arc;
 
 const KNOWLEDGE_WORKER_PROMPT: &str = include_str!("../prompts/knowledge_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 2048;
 const N_CTX: u32 = 8192;
+
+/// The constrained first turn of the Knowledge worker.  Keeping this separate
+/// from the UI/MCP tool-call shape makes retrieval an internal worker action,
+/// rather than a command that the client has to discover and execute.
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub struct KnowledgeDecision {
+    pub action: KnowledgeAction,
+    pub query: String,
+    pub answer: String,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum KnowledgeAction {
+    Search,
+    Answer,
+}
+
+const KNOWLEDGE_DECISION_SCHEMA: &str = r#"{
+  "type": "object",
+  "properties": {
+    "action": { "type": "string", "enum": ["SEARCH", "ANSWER"] },
+    "query": { "type": "string" },
+    "answer": { "type": "string" }
+  },
+  "required": ["action", "query", "answer"]
+}"#;
+
+pub fn parse_knowledge_decision(output: &str) -> Result<KnowledgeDecision, String> {
+    serde_json::from_str(output.trim())
+        .map_err(|error| format!("Knowledge worker returned invalid decision JSON: {error}"))
+}
 
 pub struct KnowledgeWorker {
     pub ctx: Option<AgentContext>,
@@ -122,7 +156,7 @@ impl LlmWorker for KnowledgeWorker {
         output: Option<String>,
         history_block: Option<String>,
         subsequent_task: Option<&str>,
-        window: Option<&tauri::Window>,
+        _window: Option<&tauri::Window>,
         temperature: f32,
         repetition_penalty: f32,
     ) -> Result<String, String> {
@@ -186,12 +220,23 @@ impl LlmWorker for KnowledgeWorker {
             vendor_str, device_str, gateway_str, worker_prompt
         );
 
-        crate::llm::llm_manager::run_inference(
+        let grammar_str = llama_cpp_2::json_schema_to_grammar(KNOWLEDGE_DECISION_SCHEMA)
+            .map_err(|error| format!("Failed to convert Knowledge schema to grammar: {error:?}"))?;
+        let grammar_sampler =
+            LlamaSampler::grammar(&self.context_mut().model, &grammar_str, "root").map_err(
+                |error| format!("Failed to create Knowledge grammar sampler: {error:?}"),
+            )?;
+
+        crate::llm::llm_manager::run_inference_with_grammar(
             self.context_mut(),
             &final_prompt,
-            window,
+            // The decision is an internal protocol.  Streaming it would leak
+            // raw JSON into the chat before the retrieval coordinator can
+            // turn it into an Agent-style progress event.
+            None,
             temperature,
             repetition_penalty,
+            Some(grammar_sampler),
         )
         .map_err(|e| format!("Worker inference failed: {:?}", e))
     }
@@ -218,12 +263,22 @@ impl LlmWorker for KnowledgeWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::KNOWLEDGE_WORKER_PROMPT;
+    use super::{parse_knowledge_decision, KnowledgeAction, KNOWLEDGE_WORKER_PROMPT};
 
     #[test]
-    fn rag_tool_examples_use_the_runtime_tool_call_schema() {
-        assert!(KNOWLEDGE_WORKER_PROMPT.contains(r#""tool_name": "query_nw_db""#));
-        assert!(KNOWLEDGE_WORKER_PROMPT.contains(r#""params": {"query"#));
-        assert!(!KNOWLEDGE_WORKER_PROMPT.contains(r#""tool": "query_nw_db""#));
+    fn prompt_requires_a_constrained_decision_shape() {
+        assert!(KNOWLEDGE_WORKER_PROMPT.contains(r#""action": "SEARCH""#));
+        assert!(KNOWLEDGE_WORKER_PROMPT.contains(r#""action": "ANSWER""#));
+    }
+
+    #[test]
+    fn parses_search_decisions() {
+        let decision = parse_knowledge_decision(
+            r#"{"action":"SEARCH","query":"[Context: Yamaha] RTX1200 BGP 設定例","answer":""}"#,
+        )
+        .unwrap();
+
+        assert_eq!(decision.action, KnowledgeAction::Search);
+        assert_eq!(decision.query, "[Context: Yamaha] RTX1200 BGP 設定例");
     }
 }
