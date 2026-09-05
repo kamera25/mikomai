@@ -303,15 +303,30 @@ pub async fn ask_llm_initial_internal(
                         params,
                         message,
                     } => {
-                        let tool_call = serde_json::json!({
-                            "tool_name": tool_name,
-                            "params": params
-                        });
-                        format!(
-                            "{}\n\n```json\n{}\n```",
-                            message,
-                            serde_json::to_string_pretty(&tool_call).unwrap()
-                        )
+                        let target = params
+                            .get("host")
+                            .or_else(|| params.get("device"))
+                            .or_else(|| params.get("deviceName"))
+                            .and_then(|v| v.as_str())
+                            .map(ToString::to_string);
+                        let objective = if message.trim().is_empty() {
+                            format!("{}を実行する", tool_name)
+                        } else {
+                            message
+                        };
+                        let decision = crate::state::events::Decision {
+                            id: uuid::Uuid::new_v4(),
+                            timestamp: chrono::Utc::now(),
+                            action_type: crate::state::events::ActionType::Observe,
+                            objective,
+                            tool: Some(tool_name.clone()),
+                            target,
+                            parameters: params,
+                            reason: vec![format!("FastRouterによる決定的ショートカット実行: {}", tool_name)],
+                            expected_observation: vec![format!("{}の実行結果", tool_name)],
+                            final_answer: None,
+                        };
+                        serde_json::to_string_pretty(&decision).unwrap_or_default()
                     }
                     _ => String::new(),
                 };

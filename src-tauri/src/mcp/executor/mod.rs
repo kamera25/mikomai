@@ -96,7 +96,7 @@ pub async fn handle_chat_request(
     if !has_image_attachment {
         if let Some(decision) = crate::llm::router::shortcut::detect_shortcut(&user_message) {
             if decision.confidence >= 0.8 {
-                return run_shortcut_request(window, decision).await;
+                return run_shortcut_request(app, window, user_message, decision, llama_state).await;
             }
         }
     }
@@ -396,57 +396,17 @@ async fn run_knowledge_retrieval(
 }
 
 async fn run_shortcut_request(
+    app: AppHandle,
     window: Window,
+    user_message: String,
     decision: crate::llm::router::RoutingDecision,
+    llama_state: &crate::llm::llm::LlamaState,
 ) -> Result<String, String> {
-    let task_id = uuid::Uuid::new_v4();
-    let _ = window.emit(
-        "chat-event",
-        crate::mcp::protocol::ChatEvent::McpInitialStarted(
-            crate::mcp::protocol::InitialStartedPayload {
-                task_id,
-                has_image: false,
-            },
-        ),
-    );
-
-    let response_str = match decision.action {
-        crate::llm::router::RouteAction::StaticReply { message } => message,
-        crate::llm::router::RouteAction::DirectToolCall {
-            tool_name,
-            params,
-            message,
-        } => {
-            let tool_call = serde_json::json!({
-                "tool_name": tool_name,
-                "params": params
-            });
-            format!(
-                "{}\n\n```json\n{}\n```",
-                message,
-                serde_json::to_string_pretty(&tool_call).unwrap()
-            )
-        }
-        _ => String::new(),
-    };
-
-    let _ = window.emit(
-        "chat-event",
-        crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI".to_string()),
-    );
-    let _ = window.emit(
-        "chat-event",
-        crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()),
-    );
-    let _ = window.emit(
-        "chat-event",
-        crate::mcp::protocol::ChatEvent::McpInitialFinished(
-            crate::mcp::protocol::InitialFinishedPayload {
-                task_id,
-                content: response_str.clone(),
-            },
-        ),
-    );
-
-    Ok(response_str)
+    let planner = crate::harness::shortcut_planner::ShortcutPlanner::new(decision);
+    let executor = crate::harness::ports::McpToolExecutorPort::new(app.clone(), window.clone(), llama_state);
+    let reporter = crate::harness::ports::TauriReporterPort::new(window.clone());
+    let mut agent_loop = crate::harness::agent_loop::AgentLoop::new(app, window, 5);
+    agent_loop
+        .run_with(user_message, &planner, &executor, &reporter)
+        .await
 }
