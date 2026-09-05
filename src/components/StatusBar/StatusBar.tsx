@@ -6,14 +6,20 @@ import { BoxIcon } from "../Icons";
 interface StatusBarProps {
   modelStatus: string;
   modelPath?: string | null;
+  loadedModelPath?: string | null;
 }
 
-export const StatusBar = memo(function StatusBar({ modelStatus, modelPath }: StatusBarProps) {
+export const StatusBar = memo(function StatusBar({
+  modelStatus,
+  modelPath,
+  loadedModelPath,
+}: StatusBarProps) {
   const { t } = useTranslation();
 
   const getModelDisplayName = () => {
-    if (!modelPath) return t("status_bar.local_gemma");
-    const parts = modelPath.split(/[/\\]/);
+    const targetPath = loadedModelPath || modelPath;
+    if (!targetPath) return t("status_bar.local_gemma");
+    const parts = targetPath.split(/[/\\]/);
     const filename = parts[parts.length - 1];
     return filename || t("status_bar.local_gemma");
   };

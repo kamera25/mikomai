@@ -118,11 +118,25 @@ pub async fn load_model_internal(
     let mut shared_lock = state.shared.lock().await;
     *shared_lock = Some(shared_model.clone());
 
+    {
+        let mut loaded_path_lock = state.loaded_model_path.lock().await;
+        *loaded_path_lock = Some(path.clone());
+    }
+
     // Unlock UI immediately
     {
         let mut status_lock = state.status.lock().await;
         *status_lock = ModelState::Loaded;
         let _ = app.emit("model-status-changed", &*status_lock);
+        let _ = app.emit("model-loaded", &path);
+    }
+
+    // Sync settings.model_path if needed
+    if let Ok(mut current_settings) = crate::settings::load_settings(app.clone()) {
+        if current_settings.model_path.as_deref() != Some(&path) {
+            current_settings.model_path = Some(path.clone());
+            let _ = crate::settings::save_settings(app.clone(), current_settings);
+        }
     }
 
     if preload_background {

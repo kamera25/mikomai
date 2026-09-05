@@ -53,7 +53,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
     setTemperature,
     repetitionPenalty,
     setRepetitionPenalty,
-    modelPath: _savedModelPath,
+    modelPath: savedModelPath,
     setModelPath,
     mcpTimeout,
     setMcpTimeout,
@@ -120,6 +120,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
       checkModelStatuses();
     }
   }, [isOpen, repoPath, modelFilename, checkModelStatuses]);
+
+  // Sync preset selection and file inputs with savedModelPath when panel opens or savedModelPath changes
+  useEffect(() => {
+    if (!savedModelPath) return;
+    const parts = savedModelPath.split(/[/\\]/);
+    const fname = parts[parts.length - 1];
+    const match = PRESET_MODELS.find((p) => p.filename === fname);
+    if (match) {
+      setSelectedPresetId(match.id);
+      setRepoPath(match.repo);
+      setModelFilename(match.filename);
+    } else {
+      setSelectedPresetId("custom");
+      setModelFilename(fname);
+    }
+  }, [savedModelPath, isOpen]);
 
   const handlePresetSelect = (presetId: string) => {
     setSelectedPresetId(presetId);
@@ -293,8 +309,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
         filename: modelFilename,
       });
 
-      handleModelPathChange(downloadedPath);
-
       // Download mmproj (vision projector) file together with Gemma model
       const preset = PRESET_MODELS.find((p) => p.repo === repoPath && p.filename === modelFilename);
       const mmprojFilenameToUse = preset?.mmprojFilename || "mmproj-F16.gguf";
@@ -322,10 +336,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
         }
       }
 
+      setModelPath(downloadedPath);
+      const settingsOverrides: {
+        modelPath: string;
+        mmprojPath?: string;
+        visionEnabled?: boolean;
+      } = {
+        modelPath: downloadedPath,
+      };
+
       if (downloadedMmprojPath) {
-        handleMmprojPathChange(downloadedMmprojPath);
-        handleVisionEnabledChange(true);
+        setMmprojPath(downloadedMmprojPath);
+        setVisionEnabled(true);
+        settingsOverrides.mmprojPath = downloadedMmprojPath;
+        settingsOverrides.visionEnabled = true;
       }
+
+      await saveAllSettings(settingsOverrides);
 
       setDownloadStatus(`モデル準備完了: ${downloadedPath}. メモリへロード中...`);
 
@@ -346,7 +373,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
 
   const handleOpenModelDir = async () => {
     try {
-      await invoke("open_model_dir", { modelPath: _savedModelPath });
+      await invoke("open_model_dir", { modelPath: savedModelPath });
     } catch (e: unknown) {
       setDownloadStatus(`Error: ${getErrorMessage(e)}`);
     }

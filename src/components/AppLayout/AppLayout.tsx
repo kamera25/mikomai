@@ -602,7 +602,11 @@ export function AppLayout() {
           </Suspense>
         </div>
       </div>
-      <StatusBar modelStatus={modelState.modelStatus} modelPath={modelPath} />
+      <StatusBar
+        modelStatus={modelState.modelStatus}
+        modelPath={modelPath}
+        loadedModelPath={modelState.loadedModelPath}
+      />
       {chatState.modalConfig && <CustomModal {...chatState.modalConfig} />}
     </div>
   );

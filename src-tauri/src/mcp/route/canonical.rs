@@ -151,8 +151,9 @@ entries:
     metric: null
 
 Rules:
-- Emit exactly one entry for every Route evidence line.
-- line_idx MUST be an integer index into Route evidence lines, used exactly once.
+- Emit one entry for each route that can be mapped unambiguously. Do not emit
+  a placeholder for a line whose destination, gateway, or interface is unclear.
+- line_idx MUST be an integer index into Route evidence lines, used at most once.
 - destination_idx, gateway_idx, interface_idx, and flags_idx MUST index Route value candidates.
 - The selected destination, gateway, interface, and optional flags MUST all occur on the selected evidence line.
 - flags_idx is null when no flags value exists on the line.
@@ -194,9 +195,6 @@ pub fn reconstruct_and_validate(
         selection.entries.iter().map(|entry| entry.line_idx),
         "route evidence line index",
     )?;
-    if selection.entries.len() != extracted.evidence.len() {
-        return Err("route selection has missing or unexpected route relationships".to_string());
-    }
     let mut routes = Vec::with_capacity(selection.entries.len());
     for selected in selection.entries {
         let line = extracted
@@ -366,5 +364,32 @@ mod tests {
         assert_eq!(table.routes[0].destination, "2001:db8:1::/64");
         assert_eq!(table.routes[0].gateway, "fe80::1%en0");
         assert_eq!(table.routes[1].destination, "::/0");
+    }
+
+    #[test]
+    fn accepts_a_valid_subset_when_other_route_lines_are_ambiguous() {
+        let raw = "Destination Gateway Flags Netif\ndefault 192.0.2.1 UGSc en0\n192.0.2.0/24 link#4 UCS en0";
+        let extracted = extract(raw);
+
+        let table = reconstruct_and_validate(
+            RouteSelection {
+                entries: vec![RouteEntrySelection {
+                    line_idx: 0,
+                    destination_idx: 0,
+                    gateway_idx: 1,
+                    interface_idx: 3,
+                    flags_idx: Some(2),
+                    metric: None,
+                }],
+            },
+            &extracted,
+            "r1",
+            "macos",
+            Utc::now(),
+        )
+        .unwrap();
+
+        assert_eq!(table.routes.len(), 1);
+        assert_eq!(table.routes[0].destination, "default");
     }
 }

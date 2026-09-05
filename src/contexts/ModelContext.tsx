@@ -6,19 +6,28 @@ import { useSettingsContext } from "./SettingsContext";
 
 export interface ModelState {
   modelStatus: string;
+  loadedModelPath: string | null;
 }
 
 export type ModelAction =
-  | { type: "SET_STATUS"; payload: string };
+  | { type: "SET_STATUS"; payload: string }
+  | { type: "SET_LOADED_MODEL_PATH"; payload: string | null };
 
 const initialState: ModelState = {
   modelStatus: "NotLoaded",
+  loadedModelPath: null,
 };
 
 function modelReducer(state: ModelState, action: ModelAction): ModelState {
   switch (action.type) {
     case "SET_STATUS":
-      return { ...state, modelStatus: action.payload };
+      return {
+        ...state,
+        modelStatus: action.payload,
+        loadedModelPath: action.payload === "NotLoaded" ? null : state.loadedModelPath,
+      };
+    case "SET_LOADED_MODEL_PATH":
+      return { ...state, loadedModelPath: action.payload };
     default:
       return state;
   }
@@ -47,13 +56,20 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     let active = true;
-    let unlistenFn: (() => void) | null = null;
+    let unlistenStatusFn: (() => void) | null = null;
+    let unlistenLoadedFn: (() => void) | null = null;
 
     const checkStatus = async () => {
       try {
-        const status = await invoke<BackendModelState>("get_model_status");
+        const [status, loadedPath] = await Promise.all([
+          invoke<BackendModelState>("get_model_status"),
+          invoke<string | null>("get_loaded_model_path").catch(() => null),
+        ]);
         if (active) {
           updateStatus(status);
+          if (loadedPath) {
+            dispatch({ type: "SET_LOADED_MODEL_PATH", payload: loadedPath });
+          }
         }
       } catch (e) {
         console.error("Failed to get model status:", e);
@@ -62,29 +78,43 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     checkStatus();
 
-    const setupListener = async () => {
+    const setupListeners = async () => {
       try {
-        const unlisten = await listen<BackendModelState>("model-status-changed", (event) => {
+        const unlistenStatus = await listen<BackendModelState>("model-status-changed", (event) => {
           if (active) {
             updateStatus(event.payload);
           }
         });
         if (!active) {
-          unlisten();
+          unlistenStatus();
         } else {
-          unlistenFn = unlisten;
+          unlistenStatusFn = unlistenStatus;
+        }
+
+        const unlistenLoaded = await listen<string>("model-loaded", (event) => {
+          if (active) {
+            dispatch({ type: "SET_LOADED_MODEL_PATH", payload: event.payload });
+          }
+        });
+        if (!active) {
+          unlistenLoaded();
+        } else {
+          unlistenLoadedFn = unlistenLoaded;
         }
       } catch (err) {
-        console.error("Failed to set up model status listener:", err);
+        console.error("Failed to set up model listeners:", err);
       }
     };
 
-    setupListener();
+    setupListeners();
 
     return () => {
       active = false;
-      if (unlistenFn) {
-        unlistenFn();
+      if (unlistenStatusFn) {
+        unlistenStatusFn();
+      }
+      if (unlistenLoadedFn) {
+        unlistenLoadedFn();
       }
     };
   }, []);
@@ -94,6 +124,7 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       dispatch({ type: "SET_STATUS", payload: "Loading" });
       await invoke("load_model", { path: modelPath });
+      dispatch({ type: "SET_LOADED_MODEL_PATH", payload: modelPath });
       dispatch({ type: "SET_STATUS", payload: "Loaded" });
     } catch (e) {
       console.error("Failed to load model:", e);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { SystemSettings } from "../types";
 import {
@@ -57,6 +57,11 @@ const INITIAL_SETTINGS_STATE: SettingsState = {
 
 export function useSettings() {
   const [settings, setSettings] = useState<SettingsState>(INITIAL_SETTINGS_STATE);
+  const settingsRef = useRef<SettingsState>(INITIAL_SETTINGS_STATE);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   // Load settings from backend
   useEffect(() => {
@@ -64,28 +69,32 @@ export function useSettings() {
       try {
         const loaded = await invoke<SystemSettings>("load_settings");
         if (loaded) {
-          setSettings((prev) => ({
-            ...prev,
-            ...(loaded.historyLimit !== undefined && { historyLimit: loaded.historyLimit }),
-            ...(loaded.temperature !== undefined && { temperature: loaded.temperature }),
-            ...(loaded.repetitionPenalty !== undefined && { repetitionPenalty: loaded.repetitionPenalty }),
-            ...(loaded.modelPath !== undefined && { modelPath: loaded.modelPath }),
-            ...(loaded.recentIps !== undefined && { recentIps: loaded.recentIps }),
-            ...(loaded.mcpTimeout !== undefined && { mcpTimeout: loaded.mcpTimeout }),
-            ...(loaded.cacheExpiryMinutes !== undefined && { cacheExpiryMinutes: loaded.cacheExpiryMinutes }),
-            ...(loaded.ipVersion !== undefined && { ipVersion: loaded.ipVersion }),
-            ...(loaded.consolePort !== undefined && { consolePort: loaded.consolePort }),
-            ...(loaded.consoleBaudRate !== undefined && { consoleBaudRate: loaded.consoleBaudRate }),
-            ...(loaded.preloadKnowledge !== undefined && { preloadKnowledge: loaded.preloadKnowledge }),
-            ...(loaded.preloadAnalysis !== undefined && { preloadAnalysis: loaded.preloadAnalysis }),
-            ...(loaded.preloadRag !== undefined && { preloadRag: loaded.preloadRag }),
-            ...(loaded.preloadPlotter !== undefined && { preloadPlotter: loaded.preloadPlotter }),
-            ...(loaded.preloadBuilder !== undefined && { preloadBuilder: loaded.preloadBuilder }),
-            ...(loaded.preloadSummarization !== undefined && { preloadSummarization: loaded.preloadSummarization }),
-            ...(loaded.visionEnabled !== undefined && { visionEnabled: loaded.visionEnabled }),
-            ...(loaded.autoDryRun !== undefined && { autoDryRun: loaded.autoDryRun }),
-            ...(loaded.mmprojPath !== undefined && { mmprojPath: loaded.mmprojPath }),
-          }));
+          setSettings((prev) => {
+            const nextState: SettingsState = {
+              ...prev,
+              ...(loaded.historyLimit !== undefined && { historyLimit: loaded.historyLimit }),
+              ...(loaded.temperature !== undefined && { temperature: loaded.temperature }),
+              ...(loaded.repetitionPenalty !== undefined && { repetitionPenalty: loaded.repetitionPenalty }),
+              ...(loaded.modelPath !== undefined && { modelPath: loaded.modelPath }),
+              ...(loaded.recentIps !== undefined && { recentIps: loaded.recentIps }),
+              ...(loaded.mcpTimeout !== undefined && { mcpTimeout: loaded.mcpTimeout }),
+              ...(loaded.cacheExpiryMinutes !== undefined && { cacheExpiryMinutes: loaded.cacheExpiryMinutes }),
+              ...(loaded.ipVersion !== undefined && { ipVersion: loaded.ipVersion }),
+              ...(loaded.consolePort !== undefined && { consolePort: loaded.consolePort }),
+              ...(loaded.consoleBaudRate !== undefined && { consoleBaudRate: loaded.consoleBaudRate }),
+              ...(loaded.preloadKnowledge !== undefined && { preloadKnowledge: loaded.preloadKnowledge }),
+              ...(loaded.preloadAnalysis !== undefined && { preloadAnalysis: loaded.preloadAnalysis }),
+              ...(loaded.preloadRag !== undefined && { preloadRag: loaded.preloadRag }),
+              ...(loaded.preloadPlotter !== undefined && { preloadPlotter: loaded.preloadPlotter }),
+              ...(loaded.preloadBuilder !== undefined && { preloadBuilder: loaded.preloadBuilder }),
+              ...(loaded.preloadSummarization !== undefined && { preloadSummarization: loaded.preloadSummarization }),
+              ...(loaded.visionEnabled !== undefined && { visionEnabled: loaded.visionEnabled }),
+              ...(loaded.autoDryRun !== undefined && { autoDryRun: loaded.autoDryRun }),
+              ...(loaded.mmprojPath !== undefined && { mmprojPath: loaded.mmprojPath }),
+            };
+            settingsRef.current = nextState;
+            return nextState;
+          });
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -95,19 +104,22 @@ export function useSettings() {
   }, []);
 
   const updateSetting = useCallback(<K extends keyof SettingsState>(key: K, value: SettingsState[K] | ((prev: SettingsState[K]) => SettingsState[K])) => {
-    setSettings((prev) => ({
-      ...prev,
-      [key]: typeof value === "function" ? (value as (prev: SettingsState[K]) => SettingsState[K])(prev[key]) : value,
-    }));
+    setSettings((prev) => {
+      const nextVal = typeof value === "function" ? (value as (prev: SettingsState[K]) => SettingsState[K])(prev[key]) : value;
+      const nextState = { ...prev, [key]: nextVal };
+      settingsRef.current = nextState;
+      return nextState;
+    });
   }, []);
 
   const saveAllSettings = async (overrides: Partial<SystemSettings>) => {
     const updated: SettingsState = {
-      ...settings,
+      ...settingsRef.current,
       ...overrides,
       ...(overrides.recentIps !== undefined && { recentIps: overrides.recentIps }),
     };
 
+    settingsRef.current = updated;
     setSettings(updated);
 
     const payload = {

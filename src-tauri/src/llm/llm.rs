@@ -89,6 +89,7 @@ impl serde::Serialize for LlmError {
 pub struct LlamaState {
     pub shared: Arc<tokio::sync::Mutex<Option<Arc<SharedModel>>>>,
     pub status: tokio::sync::Mutex<ModelState>,
+    pub loaded_model_path: Arc<tokio::sync::Mutex<Option<String>>>,
     pub backend: Arc<LlamaBackend>,
     pub inference_tx: tokio::sync::mpsc::Sender<InferenceRequest>,
 }
@@ -111,6 +112,7 @@ impl LlamaState {
         let shared: Arc<tokio::sync::Mutex<Option<Arc<SharedModel>>>> =
             Arc::new(tokio::sync::Mutex::new(None));
         let status = tokio::sync::Mutex::new(ModelState::NotLoaded);
+        let loaded_model_path = Arc::new(tokio::sync::Mutex::new(None));
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<InferenceRequest>(100);
 
@@ -131,6 +133,7 @@ impl LlamaState {
         Ok(Self {
             shared,
             status,
+            loaded_model_path,
             backend: backend_arc,
             inference_tx: tx,
         })
@@ -149,6 +152,14 @@ pub async fn get_model_status(
         ModelState::Error(e) => ModelState::Error(e.clone()),
     };
     Ok(status)
+}
+
+#[tauri::command]
+pub async fn get_loaded_model_path(
+    state: tauri::State<'_, LlamaState>,
+) -> Result<Option<String>, TauriError> {
+    let lock = state.loaded_model_path.lock().await;
+    Ok(lock.clone())
 }
 
 pub const SYSTEM_PROMPT: &str = include_str!("prompts/system_prompt.txt");
