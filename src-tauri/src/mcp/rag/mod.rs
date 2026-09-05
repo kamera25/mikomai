@@ -84,6 +84,27 @@ struct RagChunk {
     distance: f32,
 }
 
+/// Compact metadata shown to the selection LLM before any document body is
+/// added to its context window.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RagDocumentPreview {
+    pub path: String,
+    pub title: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, SurrealValue)]
+struct RagDocumentChunk {
+    path: String,
+    text: String,
+    #[serde(default)]
+    chunk_index: usize,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    summary: String,
+}
+
 #[tauri::command]
 pub async fn query_nw_db(
     query: String,
@@ -123,6 +144,82 @@ pub async fn query_nw_db(
     let graph = app.state::<crate::graph::SurrealDbState>();
     let chunks = search_chunks(&graph, embedding, brand, &vendor_context.query).await?;
     format_search_results(chunks, &vendor_context.query)
+}
+
+/// Resolve only the titles and summaries of the documents cited by retrieval.
+/// Keeping this separate lets the LLM choose relevant sources before their
+/// bodies are expanded into its answer context.
+pub async fn previews_for_search_result(
+    search_output: &str,
+    graph: &crate::graph::SurrealDbState,
+) -> Result<Vec<RagDocumentPreview>, String> {
+    let mut previews = Vec::new();
+    for path in cited_paths(search_output).into_iter().take(5) {
+        let mut response = graph
+            .db
+            .query("SELECT path, text, title, summary, chunk_index FROM rag_chunk WHERE path = $path ORDER BY chunk_index ASC LIMIT 1;")
+            .bind(("path", path))
+            .await
+            .map_err(|e| format!("Failed to read RAG document preview: {e}"))?;
+        let rows: Vec<RagDocumentChunk> = response
+            .take(0)
+            .map_err(|e| format!("Failed to decode RAG document preview: {e}"))?;
+        if let Some(row) = rows.into_iter().next() {
+            previews.push(RagDocumentPreview {
+                path: row.path.clone(),
+                title: if row.title.is_empty() { row.path.clone() } else { row.title },
+                summary: if row.summary.is_empty() { summarize_text(&row.text) } else { row.summary },
+            });
+        }
+    }
+    Ok(previews)
+}
+
+/// Expand the documents selected by the LLM. The bounded traversal preserves
+/// chunk order and prevents a large manual from consuming the answer context.
+pub async fn expand_selected_documents(
+    paths: &[String],
+    graph: &crate::graph::SurrealDbState,
+) -> Result<String, String> {
+    const MAX_DOCUMENTS: usize = 3;
+    const MAX_CONTEXT_CHARS: usize = 18_000;
+    let mut expanded = String::new();
+    for path in paths.iter().take(MAX_DOCUMENTS) {
+        let mut response = graph
+            .db
+            .query("SELECT path, text, chunk_index, title, summary FROM rag_chunk WHERE path = $path ORDER BY chunk_index ASC;")
+            .bind(("path", path.clone()))
+            .await
+            .map_err(|e| format!("Failed to expand RAG document: {e}"))?;
+        let rows: Vec<RagDocumentChunk> = response
+            .take(0)
+            .map_err(|e| format!("Failed to decode expanded RAG document: {e}"))?;
+        if rows.is_empty() { continue; }
+        let title = rows[0].title.clone();
+        expanded.push_str(&format!("\n\n=== 選択資料: {} ({}) ===\n", title, path));
+        for row in rows {
+            if expanded.chars().count() >= MAX_CONTEXT_CHARS { break; }
+            expanded.push_str(&row.text);
+            expanded.push('\n');
+        }
+        if expanded.chars().count() >= MAX_CONTEXT_CHARS { break; }
+    }
+    Ok(expanded)
+}
+
+fn cited_paths(search_output: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    for line in search_output.lines() {
+        let Some(rest) = line.split("ソース: ").nth(1) else { continue; };
+        let Some(path) = rest.split(", 類似度スコア:").next() else { continue; };
+        let path = path.trim();
+        if !path.is_empty() && !paths.iter().any(|known| known == path) { paths.push(path.to_owned()); }
+    }
+    paths
+}
+
+fn summarize_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(240).collect()
 }
 
 fn is_japanese(c: char) -> bool {
@@ -291,7 +388,10 @@ pub(crate) async fn ingest_path(path: &Path, state: &RagState, graph: &crate::gr
     for file in files {
         let raw = fs::read_to_string(&file).map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
         let (metadata, content) = parse_frontmatter(&raw);
-        let chunks = split_chunks(&replace_metadata_placeholders(content, &metadata), 1400, 180)?;
+        let document = replace_metadata_placeholders(content, &metadata);
+        let title = document_title(&document, &file);
+        let summary = summarize_text(&document);
+        let chunks = split_chunks(&document, 1400, 180)?;
         let embeddings = model.embed(chunks.iter().map(|chunk| format!("passage: {chunk}")).collect(), None)
             .map_err(|e| format!("Embedding {} failed: {e}", file.display()))?;
         let path = file.to_string_lossy().to_string();
@@ -304,7 +404,7 @@ pub(crate) async fn ingest_path(path: &Path, state: &RagState, graph: &crate::gr
             let id = stable_id(&format!("{path}:{index}"));
             graph.db.query("UPSERT type::record('rag_chunk', $id) CONTENT $record;")
                 .bind(("id", id)).bind(("record", serde_json::json!({
-                    "path": path, "text": text, "brand": brand,
+                    "path": path, "text": text, "brand": brand, "title": title, "summary": summary,
                     "os_version": metadata.get("os_version").cloned().unwrap_or_default(),
                     "category": metadata.get("category").cloned().unwrap_or_default(),
                     "command_type": metadata.get("command_type").cloned().unwrap_or_default(),
@@ -338,6 +438,13 @@ fn parse_frontmatter(raw: &str) -> (HashMap<String, String>, &str) {
 
 fn replace_metadata_placeholders(content: &str, metadata: &HashMap<String, String>) -> String {
     metadata.iter().fold(content.to_owned(), |result, (key, value)| result.replace(&format!("{{{key}}}"), value))
+}
+
+fn document_title(document: &str, path: &Path) -> String {
+    document.lines().find_map(|line| line.trim().strip_prefix('#').map(str::trim))
+        .filter(|title| !title.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| path.file_stem().and_then(|name| name.to_str()).unwrap_or("Untitled").to_owned())
 }
 
 fn split_chunks(content: &str, chunk_size: usize, overlap: usize) -> Result<Vec<String>, String> {
@@ -464,11 +571,18 @@ mod tests {
         let graph = crate::graph::SurrealDbState::initialize_at(&path).await.unwrap();
         let mut embedding = vec![0.0_f32; 1024];
         embedding[0] = 1.0;
-        graph.db.query("CREATE rag_chunk:test CONTENT { path: 'manual.md', text: 'show ip route', brand: 'cisco_ios', chunk_index: 0, embedding: $embedding };")
+        graph.db.query("CREATE rag_chunk:test CONTENT { path: 'manual.md', title: '経路確認', summary: 'show ip route の手順', text: 'show ip route', brand: 'cisco_ios', chunk_index: 0, embedding: $embedding };")
             .bind(("embedding", embedding.clone())).await.unwrap();
         let results = search_chunks(&graph, embedding, Some("cisco_ios".to_string()), "show ip route").await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].path, "manual.md");
+        let previews = previews_for_search_result(
+            "--- 根拠 [1] (ソース: manual.md, 類似度スコア: 0.90) ---",
+            &graph,
+        ).await.unwrap();
+        assert_eq!(previews[0].title, "経路確認");
+        let expanded = expand_selected_documents(&["manual.md".to_string()], &graph).await.unwrap();
+        assert!(expanded.contains("show ip route"));
         std::fs::remove_dir_all(path).unwrap();
     }
 }

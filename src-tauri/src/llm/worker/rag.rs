@@ -3,12 +3,59 @@ use crate::llm::llm_manager::AgentContext;
 use crate::llm::worker::LlmWorker;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::model::LlamaModel;
+use llama_cpp_2::sampling::LlamaSampler;
+use serde::Deserialize;
 use std::sync::Arc;
 
 const RAG_WORKER_PROMPT: &str = include_str!("../prompts/rag_worker.txt");
 
 const MAX_NEW_TOKENS: u32 = 512;
 const N_CTX: u32 = 8192;
+const SELECTOR_MAX_NEW_TOKENS: u32 = 192;
+const DOCUMENT_SELECTION_SCHEMA: &str = r#"{
+  "type": "object",
+  "properties": { "paths": { "type": "array", "items": { "type": "string" }, "maxItems": 3 } },
+  "required": ["paths"]
+}"#;
+
+#[derive(Debug, Deserialize)]
+struct DocumentSelection {
+    paths: Vec<String>,
+}
+
+/// Select evidence using only document metadata. Bodies are fetched only after
+/// this constrained decision, keeping the final answer grounded and focused.
+pub fn select_documents(
+    model: &Arc<LlamaModel>,
+    backend: &Arc<LlamaBackend>,
+    user_message: &str,
+    previews: &[crate::mcp::rag::RagDocumentPreview],
+    temperature: f32,
+    repetition_penalty: f32,
+) -> Result<Vec<String>, String> {
+    if previews.is_empty() { return Ok(Vec::new()); }
+    let catalog = serde_json::to_string(previews)
+        .map_err(|error| format!("Failed to serialize RAG document catalog: {error}"))?;
+    let prompt = format!(
+        "ユーザーの質問: {user_message}\n\n候補資料（本文は未読）: {catalog}\n\n質問に直接答えるために必要な資料の path を最大3件だけ選んでください。候補外のpathは絶対に出力せず、不要なら空配列にしてください。"
+    );
+    let mut context = AgentContext::new(
+        model.clone(), backend.clone(),
+        "You select relevant network-document sources. Return only valid JSON.",
+        6, SELECTOR_MAX_NEW_TOKENS, 4096,
+    ).map_err(|error| format!("Failed to create RAG document selector: {error:?}"))?;
+    let grammar = llama_cpp_2::json_schema_to_grammar(DOCUMENT_SELECTION_SCHEMA)
+        .map_err(|error| format!("Failed to create RAG selector grammar: {error:?}"))?;
+    let sampler = LlamaSampler::grammar(&context.model, &grammar, "root")
+        .map_err(|error| format!("Failed to create RAG selector sampler: {error:?}"))?;
+    let output = crate::llm::llm_manager::run_inference_with_grammar(
+        &mut context, &prompt, None, temperature, repetition_penalty, Some(sampler),
+    ).map_err(|error| format!("RAG document selection failed: {error:?}"))?;
+    let selection: DocumentSelection = serde_json::from_str(output.trim())
+        .map_err(|error| format!("RAG document selector returned invalid JSON: {error}"))?;
+    let allowed: std::collections::HashSet<_> = previews.iter().map(|preview| preview.path.as_str()).collect();
+    Ok(selection.paths.into_iter().filter(|path| allowed.contains(path.as_str())).take(3).collect())
+}
 
 pub struct RagWorker {
     pub ctx: Option<AgentContext>,
@@ -94,7 +141,7 @@ impl LlmWorker for RagWorker {
             let out = output.as_deref().unwrap_or_default();
             let hist = history_block.as_deref().unwrap_or_default();
             format!(
-                "ユーザーの質問: \"{}\"\nに対して、技術文書データベース(NW-DB)から以下の情報を取得しました:\n\n{}\n\nこの内容に基づき、ネットワークエンジニアの視点で、ユーザーの質問に対する的確な回答を日本語で生成してください。回答には、参照した資料の内容を具体的に含めてください。{}",
+                "ユーザーの質問: \"{}\"\nに対して、LLMが選択して展開した技術文書データベース(NW-DB)の本文を以下に示します:\n\n{}\n\n本文に記載されたコマンド・前提条件・手順を使って、ユーザーへ直接回答してください。『資料を参照してください』と案内するだけの回答や、同じ説明の反復は禁止です。本文にない内容は推測せず、不足を明記してください。{}",
                 user_msg, out, hist
             )
         }

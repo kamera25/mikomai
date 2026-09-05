@@ -293,12 +293,63 @@ async fn run_knowledge_retrieval(
                 )),
             );
 
+            let graph = app.state::<crate::graph::SurrealDbState>();
+            let previews = match crate::mcp::rag::previews_for_search_result(&result.output, &graph).await {
+                Ok(previews) => previews,
+                Err(error) => {
+                    log::warn!("[KnowledgeWorker] Failed to load RAG document previews: {error}");
+                    Vec::new()
+                }
+            };
+            let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+            let selected_paths = {
+                let shared = llama_state.shared.lock().await;
+                shared.as_ref().and_then(|shared| {
+                    crate::llm::worker::rag::select_documents(
+                        &shared.model,
+                        &shared.backend,
+                        &user_message,
+                        &previews,
+                        settings.temperature,
+                        settings.repetition_penalty,
+                    ).map_err(|error| log::warn!("[KnowledgeWorker] {error}")).ok()
+                })
+            };
+            // The selector must not make an empty or malformed decision hide
+            // every source. Use the highest-ranked previews as a bounded,
+            // observable fallback.
+            let selected_paths = selected_paths.filter(|paths| !paths.is_empty()).unwrap_or_else(|| {
+                previews.iter().take(3).map(|preview| preview.path.clone()).collect()
+            });
+            let expanded_documents = match crate::mcp::rag::expand_selected_documents(&selected_paths, &graph).await {
+                Ok(documents) => documents,
+                Err(error) => {
+                    log::warn!("[KnowledgeWorker] Failed to expand selected RAG documents: {error}");
+                    String::new()
+                }
+            };
+            let _ = window.emit(
+                "chat-event",
+                crate::mcp::protocol::ChatEvent::LlmChunk(format!(
+                    "\n```agent-decision\nstep: 2\naction: 資料展開\nobjective: LLMが選択した{}件の資料本文を参照しています…\nreason: 回答に必要な手順とコマンドを確認するため\n```\n",
+                    selected_paths.len()
+                )),
+            );
+            let answer_context = if expanded_documents.is_empty() {
+                result.output
+            } else {
+                format!(
+                    "検索時の根拠一覧:\n{}\n\nLLMが選択して展開した資料本文:\n{}",
+                    result.output, expanded_documents
+                )
+            };
+
             crate::llm::llm::analyze_tool_output_internal(
                 window,
                 crate::llm::llm::AnalyzePayload {
                     user_message,
                     tool_label: "NW-DB検索".to_string(),
-                    output: result.output,
+                    output: answer_context,
                     is_rag: true,
                     is_builder: Some(false),
                     history_block: Some(history_block),
