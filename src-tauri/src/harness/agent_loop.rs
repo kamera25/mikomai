@@ -428,16 +428,51 @@ impl AgentLoop {
                 }
             )));
 
-            // 4. Wrap the completed tool result into an observation.
+            // RAG retrieval is delegated before the next planning turn. The
+            // RAG co-worker selects source documents with constrained decoding
+            // and returns their original text. The Agent remains responsible
+            // for the final decision and user-facing response.
+            let (observation_tool_name, observation_tool_kind, observation_output) =
+                if tool_kind_opt.map_or(false, |kind| kind.is_rag_tool()) && cmd_result.success {
+                    reporter.report(AgentReport::Chat(ChatEvent::AgentSelected(
+                        "RAG Worker (RAG回答員)".to_string(),
+                    )));
+                    reporter.report(AgentReport::Chat(ChatEvent::LlmChunk(format!(
+                        "\n```agent-decision\nstep: {}\naction: RAG Co-Worker\nobjective: NW-DB候補資料を選定し、選定資料の本文をAgentへ返却する\nreason: 根拠番号ではなく、コマンドと手順を含む原文を次の判断に渡すため\n```\n",
+                        self.state_machine.step_count()
+                    ))));
+
+                    let co_worker_result = crate::llm::llm::ask_rag_co_worker(
+                        &self.app,
+                        goal.clone(),
+                        cmd_result.output.clone(),
+                        llama_state,
+                    )
+                    .await
+                    .unwrap_or_else(|error| {
+                        format!("RAG Co-Workerの資料選定に失敗しました: {error}")
+                    });
+
+                    log::info!(
+                        "[AgentLoop] Step {}: RAG co-worker returned {} chars of selected document text",
+                        self.state_machine.step_count(),
+                        co_worker_result.len()
+                    );
+                    ("rag_co_worker".to_string(), None, co_worker_result)
+                } else {
+                    (tool_name.clone(), tool_kind_opt, cmd_result.output.clone())
+                };
+
+            // 4. Wrap the completed tool/co-worker result into an observation.
             // The state machine moves directly from Acting to Evaluating;
             // transitioning through Observing here would make the following
             // Observing -> Evaluating transition invalid and abort the loop.
             let observation = execution::tool_observation(
                 &action,
-                tool_name,
-                tool_kind_opt,
+                observation_tool_name,
+                observation_tool_kind,
                 tool_args,
-                cmd_result.output,
+                observation_output,
             );
 
             // 5. State Update & Evaluation Phase

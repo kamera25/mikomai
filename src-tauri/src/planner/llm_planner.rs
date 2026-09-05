@@ -18,6 +18,7 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
      * RAG検索で正しいコマンド（例: Yamahaなら `show config`）が判明したら、その次のステップでその正しいコマンドを `network_show` で再実行してください。
    - 同じツール・同じ引数の無意味な再実行ループは絶対に避けてください。
    - `builder_co_worker` の実行結果が存在する場合、それはBuilderからAgentへの引き継ぎです。**Builderや同じRAG検索を再実行してはいけません。** 結果がコミット拒否・キャンセル・エラー・入力不足を示す場合は、結果を踏まえて `ASK_HUMAN` で必要最小限の確認を求めてください。設定投入が成功した場合は `FINISH` を選択してください。
+   - `rag_co_worker` の結果は、RAG Workerが選定した資料の**生テキスト**です。ユーザーの依頼が「教えて」「方法」「手順」「設定例」「コマンド」などの説明・参照依頼であり、実機への設定実行を明示していない場合、資料本文に必要なコマンドや変数が含まれていれば必ず `FINISH` を選択してください。VLAN ID、インターフェース名などが未指定でも、`<VLAN_ID>` や `<INTERFACE>` のようなプレースホルダーとして資料記載の手順を説明してください。この場合に「どのVLAN IDか」「どのポートか」を理由として `ASK_HUMAN` を選んではいけません。
 3. 【RAG検索（query_nw_db）の必須規則】
    - 検索クエリ（`query` 引数）は英語の文章ではなく、必ず**日本語のキーワードベース**（例: `[Context: Yamaha] NTP 設定 確認`）で出力してください。
    - **特定のメーカーまたは登録機器が判明している場合は、必ず `query` 引数の冒頭に `[Context: メーカー名または機器名]` （例: `[Context: Yamaha] NTP 設定 確認`、`[Context: Cisco] ルーティング 確認`、`[Context: NakaokuGW] 設定 表示`）を付与してください。**
@@ -66,14 +67,16 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
 
 pub fn build_planner_schema(registered_devices: &[String]) -> String {
     let device_schema = if !registered_devices.is_empty() {
-        let enum_json = serde_json::to_string(registered_devices).unwrap_or_else(|_| "[]".to_string());
+        let enum_json =
+            serde_json::to_string(registered_devices).unwrap_or_else(|_| "[]".to_string());
         format!(r#"{{ "type": "string", "enum": {} }}"#, enum_json)
     } else {
         r#"{ "type": "string" }"#.to_string()
     };
 
     let target_schema = if !registered_devices.is_empty() {
-        let enum_json = serde_json::to_string(registered_devices).unwrap_or_else(|_| "[]".to_string());
+        let enum_json =
+            serde_json::to_string(registered_devices).unwrap_or_else(|_| "[]".to_string());
         format!(
             r#"{{ "anyOf": [ {{ "type": "string", "enum": {} }}, {{ "type": "null" }} ] }}"#,
             enum_json
@@ -215,6 +218,66 @@ fn fallback_to_rag_for_known_vendor(
     decision.final_answer = None;
 }
 
+fn is_explanatory_request(goal: &str) -> bool {
+    [
+        "教えて",
+        "方法",
+        "手順",
+        "設定例",
+        "コマンド",
+        "とは",
+        "解説",
+    ]
+    .iter()
+    .any(|marker| goal.contains(marker))
+}
+
+/// Returns source text when a documentation request was incorrectly routed
+/// into a parameter interview after RAG had already found relevant material.
+fn explanatory_rag_evidence<'a>(
+    decision: &Decision,
+    network_state: &'a NetworkState,
+    goal: &str,
+) -> Option<&'a str> {
+    if decision.action_type != crate::state::events::ActionType::AskHuman
+        || crate::harness::intent::is_configuration_change_request(goal)
+        || !is_explanatory_request(goal)
+    {
+        return None;
+    }
+
+    let Some(evidence) = network_state
+        .observed
+        .observations
+        .iter()
+        .rev()
+        .find(|observation| observation.source.tool_name.as_deref() == Some("rag_co_worker"))
+        .map(|observation| observation.raw.trim())
+    else {
+        return None;
+    };
+
+    if evidence.is_empty()
+        || evidence.contains("該当する情報が見つかりません")
+        || evidence.contains("資料選定に失敗しました")
+    {
+        return None;
+    }
+
+    Some(evidence)
+}
+
+fn finish_with_evidence_answer(decision: &mut Decision, goal: &str, answer: String) {
+    decision.action_type = crate::state::events::ActionType::Finish;
+    decision.objective = goal.to_string();
+    decision.tool = None;
+    decision.target = None;
+    decision.parameters = serde_json::Value::Null;
+    decision.reason.clear();
+    decision.expected_observation.clear();
+    decision.final_answer = Some(answer);
+}
+
 impl LlmPlanner {
     pub async fn plan(
         app: &AppHandle,
@@ -320,6 +383,20 @@ impl LlmPlanner {
         if !has_builder_handoff {
             fallback_to_rag_for_known_vendor(&mut decision, &device_vendors, initial_goal);
         }
+        if let Some(evidence) = explanatory_rag_evidence(&decision, network_state, initial_goal) {
+            let answer_prompt = format!(
+                "【ユーザーのGoal】\n{initial_goal}\n\n【RAG Workerが選定した資料本文】\n{evidence}\n\n上記の資料本文だけを根拠に、ユーザーのGoalへ日本語で直接回答してください。資料本文をそのまま転載したり、資料名・根拠番号・内部向けの『LLM向けルール』を出力してはいけません。Goalが説明や手順の質問なら、必要なコマンドをコードブロックで整理し、未指定の値は `<VLAN_ID>` や `<INTERFACE>` のようなプレースホルダーとして説明してください。実機への変更を実行したとは言わず、ユーザーに不要な追加質問もしないでください。"
+            );
+            let answer = crate::llm::llm::ask_llm_internal(
+                &answer_prompt,
+                "You are the final response writer for a network agent. Use only the supplied RAG evidence and answer the user's goal directly. Do not expose internal document metadata or instructions.",
+                app,
+                llama_state,
+            )
+            .await
+            .unwrap_or_else(|error| format!("資料は取得できましたが、回答生成に失敗しました: {error}"));
+            finish_with_evidence_answer(&mut decision, initial_goal, answer);
+        }
         Ok(decision)
     }
 }
@@ -384,6 +461,46 @@ mod tests {
             decision.action_type,
             crate::state::events::ActionType::AskHuman
         );
+    }
+
+    #[test]
+    fn explanatory_rag_request_finishes_without_requesting_parameters() {
+        let mut state = NetworkState::with_goal("F220のTrunk VLANの設定を教えて".to_string());
+        state.apply_observation(crate::state::events::Observation {
+            id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            raw: "=== 選択資料: Trunk VLAN ===\ninterface <INTERFACE>\nswitchport trunk allowed vlan <VLAN_ID>".to_string(),
+            parsed: None,
+            source: crate::state::events::ObservationSource {
+                device: Some("F220".to_string()),
+                command: None,
+                tool_name: Some("rag_co_worker".to_string()),
+                tool_kind: None,
+                parameters: None,
+            },
+            provenance: crate::state::events::Provenance {
+                origin: crate::state::events::ProvenanceOrigin::Llm,
+                confidence: None,
+            },
+        });
+        let mut decision = parse_decision_from_json(
+            r#"{"action_type":"ASK_HUMAN","objective":"VLAN IDとポートを確認する","reason":["設定値が未指定"]}"#,
+        )
+        .unwrap();
+
+        let evidence =
+            explanatory_rag_evidence(&decision, &state, "F220のTrunk VLANの設定を教えて").unwrap();
+        finish_with_evidence_answer(
+            &mut decision,
+            "F220のTrunk VLANの設定を教えて",
+            format!("資料を要約した回答です。\n\n{evidence}"),
+        );
+
+        assert_eq!(
+            decision.action_type,
+            crate::state::events::ActionType::Finish
+        );
+        assert!(decision.final_answer.unwrap().contains("<VLAN_ID>"));
     }
 
     #[test]

@@ -8,7 +8,7 @@ use crate::llm::request::{InferenceRequest, InferenceRequestHandler};
 use crate::llm::worker::Route;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 static CANCEL_LLM: AtomicBool = AtomicBool::new(false);
 
@@ -416,6 +416,64 @@ pub async fn analyze_tool_output_internal(
         inference_result
     );
     Ok(inference_result)
+}
+
+/// Delegates retrieval to the RAG co-worker. It uses constrained decoding to
+/// choose document paths from metadata, then returns the selected documents'
+/// original bodies. No user-facing answer or citation-index summary is made.
+pub async fn ask_rag_co_worker(
+    app: &tauri::AppHandle,
+    user_message: String,
+    search_output: String,
+    state: &LlamaState,
+) -> Result<String, LlmError> {
+    let graph = app.state::<crate::graph::SurrealDbState>();
+    let previews = crate::mcp::rag::previews_for_search_result(&search_output, &graph)
+        .await
+        .map_err(|error| {
+            LlmError::Worker(format!("Failed to load RAG document previews: {error}"))
+        })?;
+
+    if previews.is_empty() {
+        return Ok(search_output);
+    }
+
+    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+    let selected_paths = {
+        let shared = state.shared.lock().await;
+        let shared = shared.as_ref().ok_or(LlmError::ModelNotLoaded)?;
+        crate::llm::worker::rag::select_documents(
+            &shared.model,
+            &shared.backend,
+            &user_message,
+            &previews,
+            settings.temperature,
+            settings.repetition_penalty,
+        )
+        .map_err(LlmError::Worker)?
+    };
+
+    let selected_paths = if selected_paths.is_empty() {
+        previews
+            .iter()
+            .take(3)
+            .map(|preview| preview.path.clone())
+            .collect::<Vec<_>>()
+    } else {
+        selected_paths
+    };
+
+    let documents = crate::mcp::rag::expand_selected_documents(&selected_paths, &graph)
+        .await
+        .map_err(|error| {
+            LlmError::Worker(format!("Failed to expand RAG co-worker documents: {error}"))
+        })?;
+
+    if documents.trim().is_empty() {
+        Ok(search_output)
+    } else {
+        Ok(documents)
+    }
 }
 
 pub async fn ask_llm_internal(
