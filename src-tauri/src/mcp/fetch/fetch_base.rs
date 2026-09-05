@@ -233,6 +233,7 @@ pub trait McpCommandFetcher {
     }
 }
 
+#[allow(dead_code)]
 pub fn check_yaml_cache(
     app: &tauri::AppHandle,
     registered_name: &str,

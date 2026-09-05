@@ -138,6 +138,7 @@ impl SnapshotManager {
     }
 
     /// Returns the base directory.
+    #[allow(dead_code)]
     pub fn base_dir(&self) -> &Path {
         &self.base_dir
     }

@@ -26,10 +26,12 @@ npm run cli -- chat "F220のVLAN設定方法を教えて"
 npm run cli -- chat "F220のVLAN設定方法を教えて" --debug
 ```
 
-または JSON 形式で成否や応答データを確認する場合:
+またはエージェントの応答結果を JSON のみで出力・確認する場合（Llama のテキスト表示を抑制）:
 
 ```bash
-npm run cli -- --json chat "F220のVLAN設定方法を教えて"
+npm run cli -- chat "F220のVLAN設定方法を教えて" --json
+# 短縮オプション -j または --agent-json も利用可能
+npm run cli -- chat "F220のVLAN設定方法を教えて" -j
 ```
 
 ### 2. 変更内容に応じた検証クエリの使い分け

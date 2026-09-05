@@ -14,8 +14,8 @@ use tauri::Manager;
 #[derive(Debug, Parser)]
 #[command(name = "mikomai", version, about = "Mikomai network runtime CLI")]
 pub struct Cli {
-    /// Emit machine-readable JSON.
-    #[arg(long, global = true)]
+    /// Emit only the agent response result as JSON (suppressing raw Llama text output).
+    #[arg(long, short = 'j', visible_alias = "agent-json", global = true)]
     json: bool,
 
     /// Show debug and internal logs.
@@ -394,6 +394,24 @@ mod tests {
 
         let cli_default = Cli::try_parse_from(["mikomai", "chat", "hello"]).unwrap();
         assert!(!cli_default.debug);
+    }
+
+    #[test]
+    fn parses_chat_json_flag() {
+        let cli1 = Cli::try_parse_from(["mikomai", "chat", "hello", "--json"]).unwrap();
+        assert!(cli1.json);
+
+        let cli2 = Cli::try_parse_from(["mikomai", "chat", "hello", "-j"]).unwrap();
+        assert!(cli2.json);
+
+        let cli3 = Cli::try_parse_from(["mikomai", "chat", "hello", "--agent-json"]).unwrap();
+        assert!(cli3.json);
+
+        let cli4 = Cli::try_parse_from(["mikomai", "-j", "chat", "hello"]).unwrap();
+        assert!(cli4.json);
+
+        let cli_default = Cli::try_parse_from(["mikomai", "chat", "hello"]).unwrap();
+        assert!(!cli_default.json);
     }
 }
 

@@ -18,8 +18,11 @@ npm run cli -- chat "F220のVLAN設定方法を教えて"
 
 # デバッグログを表示する場合
 npm run cli -- chat "F220のVLAN設定方法を教えて" --debug
+
+# エージェント応答結果を JSON のみで表示する場合
+npm run cli -- chat "F220のVLAN設定方法を教えて" -j
 ```
 
 ## 確認ポイント
-- 出力に適切な回答テキストが含まれていることを確認する（`--debug` 指定時は `[AgentLoop] Step X: Goal reached / Completed:` などの内部ログも確認可能）。
+- 出力に適切な回答テキスト（または `-j` / `--json` 指定時はパース可能な JSON）が含まれていることを確認する（`--debug` 指定時は内部ログも確認可能）。
 
