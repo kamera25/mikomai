@@ -66,10 +66,10 @@ describe("ChatInput Component", () => {
     expect(setInput).toHaveBeenCalledWith("");
   });
 
-  it("allows queueing a message when the model is not loaded", () => {
+  it("allows sending a message even when the model is not loaded", () => {
     const handleSend = vi.fn();
     render(<ChatInput {...defaultProps} modelStatus="NotLoaded" input="hello" handleSend={handleSend} />);
-    const button = screen.getByTitle("送信予約");
+    const button = screen.getByTitle("送信");
     expect(button).not.toBeDisabled();
     fireEvent.click(button);
     expect(handleSend).toHaveBeenCalledWith("hello", []);

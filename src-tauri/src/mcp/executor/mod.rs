@@ -86,6 +86,24 @@ pub async fn handle_chat_request(
     let mut final_user_message = user_message.clone();
     let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
 
+    let has_image_attachment = attachments.as_ref().map_or(false, |items| {
+        items
+            .iter()
+            .any(|item| matches!(item.mime_type, crate::history::AttachmentType::Image))
+    });
+
+    // 1. FastRouter (Shortcut) routing: Execute without loading the LLM model
+    if !has_image_attachment {
+        if let Some(decision) = crate::llm::router::shortcut::detect_shortcut(&user_message) {
+            if decision.confidence >= 0.8 {
+                return run_shortcut_request(window, decision).await;
+            }
+        }
+    }
+
+    // 2. LLM is required: Ensure the model is loaded on demand
+    crate::llm::loader::ensure_model_loaded(&app, llama_state).await?;
+
     if let Some(att_list) = &attachments {
         for att in att_list {
             match att.mime_type {
@@ -375,4 +393,60 @@ async fn run_knowledge_retrieval(
             .unwrap_or_else(|error| format!("検索結果の回答生成に失敗しました: {error}"))
         }
     }
+}
+
+async fn run_shortcut_request(
+    window: Window,
+    decision: crate::llm::router::RoutingDecision,
+) -> Result<String, String> {
+    let task_id = uuid::Uuid::new_v4();
+    let _ = window.emit(
+        "chat-event",
+        crate::mcp::protocol::ChatEvent::McpInitialStarted(
+            crate::mcp::protocol::InitialStartedPayload {
+                task_id,
+                has_image: false,
+            },
+        ),
+    );
+
+    let response_str = match decision.action {
+        crate::llm::router::RouteAction::StaticReply { message } => message,
+        crate::llm::router::RouteAction::DirectToolCall {
+            tool_name,
+            params,
+            message,
+        } => {
+            let tool_call = serde_json::json!({
+                "tool_name": tool_name,
+                "params": params
+            });
+            format!(
+                "{}\n\n```json\n{}\n```",
+                message,
+                serde_json::to_string_pretty(&tool_call).unwrap()
+            )
+        }
+        _ => String::new(),
+    };
+
+    let _ = window.emit(
+        "chat-event",
+        crate::mcp::protocol::ChatEvent::AgentSelected("MIKOMAI".to_string()),
+    );
+    let _ = window.emit(
+        "chat-event",
+        crate::mcp::protocol::ChatEvent::LlmChunk(response_str.clone()),
+    );
+    let _ = window.emit(
+        "chat-event",
+        crate::mcp::protocol::ChatEvent::McpInitialFinished(
+            crate::mcp::protocol::InitialFinishedPayload {
+                task_id,
+                content: response_str.clone(),
+            },
+        ),
+    );
+
+    Ok(response_str)
 }

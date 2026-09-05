@@ -161,3 +161,28 @@ pub async fn load_model_internal(
 
     Ok("Model loaded successfully".to_string())
 }
+
+/// Ensures the model is loaded on demand if not already loaded.
+pub async fn ensure_model_loaded(
+    app: &tauri::AppHandle,
+    state: &LlamaState,
+) -> Result<(), String> {
+    if state.shared.lock().await.is_some() {
+        return Ok(());
+    }
+
+    let settings = crate::settings::load_settings(app.clone()).unwrap_or_default();
+    let path = settings
+        .model_path
+        .as_deref()
+        .filter(|p| !p.trim().is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            "モデルが設定されていません。設定画面でモデルを選択またはダウンロードしてください。".to_string()
+        })?;
+
+    load_model_internal(app.clone(), path, state, true)
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("モデルの読み込みに失敗しました: {e}"))
+}

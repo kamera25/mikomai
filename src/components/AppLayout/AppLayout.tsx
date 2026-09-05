@@ -228,7 +228,7 @@ export function AppLayout() {
     } catch (e) {
       console.error("Failed to handle MCP response:", e);
     } finally {
-      if (queueRef.current.length > 0 && modelStatusRef.current === "Loaded") {
+      if (queueRef.current.length > 0) {
         const next = queueRef.current.shift()!;
         chatDispatch({
           type: "SET_MESSAGE_STATUS",
@@ -241,26 +241,6 @@ export function AppLayout() {
       }
     }
   };
-
-  const executeMessageRef = useRef(executeMessage);
-  useEffect(() => {
-    executeMessageRef.current = executeMessage;
-  }, [executeMessage]);
-
-  // Messages submitted while the model is loading (or unavailable) stay in
-  // the same queue as messages submitted during generation. Start them in
-  // order as soon as the model reports that it is ready.
-  useEffect(() => {
-    if (modelState.modelStatus !== "Loaded" || isExecutingRef.current || queueRef.current.length === 0) {
-      return;
-    }
-    const next = queueRef.current.shift()!;
-    chatDispatch({
-      type: "SET_MESSAGE_STATUS",
-      payload: { sessionId: next.sessionId, taskId: next.task_id, status: undefined },
-    });
-    void executeMessageRef.current(next.content, next.attachments);
-  }, [modelState.modelStatus, chatDispatch]);
 
   const sendMessage = async (text?: string, attachments?: Attachment[]) => {
     const messageText = text !== undefined ? text : chatState.input.trim();
@@ -291,7 +271,7 @@ export function AppLayout() {
       setInput("");
     }
 
-    const isPending = isExecutingRef.current || modelStatusRef.current !== "Loaded";
+    const isPending = isExecutingRef.current;
 
     setMessages((prev) => [
       ...prev,

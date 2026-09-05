@@ -106,6 +106,7 @@ fn configured_model_path(settings: &crate::settings::AppSettings) -> Result<Stri
         })
 }
 
+#[allow(dead_code)]
 async fn ensure_cli_model_loaded(
     app: &tauri::AppHandle,
     settings: &crate::settings::AppSettings,
@@ -144,7 +145,6 @@ fn run_chat(message: String) -> Result<String, String> {
                     let _ = window.hide();
                     let settings =
                         crate::settings::load_settings(handle.clone()).unwrap_or_default();
-                    ensure_cli_model_loaded(&handle, &settings).await?;
                     let summaries =
                         crate::history::load_summaries(handle.clone()).unwrap_or_default();
                     let llama_state = handle.state::<crate::llm::llm::LlamaState>();

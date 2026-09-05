@@ -558,7 +558,6 @@ export const ChatInput = memo(
               type="button"
               className="attach-button"
               onClick={handleAttachClick}
-              disabled={modelStatus !== "Loaded"}
               title="ファイルを添付 (画像・テキスト・バイナリ)"
             >
               <PaperclipIcon size={16} />
@@ -566,9 +565,7 @@ export const ChatInput = memo(
             <textarea
               ref={ref}
               className="chat-input"
-              placeholder={
-                modelStatus === "Loaded" ? t("chat_input.placeholder") : t("chat_input.waiting_model")
-              }
+              placeholder={t("chat_input.placeholder")}
               value={input}
               onChange={handleInputChange}
               onPaste={handlePaste}
@@ -601,7 +598,7 @@ export const ChatInput = memo(
                 className="send-button"
                 onClick={onSend}
                 disabled={!input.trim() && attachments.length === 0}
-                title={modelStatus === "Loaded" ? t("chat_input.btn_send") : t("chat_input.btn_queue")}
+                title={t("chat_input.btn_send")}
               >
                 <SendIcon size={16} />
               </button>
