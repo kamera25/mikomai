@@ -16,7 +16,7 @@ pub async fn load_model(
     path: String,
     state: tauri::State<'_, LlamaState>,
 ) -> Result<String, TauriError> {
-    load_model_internal(app, path, &state)
+    load_model_internal(app, path, &state, true)
         .await
         .map_err(TauriError::from)
 }
@@ -27,6 +27,7 @@ pub async fn load_model_internal(
     app: tauri::AppHandle,
     path: String,
     state: &LlamaState,
+    preload_background: bool,
 ) -> Result<String, LlmError> {
     if path.contains("..") {
         return Err(LlmError::ModelLoad("Path traversal detected".to_string()));
@@ -124,37 +125,39 @@ pub async fn load_model_internal(
         let _ = app.emit("model-status-changed", &*status_lock);
     }
 
-    // Phase 2: Asynchronously warm up preloaded workers in the background
-    let model_bg = model_arc.clone();
-    let backend_bg = state.backend.clone();
-    let shared_bg = shared_model.clone();
-    tokio::task::spawn_blocking(move || {
-        if settings.preload_knowledge {
-            if let Ok(mut w) = shared_bg.knowledge.lock() {
-                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+    if preload_background {
+        // Phase 2: Asynchronously warm up preloaded workers in the background
+        let model_bg = model_arc.clone();
+        let backend_bg = state.backend.clone();
+        let shared_bg = shared_model.clone();
+        tokio::task::spawn_blocking(move || {
+            if settings.preload_knowledge {
+                if let Ok(mut w) = shared_bg.knowledge.lock() {
+                    let _ = w.ensure_initialized(&model_bg, &backend_bg);
+                }
             }
-        }
-        if settings.preload_analysis {
-            if let Ok(mut w) = shared_bg.analysis.lock() {
-                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+            if settings.preload_analysis {
+                if let Ok(mut w) = shared_bg.analysis.lock() {
+                    let _ = w.ensure_initialized(&model_bg, &backend_bg);
+                }
             }
-        }
-        if settings.preload_rag {
-            if let Ok(mut w) = shared_bg.rag.lock() {
-                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+            if settings.preload_rag {
+                if let Ok(mut w) = shared_bg.rag.lock() {
+                    let _ = w.ensure_initialized(&model_bg, &backend_bg);
+                }
             }
-        }
-        if settings.preload_plotter {
-            if let Ok(mut w) = shared_bg.plotter.lock() {
-                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+            if settings.preload_plotter {
+                if let Ok(mut w) = shared_bg.plotter.lock() {
+                    let _ = w.ensure_initialized(&model_bg, &backend_bg);
+                }
             }
-        }
-        if settings.preload_builder {
-            if let Ok(mut w) = shared_bg.builder.lock() {
-                let _ = w.ensure_initialized(&model_bg, &backend_bg);
+            if settings.preload_builder {
+                if let Ok(mut w) = shared_bg.builder.lock() {
+                    let _ = w.ensure_initialized(&model_bg, &backend_bg);
+                }
             }
-        }
-    });
+        });
+    }
 
     Ok("Model loaded successfully".to_string())
 }

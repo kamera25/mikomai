@@ -112,7 +112,7 @@ async fn ensure_cli_model_loaded(
     }
 
     let path = configured_model_path(settings)?;
-    crate::llm::loader::load_model_internal(app.clone(), path, &state)
+    crate::llm::loader::load_model_internal(app.clone(), path, &state, false)
         .await
         .map(|_| ())
         .map_err(|error| format!("Failed to load the configured model for CLI chat: {error}"))
@@ -126,43 +126,63 @@ fn run_chat(message: String) -> Result<String, String> {
     let result = Arc::new(Mutex::new(None));
     let result_for_event = result.clone();
 
-    app.run(move |handle, event| {
-        if !matches!(event, tauri::RunEvent::Ready) {
-            return;
-        }
+    let _ = app.run_return(move |handle, event| match event {
+        tauri::RunEvent::Ready => {
+            let result = result_for_event.clone();
+            let message = message.clone();
+            let handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let response = async {
+                    let window = handle.get_window("main").ok_or_else(|| {
+                        "The Mikomai chat window was not initialized by the Tauri runtime"
+                            .to_string()
+                    })?;
+                    let _ = window.hide();
+                    let settings =
+                        crate::settings::load_settings(handle.clone()).unwrap_or_default();
+                    ensure_cli_model_loaded(&handle, &settings).await?;
+                    let summaries =
+                        crate::history::load_summaries(handle.clone()).unwrap_or_default();
+                    let llama_state = handle.state::<crate::llm::llm::LlamaState>();
+                    let chat_res = crate::mcp::executor::handle_chat_request(
+                        handle.clone(),
+                        window,
+                        &llama_state,
+                        crate::mcp::protocol::ChatRequest {
+                            user_message: message,
+                            summaries,
+                            recent_ips: settings.recent_ips,
+                            history_limit: settings.history_limit,
+                            mcp_timeout: settings.mcp_timeout.unwrap_or(30),
+                            attachments: None,
+                        },
+                    )
+                    .await;
 
-        let result = result_for_event.clone();
-        let message = message.clone();
-        let handle = handle.clone();
-        tauri::async_runtime::spawn(async move {
-            let response = async {
-                let window = handle.get_window("main").ok_or_else(|| {
-                    "The Mikomai chat window was not initialized by the Tauri runtime".to_string()
-                })?;
-                let _ = window.hide();
-                let settings = crate::settings::load_settings(handle.clone()).unwrap_or_default();
-                ensure_cli_model_loaded(&handle, &settings).await?;
-                let summaries = crate::history::load_summaries(handle.clone()).unwrap_or_default();
-                let llama_state = handle.state::<crate::llm::llm::LlamaState>();
-                crate::mcp::executor::handle_chat_request(
-                    handle.clone(),
-                    window,
-                    &llama_state,
-                    crate::mcp::protocol::ChatRequest {
-                        user_message: message,
-                        summaries,
-                        recent_ips: settings.recent_ips,
-                        history_limit: settings.history_limit,
-                        mcp_timeout: settings.mcp_timeout.unwrap_or(30),
-                        attachments: None,
-                    },
-                )
-                .await
+                    // Explicitly unload model and contexts so all Metal GPU buffers
+                    // are deallocated before the process exits.
+                    {
+                        let mut shared = llama_state.shared.lock().await;
+                        *shared = None;
+                        let mut status = llama_state.status.lock().await;
+                        *status = crate::llm::llm::ModelState::NotLoaded;
+                    }
+
+                    chat_res
+                }
+                .await;
+                *result.lock().expect("CLI chat result lock poisoned") = Some(response);
+                handle.exit(0);
+            });
+        }
+        tauri::RunEvent::ExitRequested { .. } => {
+            if let Some(state) = handle.try_state::<crate::llm::llm::LlamaState>() {
+                if let Ok(mut lock) = state.shared.try_lock() {
+                    *lock = None;
+                };
             }
-            .await;
-            *result.lock().expect("CLI chat result lock poisoned") = Some(response);
-            handle.exit(0);
-        });
+        }
+        _ => {}
     });
 
     let response = result
