@@ -47,6 +47,22 @@ pub async fn handle_mcp_message(
     llama_state: State<'_, crate::llm::llm::LlamaState>,
     payload: ChatRequest,
 ) -> Result<(), String> {
+    handle_chat_request(app, window, &llama_state, payload)
+        .await
+        .map(|_| ())
+}
+
+/// Executes the chat pipeline used by both the desktop command and the CLI.
+///
+/// The Tauri command above preserves the GUI's event-driven contract. This
+/// function additionally returns the final response so non-GUI adapters do
+/// not have to recreate a chat timeline from `chat-event` notifications.
+pub async fn handle_chat_request(
+    app: AppHandle,
+    window: Window,
+    llama_state: &crate::llm::llm::LlamaState,
+    payload: ChatRequest,
+) -> Result<String, String> {
     crate::llm::llm::reset_cancel();
     // Keep foreground priority for the complete request, including routing,
     // device I/O, and response generation.
@@ -64,7 +80,7 @@ pub async fn handle_mcp_message(
     } = payload;
 
     if crate::llm::llm::is_cancelled() {
-        return Ok(());
+        return Ok(String::new());
     }
 
     let mut final_user_message = user_message.clone();
@@ -128,7 +144,7 @@ pub async fn handle_mcp_message(
     }
 
     if crate::llm::llm::is_cancelled() {
-        return Ok(());
+        return Ok(String::new());
     }
 
     // Select from the user's request, never from attachment contents. An
@@ -139,13 +155,13 @@ pub async fn handle_mcp_message(
             // AgentLoop owns live network observation and tool execution.
             // Its policy validator remains the only route to side effects.
             let mut agent_loop = crate::harness::agent_loop::AgentLoop::new(app, window, 10);
-            agent_loop.run(final_user_message, &*llama_state).await?;
+            agent_loop.run(final_user_message, llama_state).await
         }
         crate::harness::dispatch::DispatchMode::Worker => {
             run_worker_request(
                 window,
                 final_user_message,
-                &*llama_state,
+                llama_state,
                 crate::mcp::executor::extract::get_history_block_rust(&summaries, history_limit),
                 attachments.as_ref().map_or(false, |items| {
                     items
@@ -153,11 +169,9 @@ pub async fn handle_mcp_message(
                         .any(|item| matches!(item.mime_type, crate::history::AttachmentType::Image))
                 }),
             )
-            .await?;
+            .await
         }
     }
-
-    Ok(())
 }
 
 /// Runs the existing Router -> specialised Worker pipeline for bounded work.
@@ -169,7 +183,7 @@ async fn run_worker_request(
     llama_state: &crate::llm::llm::LlamaState,
     history_block: String,
     has_attachments: bool,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let task_id = uuid::Uuid::new_v4();
     let _ = window.emit(
         "chat-event",
@@ -220,11 +234,11 @@ async fn run_worker_request(
         crate::mcp::protocol::ChatEvent::McpInitialFinished(
             crate::mcp::protocol::InitialFinishedPayload {
                 task_id,
-                content: response,
+                content: response.clone(),
             },
         ),
     );
-    Ok(())
+    Ok(response)
 }
 
 /// Completes the Knowledge Worker's constrained SEARCH decision without going

@@ -44,18 +44,20 @@ npm run tauri build
 
 ### CLI
 
-GUIと同じRust Coreを利用するCLIは `src-tauri` 内にあります。
+GUIと同じRust Coreを利用するCLIが用意されており、npmスクリプトまたはcargoから直接実行できます。
 
 ```bash
-cd src-tauri
-cargo run --bin mikomai-cli -- resources
-cargo run --bin mikomai-cli -- devices
-cargo run --bin mikomai-cli -- get-state <device> <resource>
-cargo run --bin mikomai-cli -- --json get-state <device> arp
+# 最も簡単な実行方法 (npm経由)
+npm run cli -- resources
+npm run cli -- devices
+npm run cli -- get-state <device> <resource>
+npm run cli -- rag-search "VLAN"
+
+# cargo経由
+cargo run --manifest-path src-tauri/Cargo.toml --bin mikomai-cli -- resources
 ```
 
-`get-state` は登録済み機器に対する読み取り専用の操作です。対応resourceは
-`resources` で確認できます。
+より詳細なコマンド一覧や使用例については、[CLI 実行マニュアル](doc/mikomai-cli.md) を参照してください。
 
 ### キャッシュのクリーンアップ
 

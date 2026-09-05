@@ -34,6 +34,11 @@ enum Command {
         /// Natural-language or command query.
         query: String,
     },
+    /// Send a message through the same chat pipeline as the desktop app.
+    Chat {
+        /// Message for Mikomai's network assistant.
+        message: String,
+    },
     /// List devices registered by the Mikomai desktop app.
     Devices,
     /// List state resources supported by the runtime.
@@ -117,6 +122,42 @@ fn run_from(cli: Cli) -> Result<(), String> {
                 print_json(&CliResult { ok: result.success, data: result })
             } else {
                 print!("{}", result.output);
+                Ok(())
+            }
+        }
+        Command::Chat { message } => {
+            let app = crate::build_app().map_err(|error| error.to_string())?;
+            let handle = app.handle().clone();
+            let window = app.get_window("main").ok_or_else(|| {
+                "The Mikomai chat window could not be initialized for the chat command".to_string()
+            })?;
+            let settings = crate::settings::load_settings(handle.clone()).unwrap_or_default();
+            let summaries = crate::history::load_summaries(handle.clone()).unwrap_or_default();
+            let llama_state = handle.state::<crate::llm::llm::LlamaState>();
+            let response =
+                tauri::async_runtime::block_on(crate::mcp::executor::handle_chat_request(
+                    handle.clone(),
+                    window,
+                    &llama_state,
+                    crate::mcp::protocol::ChatRequest {
+                        user_message: message,
+                        summaries,
+                        recent_ips: settings.recent_ips,
+                        history_limit: settings.history_limit,
+                        mcp_timeout: settings.mcp_timeout.unwrap_or(30),
+                        attachments: None,
+                    },
+                ))?;
+            if cli.json {
+                print_json(&CliResult {
+                    ok: true,
+                    data: serde_json::json!({ "response": response }),
+                })
+            } else {
+                print!("{response}");
+                if !response.ends_with('\n') {
+                    println!();
+                }
                 Ok(())
             }
         }
@@ -222,6 +263,15 @@ mod tests {
             cli.command,
             Command::GetState { device, resource, .. }
                 if device == "edge-01" && resource == "mac-table"
+        ));
+    }
+
+    #[test]
+    fn parses_chat_message() {
+        let cli = Cli::try_parse_from(["mikomai", "chat", "show edge-01 interfaces"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Chat { message } if message == "show edge-01 interfaces"
         ));
     }
 }
