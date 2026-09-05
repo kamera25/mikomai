@@ -146,10 +146,14 @@ pub enum Message {
         is_cached: Option<bool>,
         #[serde(rename = "cache_time", skip_serializing_if = "Option::is_none")]
         cache_time: Option<String>,
+        #[serde(rename = "waitingForApproval", skip_serializing_if = "Option::is_none")]
+        waiting_for_approval: Option<bool>,
     },
     AgentResponse {
         #[serde(flatten)]
         base: BaseMessage,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        summary_text: Option<String>,
     },
     SystemMessage {
         #[serde(flatten)]
@@ -191,26 +195,33 @@ pub enum HistoryItem {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum HistoryMutation {
+    #[serde(rename_all = "camelCase")]
     CreateSession {
         title: Option<String>,
     },
+    #[serde(rename_all = "camelCase")]
     CreateFolder {
         name: Option<String>,
     },
+    #[serde(rename_all = "camelCase")]
     RenameSession {
         session_id: uuid::Uuid,
         title: String,
     },
+    #[serde(rename_all = "camelCase")]
     DeleteSession {
         session_id: uuid::Uuid,
     },
+    #[serde(rename_all = "camelCase")]
     ToggleFolder {
         folder_id: uuid::Uuid,
     },
+    #[serde(rename_all = "camelCase")]
     UpdateSessionMessages {
         session_id: uuid::Uuid,
         messages: Vec<Message>,
     },
+    #[serde(rename_all = "camelCase")]
     UpdateSessionRecentIps {
         session_id: uuid::Uuid,
         recent_ips: Vec<String>,
@@ -271,7 +282,7 @@ pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool {
                                 modified = true;
                             }
                         }
-                        Message::AgentResponse { ref mut base }
+                        Message::AgentResponse { ref mut base, .. }
                         | Message::UserInput { ref mut base, .. }
                         | Message::SystemMessage { ref mut base } => {
                             if base.is_tool_loading == Some(true) {
@@ -578,6 +589,7 @@ mod tests {
                 saved_path: None,
                 is_cached: None,
                 cache_time: None,
+                waiting_for_approval: None,
             }],
             recent_ips: None,
         })];
@@ -737,6 +749,146 @@ mod tests {
         assert!(mutate_items(&mut items, &HistoryMutation::DeleteSession { session_id: id }));
         assert!(items.is_empty());
         assert!(first_session_id(&items).is_none());
+    }
+
+    #[test]
+    fn test_mutation_deserialization() {
+        let json_data = r#"{
+            "type": "updateSessionMessages",
+            "sessionId": "a0000000-0000-0000-0000-000000000001",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "fitelnetのVLAN設定を教えて",
+                    "event_type": "UserInput",
+                    "task_id": "a0000000-0000-0000-0000-000000000002"
+                },
+                {
+                    "role": "ai",
+                    "content": "VLAN設定には、アクセスVLANとトランクVLANの2種類があります。",
+                    "event_type": "AgentResponse",
+                    "task_id": "a0000000-0000-0000-0000-000000000003",
+                    "summary_text": "エージェントによる解析を開始"
+                },
+                {
+                    "role": "ai",
+                    "content": "",
+                    "event_type": "ToolExecution",
+                    "task_id": "a0000000-0000-0000-0000-000000000004",
+                    "status": "Success",
+                    "action_name": "設定取得",
+                    "tool_id": "fetch_config",
+                    "summary_text": "設定取得 完了",
+                    "raw_data": "interface GigaEthernet 1/1",
+                    "waitingForApproval": false
+                }
+            ]
+        }"#;
+        let mutation: Result<HistoryMutation, _> = serde_json::from_str(json_data);
+        assert!(mutation.is_ok(), "Failed to deserialize mutation: {:?}", mutation.err());
+    }
+
+    #[tokio::test]
+    async fn test_full_surrealdb_history_lifecycle() {
+        let temp_dir = std::env::temp_dir().join(format!("mikomai-full-test-{}", uuid::Uuid::new_v4()));
+        let state = SurrealDbState::initialize_at(&temp_dir).await.unwrap();
+        history_store::initialize(&state).await.unwrap();
+
+        // 1. Initial state is empty
+        let initial = load_history_from_store(&state).await.unwrap();
+        assert!(initial.is_empty());
+
+        // 2. Create session and save messages
+        let session_id = uuid::Uuid::new_v4();
+        let user_task_id = uuid::Uuid::new_v4();
+        let ai_task_id = uuid::Uuid::new_v4();
+        let user_msg = Message::UserInput {
+            base: BaseMessage {
+                role: MessageRole::User,
+                content: "fitelnetのVLAN設定を教えて".to_string(),
+                timestamp: Some(chrono::Utc::now()),
+                is_tool_loading: None,
+                is_hidden: None,
+                task_id: Some(user_task_id),
+            },
+            status: None,
+            attachments: None,
+        };
+        let ai_msg = Message::AgentResponse {
+            base: BaseMessage {
+                role: MessageRole::Ai,
+                content: "VLAN設定の手順です".to_string(),
+                timestamp: Some(chrono::Utc::now()),
+                is_tool_loading: Some(false),
+                is_hidden: Some(false),
+                task_id: Some(ai_task_id),
+            },
+            summary_text: Some("解析完了".to_string()),
+        };
+
+        let session = ChatSession {
+            id: session_id,
+            title: "Fitelnet VLAN設定".to_string(),
+            messages: vec![user_msg.clone(), ai_msg.clone()],
+            recent_ips: Some(vec!["192.168.1.1".to_string()]),
+        };
+        let history = vec![HistoryItem::Session(session)];
+
+        save_history_to_store(&state, &history).await.unwrap();
+
+        // 3. Load back from SurrealDB and verify contents
+        let loaded = load_history_from_store(&state).await.unwrap();
+        assert_eq!(loaded.len(), 1);
+        if let HistoryItem::Session(s) = &loaded[0] {
+            assert_eq!(s.id, session_id);
+            assert_eq!(s.title, "Fitelnet VLAN設定");
+            assert_eq!(s.recent_ips, Some(vec!["192.168.1.1".to_string()]));
+            assert_eq!(s.messages.len(), 2);
+            assert_eq!(s.messages[0], user_msg);
+            assert_eq!(s.messages[1], ai_msg);
+        } else {
+            panic!("Expected session");
+        }
+
+        // 4. Test mutation serialization via JSON (matching frontend Tauri invoke)
+        let rename_json = format!(r#"{{
+            "type": "renameSession",
+            "sessionId": "{session_id}",
+            "title": "更新されたタイトル"
+        }}"#);
+        let mutation: HistoryMutation = serde_json::from_str(&rename_json).unwrap();
+        let mut mutated_history = loaded;
+        let mutated = mutate_items(&mut mutated_history, &mutation);
+        assert!(mutated);
+        save_history_to_store(&state, &mutated_history).await.unwrap();
+
+        // 5. Simulate reopening SurrealDB (app restart)
+        drop(state);
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        let reopened_state = SurrealDbState::initialize_at(&temp_dir).await.unwrap();
+        let reloaded = load_history_from_store(&reopened_state).await.unwrap();
+        assert_eq!(reloaded.len(), 1);
+        if let HistoryItem::Session(s) = &reloaded[0] {
+            assert_eq!(s.title, "更新されたタイトル");
+            assert_eq!(s.messages.len(), 2);
+        } else {
+            panic!("Expected session");
+        }
+
+        drop(reopened_state);
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_invalid_task_id_fails_deserialization() {
+        let json_data = r#"{
+            "role": "user",
+            "content": "test",
+            "event_type": "UserInput",
+            "task_id": "not-a-valid-uuid"
+        }"#;
+        let result: Result<Message, _> = serde_json::from_str(json_data);
+        assert!(result.is_err(), "Expected error when task_id is not a valid UUID, but got: {:?}", result);
     }
 }
 

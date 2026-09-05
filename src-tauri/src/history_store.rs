@@ -10,10 +10,12 @@ use serde_json::{json, Value};
 use crate::graph::SurrealDbState;
 
 pub async fn initialize(db: &SurrealDbState) -> Result<(), String> {
-    db.db
+    let response = db
+        .db
         .query("DEFINE TABLE chat_history SCHEMALESS;")
         .await
         .map_err(|e| format!("Failed to define chat history schema: {e}"))?;
+    let _ = response.check();
     Ok(())
 }
 
@@ -33,7 +35,8 @@ pub async fn load(db: &SurrealDbState) -> Result<Option<Value>, String> {
 }
 
 pub async fn save(db: &SurrealDbState, history: Value) -> Result<(), String> {
-    db.db
+    let response = db
+        .db
         .query("UPSERT chat_history:primary CONTENT $record;")
         .bind((
             "record",
@@ -44,6 +47,9 @@ pub async fn save(db: &SurrealDbState, history: Value) -> Result<(), String> {
         ))
         .await
         .map_err(|e| format!("Failed to write chat history: {e}"))?;
+    response
+        .check()
+        .map_err(|e| format!("Failed to execute chat history upsert: {e}"))?;
     Ok(())
 }
 

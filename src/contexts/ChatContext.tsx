@@ -111,6 +111,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         messages: nextMessages,
+        history: state.activeSessionId
+          ? updateSessionMessagesInHistory(state.history, state.activeSessionId, nextMessages)
+          : state.history,
       };
     }
     case "SET_INPUT":
@@ -259,12 +262,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.messages, state.activeSessionId, state.isLoaded]);
 
   // Sync messages when active session changes
+  const prevActiveSessionIdRef = useRef(state.activeSessionId);
   useEffect(() => {
-    const session = findSession(state.history, state.activeSessionId);
-    if (session) {
-      dispatch({ type: "SET_MESSAGES", payload: session.messages });
+    if (prevActiveSessionIdRef.current !== state.activeSessionId) {
+      prevActiveSessionIdRef.current = state.activeSessionId;
+      const session = findSession(state.history, state.activeSessionId);
+      if (session) {
+        dispatch({ type: "SET_MESSAGES", payload: session.messages });
+      }
     }
-  }, [state.activeSessionId]);
+  }, [state.activeSessionId, state.history]);
 
   // Sync recentIPs with the active session's cached recent IPs when session changes
   useEffect(() => {
