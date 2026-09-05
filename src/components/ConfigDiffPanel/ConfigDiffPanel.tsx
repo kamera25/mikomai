@@ -25,28 +25,28 @@ interface CommandResult {
   output: string;
 }
 
+// Define Phase Steps for GitHub Actions style grouped logging
+type StepPhaseKey = "fetching_before" | "dry_running" | "deploying" | "verifying";
+
+interface LogStep {
+  key: StepPhaseKey;
+  title: string;
+  status: "pending" | "running" | "success" | "failed";
+  startTime?: number;
+  endTime?: number;
+  logs: string[];
+}
+
+const STEP_DEFINITIONS: { key: StepPhaseKey; title: string }[] = [
+  { key: "fetching_before", title: "現状のConfig取得" },
+  { key: "dry_running", title: "自動Dry-run (Tab補完検証)" },
+  { key: "deploying", title: "Config投入 & 適用" },
+  { key: "verifying", title: "投入後Config取得 & Diff検証" },
+];
+
 export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = React.memo(({ id, isOpen, onClose, style, isResizing }) => {
   const { state: uiState } = useUIContext();
   const proposedDiffData = uiState.configDiffData;
-
-  // Define Phase Steps for GitHub Actions style grouped logging
-  type StepPhaseKey = "fetching_before" | "dry_running" | "deploying" | "verifying";
-
-  interface LogStep {
-    key: StepPhaseKey;
-    title: string;
-    status: "pending" | "running" | "success" | "failed";
-    startTime?: number;
-    endTime?: number;
-    logs: string[];
-  }
-
-  const STEP_DEFINITIONS: { key: StepPhaseKey; title: string }[] = [
-    { key: "fetching_before", title: "現状のConfig取得" },
-    { key: "dry_running", title: "自動Dry-run (Tab補完検証)" },
-    { key: "deploying", title: "Config投入 & 適用" },
-    { key: "verifying", title: "投入後Config取得 & Diff検証" },
-  ];
 
   const [phase, setPhase] = useState<"idle" | "fetching_before" | "dry_running" | "deploying" | "verifying" | "success" | "failed">("idle");
   const [statusMessage, setStatusMessage] = useState<string>("");

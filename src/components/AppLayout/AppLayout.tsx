@@ -302,9 +302,7 @@ export function AppLayout() {
   // Keep callbacks passed to the chat stable. In particular, typing in the
   // input must not re-render the full message timeline.
   const sendMessageRef = useRef(sendMessage);
-  useEffect(() => {
-    sendMessageRef.current = sendMessage;
-  }, [sendMessage]);
+  sendMessageRef.current = sendMessage;
   const handleSend = useCallback(
     (text?: string, attachments?: Attachment[]) => sendMessageRef.current(text, attachments),
     []

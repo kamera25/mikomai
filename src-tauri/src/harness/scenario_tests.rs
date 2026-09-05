@@ -13,7 +13,9 @@ mod tests {
     use crate::harness::state_machine::HarnessState;
     use crate::mcp::protocol::ChatEvent;
     use crate::network::CommandResult;
+    use crate::state::event_log::EventLog;
     use crate::state::events::{ActionType, Decision, HarnessEvent};
+    use crate::state::network_state::NetworkState;
 
     fn make_decision(
         action_type: ActionType,
@@ -349,5 +351,217 @@ mod tests {
 
         assert_eq!(agent.state_machine.state(), HarnessState::Finished);
         assert_eq!(agent.state_machine.step_count(), 2);
+    }
+
+    /// 5. シナリオテスト: 途中終了と再開 (Interruption and Resumption)
+    /// (a) ステップ1（情報取得）実行後に中断されたタスクが、途中までのイベントログを保持しており、
+    /// 再開時に過去の観察結果を引き継いで完了することを確認する。
+    #[tokio::test]
+    async fn test_scenario_interruption_and_resumption_state_recovery() {
+        let temp_dir = std::env::temp_dir().join(format!("mikomai-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let goal = "RT1のルーティングテーブルを確認して".to_string();
+
+        let step1_observe = make_decision(
+            ActionType::Observe,
+            "RT1のルーティングテーブルを取得する",
+            Some("network_show"),
+            Some("RT1"),
+            serde_json::json!({ "command": "show ip route" }),
+            vec!["ルーティング情報の取得"],
+            None,
+        );
+
+        let planner1 = FakePlanner::new(vec![step1_observe.clone()]);
+        let executor1 = FakeToolExecutor::new();
+        executor1.set_tool_result(
+            "network_show",
+            Ok(CommandResult {
+                success: true,
+                output: "S 10.0.0.0/24 [1/0] via 192.168.1.1".to_string(),
+                saved_path: None,
+                is_cached: None,
+                cache_time: None,
+            }),
+        );
+
+        let reporter1 = RecordingReporter::new();
+        let mut agent1 = AgentLoop::new_headless_with_log_dir(10, temp_dir.clone());
+
+        // Run agent 1 - it will execute step 1 and then stop because planner runs out of decisions
+        let result1 = agent1.run_with(goal.clone(), &planner1, &executor1, &reporter1).await;
+        assert!(result1.is_ok());
+        assert!(result1.unwrap().contains("停止しました"));
+
+        // Verify that intermediate event log was persisted to disk despite interruption!
+        let task_id = agent1.network_state.task_id.expect("task_id must be set");
+        let log_file = temp_dir.join(format!("{task_id}.json"));
+        assert!(log_file.exists(), "Event log must be saved even if task was interrupted");
+
+        let loaded_log = EventLog::load_from_path(&log_file).expect("Must be able to load event log");
+        assert!(!loaded_log.is_empty(), "Saved event log must not be empty");
+
+        // Verify that ActionResult in loaded log has idempotency_key
+        let has_idempotency_key = loaded_log.events().iter().any(|ev| {
+            if let HarnessEvent::Result(res) = ev {
+                res.idempotency_key.is_some()
+            } else {
+                false
+            }
+        });
+        assert!(has_idempotency_key, "ActionResult must contain idempotency_key");
+
+        // Now resume: create a new AgentLoop from the loaded event log
+        let restored_state = NetworkState::rebuild_from_log(&loaded_log);
+        assert_eq!(restored_state.observed.observations.len(), 1);
+        assert!(restored_state.observed.observations[0].raw.contains("10.0.0.0/24"));
+
+        let mut agent2 = AgentLoop::from_saved_state(restored_state, 10);
+        let executor2 = FakeToolExecutor::new();
+
+        // Planner on resumption sees the observation and finishes directly
+        let step2_finish = make_decision(
+            ActionType::Finish,
+            "確認完了",
+            None,
+            None,
+            serde_json::Value::Null,
+            vec![],
+            Some("RT1のルーティングテーブル（10.0.0.0/24）を確認しました"),
+        );
+
+        let planner2 = FakePlanner::new(vec![step2_finish]);
+        let reporter2 = RecordingReporter::new();
+
+        let result2 = agent2.run_with(goal, &planner2, &executor2, &reporter2).await;
+        assert!(result2.is_ok());
+        assert_eq!(result2.unwrap(), "RT1のルーティングテーブル（10.0.0.0/24）を確認しました");
+
+        // Verify that executor2 did NOT need to re-execute any tools
+        let executed_tools = executor2.executed_tools();
+        assert_eq!(
+            executed_tools.len(),
+            0,
+            "Tools must NOT be unnecessarily re-executed upon resumption!"
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    /// 5. シナリオテスト: 途中終了と再開 (Interruption and Resumption)
+    /// (b) すでに実行された変更操作（Configure/Rollback）が再開時に再実行されないことを確認する。
+    #[tokio::test]
+    async fn test_scenario_interruption_prevents_duplicate_mutation() {
+        let temp_dir = std::env::temp_dir().join(format!("mikomai-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let goal = "RT1のインターフェースを設定して".to_string();
+
+        let mut initial_log = EventLog::new();
+        let task_id = uuid::Uuid::new_v4();
+        initial_log.push(HarnessEvent::TaskStarted {
+            task_id,
+            timestamp: chrono::Utc::now(),
+        });
+        initial_log.push(HarnessEvent::GoalSet {
+            goal: goal.clone(),
+            timestamp: chrono::Utc::now(),
+        });
+
+        // Simulate an earlier executed mutating action recorded in event log
+        let mutating_action = crate::state::events::Action {
+            id: uuid::Uuid::new_v4(),
+            decision_id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            action_type: ActionType::Configure,
+            tool: Some("network_config".to_string()),
+            target: Some("RT1".to_string()),
+            parameters: serde_json::json!({ "command": "interface Gi0/1\nip address 10.0.0.1 255.255.255.0" }),
+        };
+        let idempotency_key = mutating_action.compute_idempotency_key();
+
+        let observation = crate::state::events::Observation {
+            id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            raw: "Interface configured".to_string(),
+            parsed: None,
+            source: crate::state::events::ObservationSource {
+                device: Some("RT1".to_string()),
+                command: None,
+                tool_name: Some("network_config".to_string()),
+                tool_kind: None,
+                parameters: Some(mutating_action.parameters.clone()),
+            },
+            provenance: crate::state::events::Provenance {
+                origin: crate::state::events::ProvenanceOrigin::Tool,
+                confidence: Some(1.0),
+            },
+        };
+
+        initial_log.push(HarnessEvent::Action(mutating_action.clone()));
+        initial_log.push(HarnessEvent::Result(crate::state::events::ActionResult {
+            id: uuid::Uuid::new_v4(),
+            action_id: mutating_action.id,
+            timestamp: chrono::Utc::now(),
+            success: true,
+            observation,
+            failure_kind: None,
+            idempotency_key: Some(idempotency_key),
+            attempt_count: Some(1),
+        }));
+
+        // Rebuild state from log
+        let restored_state = NetworkState::rebuild_from_log(&initial_log);
+        assert!(restored_state.is_mutating_action_already_executed(&mutating_action));
+
+        // Create AgentLoop from restored state
+        let mut agent = AgentLoop::from_saved_state(restored_state, 10);
+        let executor = FakeToolExecutor::new();
+
+        // Planner proposes the same configure action again, followed by finish
+        let step1_dup = make_decision(
+            ActionType::Configure,
+            "RT1のGigabitEthernet0/1を設定する",
+            Some("network_config"),
+            Some("RT1"),
+            serde_json::json!({ "command": "interface Gi0/1\nip address 10.0.0.1 255.255.255.0" }),
+            vec!["インターフェース設定の再試行"],
+            None,
+        );
+        let step2_finish = make_decision(
+            ActionType::Finish,
+            "完了",
+            None,
+            None,
+            serde_json::Value::Null,
+            vec![],
+            Some("設定が適用済みであることを確認し完了しました"),
+        );
+
+        let planner = FakePlanner::new(vec![step1_dup, step2_finish]);
+        let reporter = RecordingReporter::new();
+
+        let result = agent.run_with(goal, &planner, &executor, &reporter).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "設定が適用済みであることを確認し完了しました");
+
+        // CRITICAL: The mutating action was skipped and NEVER re-executed!
+        let executed = executor.executed_tools();
+        assert!(
+            executed.is_empty(),
+            "Mutating action must NOT be re-executed on resumption: {:?}",
+            executed
+        );
+
+        // Verify reporter emitted skip log
+        let commits = reporter.commit_logs();
+        assert!(
+            commits.iter().any(|c| c.contains("変更操作は実行済みのため再実行をスキップしました")),
+            "Reporter must log skip message: {:?}",
+            commits
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

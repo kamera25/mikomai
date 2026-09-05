@@ -51,7 +51,10 @@ describe("ConnectionSettingsPanel", () => {
 
   it("renders correctly", async () => {
     render(<ConnectionSettingsPanel {...defaultProps} />);
-    expect(screen.getByText("接続設定")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("接続設定")).toBeInTheDocument();
+      expect(screen.getByText("接続が登録されていません。")).toBeInTheDocument();
+    });
   });
 
   it("starts a bulk Node DB refresh in the background", async () => {

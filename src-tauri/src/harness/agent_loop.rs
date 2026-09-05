@@ -22,6 +22,7 @@ pub struct AgentLoop {
     pub window: Option<Window>,
     pub state_machine: HarnessStateMachine,
     pub network_state: NetworkState,
+    pub log_dir: Option<std::path::PathBuf>,
 }
 
 fn builder_handoff_action(output: &str) -> ActionType {
@@ -52,6 +53,7 @@ impl AgentLoop {
             window: Some(window),
             state_machine: HarnessStateMachine::new(max_steps),
             network_state: NetworkState::new(),
+            log_dir: None,
         }
     }
 
@@ -61,6 +63,27 @@ impl AgentLoop {
             window: None,
             state_machine: HarnessStateMachine::new(max_steps),
             network_state: NetworkState::new(),
+            log_dir: None,
+        }
+    }
+
+    pub fn new_headless_with_log_dir(max_steps: usize, log_dir: std::path::PathBuf) -> Self {
+        Self {
+            app: None,
+            window: None,
+            state_machine: HarnessStateMachine::new(max_steps),
+            network_state: NetworkState::new(),
+            log_dir: Some(log_dir),
+        }
+    }
+
+    pub fn from_saved_state(network_state: NetworkState, max_steps: usize) -> Self {
+        Self {
+            app: None,
+            window: None,
+            state_machine: HarnessStateMachine::new(max_steps),
+            network_state,
+            log_dir: None,
         }
     }
 
@@ -113,8 +136,14 @@ impl AgentLoop {
         R: ReporterPort,
     {
         crate::llm::llm::reset_cancel();
-        let task_id = uuid::Uuid::new_v4();
-        self.network_state.start_task(task_id, goal.clone());
+        let task_id = self
+            .network_state
+            .task_id
+            .unwrap_or_else(uuid::Uuid::new_v4);
+        if self.network_state.task_id.is_none() {
+            self.network_state.start_task(task_id, goal.clone());
+        }
+        self.persist_event_log(task_id);
         self.state_machine.transition(HarnessState::Observing)?;
 
         reporter.report(AgentReport::Chat(ChatEvent::McpInitialStarted(
@@ -259,6 +288,7 @@ impl AgentLoop {
             self.network_state
                 .event_log
                 .push(HarnessEvent::Decision(decision.clone()));
+            self.persist_event_log(task_id);
 
             let decision_log = if decision.action_type == ActionType::Finish {
                 format!(
@@ -319,6 +349,25 @@ impl AgentLoop {
                 }
             };
 
+            // Check if this mutating action was already executed in a previous run
+            if self.network_state.is_mutating_action_already_executed(&action) {
+                log::info!(
+                    "[AgentLoop] Step {}: Skipping already executed mutating action {:?} to prevent duplicate execution",
+                    self.state_machine.step_count(),
+                    action.tool
+                );
+                reporter.report(AgentReport::CommitLog(format!(
+                    "[AgentLoop Step {}] ℹ️ 変更操作は実行済みのため再実行をスキップしました: {:?}",
+                    self.state_machine.step_count(),
+                    action.tool
+                )));
+                self.network_state
+                    .event_log
+                    .push(HarnessEvent::Action(action.clone()));
+                self.persist_event_log(task_id);
+                continue;
+            }
+
             if let Err(policy_err) = PolicyValidator::validate_action(&action) {
                 log::warn!(
                     "[AgentLoop] Step {}: Policy violation: {}",
@@ -335,6 +384,7 @@ impl AgentLoop {
             self.network_state
                 .event_log
                 .push(HarnessEvent::Action(action.clone()));
+            self.persist_event_log(task_id);
 
             // 3. Acting & Executing Phase (Tool Execution)
             self.state_machine.transition(HarnessState::Acting)?;
@@ -495,6 +545,7 @@ impl AgentLoop {
             // 5. State Update & Evaluation Phase
             self.network_state
                 .record_action_result(action, cmd_result.success, observation);
+            self.persist_event_log(task_id);
             self.state_machine.transition(HarnessState::Evaluating)?;
         };
 
@@ -515,15 +566,19 @@ impl AgentLoop {
     }
 
     fn persist_event_log(&self, task_id: uuid::Uuid) {
-        let Some(ref app) = self.app else {
+        let directory_opt = if let Some(ref dir) = self.log_dir {
+            Some(dir.clone())
+        } else if let Some(ref app) = self.app {
+            app.path().app_data_dir().ok().map(|d| d.join("agent-events"))
+        } else {
+            None
+        };
+
+        let Some(directory) = directory_opt else {
             return;
         };
+
         let result = (|| -> Result<(), String> {
-            let directory = app
-                .path()
-                .app_data_dir()
-                .map_err(|error| format!("Failed to resolve app data directory: {error}"))?
-                .join("agent-events");
             std::fs::create_dir_all(&directory)
                 .map_err(|error| format!("Failed to create event log directory: {error}"))?;
             self.network_state

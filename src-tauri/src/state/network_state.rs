@@ -62,6 +62,7 @@ impl NetworkState {
         success: bool,
         observation: Observation,
     ) {
+        let idempotency_key = Some(action.compute_idempotency_key());
         self.incorporate_observation(&observation);
         self.event_log.push(HarnessEvent::Result(ActionResult {
             id: uuid::Uuid::new_v4(),
@@ -69,6 +70,13 @@ impl NetworkState {
             timestamp: chrono::Utc::now(),
             success,
             observation,
+            failure_kind: if success {
+                None
+            } else {
+                Some(crate::state::events::ActionFailureKind::CommandError)
+            },
+            idempotency_key,
+            attempt_count: Some(1),
         }));
     }
 
@@ -120,6 +128,32 @@ impl NetworkState {
         }
         state.event_log = log.clone();
         state
+    }
+
+    pub fn is_mutating_action_already_executed(&self, action: &Action) -> bool {
+        use crate::state::events::ActionType;
+        if action.action_type != ActionType::Configure && action.action_type != ActionType::Rollback {
+            return false;
+        }
+        let action_key = action.compute_idempotency_key();
+        self.event_log.events().iter().any(|event| {
+            if let HarnessEvent::Result(result) = event {
+                if let Some(ref existing_key) = result.idempotency_key {
+                    if existing_key == &action_key {
+                        return true;
+                    }
+                }
+                if let Some(ref obs_tool) = result.observation.source.tool_name {
+                    if action.tool.as_deref() == Some(obs_tool.as_str())
+                        && action.target == result.observation.source.device
+                        && result.observation.source.parameters.as_ref() == Some(&action.parameters)
+                    {
+                        return true;
+                    }
+                }
+            }
+            false
+        })
     }
 
     pub fn to_prompt_context(&self) -> String {

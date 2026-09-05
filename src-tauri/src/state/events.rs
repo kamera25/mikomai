@@ -74,8 +74,9 @@ pub struct Decision {
     pub tool: Option<String>,
     pub target: Option<String>,
     pub parameters: serde_json::Value,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reason: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expected_observation: Vec<String>,
     pub final_answer: Option<String>,
 }
@@ -92,6 +93,36 @@ pub struct Action {
     pub parameters: serde_json::Value,
 }
 
+impl Action {
+    pub fn compute_idempotency_key(&self) -> String {
+        use ring::digest::{digest, SHA256};
+        let canonical = serde_json::json!({
+            "action_type": self.action_type,
+            "tool": self.tool,
+            "target": self.target,
+            "parameters": self.parameters,
+        });
+        let bytes = serde_json::to_vec(&canonical).unwrap_or_default();
+        digest(&SHA256, &bytes)
+            .as_ref()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+}
+
+/// Category of failure for executed actions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionFailureKind {
+    Timeout,
+    PolicyViolation,
+    ConnectionError,
+    AuthenticationError,
+    CommandError,
+    Other,
+}
+
 /// Result returned after executing an action
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionResult {
@@ -100,6 +131,12 @@ pub struct ActionResult {
     pub timestamp: DateTime<Utc>,
     pub success: bool,
     pub observation: Observation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_kind: Option<ActionFailureKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_count: Option<u32>,
 }
 
 /// Unified Event Model for reconstructing NetworkState

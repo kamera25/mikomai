@@ -2,7 +2,7 @@ pub mod audit;
 pub(crate) mod background_work;
 pub mod cli;
 mod connections;
-pub(crate) mod crypto;
+pub mod crypto;
 pub(crate) mod error;
 pub(crate) mod graph;
 pub mod harness;

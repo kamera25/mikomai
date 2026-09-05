@@ -30,8 +30,28 @@ impl EventLog {
     pub fn save_to_path(&self, path: &std::path::Path) -> Result<(), String> {
         let serialized = serde_json::to_vec_pretty(self)
             .map_err(|error| format!("Failed to serialize event log: {error}"))?;
-        std::fs::write(path, serialized)
-            .map_err(|error| format!("Failed to save event log to {}: {error}", path.display()))
+        let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+        let temp_name = format!(
+            ".tmp_{}_{}",
+            uuid::Uuid::new_v4(),
+            path.file_name().and_then(|s| s.to_str()).unwrap_or("event_log.json")
+        );
+        let temp_path = parent.join(temp_name);
+
+        std::fs::write(&temp_path, serialized).map_err(|error| {
+            format!(
+                "Failed to write temporary event log to {}: {error}",
+                temp_path.display()
+            )
+        })?;
+
+        std::fs::rename(&temp_path, path).map_err(|error| {
+            let _ = std::fs::remove_file(&temp_path);
+            format!(
+                "Failed to atomically rename event log to {}: {error}",
+                path.display()
+            )
+        })
     }
 
     pub fn load_from_path(path: &std::path::Path) -> Result<Self, String> {

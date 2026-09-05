@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { useHostSuggestions } from "../useHostSuggestions";
 import * as tauriApi from "@tauri-apps/api/core";
 
@@ -21,6 +21,7 @@ describe("useHostSuggestions", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(tauriApi.invoke).mockResolvedValue([]);
   });
 
   it("should fetch hosts on mount", async () => {
@@ -39,8 +40,8 @@ describe("useHostSuggestions", () => {
 
     const { result } = renderHook(() => useHostSuggestions(defaultProps));
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitFor(() => {
+      expect(result.current.availableHosts.length).toBeGreaterThan(0);
     });
 
     expect(result.current.availableHosts).toContainEqual({ hostname: "router-1", ip: "10.0.0.1" });
@@ -48,7 +49,7 @@ describe("useHostSuggestions", () => {
     expect(result.current.availableHosts).toContainEqual({ hostname: "switch-1", ip: "10.0.0.2" });
   });
 
-  it("should add new host to recentIPs", () => {
+  it("should add new host to recentIPs", async () => {
     const setRecentIPs = vi.fn();
     const { result } = renderHook(() =>
       useHostSuggestions({
@@ -63,5 +64,9 @@ describe("useHostSuggestions", () => {
     });
 
     expect(setRecentIPs).toHaveBeenCalledWith(["10.0.0.1", "192.168.1.1"]);
+
+    await waitFor(() => {
+      expect(result.current.availableHosts).toBeDefined();
+    });
   });
 });

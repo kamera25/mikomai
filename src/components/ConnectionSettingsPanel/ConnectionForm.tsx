@@ -1,5 +1,5 @@
 import React from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import Select from "react-select";
 import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -125,13 +125,13 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
     handleSubmit,
     control,
     setValue,
-    watch,
     formState: { errors, dirtyFields },
   } = useForm({
     defaultValues,
   });
 
-  const connectionType = watch("type");
+  const connectionType = useWatch({ control, name: "type" });
+  const authMethod = useWatch({ control, name: "authMethod" });
 
   const deviceTypeOptions = deviceTypes.map((dt) => ({
     value: dt,
@@ -370,7 +370,7 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
                           className="path-input"
                           placeholder={t("connection_panel.key_placeholder")}
                           {...register("privateKeyPath")}
-                          disabled={watch("authMethod") !== "key"}
+                          disabled={authMethod !== "key"}
                         />
                       </div>
                     </div>

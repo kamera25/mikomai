@@ -1,4 +1,4 @@
-use aes_gcm::{
+pub use aes_gcm::{
     aead::{Aead, AeadCore, KeyInit, OsRng},
     Aes256Gcm, Key, Nonce,
 };
@@ -181,6 +181,10 @@ pub fn get_or_create_key<R: tauri::Runtime>(
 pub fn clear_key_cache_for_testing() {
     let mut lock = IN_MEMORY_KEY.lock().unwrap_or_else(|e| e.into_inner());
     *lock = None;
+}
+
+pub fn generate_key() -> Key<Aes256Gcm> {
+    Aes256Gcm::generate_key(OsRng)
 }
 
 pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, CryptoError> {

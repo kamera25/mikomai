@@ -192,8 +192,13 @@ export function useMcpListeners({
     }
   };
 
+  const appendChunkRef = useRef(appendChunk);
+  const finishTaskContentRef = useRef(finishTaskContent);
+
   // Sync refs on every render
   useEffect(() => {
+    appendChunkRef.current = appendChunk;
+    finishTaskContentRef.current = finishTaskContent;
     setMessagesRef.current = setMessages;
     setSummariesRef.current = setSummaries;
     updateRecentHostsRef.current = updateRecentHosts;
@@ -201,6 +206,7 @@ export function useMcpListeners({
 
   useEffect(() => {
     let isCancelled = false;
+    const currentTaskStates = taskStatesRef.current;
     let unlistenFn: (() => void) | null = null;
     let unlistenDiffFn: (() => void) | null = null;
     let unlistenStatusFn: (() => void) | null = null;
@@ -346,7 +352,7 @@ export function useMcpListeners({
             const chunk = chatEvent.payload;
             const targetTaskId = activeInitialTaskIdRef.current || activeAnalysisTaskIdRef.current;
             if (targetTaskId) {
-              appendChunk(targetTaskId, chunk);
+              appendChunkRef.current(targetTaskId, chunk);
             }
             break;
           }
@@ -404,7 +410,7 @@ export function useMcpListeners({
             const currentAccumulated = state ? state.targetContent : "";
             const mergedContent = mergeTaskContent(currentAccumulated, content);
 
-            finishTaskContent(taskId, mergedContent);
+            finishTaskContentRef.current(taskId, mergedContent);
 
             if (activeInitialTaskIdRef.current === taskId) {
               activeInitialTaskIdRef.current = null;
@@ -439,7 +445,7 @@ export function useMcpListeners({
                 )
               );
             } else {
-              finishTaskContent(taskId, content, summaryText);
+              finishTaskContentRef.current(taskId, content, summaryText);
               setSummariesRef.current((prev) => {
                 const next = [...prev, summary];
                 return next.length > 20 ? next.slice(next.length - 20) : next;
@@ -527,13 +533,13 @@ export function useMcpListeners({
 
     return () => {
       isCancelled = true;
-      taskStatesRef.current.forEach((state) => {
+      currentTaskStates.forEach((state) => {
         if (state.timerId) {
           clearTimeout(state.timerId);
           state.timerId = null;
         }
       });
-      taskStatesRef.current.clear();
+      currentTaskStates.clear();
       if (unlistenFn) {
         unlistenFn();
       }
