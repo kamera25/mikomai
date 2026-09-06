@@ -1,6 +1,9 @@
 # ==============================================================================
 # Netmiko ベンダー別 デフォルトコマンドテンプレート定義ファイル
 # ==============================================================================
+# 各コマンドは単一文字列（例: "show running-config"）のほか、
+# 配列/リスト形式（例: ["show interface", "show ip status"] または YAML リスト）も指定可能です。
+# 配列指定時は全コマンドが順次実行され、すべての実行が完了してから Mikomai に返されます。
 
 cisco_ios:
   fetch_config: "show running-config"
@@ -40,7 +43,7 @@ yamaha:
   fetch_route: "show ip route"
   fetch_bgp: "show ip bgp summary"
   fetch_arp: "show arp"
-  fetch_interfaces: "show status lan1"
+  fetch_interfaces: ["show status lan1", "show status lan2", "show status wan1"]
   fetch_lldp: "show status lldp"
   fetch_mac_table: "show status switching-hub mac"
   fetch_ospf: "show ip ospf neighbor"
