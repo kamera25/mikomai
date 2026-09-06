@@ -127,6 +127,7 @@ pub async fn resume_agent_task(
     llama_state: State<'_, crate::llm::llm::LlamaState>,
     task_id: uuid::Uuid,
 ) -> Result<String, String> {
+    crate::llm::loader::ensure_model_loaded(&app, &llama_state).await?;
     let log = load_log(&app, task_id)?;
     let state = NetworkState::rebuild_from_log(&log);
     let goal = state

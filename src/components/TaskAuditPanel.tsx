@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import React, { useEffect, useState } from "react";
 import { RefreshIcon } from "./Icons";
+import { useModelContext } from "../contexts/ModelContext";
 import "./TaskAuditPanel.css";
 
 interface TaskSummary {
@@ -57,9 +58,11 @@ export const TaskAuditPanel: React.FC<{
   onClose: () => void;
   onResume: (task: TaskSummary) => Promise<void>;
 }> = ({ onClose, onResume }) => {
+  const { state: modelState, handleLoadModel } = useModelContext();
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [selected, setSelected] = useState<TaskAudit | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resuming, setResuming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadTasks = async () => {
@@ -87,6 +90,20 @@ export const TaskAuditPanel: React.FC<{
     }
   };
 
+  const handleResume = async (task: TaskSummary) => {
+    setResuming(true);
+    try {
+      if (modelState.modelStatus !== "Loaded") {
+        await handleLoadModel();
+      }
+      await onResume(task);
+    } catch (reason) {
+      setError(`調査を再開できませんでした: ${String(reason)}`);
+    } finally {
+      setResuming(false);
+    }
+  };
+
   return (
     <div className="task-audit-overlay">
       <section className="task-audit-panel" aria-label="エージェント実行履歴">
@@ -98,6 +115,9 @@ export const TaskAuditPanel: React.FC<{
             <button className="toolbar-btn" onClick={() => void loadTasks()}>
               <RefreshIcon size={14} />
               更新
+            </button>
+            <button className="task-audit-close-btn" aria-label="閉じる" onClick={onClose}>
+              ✕
             </button>
           </div>
         </header>
@@ -150,9 +170,10 @@ export const TaskAuditPanel: React.FC<{
                   </div>
                   <button
                     className="task-resume-button"
-                    onClick={() => void onResume(selected.summary)}
+                    onClick={() => void handleResume(selected.summary)}
+                    disabled={resuming || modelState.modelStatus === "Loading"}
                   >
-                    この調査を再開
+                    {resuming || modelState.modelStatus === "Loading" ? "モデル読み込み中..." : "この調査を再開"}
                   </button>
                 </div>
 

@@ -7,6 +7,16 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+const mockHandleLoadModel = vi.fn().mockResolvedValue(undefined);
+let mockModelStatus = "Loaded";
+
+vi.mock("../../contexts/ModelContext", () => ({
+  useModelContext: () => ({
+    state: { modelStatus: mockModelStatus, loadedModelPath: "/path/to/model" },
+    handleLoadModel: mockHandleLoadModel,
+  }),
+}));
+
 describe("TaskAuditPanel", () => {
   const mockTasks = [
     {
@@ -55,6 +65,8 @@ describe("TaskAuditPanel", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockModelStatus = "Loaded";
+    mockHandleLoadModel.mockClear();
     vi.mocked(tauriApi.invoke).mockImplementation(async (cmd, _args) => {
       if (cmd === "list_agent_tasks") {
         return mockTasks;
@@ -111,7 +123,31 @@ describe("TaskAuditPanel", () => {
     });
 
     fireEvent.click(screen.getByText("この調査を再開"));
-    expect(defaultProps.onResume).toHaveBeenCalledWith(mockTasks[0]);
+    await waitFor(() => {
+      expect(defaultProps.onResume).toHaveBeenCalledWith(mockTasks[0]);
+    });
+  });
+
+  it("loads model first if not loaded when resuming", async () => {
+    mockModelStatus = "NotLoaded";
+    render(<TaskAuditPanel {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("F220のVLAN設定の調査")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("F220のVLAN設定の調査"));
+
+    await waitFor(() => {
+      expect(screen.getByText("この調査を再開")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("この調査を再開"));
+
+    await waitFor(() => {
+      expect(mockHandleLoadModel).toHaveBeenCalled();
+      expect(defaultProps.onResume).toHaveBeenCalledWith(mockTasks[0]);
+    });
   });
 
   it("triggers onClose callback when close button is clicked", async () => {

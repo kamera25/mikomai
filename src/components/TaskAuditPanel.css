@@ -440,6 +440,13 @@
   transform: translateY(0);
 }
 
+.task-resume-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .task-audit-note {
   padding: 12px 16px;
   border-radius: 8px;
