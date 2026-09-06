@@ -8,6 +8,15 @@ use crate::mcp::safe_cmd::resolve_safe_command_path;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 
+/// Returns whether a target refers to the machine running Mikomai rather than
+/// a registered network device.
+pub fn is_localhost_target(target: &str) -> bool {
+    matches!(
+        target.trim().to_ascii_lowercase().as_str(),
+        "localhost" | "127.0.0.1" | "::1" | "自機"
+    )
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ArpResult {
     pub success: bool,
@@ -104,5 +113,14 @@ mod tests {
             serialized,
             r#"{"success":true,"output":"arp info","parsed":null,"savedPath":null}"#
         );
+    }
+
+    #[test]
+    fn recognizes_localhost_aliases() {
+        assert!(is_localhost_target("localhost"));
+        assert!(is_localhost_target(" 127.0.0.1 "));
+        assert!(is_localhost_target("::1"));
+        assert!(is_localhost_target("自機"));
+        assert!(!is_localhost_target("router-01"));
     }
 }

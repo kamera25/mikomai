@@ -184,6 +184,42 @@ pub async fn dispatch_get_state(
 ) -> Result<CommandResult, String> {
     match resource {
         StateResource::Arp => {
+            if crate::mcp::arp::is_localhost_target(device_name) {
+                let local_result = crate::mcp::arp::self_network_arp(app.clone()).await?;
+                if !local_result.success {
+                    return Ok(local_result.into());
+                }
+                let graph = app.state::<SurrealDbState>();
+                graph
+                    .ingest(GraphIngestInput {
+                        source_id: "mcp.get_state.local_arp".to_string(),
+                        collected_at: chrono::Utc::now(),
+                        device_name: "localhost".to_string(),
+                        kind: GraphDataKind::Arp,
+                        raw: local_result.output,
+                        normalized: None,
+                        canonical: None,
+                        evidence: None,
+                        normalizer_version: "arp-local-raw-v1".to_string(),
+                    })
+                    .await?;
+                crate::graph::canonicalize_arp_on_read(&app, &graph, "localhost").await?;
+                let canonical = graph
+                    .fresh_canonical("localhost", GraphDataKind::Arp)
+                    .await?
+                    .ok_or_else(|| {
+                        "local ARP canonicalization did not produce a canonical observation"
+                            .to_string()
+                    })?;
+                return Ok(CommandResult {
+                    success: true,
+                    output: serde_json::to_string_pretty(&canonical)
+                        .unwrap_or_else(|_| canonical.to_string()),
+                    saved_path: local_result.saved_path,
+                    is_cached: Some(false),
+                    cache_time: None,
+                });
+            }
             let llama_state = app.state::<crate::llm::llm::LlamaState>();
             crate::mcp::fetch::fetch_arp::fetch_arp(
                 app.clone(),

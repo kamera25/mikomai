@@ -608,14 +608,54 @@ pub async fn canonicalize_arp_on_read(
     else {
         return Ok(false);
     };
-    let os_type = crate::mcp::fetch::fetch_base::resolve_device_config(app, device_name)
-        .await
-        .map(|config| config.device_type)
-        .unwrap_or_else(|_| "unknown".to_string());
-    let llama_state = app.state::<crate::llm::llm::LlamaState>();
-    let canonicalized =
-        crate::mcp::arp::llm::convert_raw_to_yaml(app, &llama_state, &raw, device_name, &os_type)
+    let (canonical, normalized, evidence, normalizer_version) =
+        if crate::mcp::arp::is_localhost_target(device_name) {
+            // Local ARP output is already parsed by the platform-specific
+            // collector. Keep canonicalization deterministic and do not make
+            // localhost depend on a registered device or an LLM.
+            let table = if cfg!(target_os = "windows") {
+                crate::mcp::arp::windows::parse_windows_arp(&raw)?
+            } else {
+                crate::mcp::arp::macos::parse_macos_arp(&raw)?
+            };
+            let yaml = serde_yaml::to_string(&table)
+                .map_err(|error| format!("Failed to serialize local ARP table: {error}"))?;
+            let canonical = serde_json::to_value(&table)
+                .map_err(|error| format!("Failed to serialize local ARP canonical data: {error}"))?;
+            (
+                canonical,
+                normalize_yaml(GraphDataKind::Arp, &yaml),
+                None,
+                "arp-local-v1".to_string(),
+            )
+        } else {
+            let os_type = crate::mcp::fetch::fetch_base::resolve_device_config(app, device_name)
+                .await
+                .map(|config| config.device_type)
+                .unwrap_or_else(|_| "unknown".to_string());
+            let llama_state = app.state::<crate::llm::llm::LlamaState>();
+            let canonicalized = crate::mcp::arp::llm::convert_raw_to_yaml(
+                app,
+                &llama_state,
+                &raw,
+                device_name,
+                &os_type,
+            )
             .await?;
+            let canonical = serde_yaml::from_str::<serde_yaml::Value>(&canonicalized.yaml)
+                .ok()
+                .and_then(|value| serde_json::to_value(value).ok())
+                .ok_or_else(|| "Failed to decode canonical ARP YAML".to_string())?;
+            (
+                canonical,
+                normalize_yaml(GraphDataKind::Arp, &canonicalized.yaml),
+                Some(
+                    serde_json::to_value(canonicalized.evidence)
+                        .map_err(|error| format!("Failed to serialize ARP evidence: {error}"))?,
+                ),
+                "arp-constrained-index-v1".to_string(),
+            )
+        };
     state
         .ingest(GraphIngestInput {
             source_id: "graph.read_through_canonicalization".to_string(),
@@ -623,15 +663,10 @@ pub async fn canonicalize_arp_on_read(
             device_name: device_name.to_string(),
             kind: GraphDataKind::Arp,
             raw,
-            normalized: normalize_yaml(GraphDataKind::Arp, &canonicalized.yaml),
-            canonical: serde_yaml::from_str::<serde_yaml::Value>(&canonicalized.yaml)
-                .ok()
-                .and_then(|value| serde_json::to_value(value).ok()),
-            evidence: Some(
-                serde_json::to_value(canonicalized.evidence)
-                    .map_err(|error| format!("Failed to serialize ARP evidence: {error}"))?,
-            ),
-            normalizer_version: "arp-constrained-index-v1".to_string(),
+            normalized,
+            canonical: Some(canonical),
+            evidence,
+            normalizer_version,
         })
         .await?;
     Ok(true)
