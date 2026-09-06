@@ -11,6 +11,7 @@ use std::path::Path;
 use surrealdb::engine::local::{Db, RocksDb};
 use surrealdb::Surreal;
 use tauri::Manager;
+use validator::Validate;
 use crate::graph_identity::{content_hash as fnv1a, record_key};
 
 pub const GRAPH_TTL_MINUTES: i64 = 20;
@@ -183,6 +184,15 @@ DEFINE INDEX rag_chunk_embedding ON TABLE rag_chunk FIELDS embedding HNSW DIMENS
     pub async fn ingest(&self, input: GraphIngestInput) -> Result<(), String> {
         if input.device_name.trim().is_empty() || input.source_id.trim().is_empty() {
             return Err("Graph ingestion requires a device name and source ID".to_string());
+        }
+        if matches!(&input.kind, GraphDataKind::Interfaces) {
+            if let Some(canonical) = &input.canonical {
+                let table = serde_json::from_value::<crate::schema::interface::UniversalInterfaceTable>(canonical.clone())
+                    .map_err(|error| format!("Invalid canonical interface document: {error}"))?;
+                table
+                    .validate()
+                    .map_err(|error| format!("Canonical interface document failed validation: {error}"))?;
+            }
         }
         let observation_id = uuid::Uuid::new_v4().to_string();
         let kind = serde_json::to_string(&input.kind).unwrap_or_else(|_| "\"unknown\"".to_string());
