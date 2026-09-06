@@ -33,28 +33,48 @@ pub fn select_documents(
     temperature: f32,
     repetition_penalty: f32,
 ) -> Result<Vec<String>, String> {
-    if previews.is_empty() { return Ok(Vec::new()); }
+    if previews.is_empty() {
+        return Ok(Vec::new());
+    }
     let catalog = serde_json::to_string(previews)
         .map_err(|error| format!("Failed to serialize RAG document catalog: {error}"))?;
     let prompt = format!(
         "ユーザーの質問: {user_message}\n\n候補資料（本文は未読）: {catalog}\n\n質問に直接答えるために必要な資料の path を最大3件だけ選んでください。候補外のpathは絶対に出力せず、不要なら空配列にしてください。"
     );
     let mut context = AgentContext::new(
-        model.clone(), backend.clone(),
+        model.clone(),
+        backend.clone(),
         "You select relevant network-document sources. Return only valid JSON.",
-        6, SELECTOR_MAX_NEW_TOKENS, 4096,
-    ).map_err(|error| format!("Failed to create RAG document selector: {error:?}"))?;
+        6,
+        SELECTOR_MAX_NEW_TOKENS,
+        4096,
+    )
+    .map_err(|error| format!("Failed to create RAG document selector: {error:?}"))?;
     let grammar = llama_cpp_2::json_schema_to_grammar(DOCUMENT_SELECTION_SCHEMA)
         .map_err(|error| format!("Failed to create RAG selector grammar: {error:?}"))?;
     let sampler = LlamaSampler::grammar(&context.model, &grammar, "root")
         .map_err(|error| format!("Failed to create RAG selector sampler: {error:?}"))?;
     let output = crate::llm::llm_manager::run_inference_with_grammar(
-        &mut context, &prompt, None, temperature, repetition_penalty, Some(sampler),
-    ).map_err(|error| format!("RAG document selection failed: {error:?}"))?;
+        &mut context,
+        &prompt,
+        None,
+        temperature,
+        repetition_penalty,
+        Some(sampler),
+    )
+    .map_err(|error| format!("RAG document selection failed: {error:?}"))?;
     let selection: DocumentSelection = serde_json::from_str(output.trim())
         .map_err(|error| format!("RAG document selector returned invalid JSON: {error}"))?;
-    let allowed: std::collections::HashSet<_> = previews.iter().map(|preview| preview.path.as_str()).collect();
-    Ok(selection.paths.into_iter().filter(|path| allowed.contains(path.as_str())).take(3).collect())
+    let allowed: std::collections::HashSet<_> = previews
+        .iter()
+        .map(|preview| preview.path.as_str())
+        .collect();
+    Ok(selection
+        .paths
+        .into_iter()
+        .filter(|path| allowed.contains(path.as_str()))
+        .take(3)
+        .collect())
 }
 
 pub struct RagWorker {

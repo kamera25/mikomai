@@ -1,4 +1,5 @@
 pub mod download;
+pub mod fast_agent;
 pub mod llm;
 pub mod llm_manager;
 pub mod loader;

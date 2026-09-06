@@ -11,7 +11,7 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
 1. 「登録機器情報」および「これまでに実行したツールとその結果」を必ず確認してください。
    - 対象機器（例: NakaokuGW）が登録されている場合、そのベンダー名（例: yamaha）を把握し、その機種に応じた適切なコマンドや検索を行ってください。
 2. 既にツールを実行し結果が得られている場合：
-   - 【成功時】その結果をもってユーザーの目標（質問や調査）に回答できる場合は、直ちに action_type: "FINISH" を選択し、final_answer に分かりやすい分析・結果サマリーを記述してください。
+   - 【成功時】その結果をもってユーザーの目標（質問や調査）に回答できる場合は、直ちに action_type: "FINISH" を選択し、final_answer には完了した事実・根拠・制約だけを短く記述してください。ユーザー向けの自然な最終回答はCoordinator経由のFast Agentが担当するため、挨拶・提案・ツール呼び出しは書かないでください。
    - 【コマンドエラー／失敗時】実行したコマンドが「無効なコマンド」「構文エラー」「エラー: コマンドが見つかりません」「% Invalid input」「unknown command」等で失敗した、または機器のOSやメーカー（Yamaha, Cisco, Juniper, Fortinet等）でコマンドが異なる疑いがある場合：
      * **絶対に同じ誤ったコマンドを再実行しないでください。**
      * **直ちに `tool: "query_nw_db"` (RAG検索) を action_type: "OBSERVE" で実行し、対象機種の正しいコマンド仕様を調査してください。**
@@ -60,7 +60,7 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
   "expected_observation": [
     "このアクションで期待される観察結果 (例: 最新のARPテーブル情報)"
   ],
-  "final_answer": "FINISHの場合にユーザーへ提示する最終報告サマリー（Markdown形式）。FINISHではreasonを書かず、このフィールドだけに集約する"
+  "final_answer": "FINISHの場合の完了事実メモ。CoordinatorがFast Agentへ渡すため、ユーザー向けの会話文・提案・ツール呼び出しは含めない。FINISHではreasonを書かず、このフィールドだけに集約する"
 }
 ```
 "#;

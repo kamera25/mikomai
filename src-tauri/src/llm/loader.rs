@@ -177,10 +177,7 @@ pub async fn load_model_internal(
 }
 
 /// Ensures the model is loaded on demand if not already loaded.
-pub async fn ensure_model_loaded(
-    app: &tauri::AppHandle,
-    state: &LlamaState,
-) -> Result<(), String> {
+pub async fn ensure_model_loaded(app: &tauri::AppHandle, state: &LlamaState) -> Result<(), String> {
     if state.shared.lock().await.is_some() {
         return Ok(());
     }
@@ -192,7 +189,8 @@ pub async fn ensure_model_loaded(
         .filter(|p| !p.trim().is_empty())
         .map(str::to_owned)
         .ok_or_else(|| {
-            "モデルが設定されていません。設定画面でモデルを選択またはダウンロードしてください。".to_string()
+            "モデルが設定されていません。設定画面でモデルを選択またはダウンロードしてください。"
+                .to_string()
         })?;
 
     load_model_internal(app.clone(), path, state, true)

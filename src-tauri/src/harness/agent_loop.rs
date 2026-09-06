@@ -1,3 +1,4 @@
+use crate::harness::coordinator::{Coordinator, CoordinatorNext, WorkerOutcome};
 use crate::harness::ports::{
     AgentReport, LlmPlannerPort, McpToolExecutorPort, PlannerPort, ReporterPort, TauriReporterPort,
     ToolExecutorPort,
@@ -25,7 +26,7 @@ pub struct AgentLoop {
     pub log_dir: Option<std::path::PathBuf>,
 }
 
-fn builder_handoff_action(output: &str) -> ActionType {
+fn builder_handoff_outcome(output: &str) -> WorkerOutcome {
     let output = output.to_lowercase();
     if [
         "不足",
@@ -37,12 +38,16 @@ fn builder_handoff_action(output: &str) -> ActionType {
     .iter()
     .any(|marker| output.contains(marker))
     {
-        ActionType::AskHuman
+        WorkerOutcome::AwaitingUserInput {
+            message: output.to_string(),
+        }
     } else {
         // Cancellation, validation/dry-run failure, connection errors, and
         // successful deployments all terminate this agent run. In each case
         // the Builder result is the authoritative user-facing outcome.
-        ActionType::Finish
+        WorkerOutcome::Completed {
+            completion_brief: output.to_string(),
+        }
     }
 }
 
@@ -119,8 +124,7 @@ impl AgentLoop {
         let planner = LlmPlannerPort::new(app.clone(), llama_state);
         let executor = McpToolExecutorPort::new(app, window.clone(), llama_state);
         let reporter = TauriReporterPort::new(window);
-        self.run_with(goal, &planner, &executor, &reporter)
-            .await
+        self.run_with(goal, &planner, &executor, &reporter).await
     }
 
     pub async fn run_with<P, E, R>(
@@ -181,10 +185,7 @@ impl AgentLoop {
                 self.state_machine.step_count()
             ))));
 
-            let mut decision: Decision = match planner
-                .plan(&self.network_state)
-                .await
-            {
+            let mut decision: Decision = match planner.plan(&self.network_state).await {
                 Ok(d) => d,
                 Err(e) => {
                     log::warn!(
@@ -217,17 +218,22 @@ impl AgentLoop {
             // must not resume live commands, RAG, or a second configuration
             // attempt from that result.
             if let Some(builder_output) = self.latest_builder_coworker_result() {
-                let action_type = builder_handoff_action(builder_output);
-                let is_missing_input = action_type == ActionType::AskHuman;
-                decision.action_type = action_type;
-                decision.objective = if is_missing_input {
-                    format!(
-                        "Builderの結果で不足している値を確認してください。\n\n{}",
-                        builder_output
-                    )
-                } else {
-                    "Builder Co-Workerの結果を報告する".to_string()
-                };
+                match Coordinator::after_worker(builder_handoff_outcome(builder_output)) {
+                    CoordinatorNext::AskUser { message } => {
+                        decision.action_type = ActionType::AskHuman;
+                        decision.objective = format!(
+                            "Builderの結果で不足している値を確認してください。\n\n{}",
+                            message
+                        );
+                        decision.final_answer = None;
+                    }
+                    CoordinatorNext::PresentWithFastAgent { completion_brief } => {
+                        decision.action_type = ActionType::Finish;
+                        decision.objective = "Builder Co-Workerの結果を報告する".to_string();
+                        decision.final_answer = Some(completion_brief);
+                    }
+                    _ => unreachable!("Builder handoff only yields input or completion"),
+                }
                 decision.tool = None;
                 decision.target = None;
                 decision.parameters = serde_json::Value::Null;
@@ -236,11 +242,6 @@ impl AgentLoop {
                         .to_string(),
                 ];
                 decision.expected_observation = Vec::new();
-                decision.final_answer = if is_missing_input {
-                    None
-                } else {
-                    Some(builder_output.to_string())
-                };
             }
 
             // STEP 1のobjectiveをキャプチャし、STEP 2以降は当初のobjectiveを強制的に継承・挿入
@@ -261,9 +262,9 @@ impl AgentLoop {
                 }
             }
 
-            // FINISH is a user-facing terminal response. Keep its content in
-            // final_answer only, even if the planner or a fallback attached a
-            // diagnostic reason.
+            // FINISH declares that the workflow is complete. The Planner's
+            // `final_answer` is a factual brief only; the Fast Agent owns the
+            // user-facing wording through the Coordinator below.
             if decision.action_type == ActionType::Finish {
                 decision.reason.clear();
             }
@@ -310,12 +311,19 @@ impl AgentLoop {
 
             if decision.action_type == ActionType::Finish {
                 self.state_machine.transition(HarnessState::Finished)?;
-                let summary_text = if let Some(ref ans) = decision.final_answer {
-                    ans.clone()
-                } else if !decision.reason.is_empty() {
-                    decision.reason.join("\n")
-                } else {
-                    "目標が達成されました。".to_string()
+                let next = Coordinator::after_planner_terminal(
+                    decision.action_type,
+                    decision.final_answer.clone(),
+                );
+                let summary_text = match next {
+                    CoordinatorNext::PresentWithFastAgent { completion_brief } => executor
+                        .present_completion(goal.clone(), completion_brief.clone())
+                        .await
+                        // The factual brief is safe to return if the optional
+                        // presentation model is unavailable; it never causes a
+                        // tool retry or changes a completed operation.
+                        .unwrap_or(completion_brief),
+                    _ => "目標が達成されました。".to_string(),
                 };
                 log::info!(
                     "[AgentLoop] Step {}: Goal reached / Completed: {}",
@@ -350,7 +358,10 @@ impl AgentLoop {
             };
 
             // Check if this mutating action was already executed in a previous run
-            if self.network_state.is_mutating_action_already_executed(&action) {
+            if self
+                .network_state
+                .is_mutating_action_already_executed(&action)
+            {
                 log::info!(
                     "[AgentLoop] Step {}: Skipping already executed mutating action {:?} to prevent duplicate execution",
                     self.state_machine.step_count(),
@@ -423,11 +434,7 @@ impl AgentLoop {
                 && !self.has_builder_coworker_result()
             {
                 let builder_result = executor
-                    .execute_builder(
-                        goal.clone(),
-                        tool_name.clone(),
-                        tool_args.clone(),
-                    )
+                    .execute_builder(goal.clone(), tool_name.clone(), tool_args.clone())
                     .await
                     .unwrap_or_else(|error| {
                         format!("Builder Co-Workerの実行に失敗しました: {}", error)
@@ -511,10 +518,7 @@ impl AgentLoop {
                     ))));
 
                     let co_worker_result = executor
-                        .execute_rag_co_worker(
-                            goal.clone(),
-                            cmd_result.output.clone(),
-                        )
+                        .execute_rag_co_worker(goal.clone(), cmd_result.output.clone())
                         .await
                         .unwrap_or_else(|error| {
                             format!("RAG Co-Workerの資料選定に失敗しました: {error}")
@@ -569,7 +573,10 @@ impl AgentLoop {
         let directory_opt = if let Some(ref dir) = self.log_dir {
             Some(dir.clone())
         } else if let Some(ref app) = self.app {
-            app.path().app_data_dir().ok().map(|d| d.join("agent-events"))
+            app.path()
+                .app_data_dir()
+                .ok()
+                .map(|d| d.join("agent-events"))
         } else {
             None
         };
@@ -596,9 +603,9 @@ impl AgentLoop {
 
 #[cfg(test)]
 mod tests {
-    use super::builder_handoff_action;
+    use super::builder_handoff_outcome;
+    use crate::harness::coordinator::WorkerOutcome;
     use crate::harness::intent::is_configuration_change_request;
-    use crate::state::events::ActionType;
 
     #[test]
     fn only_change_requests_handoff_rag_to_builder_coworker() {
@@ -610,13 +617,13 @@ mod tests {
 
     #[test]
     fn builder_failure_never_resumes_network_commands() {
-        assert_eq!(
-            builder_handoff_action("Config投入中にエラーが発生しました"),
-            ActionType::Finish
-        );
-        assert_eq!(
-            builder_handoff_action("設定に必要な値が不足しています: vlan_id"),
-            ActionType::AskHuman
-        );
+        assert!(matches!(
+            builder_handoff_outcome("Config投入中にエラーが発生しました"),
+            WorkerOutcome::Completed { .. }
+        ));
+        assert!(matches!(
+            builder_handoff_outcome("設定に必要な値が不足しています: vlan_id"),
+            WorkerOutcome::AwaitingUserInput { .. }
+        ));
     }
 }

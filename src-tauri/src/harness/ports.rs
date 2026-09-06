@@ -37,6 +37,16 @@ pub trait ToolExecutorPort {
     ) -> Result<String, String> {
         Ok(raw_output)
     }
+
+    /// Presentation is deliberately separated from planning and tool work.
+    /// Test doubles retain the factual brief; the live port invokes Fast Agent.
+    async fn present_completion(
+        &self,
+        _goal: String,
+        completion_brief: String,
+    ) -> Result<String, String> {
+        Ok(completion_brief)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -129,6 +139,15 @@ impl<'a> ToolExecutorPort for McpToolExecutorPort<'a> {
         crate::llm::llm::ask_rag_co_worker(&self.app, goal, raw_output, self.llama)
             .await
             .map_err(|e| e.to_string())
+    }
+
+    async fn present_completion(
+        &self,
+        goal: String,
+        completion_brief: String,
+    ) -> Result<String, String> {
+        crate::llm::fast_agent::present_completion(&self.app, self.llama, &goal, &completion_brief)
+            .await
     }
 }
 

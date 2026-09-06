@@ -333,7 +333,10 @@ pub async fn ask_llm_initial_internal(
                             tool: Some(tool_name.clone()),
                             target,
                             parameters: params,
-                            reason: vec![format!("FastRouterによる決定的ショートカット実行: {}", tool_name)],
+                            reason: vec![format!(
+                                "FastRouterによる決定的ショートカット実行: {}",
+                                tool_name
+                            )],
                             expected_observation: vec![format!("{}の実行結果", tool_name)],
                             final_answer: None,
                         };
