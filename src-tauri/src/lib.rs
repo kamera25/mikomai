@@ -119,7 +119,6 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
             mcp::ping::self_network_ping,
             mcp::traceroute::self_network_traceroute,
             mcp::test_connection::self_network_test_connection,
-            mcp::hosts::network_get_hosts,
             mcp::hosts::require_host_registered,
             mcp::ip_info::network_get_ip_info,
             mcp::console::network_list_serial_ports,

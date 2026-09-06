@@ -8,7 +8,6 @@ pub enum ToolKind {
     SelfNetworkTestConnection,
     #[serde(rename = "self_network_test_net_connection")]
     SelfNetworkTestNetConnection,
-    NetworkGetHosts,
     NetworkQueryNwDb,
     QueryNwDb,
     QueryRag,
@@ -48,7 +47,6 @@ impl ToolKind {
             Self::SelfNetworkTraceroute => "self_network_traceroute",
             Self::SelfNetworkTestConnection => "self_network_test_connection",
             Self::SelfNetworkTestNetConnection => "self_network_test_net_connection",
-            Self::NetworkGetHosts => "network_get_hosts",
             Self::NetworkQueryNwDb => "network_query_nw_db",
             Self::QueryNwDb => "query_nw_db",
             Self::QueryRag => "query_rag",
@@ -89,7 +87,6 @@ impl ToolKind {
             Self::SelfNetworkTestConnection | Self::SelfNetworkTestNetConnection => {
                 "Test Connection"
             }
-            Self::NetworkGetHosts => "Host List",
             Self::NetworkQueryNwDb | Self::QueryNwDb | Self::QueryRag => "NWDB検索",
             Self::QueryNetworkGraph => "ネットワークグラフ検索",
             Self::SelfNetworkArp => "ARP Table",
@@ -189,7 +186,6 @@ impl ToolKind {
                 | Self::SelfNetworkTraceroute
                 | Self::SelfNetworkTestConnection
                 | Self::SelfNetworkTestNetConnection
-                | Self::NetworkGetHosts
                 | Self::NetworkQueryNwDb
                 | Self::QueryNwDb
                 | Self::QueryRag
@@ -226,7 +222,6 @@ impl std::str::FromStr for ToolKind {
             "self_network_traceroute" => Ok(Self::SelfNetworkTraceroute),
             "self_network_test_connection" => Ok(Self::SelfNetworkTestConnection),
             "self_network_test_net_connection" => Ok(Self::SelfNetworkTestNetConnection),
-            "network_get_hosts" => Ok(Self::NetworkGetHosts),
             "network_query_nw_db" => Ok(Self::NetworkQueryNwDb),
             "query_nw_db" => Ok(Self::QueryNwDb),
             "query_rag" => Ok(Self::QueryRag),

@@ -1,65 +1,11 @@
 use crate::mcp::protocol::McpToolResult;
 
-pub type HostListResult = McpToolResult;
-
 #[tauri::command]
-pub async fn network_get_hosts(app: tauri::AppHandle) -> Result<HostListResult, String> {
-    use crate::connections::load_connections;
-
-    let var_name = "登録されている接続可能なホスト一覧:\n\n".to_string();
-    let mut output = var_name;
-    output.push_str("| ホスト名 | IPアドレス | 接続タイプ | ソース |\n");
-    output.push_str("|----------|------------|------------|--------|\n");
-
-    let mut count = 0;
-
-    // Load local connections
-    if let Ok(connections) = load_connections(app.clone()) {
-        for conn in connections {
-            let ip_str = if conn.ip_string().is_empty() {
-                "-".to_string()
-            } else {
-                conn.ip_string()
-            };
-            output.push_str(&format!(
-                "| {} | {} | {} | ローカル設定 |\n",
-                conn.hostname, ip_str, conn.conn_type
-            ));
-            count += 1;
-        }
-    }
-
-    if count == 0 {
-        output = "登録されているホストが見つかりませんでした。".to_string();
-    }
-
-    Ok(HostListResult {
-        success: true,
-        output,
-    })
-}
-
-#[tauri::command]
-pub fn require_host_registered() -> Result<HostListResult, String> {
-    Ok(HostListResult {
+pub fn require_host_registered() -> Result<McpToolResult, String> {
+    Ok(McpToolResult {
         success: false,
         output:
             "ホスト名の登録が必要です。IPアドレスおよびFQDNを直接指定したリモート接続は行えません。"
                 .to_string(),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_host_list_result_serialization() {
-        let result = HostListResult {
-            success: true,
-            output: "Mock output".to_string(),
-        };
-        let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(serialized, r#"{"success":true,"output":"Mock output"}"#);
-    }
 }

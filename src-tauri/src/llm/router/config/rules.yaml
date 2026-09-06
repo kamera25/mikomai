@@ -32,13 +32,6 @@ fastroute:
     patterns:
       - '(?i)(?:test-netconnection|tnc)'
 
-  host_list:
-    action: "network_get_hosts"
-    message: "登録機器の一覧を取得します。"
-    patterns:
-      - '(?:host|ホスト|接続先|ターゲット).*(?:list|一覧|教え|見せ|確認)'
-      - '(?:list|一覧|教え|見せ|確認).*(?:host|ホスト|接続先|ターゲット)'
-
   arp:
     action: "self_network_arp"
     message: "ローカルのARPテーブルを取得します。"

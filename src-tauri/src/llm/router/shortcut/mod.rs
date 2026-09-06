@@ -52,8 +52,6 @@ pub struct FastRouteConfig {
     #[serde(default)]
     pub test_connection: ShortcutRule,
     #[serde(default)]
-    pub host_list: ShortcutRule,
-    #[serde(default)]
     pub arp: ShortcutRule,
     #[serde(default)]
     pub route: ShortcutRule,
@@ -223,10 +221,9 @@ pub fn detect_shortcut_raw(input: &str) -> Option<(String, Value, String, f64)> 
         return Some(res);
     }
 
-    // 4. Simple shortcuts (Test-NetConnection, Host List, ARP, Route, Serial Ports)
+    // 4. Simple shortcuts (Test-NetConnection, ARP, Route, Serial Ports)
     let simple_rules = [
         &reg.test_connection,
-        &reg.host_list,
         &reg.arp,
         &reg.route,
         &reg.serial_ports,
@@ -363,16 +360,6 @@ mod tests {
             } => {
                 assert_eq!(tool_name, "self_network_traceroute");
                 assert_eq!(params["host"], "1.1.1.1");
-            }
-            _ => panic!("Expected DirectToolCall"),
-        }
-        assert!(res.confidence >= 0.8);
-
-        // Host List
-        let res = detect_shortcut("接続先一覧を確認したい").unwrap();
-        match res.action {
-            RouteAction::DirectToolCall { ref tool_name, .. } => {
-                assert_eq!(tool_name, "network_get_hosts");
             }
             _ => panic!("Expected DirectToolCall"),
         }

@@ -275,7 +275,6 @@
     "self_network_traceroute": "Traceroute",
     "self_network_test_connection": "Test Connection",
     "self_network_test_net_connection": "Test Connection",
-    "network_get_hosts": "Host List",
     "network_query_nw_db": "NWDB Search",
     "query_nw_db": "NWDB Search",
     "query_rag": "NWDB Search",

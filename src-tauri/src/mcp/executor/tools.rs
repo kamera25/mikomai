@@ -221,12 +221,6 @@ define_tool!(SelfNetworkRouteTool, "self_network_route", |app, _args| {
         .map(Into::into)
 });
 
-define_tool!(NetworkGetHostsTool, "network_get_hosts", |app, _args| {
-    crate::mcp::hosts::network_get_hosts(app)
-        .await
-        .map(Into::into)
-});
-
 define_tool!(
     RequireHostRegisteredTool,
     "require_host_registered",
