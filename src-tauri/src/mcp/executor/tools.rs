@@ -262,6 +262,34 @@ define_tool!(
     }
 );
 
+// Packet tools deliberately stop at analysis or a non-transmittable preview.
+// A raw-frame sender must be a separately hardened, privileged helper that is
+// reachable only through an approved operation plan. Do not add transmission
+// to this registry: it is the unattended execution path.
+define_tool!(
+    NetworkPacketAnalyzeTool,
+    "network_packet_analyze",
+    |_app, args| {
+        let frame_hex =
+            get_str_arg(&args, &["frame_hex", "frameHex"]).ok_or("frame_hex is required")?;
+        crate::mcp::packet::analyze_ethernet_frame_hex(&frame_hex).map(Into::into)
+    }
+);
+
+define_tool!(
+    NetworkPacketPrepareTool,
+    "network_packet_prepare",
+    |_app, args| {
+        let request = crate::mcp::packet::DhcpRequestPreviewInput {
+            client_mac: get_str_arg(&args, &["client_mac", "clientMac"]),
+            transaction_id: get_str_arg(&args, &["transaction_id", "transactionId"]),
+            requested_ip: get_str_arg(&args, &["requested_ip", "requestedIp"]),
+            server_identifier: get_str_arg(&args, &["server_identifier", "serverIdentifier"]),
+        };
+        crate::mcp::packet::prepare_dhcp_request_preview(request).map(Into::into)
+    }
+);
+
 fn resolve_device_config_from_args(
     app: &tauri::AppHandle,
     args: &serde_json::Value,
@@ -730,6 +758,8 @@ pub fn init_tool_registry() -> HashMap<String, Box<dyn McpTool>> {
     reg!(NetworkGetIpInfoTool);
     reg!(NetworkListSerialPortsTool);
     reg!(NetworkSendConsoleMessageTool);
+    reg!(NetworkPacketAnalyzeTool);
+    reg!(NetworkPacketPrepareTool);
     reg!(NetworkShowTool);
     reg!(NetworkConfigTool);
     reg!(NwDiagTool);

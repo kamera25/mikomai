@@ -18,6 +18,8 @@ pub enum ToolKind {
     NetworkGetIpInfo,
     NetworkListSerialPorts,
     NetworkSendConsoleMessage,
+    NetworkPacketAnalyze,
+    NetworkPacketPrepare,
     NetworkShow,
     NetworkConfig,
     FetchConfig,
@@ -55,6 +57,8 @@ impl ToolKind {
             Self::NetworkGetIpInfo => "network_get_ip_info",
             Self::NetworkListSerialPorts => "network_list_serial_ports",
             Self::NetworkSendConsoleMessage => "network_send_console_message",
+            Self::NetworkPacketAnalyze => "network_packet_analyze",
+            Self::NetworkPacketPrepare => "network_packet_prepare",
             Self::NetworkShow => "network_show",
             Self::NetworkConfig => "network_config",
             Self::FetchConfig => "fetch_config",
@@ -91,6 +95,8 @@ impl ToolKind {
             Self::NetworkGetIpInfo => "IP Info",
             Self::NetworkListSerialPorts => "Serial Ports",
             Self::NetworkSendConsoleMessage => "Console Message",
+            Self::NetworkPacketAnalyze => "Packet Analysis",
+            Self::NetworkPacketPrepare => "DHCP Packet Preview",
             Self::NetworkShow => "Show Command",
             Self::NetworkConfig => "Config Command",
             Self::FetchConfig => "Fetch Config",
@@ -189,6 +195,8 @@ impl ToolKind {
                 | Self::SelfNetworkRoute
                 | Self::NetworkGetIpInfo
                 | Self::NetworkListSerialPorts
+                | Self::NetworkPacketAnalyze
+                | Self::NetworkPacketPrepare
                 | Self::NetworkShow
                 | Self::GetState
                 | Self::FetchConfig
@@ -224,6 +232,8 @@ impl std::str::FromStr for ToolKind {
             "network_get_ip_info" => Ok(Self::NetworkGetIpInfo),
             "network_list_serial_ports" => Ok(Self::NetworkListSerialPorts),
             "network_send_console_message" => Ok(Self::NetworkSendConsoleMessage),
+            "network_packet_analyze" => Ok(Self::NetworkPacketAnalyze),
+            "network_packet_prepare" => Ok(Self::NetworkPacketPrepare),
             "network_show" => Ok(Self::NetworkShow),
             "network_config" => Ok(Self::NetworkConfig),
             "fetch_config" => Ok(Self::FetchConfig),

@@ -13,6 +13,7 @@ pub mod hosts;
 pub mod ip_info;
 pub mod nwdiag;
 pub mod nwdiag_validator;
+pub mod packet;
 pub mod ping;
 pub mod protocol;
 pub mod rag;
