@@ -5,8 +5,11 @@ mod connections;
 pub mod crypto;
 pub(crate) mod error;
 pub(crate) mod graph;
+pub(crate) mod graph_identity;
 pub mod harness;
 mod history;
+mod history_types;
+mod history_attachments;
 mod history_store;
 mod llm;
 mod logger;
@@ -133,8 +136,8 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
             history::initialize_history,
             history::load_summaries,
             history::save_summary,
-            history::read_files_as_attachments,
-            history::prepare_attachments,
+            history_attachments::read_files_as_attachments,
+            history_attachments::prepare_attachments,
             connections::load_connections,
             connections::get_mcp_hosts,
             connections::save_connections,

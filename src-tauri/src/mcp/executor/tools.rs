@@ -3,6 +3,7 @@ use super::registry::McpTool;
 use crate::network::CommandResult;
 use std::collections::HashMap;
 use tauri::Manager;
+use super::command_classifier::{is_arp_show_command, is_route_show_command};
 
 macro_rules! define_tool {
     ($struct_name:ident, $tool_name:expr, |$app:ident, $args:ident| $body:expr) => {
@@ -414,19 +415,6 @@ define_tool!(NetworkShowTool, "network_show", |app, args| {
         .map_err(|e| e.to_string())
 });
 
-fn is_arp_show_command(command: &str) -> bool {
-    let normalized = command.trim().to_ascii_lowercase();
-    normalized.starts_with("show ") && normalized.split_whitespace().any(|word| word == "arp")
-}
-
-fn is_route_show_command(command: &str) -> bool {
-    let normalized = command.trim().to_ascii_lowercase();
-    normalized.starts_with("show ")
-        && normalized
-            .split_whitespace()
-            .any(|word| word == "route" || word == "routing")
-}
-
 define_tool!(NetworkConfigTool, "network_config", |app, args| {
     let device = resolve_device_config_from_args(&app, &args)?;
     let commands: Vec<String> = if let Some(cmds_val) = args.get("commands") {
@@ -744,47 +732,9 @@ impl McpTool for DelegatingAliasTool {
 
 pub fn init_tool_registry() -> HashMap<String, Box<dyn McpTool>> {
     let mut registry: HashMap<String, Box<dyn McpTool>> = HashMap::new();
-
-    // Macro helper to register unique tools
-    macro_rules! reg {
-        ($tool:expr) => {
-            let t = $tool;
-            registry.insert(t.name().to_string(), Box::new(t));
-        };
-    }
-
-    reg!(PingTool);
-    reg!(TracerouteTool);
-    reg!(TestConnectionTool);
-    reg!(FetchConfigTool);
-    reg!(FetchRoutingTool);
-    reg!(FetchArpTool);
-    reg!(GetStateTool);
-    reg!(QueryNwDbTool);
-    reg!(QueryNetworkGraphTool);
-    reg!(SelfNetworkArpTool);
-    reg!(SelfNetworkRouteTool);
-    reg!(NetworkGetHostsTool);
-    reg!(RequireHostRegisteredTool);
-    reg!(NetworkGetIpInfoTool);
-    reg!(NetworkListSerialPortsTool);
-    reg!(NetworkSendConsoleMessageTool);
-    reg!(NetworkPacketAnalyzeTool);
-    reg!(NetworkPacketPrepareTool);
-    reg!(NetworkPacketSafetyTool);
-    reg!(NetworkShowTool);
-    reg!(NetworkConfigTool);
-    reg!(NwDiagTool);
-    reg!(GetOperationPlanTool);
-    reg!(ValidateCiscoConfigTool);
-    reg!(ConvertCiscoConfigTool);
-    reg!(AskUserChoiceTool);
-    reg!(AskInterfaceChoiceTool);
-    reg!(AskIpAddressChoiceTool);
-    reg!(FtpDownloadTool);
-    reg!(FtpUploadTool);
-    reg!(TftpDownloadTool);
-    reg!(TftpUploadTool);
+    super::tool_groups::register_read_tools(&mut registry);
+    super::tool_groups::register_change_tools(&mut registry);
+    super::tool_groups::register_file_transfer_tools(&mut registry);
 
     // Aliases (Eliminates duplication)
     macro_rules! alias {

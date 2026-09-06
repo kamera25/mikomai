@@ -11,6 +11,7 @@ use std::path::Path;
 use surrealdb::engine::local::{Db, RocksDb};
 use surrealdb::Surreal;
 use tauri::Manager;
+use crate::graph_identity::{content_hash as fnv1a, record_key};
 
 pub const GRAPH_TTL_MINUTES: i64 = 20;
 
@@ -809,22 +810,6 @@ fn array<'a>(value: &'a Value, name: &str) -> &'a [Value] {
         .map(Vec::as_slice)
         .unwrap_or(&[])
 }
-fn record_key(input: &str) -> String {
-    input
-        .as_bytes()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
-}
-fn fnv1a(input: &str) -> u64 {
-    input
-        .as_bytes()
-        .iter()
-        .fold(0xcbf29ce484222325u64, |hash, byte| {
-            (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

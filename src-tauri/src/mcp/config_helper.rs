@@ -1,21 +1,19 @@
 use crate::network::CommandResult;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::process::Command;
-use std::sync::Mutex;
 
 #[allow(unused_imports)]
 pub use super::config_diff::{compute_line_diff, normalize_config_for_diff};
 use super::config_types::TargetVendor;
+use super::choice_broker::ChoiceBroker;
 
 pub struct ChoiceManager {
-    pub txs: Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
+    pub broker: ChoiceBroker,
 }
 
 impl ChoiceManager {
     pub fn new() -> Self {
         Self {
-            txs: Mutex::new(std::collections::HashMap::new()),
+            broker: ChoiceBroker::new(),
         }
     }
 }
@@ -28,7 +26,7 @@ pub async fn submit_user_choice(
 ) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
     let mut lock = state
-        .txs
+        .broker.txs
         .lock()
         .map_err(|_| "Mutex lock poisoned".to_string())?;
     if let Some(tx) = lock.remove(&id) {
@@ -64,63 +62,6 @@ struct ConvertResponse {
     error: Option<String>,
 }
 
-fn run_config_helper(payload: serde_json::Value) -> Result<String, String> {
-    let mut current_dir =
-        std::env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?;
-    if current_dir.ends_with("src-tauri") {
-        current_dir.pop();
-    }
-
-    let python_path = current_dir.join("venv").join("bin").join("python");
-    let wrapper_path = current_dir
-        .join("src-tauri")
-        .join("python")
-        .join("config_helper.py");
-
-    if !python_path.exists() {
-        return Err(format!(
-            "Python virtual environment binary not found at {:?}",
-            python_path
-        ));
-    }
-    if !wrapper_path.exists() {
-        return Err(format!(
-            "config_helper script not found at {:?}",
-            wrapper_path
-        ));
-    }
-
-    let payload_str = serde_json::to_string(&payload)
-        .map_err(|e| format!("Failed to serialize payload: {}", e))?;
-
-    let mut child = Command::new(&python_path)
-        .arg(&wrapper_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to run config helper process: {}", e))?;
-
-    {
-        let stdin = child.stdin.as_mut().ok_or("Failed to open stdin")?;
-        stdin
-            .write_all(payload_str.as_bytes())
-            .map_err(|e| format!("Failed to write to stdin: {}", e))?;
-    }
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait on helper process: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(format!("config_helper failed with stderr: {}", stderr));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    Ok(stdout)
-}
-
 pub async fn validate_cisco_config_impl(
     app: Option<tauri::AppHandle>,
     id: Option<String>,
@@ -136,7 +77,7 @@ pub async fn validate_cisco_config_impl(
         config: config.clone(),
     });
 
-    let (res_errors, res_warnings) = match run_config_helper(payload) {
+    let (res_errors, res_warnings) = match super::config_python::run(payload) {
         Ok(output_json) => {
             if let Ok(res) = serde_json::from_str::<ValidateResponse>(&output_json) {
                 (res.errors, res.warnings)
@@ -197,7 +138,7 @@ pub async fn validate_cisco_config_impl(
             let (tx, rx) = tokio::sync::oneshot::channel();
             {
                 let mut lock = choice_manager
-                    .txs
+                    .broker.txs
                     .lock()
                     .map_err(|_| "Mutex lock poisoned".to_string())?;
                 lock.insert(id.clone(), tx);
@@ -406,7 +347,7 @@ pub async fn validate_cisco_config_impl(
                                         let force_id = format!("{}_force", id);
                                         {
                                             let mut lock = choice_manager
-                                                .txs
+                                                .broker.txs
                                                 .lock()
                                                 .map_err(|_| "Mutex lock poisoned".to_string())?;
                                             lock.insert(force_id.clone(), force_tx);
@@ -706,7 +647,7 @@ pub async fn convert_cisco_config(
         target_vendor: vendor.to_string(),
     });
 
-    let output_json = run_config_helper(payload)?;
+    let output_json = super::config_python::run(payload)?;
     let res: ConvertResponse = serde_json::from_str(&output_json)
         .map_err(|e| format!("Failed to parse converter output: {}", e))?;
 
@@ -754,7 +695,7 @@ pub async fn ask_user_choice(
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
         let mut lock = choice_manager
-            .txs
+            .broker.txs
             .lock()
             .map_err(|_| "Mutex lock poisoned".to_string())?;
         lock.insert(id.clone(), tx);
@@ -778,13 +719,13 @@ pub async fn ask_user_choice(
 }
 
 pub struct InterfaceChoiceManager {
-    pub txs: Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
+    pub broker: ChoiceBroker,
 }
 
 impl InterfaceChoiceManager {
     pub fn new() -> Self {
         Self {
-            txs: Mutex::new(std::collections::HashMap::new()),
+            broker: ChoiceBroker::new(),
         }
     }
 }
@@ -797,7 +738,7 @@ pub async fn submit_interface_choice(
 ) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
     let mut lock = state
-        .txs
+        .broker.txs
         .lock()
         .map_err(|_| "Mutex lock poisoned".to_string())?;
     if let Some(tx) = lock.remove(&id) {
@@ -822,7 +763,7 @@ pub async fn ask_interface_choice(
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
         let mut lock = choice_manager
-            .txs
+            .broker.txs
             .lock()
             .map_err(|_| "Mutex lock poisoned".to_string())?;
         lock.insert(id.clone(), tx);
@@ -845,13 +786,13 @@ pub async fn ask_interface_choice(
 }
 
 pub struct IpAddressChoiceManager {
-    pub txs: Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
+    pub broker: ChoiceBroker,
 }
 
 impl IpAddressChoiceManager {
     pub fn new() -> Self {
         Self {
-            txs: Mutex::new(std::collections::HashMap::new()),
+            broker: ChoiceBroker::new(),
         }
     }
 }
@@ -864,7 +805,7 @@ pub async fn submit_ipaddress_choice(
 ) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
     let mut lock = state
-        .txs
+        .broker.txs
         .lock()
         .map_err(|_| "Mutex lock poisoned".to_string())?;
     if let Some(tx) = lock.remove(&id) {
@@ -891,7 +832,7 @@ pub async fn ask_ipaddress_choice(
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
         let mut lock = choice_manager
-            .txs
+            .broker.txs
             .lock()
             .map_err(|_| "Mutex lock poisoned".to_string())?;
         lock.insert(id.clone(), tx);

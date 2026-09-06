@@ -10,6 +10,8 @@ import { Message } from "../../types";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { ImageModal } from "../ImageModal/ImageModal";
+import { defaultFilename, isChoiceTool, isNetworkDatabaseTool, messageContainerClass } from "./timelineModel";
+import { CiscoValidationEvent } from "./CiscoValidationEvent";
 
 
 interface TimelineEventProps {
@@ -20,8 +22,8 @@ interface TimelineEventProps {
 
 export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }: TimelineEventProps) => {
   const { t } = useTranslation();
-  const isNwDb = msg.tool_id === "query_nw_db" || msg.tool_id === "network_query_nw_db";
-  const isChoice = msg.tool_id === "ask_user_choice" || msg.tool_id === "ask_interface_choice" || msg.tool_id === "ask_ipaddress_choice";
+  const isNwDb = isNetworkDatabaseTool(msg.tool_id);
+  const isChoice = isChoiceTool(msg.tool_id);
   const defaultExpanded = false;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
@@ -69,11 +71,10 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
 
   const handleFetchFileClick = async (savedPath: string) => {
     try {
-      const pathParts = savedPath.replace(/\\/g, "/").split("/");
-      const defaultFilename = pathParts[pathParts.length - 1] || "downloaded_file.txt";
+      const filename = defaultFilename(savedPath);
 
       const selectedPath = await save({
-        defaultPath: defaultFilename,
+        defaultPath: filename,
         title: t("common.fetch_file"),
       });
 
@@ -93,117 +94,12 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
 
   if (msg.isHidden) return null;
 
-  const getContainerClass = () => {
-    let classes = `message-container ${msg.role}`;
-    if (msg.event_type) classes += ` ${msg.event_type.toLowerCase()}`;
-    if (msg.status) classes += ` ${msg.status.toLowerCase()}`;
-    return classes;
-  };
+  const getContainerClass = () => messageContainerClass(msg);
 
   if (msg.event_type === "ToolExecution" && msg.tool_id === "validate_cisco_config") {
-    const handleCommitChoice = async (choice: "commit" | "cancelled") => {
-      try {
-        await invoke("submit_user_choice", { id: msg.task_id, choice });
-      } catch (err) {
-        console.error(`Failed to submit choice ${choice}:`, err);
-      }
-    };
-
-    let cardClass = "cisco-validation-card";
-    if (msg.isToolLoading) {
-      if (msg.waitingForApproval) {
-        cardClass += " waiting-approval";
-      } else {
-        cardClass += " running";
-      }
-    } else {
-      cardClass += msg.status === "Success" ? " success" : " failed";
-    }
-
-    return (
-      <div className={getContainerClass()} id={msg.task_id}>
-        <div className="timeline-node"></div>
-        <div className="message ai" style={{ width: "100%" }}>
-          <div className={cardClass}>
-            <div className="cisco-validation-header">
-              {msg.isToolLoading ? (
-                msg.waitingForApproval ? (
-                  <div className="pulsing-dot green"></div>
-                ) : (
-                  <div className="status-spinner-small"></div>
-                )
-              ) : msg.status === "Success" ? (
-                <span className="icon-success"><CheckIcon size={18} strokeWidth={3} /></span>
-              ) : (
-                <span className="icon-failed"><CrossIcon size={18} strokeWidth={3} /></span>
-              )}
-              <span className="cisco-validation-title">
-                {msg.isToolLoading
-                  ? msg.waitingForApproval
-                    ? "承認待ち"
-                    : "Configのチェック中"
-                  : msg.status === "Success"
-                  ? "Cisco Config 検証成功"
-                  : "Cisco Config 検証失敗 / キャンセル"}
-              </span>
-            </div>
-
-            <div className="cisco-validation-desc">
-              {msg.isToolLoading ? (
-                msg.waitingForApproval ? (
-                  "コミットを承認しますか？"
-                ) : (
-                  "Ciscoの構成ファイルを検証しています。しばらくお待ちください..."
-                )
-              ) : msg.status === "Success" ? (
-                "Cisco Config の検証およびコミット承認が完了しました。"
-              ) : (
-                "検証でエラーが検出されたか、ユーザーによってキャンセルされました。"
-              )}
-            </div>
-
-            {msg.isToolLoading && msg.waitingForApproval && (
-              <div className="cisco-validation-actions">
-                <button
-                  className="cisco-validation-btn-commit"
-                  onClick={() => handleCommitChoice("commit")}
-                >
-                  コミット
-                </button>
-                <button
-                  className="cisco-validation-btn-cancel"
-                  onClick={() => handleCommitChoice("cancelled")}
-                >
-                  中止
-                </button>
-              </div>
-            )}
-
-            {!msg.isToolLoading && msg.raw_data && (
-              <div style={{ marginTop: "12px", borderTop: "1px solid rgba(255, 255, 255, 0.1)", paddingTop: "12px" }}>
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                  components={{
-                    pre({ children }) {
-                      const codeElement = React.Children.toArray(children)[0];
-                      if (React.isValidElement(codeElement) && codeElement.props) {
-                        const codeText = String((codeElement.props as any).children || "").replace(/\n$/, "");
-                        return <Terminal content={codeText} />;
-                      }
-                      return <pre>{children}</pre>;
-                    }
-                  }}
-                >
-                  {msg.raw_data}
-                </ReactMarkdown>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+    return <CiscoValidationEvent msg={msg} />;
   }
+
 
   if (msg.event_type === "ToolExecution") {
     return (

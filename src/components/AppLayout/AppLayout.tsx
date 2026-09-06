@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { lazy, Suspense, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import "../../App.css";
@@ -20,8 +20,9 @@ import { useConfigDiffEvents } from "../../hooks/useConfigDiffEvents";
 import { QuestionPanel } from "./QuestionPanel";
 import { CustomModal } from "../CustomModal";
 import { SidebarIcon, ServerIcon, DiffIcon } from "../Icons";
-import { Attachment, Message } from "../../types";
+import { Attachment } from "../../types";
 import { formatMessageTime } from "../../utils/messageTime";
+import { useMessageExecution } from "./useMessageExecution";
 
 // These panels are not part of the chat's critical rendering path. Loading
 // them only when opened reduces startup parsing and keeps their effects idle.
@@ -100,7 +101,6 @@ export function AppLayout() {
 
   const {
     state: chatState,
-    dispatch: chatDispatch,
     createNewFolder,
     createNewSession,
     toggleFolder,
@@ -122,17 +122,6 @@ export function AppLayout() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isComposingHeader = useRef(false);
-  const isExecutingRef = useRef(false);
-  const queueRef = useRef<
-    {
-      content: string;
-      timestamp: string;
-      task_id: string;
-      sessionId: string;
-      attachments?: Attachment[];
-    }[]
-  >([]);
-
   const handleStartRenameHeader = () => {
     if (activeSession) {
       uiDispatch({ type: "START_EDITING_HEADER", payload: activeSession.title });
@@ -189,115 +178,18 @@ export function AppLayout() {
     }
   }, [chatState.input]);
 
-  const [isGenerating, setIsGenerating] = useState(false);
+  const { isGenerating, setIsGenerating, sendMessage, stop: handleStop } = useMessageExecution({
+    input: chatState.input,
+    setInput,
+    activeSessionId: chatState.activeSessionId,
+    createNewSession,
+    setMessages,
+    updateRecentHosts,
+    handleMcpResponse,
+    stoppedLabel: t("chat.stopped"),
+  });
   const isCurrentlyGenerating =
-    isGenerating || chatState.messages.some((m) => m.status === "Running" || m.isToolLoading);
-
-  const handleStop = async () => {
-    try {
-      await invoke("stop_llm");
-    } catch (err) {
-      console.error("Failed to stop LLM:", err);
-    }
-    queueRef.current = [];
-    isExecutingRef.current = false;
-    setIsGenerating(false);
-
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.status === "Running" || msg.isToolLoading) {
-          return {
-            ...msg,
-            isToolLoading: false,
-            status: "Failed",
-            summary_text: msg.summary_text
-              ? `${msg.summary_text} (${t("chat.stopped")})`
-              : t("chat.stopped"),
-          } as Message;
-        }
-        return msg;
-      })
-    );
-  };
-
-  const executeMessage = async (userMessage: string, attachments?: Attachment[]) => {
-    isExecutingRef.current = true;
-    setIsGenerating(true);
-    try {
-      await handleMcpResponse(userMessage, attachments);
-    } catch (e) {
-      console.error("Failed to handle MCP response:", e);
-    } finally {
-      if (queueRef.current.length > 0) {
-        const next = queueRef.current.shift()!;
-        chatDispatch({
-          type: "SET_MESSAGE_STATUS",
-          payload: { sessionId: next.sessionId, taskId: next.task_id, status: undefined },
-        });
-        void executeMessage(next.content, next.attachments);
-      } else {
-        isExecutingRef.current = false;
-        setIsGenerating(false);
-      }
-    }
-  };
-
-  const sendMessage = async (text?: string, attachments?: Attachment[]) => {
-    const messageText = text !== undefined ? text : chatState.input.trim();
-    if (!messageText && (!attachments || attachments.length === 0)) return;
-
-    const timestamp = new Date().toISOString();
-    const taskId = crypto.randomUUID();
-    let sessionId = chatState.activeSessionId;
-    if (!sessionId) {
-      const newSession = await createNewSession();
-      if (!newSession) return;
-      sessionId = newSession.id;
-    }
-
-    const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-    const mentionRegex = /@([a-zA-Z0-9.-]+)/g;
-
-    const foundIPs = messageText.match(ipRegex) || [];
-    const foundMentions = Array.from(messageText.matchAll(mentionRegex)).map((m) => m[1]);
-
-    const allFound = [...new Set([...foundMentions, ...foundIPs])];
-
-    if (allFound.length > 0) {
-      updateRecentHosts(allFound);
-    }
-
-    if (text === undefined) {
-      setInput("");
-    }
-
-    const isPending = isExecutingRef.current;
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: messageText,
-        timestamp,
-        event_type: "UserInput",
-        task_id: taskId,
-        status: isPending ? "Pending" : undefined,
-        attachments,
-      },
-    ]);
-
-    if (isPending) {
-      queueRef.current.push({
-        content: messageText,
-        timestamp,
-        task_id: taskId,
-        sessionId,
-        attachments,
-      });
-    } else {
-      executeMessage(messageText, attachments);
-    }
-  };
+    isGenerating || chatState.messages.some((message) => message.status === "Running" || message.isToolLoading);
 
   // Keep callbacks passed to the chat stable. In particular, typing in the
   // input must not re-render the full message timeline.

@@ -167,9 +167,9 @@ impl LlmWorker for BuilderWorker {
             let iface_mgr = app.state::<crate::mcp::config_helper::InterfaceChoiceManager>();
             let ip_mgr = app.state::<crate::mcp::config_helper::IpAddressChoiceManager>();
 
-            let pending_choices = choice_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
-            let pending_ifaces = iface_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
-            let pending_ips = ip_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
+            let pending_choices = choice_mgr.broker.txs.lock().map(|l| l.len()).unwrap_or(0);
+            let pending_ifaces = iface_mgr.broker.txs.lock().map(|l| l.len()).unwrap_or(0);
+            let pending_ips = ip_mgr.broker.txs.lock().map(|l| l.len()).unwrap_or(0);
 
             pending_choices > 0 || pending_ifaces > 0 || pending_ips > 0
         } else {

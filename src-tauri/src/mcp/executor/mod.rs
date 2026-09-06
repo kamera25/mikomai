@@ -1,4 +1,6 @@
 pub mod extract;
+pub(crate) mod command_classifier;
+pub(crate) mod tool_groups;
 pub mod flow;
 pub mod registry;
 pub mod tools;

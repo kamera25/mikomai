@@ -116,9 +116,6 @@ export const TaskAuditPanel: React.FC<{
               <RefreshIcon size={14} />
               更新
             </button>
-            <button className="task-audit-close-btn" aria-label="閉じる" onClick={onClose}>
-              ✕
-            </button>
           </div>
         </header>
 

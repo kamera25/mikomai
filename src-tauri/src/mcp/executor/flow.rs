@@ -304,9 +304,9 @@ pub fn execute_mcp_tools_flow(
         let choice_mgr = app.state::<crate::mcp::config_helper::ChoiceManager>();
         let iface_mgr = app.state::<crate::mcp::config_helper::InterfaceChoiceManager>();
         let ip_mgr = app.state::<crate::mcp::config_helper::IpAddressChoiceManager>();
-        let pending_choices = choice_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
-        let pending_ifaces = iface_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
-        let pending_ips = ip_mgr.txs.lock().map(|l| l.len()).unwrap_or(0);
+        let pending_choices = choice_mgr.broker.txs.lock().map(|l| l.len()).unwrap_or(0);
+        let pending_ifaces = iface_mgr.broker.txs.lock().map(|l| l.len()).unwrap_or(0);
+        let pending_ips = ip_mgr.broker.txs.lock().map(|l| l.len()).unwrap_or(0);
 
         let has_choice_tool = execution_results.iter().any(|(tool_id, _, _)| {
             std::str::FromStr::from_str(tool_id)

@@ -6,6 +6,8 @@ pub mod interface;
 pub mod config_helper;
 pub(crate) mod config_diff;
 pub(crate) mod config_types;
+pub(crate) mod config_python;
+pub(crate) mod choice_broker;
 pub mod console;
 pub mod devices;
 pub mod executor;

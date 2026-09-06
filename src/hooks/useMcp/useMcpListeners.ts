@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Message, SummaryItem, ChatEvent } from "../../types";
 import i18n from "../../i18n";
+import { mergeTaskContent, typingStep, type TaskContentState } from "./mcpListenerState";
 
 interface UseMcpListenersProps {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
@@ -9,29 +10,7 @@ interface UseMcpListenersProps {
   updateRecentHosts?: (hosts: string[]) => void;
 }
 
-export function mergeTaskContent(currentAccumulated: string, newContent: string): string {
-  if (!currentAccumulated) return newContent || "";
-  if (!newContent) return currentAccumulated;
-
-  // 1. Exact match
-  if (currentAccumulated === newContent) {
-    return currentAccumulated;
-  }
-
-  // 2. newContent is continuation of currentAccumulated (starts with prefix)
-  if (newContent.startsWith(currentAccumulated)) {
-    return newContent;
-  }
-
-  // 3. currentAccumulated already contains newContent
-  if (currentAccumulated.includes(newContent)) {
-    return currentAccumulated;
-  }
-
-  // 4. In AgentLoop, step/decision logs are streamed via chunks, and the final report
-  // is passed via mcpInitialFinished content. Append the final report text after the logs.
-  return `${currentAccumulated}\n\n${newContent}`;
-}
+export { mergeTaskContent } from "./mcpListenerState";
 
 export function useMcpListeners({
   setMessages,
@@ -52,14 +31,7 @@ export function useMcpListeners({
   const taskStatesRef = useRef<
     Map<
       string,
-      {
-        targetContent: string;
-        displayedContent: string;
-        isTyping: boolean;
-        timerId: any;
-        isFinished: boolean;
-        summaryText?: string;
-      }
+      TaskContentState
     >
   >(new Map());
 
@@ -118,14 +90,7 @@ export function useMcpListeners({
 
       if (remaining > 0) {
         // Fast, snappy typing with dynamic step scaling for smooth UX
-        let step = 1;
-        if (remaining > 150) {
-          step = Math.ceil(remaining / 30);
-        } else if (remaining > 60) {
-          step = 3;
-        } else if (remaining > 20) {
-          step = 2;
-        }
+        const step = typingStep(remaining);
 
         const nextChars = targetChars
           .slice(displayedChars.length, displayedChars.length + step)

@@ -9,6 +9,8 @@ import { Attachment, AttachmentPreparation, AttachmentSource } from "../../types
 import { useSettingsContext } from "../../contexts/SettingsContext";
 import { ImageModal } from "../ImageModal/ImageModal";
 import "./ChatInput.css";
+import { isImageFile, isImagePath } from "./attachmentModel";
+import { findHostSuggestions } from "./suggestionModel";
 
 interface ChatInputProps {
   modelStatus: string;
@@ -77,15 +79,6 @@ export const ChatInput = memo(
     const [attachmentErrors, setAttachmentErrors] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const processDroppedPathsRef = useRef<(paths: string[]) => Promise<void>>(async () => {});
-
-    const isImageFile = (file: File): boolean => {
-      if (file.type && file.type.startsWith("image/")) return true;
-      return /\.(png|jpg|jpeg|gif|webp|bmp|svg|heic|heif|tiff)$/i.test(file.name);
-    };
-
-    const isImagePath = (filePath: string): boolean => {
-      return /\.(png|jpg|jpeg|gif|webp|bmp|svg|heic|heif|tiff)$/i.test(filePath);
-    };
 
     const addPreparedAttachments = async (sources: AttachmentSource[]) => {
       const prepared = await invoke<AttachmentPreparation>("prepare_attachments", { sources });
@@ -277,40 +270,9 @@ export const ChatInput = memo(
       if (atIndex !== -1) {
         const query = textBeforeCursor.slice(atIndex + 1);
         if (!query.includes(" ")) {
-          const queryLower = query.toLowerCase();
-          const combined: { hostname: string; ip: string }[] = [];
-          const seenIPs = new Set<string>();
-
-          // localhost
-          if ("localhost".includes(queryLower) || t("chat_input.localhost").includes(query)) {
-            combined.push({ hostname: "localhost", ip: t("chat_input.localhost") });
-            seenIPs.add("127.0.0.1");
-            seenIPs.add("localhost");
-          }
-
-          // Available hosts
-          availableHosts.forEach((h) => {
-            if (h.hostname !== "localhost") {
-              if (h.hostname.toLowerCase().includes(queryLower) || h.ip.includes(query)) {
-                combined.push(h);
-              }
-            }
-            seenIPs.add(h.ip);
+          const combined = findHostSuggestions(query, availableHosts, recentIPs, {
+            localhost: t("chat_input.localhost"), pastIps: t("chat_input.past_ips"),
           });
-
-          // Recent IPs
-          recentIPs.forEach((ip) => {
-            if (
-              ip.toLowerCase().includes(queryLower) ||
-              t("chat_input.past_ips").includes(query)
-            ) {
-              if (!seenIPs.has(ip)) {
-                combined.push({ hostname: ip, ip: t("chat_input.past_ips") });
-                seenIPs.add(ip);
-              }
-            }
-          });
-
           setFilteredSuggestions(combined);
           if (combined.length === 0) {
             setShowSuggestions(false);
@@ -389,40 +351,9 @@ export const ChatInput = memo(
         const query = textBeforeCursor.slice(atIndex + 1);
         // Check if there's space between @ and cursor
         if (!query.includes(" ")) {
-          const queryLower = query.toLowerCase();
-          const combined: { hostname: string; ip: string }[] = [];
-          const seenIPs = new Set<string>();
-
-          // localhost
-          if ("localhost".includes(queryLower) || t("chat_input.localhost").includes(query)) {
-            combined.push({ hostname: "localhost", ip: t("chat_input.localhost") });
-            seenIPs.add("127.0.0.1");
-            seenIPs.add("localhost");
-          }
-
-          // Available hosts
-          availableHosts.forEach((h) => {
-            if (h.hostname !== "localhost") {
-              if (h.hostname.toLowerCase().includes(queryLower) || h.ip.includes(query)) {
-                combined.push(h);
-              }
-            }
-            seenIPs.add(h.ip);
+          const combined = findHostSuggestions(query, availableHosts, recentIPs, {
+            localhost: t("chat_input.localhost"), pastIps: t("chat_input.past_ips"),
           });
-
-          // Recent IPs
-          recentIPs.forEach((ip) => {
-            if (
-              ip.toLowerCase().includes(queryLower) ||
-              t("chat_input.past_ips").includes(query)
-            ) {
-              if (!seenIPs.has(ip)) {
-                combined.push({ hostname: ip, ip: t("chat_input.past_ips") });
-                seenIPs.add(ip);
-              }
-            }
-          });
-
           setFilteredSuggestions(combined);
           setShowSuggestions(true);
           setSuggestionIndex(0);
