@@ -178,6 +178,31 @@ fn detect_simple_shortcut(
     None
 }
 
+/// Routes explicit DHCPREQUEST diagnostics to the deterministic safety worker.
+/// The worker will request any missing identifiers and never transmits a frame.
+fn detect_packet_safety_shortcut(
+    input: &str,
+    lower_input: &str,
+    config: &ShortcutRulesConfig,
+) -> Option<(String, Value, String, f64)> {
+    if has_question_keywords(input, config)
+        || !(lower_input.contains("dhcprequest") || lower_input.contains("dhcp request"))
+    {
+        return None;
+    }
+    let intent = if lower_input.contains("プレビュー") || lower_input.contains("preview") {
+        "prepare_dhcp_request"
+    } else {
+        "dhcp_request_probe"
+    };
+    Some((
+        "network_packet_safety".to_string(),
+        serde_json::json!({ "intent": intent }),
+        "Packet Safety WorkerでDHCP診断の入力検証を開始します。実送信は承認済みの送信ヘルパーなしには行いません。".to_string(),
+        1.0,
+    ))
+}
+
 pub fn detect_shortcut_raw(input: &str) -> Option<(String, Value, String, f64)> {
     let config = ShortcutRulesConfig::load();
     let lower_input = input.to_lowercase();
@@ -212,7 +237,13 @@ pub fn detect_shortcut_raw(input: &str) -> Option<(String, Value, String, f64)> 
         }
     }
 
-    // 5. nwdiag shortcut
+    // 5. DHCPREQUEST diagnostics are always delegated to the constrained
+    // packet worker, never to a generic tool or free-form Agent action.
+    if let Some(res) = detect_packet_safety_shortcut(input, &lower_input, &config) {
+        return Some(res);
+    }
+
+    // 6. nwdiag shortcut
     if let Some(res) = detect_nwdiag_shortcut(input, &config) {
         return Some(res);
     }
@@ -256,6 +287,20 @@ mod tests {
         assert_eq!(val2["size"], 1400);
         assert_eq!(val2["count"], 5);
         assert_eq!(val2["df"], true);
+    }
+
+    #[test]
+    fn dhcp_request_uses_the_packet_safety_worker() {
+        let result = detect_shortcut("DHCPRequestを投げて").unwrap();
+        match result.action {
+            RouteAction::DirectToolCall {
+                tool_name, params, ..
+            } => {
+                assert_eq!(tool_name, "network_packet_safety");
+                assert_eq!(params["intent"], "dhcp_request_probe");
+            }
+            _ => panic!("expected a packet-safety direct tool call"),
+        }
     }
 
     #[test]

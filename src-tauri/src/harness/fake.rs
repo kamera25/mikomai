@@ -95,11 +95,17 @@ impl FakeToolExecutor {
     }
 
     pub fn set_tool_result(&self, tool: impl Into<String>, result: Result<CommandResult, String>) {
-        self.tool_results.lock().unwrap().insert(tool.into(), result);
+        self.tool_results
+            .lock()
+            .unwrap()
+            .insert(tool.into(), result);
     }
 
     pub fn set_builder_result(&self, tool: impl Into<String>, result: Result<String, String>) {
-        self.builder_results.lock().unwrap().insert(tool.into(), result);
+        self.builder_results
+            .lock()
+            .unwrap()
+            .insert(tool.into(), result);
     }
 
     pub fn set_rag_co_worker_result(&self, result: Result<String, String>) {
@@ -153,11 +159,14 @@ impl ToolExecutorPort for FakeToolExecutor {
         tool: String,
         arguments: serde_json::Value,
     ) -> Result<String, String> {
-        self.builder_calls.lock().unwrap().push(ExecutedBuilderCall {
-            goal,
-            tool: tool.clone(),
-            arguments,
-        });
+        self.builder_calls
+            .lock()
+            .unwrap()
+            .push(ExecutedBuilderCall {
+                goal,
+                tool: tool.clone(),
+                arguments,
+            });
 
         if let Some(res) = self.builder_results.lock().unwrap().get(&tool) {
             return res.clone();

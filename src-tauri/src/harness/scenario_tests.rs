@@ -104,10 +104,17 @@ mod tests {
 
         // 3. Executor verification
         let executed = executor.executed_tools();
-        assert_eq!(executed.len(), 1, "Exactly one tool call should be executed");
+        assert_eq!(
+            executed.len(),
+            1,
+            "Exactly one tool call should be executed"
+        );
         assert_eq!(executed[0].tool, "network_show");
         assert_eq!(
-            executed[0].arguments.get("command").and_then(|c| c.as_str()),
+            executed[0]
+                .arguments
+                .get("command")
+                .and_then(|c| c.as_str()),
             Some("show ip route")
         );
 
@@ -123,18 +130,32 @@ mod tests {
 
         // 5. EventLog causal progression verification
         let events = agent.network_state.event_log.events();
-        assert!(events.iter().any(|e| matches!(e, HarnessEvent::Decision(_))));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, HarnessEvent::Decision(_))));
         assert!(events.iter().any(|e| matches!(e, HarnessEvent::Action(_))));
-        assert!(events.iter().any(|e| matches!(e, HarnessEvent::Result(r) if r.observation.raw.contains("10.0.0.0/24"))));
-        assert!(events.iter().any(|e| matches!(e, HarnessEvent::Finished { .. })));
+        assert!(events.iter().any(
+            |e| matches!(e, HarnessEvent::Result(r) if r.observation.raw.contains("10.0.0.0/24"))
+        ));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, HarnessEvent::Finished { .. })));
 
         // 6. Reporter UI events verification
         let chat_events = reporter.chat_events();
-        assert!(chat_events.iter().any(|e| matches!(e, ChatEvent::McpInitialStarted(_))));
-        assert!(chat_events.iter().any(|e| matches!(e, ChatEvent::AgentSelected(_))));
-        assert!(chat_events.iter().any(|e| matches!(e, ChatEvent::McpInitialFinished(_))));
+        assert!(chat_events
+            .iter()
+            .any(|e| matches!(e, ChatEvent::McpInitialStarted(_))));
+        assert!(chat_events
+            .iter()
+            .any(|e| matches!(e, ChatEvent::AgentSelected(_))));
+        assert!(chat_events
+            .iter()
+            .any(|e| matches!(e, ChatEvent::McpInitialFinished(_))));
         let commit_logs = reporter.commit_logs();
-        assert!(commit_logs.iter().any(|l| l.contains("MCP Tool 実行完了") && l.contains("成功")));
+        assert!(commit_logs
+            .iter()
+            .any(|l| l.contains("MCP Tool 実行完了") && l.contains("成功")));
     }
 
     /// 2. シナリオテスト: ポリシー拒否 (Policy Rejection)
@@ -171,9 +192,7 @@ mod tests {
         let reporter = RecordingReporter::new();
         let mut agent = AgentLoop::new_headless(10);
 
-        let result = agent
-            .run_with(goal, &planner, &executor, &reporter)
-            .await;
+        let result = agent.run_with(goal, &planner, &executor, &reporter).await;
 
         assert!(result.is_ok());
         let final_text = result.unwrap();
@@ -190,7 +209,9 @@ mod tests {
         // Verify reporter emitted agent-warning
         let chunks = reporter.llm_chunks();
         assert!(
-            chunks.iter().any(|c| c.contains("agent-warning") && c.contains("ポリシー違反")),
+            chunks
+                .iter()
+                .any(|c| c.contains("agent-warning") && c.contains("ポリシー違反")),
             "Reporter must receive policy warning chunk: {:?}",
             chunks
         );
@@ -218,9 +239,7 @@ mod tests {
         let reporter = RecordingReporter::new();
         let mut agent = AgentLoop::new_headless(10);
 
-        let result = agent
-            .run_with(goal, &planner, &executor, &reporter)
-            .await;
+        let result = agent.run_with(goal, &planner, &executor, &reporter).await;
 
         assert!(result.is_ok());
         let final_text = result.unwrap();
@@ -257,15 +276,16 @@ mod tests {
         // Builder returns missing parameter marker
         executor.set_builder_result(
             "query_nw_db",
-            Ok("設定に必要なパラメータが不足しています: vlan_id (例: 10) を入力してください。".to_string()),
+            Ok(
+                "設定に必要なパラメータが不足しています: vlan_id (例: 10) を入力してください。"
+                    .to_string(),
+            ),
         );
 
         let reporter = RecordingReporter::new();
         let mut agent = AgentLoop::new_headless(10);
 
-        let result = agent
-            .run_with(goal, &planner, &executor, &reporter)
-            .await;
+        let result = agent.run_with(goal, &planner, &executor, &reporter).await;
 
         assert!(result.is_ok());
         let final_text = result.unwrap();
@@ -328,9 +348,7 @@ mod tests {
         let reporter = RecordingReporter::new();
         let mut agent = AgentLoop::new_headless(10);
 
-        let result = agent
-            .run_with(goal, &planner, &executor, &reporter)
-            .await;
+        let result = agent.run_with(goal, &planner, &executor, &reporter).await;
 
         assert!(result.is_ok());
         let final_text = result.unwrap();
@@ -390,16 +408,22 @@ mod tests {
         let mut agent1 = AgentLoop::new_headless_with_log_dir(10, temp_dir.clone());
 
         // Run agent 1 - it will execute step 1 and then stop because planner runs out of decisions
-        let result1 = agent1.run_with(goal.clone(), &planner1, &executor1, &reporter1).await;
+        let result1 = agent1
+            .run_with(goal.clone(), &planner1, &executor1, &reporter1)
+            .await;
         assert!(result1.is_ok());
         assert!(result1.unwrap().contains("停止しました"));
 
         // Verify that intermediate event log was persisted to disk despite interruption!
         let task_id = agent1.network_state.task_id.expect("task_id must be set");
         let log_file = temp_dir.join(format!("{task_id}.json"));
-        assert!(log_file.exists(), "Event log must be saved even if task was interrupted");
+        assert!(
+            log_file.exists(),
+            "Event log must be saved even if task was interrupted"
+        );
 
-        let loaded_log = EventLog::load_from_path(&log_file).expect("Must be able to load event log");
+        let loaded_log =
+            EventLog::load_from_path(&log_file).expect("Must be able to load event log");
         assert!(!loaded_log.is_empty(), "Saved event log must not be empty");
 
         // Verify that ActionResult in loaded log has idempotency_key
@@ -410,12 +434,17 @@ mod tests {
                 false
             }
         });
-        assert!(has_idempotency_key, "ActionResult must contain idempotency_key");
+        assert!(
+            has_idempotency_key,
+            "ActionResult must contain idempotency_key"
+        );
 
         // Now resume: create a new AgentLoop from the loaded event log
         let restored_state = NetworkState::rebuild_from_log(&loaded_log);
         assert_eq!(restored_state.observed.observations.len(), 1);
-        assert!(restored_state.observed.observations[0].raw.contains("10.0.0.0/24"));
+        assert!(restored_state.observed.observations[0]
+            .raw
+            .contains("10.0.0.0/24"));
 
         let mut agent2 = AgentLoop::from_saved_state(restored_state, 10);
         let executor2 = FakeToolExecutor::new();
@@ -434,9 +463,14 @@ mod tests {
         let planner2 = FakePlanner::new(vec![step2_finish]);
         let reporter2 = RecordingReporter::new();
 
-        let result2 = agent2.run_with(goal, &planner2, &executor2, &reporter2).await;
+        let result2 = agent2
+            .run_with(goal, &planner2, &executor2, &reporter2)
+            .await;
         assert!(result2.is_ok());
-        assert_eq!(result2.unwrap(), "RT1のルーティングテーブル（10.0.0.0/24）を確認しました");
+        assert_eq!(
+            result2.unwrap(),
+            "RT1のルーティングテーブル（10.0.0.0/24）を確認しました"
+        );
 
         // Verify that executor2 did NOT need to re-execute any tools
         let executed_tools = executor2.executed_tools();
@@ -544,7 +578,10 @@ mod tests {
 
         let result = agent.run_with(goal, &planner, &executor, &reporter).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "設定が適用済みであることを確認し完了しました");
+        assert_eq!(
+            result.unwrap(),
+            "設定が適用済みであることを確認し完了しました"
+        );
 
         // CRITICAL: The mutating action was skipped and NEVER re-executed!
         let executed = executor.executed_tools();
@@ -557,7 +594,9 @@ mod tests {
         // Verify reporter emitted skip log
         let commits = reporter.commit_logs();
         assert!(
-            commits.iter().any(|c| c.contains("変更操作は実行済みのため再実行をスキップしました")),
+            commits
+                .iter()
+                .any(|c| c.contains("変更操作は実行済みのため再実行をスキップしました")),
             "Reporter must log skip message: {:?}",
             commits
         );

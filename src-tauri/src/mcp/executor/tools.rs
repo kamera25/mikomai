@@ -290,6 +290,17 @@ define_tool!(
     }
 );
 
+define_tool!(
+    NetworkPacketSafetyTool,
+    "network_packet_safety",
+    |_app, args| {
+        let request =
+            serde_json::from_value::<crate::harness::packet_safety::PacketSafetyRequest>(args)
+                .map_err(|error| format!("Invalid packet safety request: {error}"))?;
+        crate::harness::packet_safety::PacketSafetyWorker::execute(request)
+    }
+);
+
 fn resolve_device_config_from_args(
     app: &tauri::AppHandle,
     args: &serde_json::Value,
@@ -760,6 +771,7 @@ pub fn init_tool_registry() -> HashMap<String, Box<dyn McpTool>> {
     reg!(NetworkSendConsoleMessageTool);
     reg!(NetworkPacketAnalyzeTool);
     reg!(NetworkPacketPrepareTool);
+    reg!(NetworkPacketSafetyTool);
     reg!(NetworkShowTool);
     reg!(NetworkConfigTool);
     reg!(NwDiagTool);

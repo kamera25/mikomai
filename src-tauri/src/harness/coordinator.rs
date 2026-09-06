@@ -6,8 +6,10 @@
 //! Fast Agent for presentation.
 
 use crate::state::events::ActionType;
+use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum WorkerKind {
     Builder,
     Rag,
@@ -15,7 +17,8 @@ pub enum WorkerKind {
     FastAgent,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
 pub enum WorkerOutcome {
     Completed { completion_brief: String },
     AwaitingUserInput { message: String },

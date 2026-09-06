@@ -40,6 +40,7 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
    - self_network_ping: {"host": "192.168.1.1"}
    - self_network_traceroute: {"host": "192.168.1.1"}
    - self_network_route: {}
+   - network_packet_safety: {"intent": "prepare_dhcp_request", "client_mac": "02:00:00:00:00:01", "transaction_id": "1234abcd", "requested_ip": "192.0.2.20", "server_identifier": "192.0.2.1"}（Ethernetフレーム解析とDHCPREQUESTの非送信プレビューを行う。`dhcp_request_probe` は送信せず、承認に必要な入力だけを検証する）
    - self_network_arp: {}
    - get_operation_plan: {"id": "変更計画ID"}（変更計画を読み出すだけで、実行権限は与えない）
 6. 必ず以下のJSON構造のみを出力してください（Markdownコードブロック```json ... ```で囲むこと）。
@@ -107,7 +108,15 @@ pub fn build_planner_schema(registered_devices: &[String]) -> String {
         "query": {{ "type": "string" }},
         "command": {{ "type": "string" }},
         "host": {{ "type": "string" }},
-        "id": {{ "type": "string" }}
+        "id": {{ "type": "string" }},
+        "intent": {{ "type": "string", "enum": ["analyze_broadcast", "analyze_dhcp_response", "prepare_dhcp_request", "dhcp_request_probe"] }},
+        "frame_hex": {{ "type": "string" }},
+        "client_mac": {{ "type": "string" }},
+        "transaction_id": {{ "type": "string" }},
+        "requested_ip": {{ "type": "string" }},
+        "server_identifier": {{ "type": "string" }},
+        "interface": {{ "type": "string" }},
+        "vlan": {{ "type": "integer", "minimum": 1, "maximum": 4094 }}
       }}
     }},
     "reason": {{
@@ -146,7 +155,15 @@ pub const DECISION_JSON_SCHEMA: &str = r#"{
         "query": { "type": "string" },
         "command": { "type": "string" },
         "host": { "type": "string" },
-        "id": { "type": "string" }
+        "id": { "type": "string" },
+        "intent": { "type": "string", "enum": ["analyze_broadcast", "analyze_dhcp_response", "prepare_dhcp_request", "dhcp_request_probe"] },
+        "frame_hex": { "type": "string" },
+        "client_mac": { "type": "string" },
+        "transaction_id": { "type": "string" },
+        "requested_ip": { "type": "string" },
+        "server_identifier": { "type": "string" },
+        "interface": { "type": "string" },
+        "vlan": { "type": "integer", "minimum": 1, "maximum": 4094 }
       }
     },
     "reason": {

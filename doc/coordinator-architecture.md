@@ -80,7 +80,7 @@ Builder 完了後に AgentLoop がネットワーク操作、RAG、Builder を�
 
 ## Packet Safety Worker への適用
 
-Packet Safety Worker は次のようにこの契約を使う。
+Packet Safety Worker は `src-tauri/src/harness/packet_safety.rs` に実装され、`network_packet_safety` MCPツールとして Agent と Fast Router から呼び出せる。LLM に送信パラメータや再試行を決定させず、許可された intent だけを受け付ける。
 
 | 状況 | 戻り値 |
 | --- | --- |

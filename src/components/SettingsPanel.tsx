@@ -176,11 +176,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
     saveAllSettings({ repetitionPenalty: val });
   };
 
-  const handleModelPathChange = (val: string) => {
-    setModelPath(val);
-    saveAllSettings({ modelPath: val });
-  };
-
   const handleMcpTimeoutChange = (val: number) => {
     setMcpTimeout(val);
     saveAllSettings({ mcpTimeout: val });

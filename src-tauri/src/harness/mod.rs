@@ -4,6 +4,7 @@ pub mod dispatch;
 pub mod execution;
 pub mod fake;
 pub mod intent;
+pub mod packet_safety;
 pub mod ports;
 pub mod shortcut_planner;
 pub mod state_machine;

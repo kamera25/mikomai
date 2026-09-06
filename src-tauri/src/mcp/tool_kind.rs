@@ -20,6 +20,7 @@ pub enum ToolKind {
     NetworkSendConsoleMessage,
     NetworkPacketAnalyze,
     NetworkPacketPrepare,
+    NetworkPacketSafety,
     NetworkShow,
     NetworkConfig,
     FetchConfig,
@@ -59,6 +60,7 @@ impl ToolKind {
             Self::NetworkSendConsoleMessage => "network_send_console_message",
             Self::NetworkPacketAnalyze => "network_packet_analyze",
             Self::NetworkPacketPrepare => "network_packet_prepare",
+            Self::NetworkPacketSafety => "network_packet_safety",
             Self::NetworkShow => "network_show",
             Self::NetworkConfig => "network_config",
             Self::FetchConfig => "fetch_config",
@@ -97,6 +99,7 @@ impl ToolKind {
             Self::NetworkSendConsoleMessage => "Console Message",
             Self::NetworkPacketAnalyze => "Packet Analysis",
             Self::NetworkPacketPrepare => "DHCP Packet Preview",
+            Self::NetworkPacketSafety => "Packet Safety Worker",
             Self::NetworkShow => "Show Command",
             Self::NetworkConfig => "Config Command",
             Self::FetchConfig => "Fetch Config",
@@ -197,6 +200,7 @@ impl ToolKind {
                 | Self::NetworkListSerialPorts
                 | Self::NetworkPacketAnalyze
                 | Self::NetworkPacketPrepare
+                | Self::NetworkPacketSafety
                 | Self::NetworkShow
                 | Self::GetState
                 | Self::FetchConfig
@@ -234,6 +238,7 @@ impl std::str::FromStr for ToolKind {
             "network_send_console_message" => Ok(Self::NetworkSendConsoleMessage),
             "network_packet_analyze" => Ok(Self::NetworkPacketAnalyze),
             "network_packet_prepare" => Ok(Self::NetworkPacketPrepare),
+            "network_packet_safety" => Ok(Self::NetworkPacketSafety),
             "network_show" => Ok(Self::NetworkShow),
             "network_config" => Ok(Self::NetworkConfig),
             "fetch_config" => Ok(Self::FetchConfig),
