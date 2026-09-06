@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import { useSettingsContext } from "../contexts/SettingsContext";
 import { getErrorMessage } from "../utils/error";
+import { findPreset, PRESET_MODELS } from "./settingsModelPresets";
 
 import "./SettingsPanel.css";
 
@@ -12,37 +13,8 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-export interface ModelPreset {
-  id: string;
-  labelKey: string;
-  repo: string;
-  filename: string;
-  mmprojFilename?: string;
-}
-
-export const PRESET_MODELS: ModelPreset[] = [
-  {
-    id: "gemma-4-e4b-ud",
-    labelKey: "settings.opt_preset_gemma_4_e4b",
-    repo: "unsloth/gemma-4-E4B-it-GGUF",
-    filename: "gemma-4-E4B-it-UD-Q4_K_XL.gguf",
-    mmprojFilename: "mmproj-F16.gguf",
-  },
-  {
-    id: "gemma-4-12b-ud",
-    labelKey: "settings.opt_preset_gemma_4_12b",
-    repo: "unsloth/gemma-4-12b-it-GGUF",
-    filename: "gemma-4-12b-it-UD-Q4_K_XL.gguf",
-    mmprojFilename: "mmproj-F16.gguf",
-  },
-  {
-    id: "gemma-4-e2b-ud",
-    labelKey: "settings.opt_preset_gemma_4_e2b",
-    repo: "unsloth/gemma-4-E2B-it-GGUF",
-    filename: "gemma-4-E2B-it-UD-Q4_K_XL.gguf",
-    mmprojFilename: "mmproj-F16.gguf",
-  },
-];
+export type { ModelPreset } from "./settingsModelPresets";
+export { PRESET_MODELS } from "./settingsModelPresets";
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _onClose }) => {
   const { t } = useTranslation();
@@ -150,13 +122,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
 
   const handleRepoPathChange = (val: string) => {
     setRepoPath(val);
-    const match = PRESET_MODELS.find((p) => p.repo === val && p.filename === modelFilename);
+    const match = findPreset(val, modelFilename);
     setSelectedPresetId(match ? match.id : "custom");
   };
 
   const handleModelFilenameChange = (val: string) => {
     setModelFilename(val);
-    const match = PRESET_MODELS.find((p) => p.repo === repoPath && p.filename === val);
+    const match = findPreset(repoPath, val);
     setSelectedPresetId(match ? match.id : "custom");
   };
 

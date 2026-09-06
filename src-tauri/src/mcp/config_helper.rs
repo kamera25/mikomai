@@ -4,6 +4,10 @@ use std::io::Write;
 use std::process::Command;
 use std::sync::Mutex;
 
+#[allow(unused_imports)]
+pub use super::config_diff::{compute_line_diff, normalize_config_for_diff};
+use super::config_types::TargetVendor;
+
 pub struct ChoiceManager {
     pub txs: Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
 }
@@ -58,159 +62,6 @@ struct ConvertResponse {
     success: bool,
     converted_config: String,
     error: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DiffLine {
-    pub r#type: String, // "normal", "insert", "delete"
-    pub old_line: Option<usize>,
-    pub new_line: Option<usize>,
-    pub content: String,
-}
-
-pub fn normalize_config_for_diff(config: &str) -> String {
-    let ignorable_keywords = [
-        "info:",
-        "building configuration",
-        "current configuration",
-        "nvram config last updated",
-        "! last edit",
-        "! last refresh",
-        "! last save",
-        "! time:",
-        "! current time:",
-        "! last modified",
-    ];
-
-    let lines: Vec<&str> = config
-        .lines()
-        .map(|l| l.trim_end())
-        .filter(|line| {
-            let trimmed = line.trim();
-            let lower = trimmed.to_lowercase();
-
-            for kw in &ignorable_keywords {
-                if lower.starts_with(kw) || lower.contains(kw) {
-                    return false;
-                }
-            }
-
-            if lower.starts_with("show running")
-                || lower.starts_with("show config")
-                || lower.starts_with("show run")
-            {
-                return false;
-            }
-
-            true
-        })
-        .collect();
-
-    let mut start = 0;
-    while start < lines.len() && lines[start].trim().is_empty() {
-        start += 1;
-    }
-
-    let mut end = lines.len();
-    while end > start && lines[end - 1].trim().is_empty() {
-        end -= 1;
-    }
-
-    if start >= end {
-        String::new()
-    } else {
-        lines[start..end].join("\n")
-    }
-}
-
-pub fn compute_line_diff(old_text: &str, new_text: &str) -> (Vec<DiffLine>, usize, usize) {
-    let norm_old = normalize_config_for_diff(old_text);
-    let norm_new = normalize_config_for_diff(new_text);
-    let old_lines: Vec<&str> = norm_old.lines().collect();
-    let new_lines: Vec<&str> = norm_new.lines().collect();
-
-    let n = old_lines.len();
-    let m = new_lines.len();
-
-    let mut dp = vec![vec![0usize; m + 1]; n + 1];
-    for i in (0..n).rev() {
-        for j in (0..m).rev() {
-            if old_lines[i] == new_lines[j] {
-                dp[i][j] = dp[i + 1][j + 1] + 1;
-            } else {
-                dp[i][j] = dp[i + 1][j].max(dp[i][j + 1]);
-            }
-        }
-    }
-
-    let mut diff_lines = Vec::new();
-    let mut i = 0;
-    let mut j = 0;
-    let mut old_line_num = 1;
-    let mut new_line_num = 1;
-    let mut additions = 0;
-    let mut deletions = 0;
-
-    while i < n && j < m {
-        if old_lines[i] == new_lines[j] {
-            diff_lines.push(DiffLine {
-                r#type: "normal".to_string(),
-                old_line: Some(old_line_num),
-                new_line: Some(new_line_num),
-                content: old_lines[i].to_string(),
-            });
-            i += 1;
-            j += 1;
-            old_line_num += 1;
-            new_line_num += 1;
-        } else if dp[i + 1][j] >= dp[i][j + 1] {
-            diff_lines.push(DiffLine {
-                r#type: "delete".to_string(),
-                old_line: Some(old_line_num),
-                new_line: None,
-                content: old_lines[i].to_string(),
-            });
-            i += 1;
-            old_line_num += 1;
-            deletions += 1;
-        } else {
-            diff_lines.push(DiffLine {
-                r#type: "insert".to_string(),
-                old_line: None,
-                new_line: Some(new_line_num),
-                content: new_lines[j].to_string(),
-            });
-            j += 1;
-            new_line_num += 1;
-            additions += 1;
-        }
-    }
-
-    while i < n {
-        diff_lines.push(DiffLine {
-            r#type: "delete".to_string(),
-            old_line: Some(old_line_num),
-            new_line: None,
-            content: old_lines[i].to_string(),
-        });
-        i += 1;
-        old_line_num += 1;
-        deletions += 1;
-    }
-
-    while j < m {
-        diff_lines.push(DiffLine {
-            r#type: "insert".to_string(),
-            old_line: None,
-            new_line: Some(new_line_num),
-            content: new_lines[j].to_string(),
-        });
-        j += 1;
-        new_line_num += 1;
-        additions += 1;
-    }
-
-    (diff_lines, additions, deletions)
 }
 
 fn run_config_helper(payload: serde_json::Value) -> Result<String, String> {
@@ -847,18 +698,12 @@ pub async fn convert_cisco_config(
     if config.trim().is_empty() {
         return Err("Configuration text cannot be empty".to_string());
     }
-    let vendor = target_vendor.trim().to_lowercase();
-    if vendor != "juniper" && vendor != "arista" {
-        return Err(format!(
-            "Unsupported target vendor: '{}'. Supported: 'juniper', 'arista'",
-            target_vendor
-        ));
-    }
+    let vendor = TargetVendor::parse(&target_vendor)?;
 
     let payload = serde_json::json!(ConvertPayload {
         action: "convert",
         config: config.clone(),
-        target_vendor: vendor.clone(),
+        target_vendor: vendor.to_string(),
     });
 
     let output_json = run_config_helper(payload)?;

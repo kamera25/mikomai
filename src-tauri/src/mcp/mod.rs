@@ -4,6 +4,8 @@ pub mod brands;
 pub mod canonicalization;
 pub mod interface;
 pub mod config_helper;
+pub(crate) mod config_diff;
+pub(crate) mod config_types;
 pub mod console;
 pub mod devices;
 pub mod executor;
