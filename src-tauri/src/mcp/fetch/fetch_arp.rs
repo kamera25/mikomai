@@ -6,11 +6,11 @@ use tauri::Manager;
 pub(crate) struct ArpFetcher;
 
 impl McpCommandFetcher for ArpFetcher {
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        if !template.fetch_arp.trim().is_empty() {
-            template.fetch_arp.clone()
+    fn get_commands_from_template(&self, template: &CommandTemplate) -> Vec<String> {
+        if !template.fetch_arp.is_empty() {
+            template.fetch_arp.to_vec()
         } else {
-            "show ip arp".to_string()
+            vec!["show ip arp".to_string()]
         }
     }
 

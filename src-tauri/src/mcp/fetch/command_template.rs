@@ -1,29 +1,216 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TemplateCommands(pub Vec<String>);
+
+impl TemplateCommands {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn to_vec(&self) -> Vec<String> {
+        self.0.clone()
+    }
+
+    #[allow(dead_code)]
+    pub fn as_slice(&self) -> &[String] {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty() || self.0.iter().all(|s| s.trim().is_empty())
+    }
+
+    #[allow(dead_code)]
+    pub fn first_command(&self) -> Option<&str> {
+        self.0.iter().find(|s| !s.trim().is_empty()).map(|s| s.as_str())
+    }
+}
+
+impl std::ops::Deref for TemplateCommands {
+    type Target = [String];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<&str> for TemplateCommands {
+    fn from(s: &str) -> Self {
+        if s.trim().is_empty() {
+            Self(Vec::new())
+        } else {
+            Self(vec![s.to_string()])
+        }
+    }
+}
+
+impl From<String> for TemplateCommands {
+    fn from(s: String) -> Self {
+        if s.trim().is_empty() {
+            Self(Vec::new())
+        } else {
+            Self(vec![s])
+        }
+    }
+}
+
+impl From<Vec<String>> for TemplateCommands {
+    fn from(v: Vec<String>) -> Self {
+        Self(v)
+    }
+}
+
+impl From<&[&str]> for TemplateCommands {
+    fn from(v: &[&str]) -> Self {
+        Self(v.iter().map(|s| s.to_string()).collect())
+    }
+}
+
+impl PartialEq<&str> for TemplateCommands {
+    fn eq(&self, other: &&str) -> bool {
+        if self.0.len() == 1 {
+            self.0[0] == *other
+        } else if self.0.is_empty() {
+            other.trim().is_empty()
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<str> for TemplateCommands {
+    fn eq(&self, other: &str) -> bool {
+        if self.0.len() == 1 {
+            self.0[0] == other
+        } else if self.0.is_empty() {
+            other.trim().is_empty()
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<String> for TemplateCommands {
+    fn eq(&self, other: &String) -> bool {
+        self.eq(other.as_str())
+    }
+}
+
+impl fmt::Display for TemplateCommands {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0.len() == 1 {
+            write!(f, "{}", self.0[0])
+        } else {
+            write!(f, "{:?}", self.0)
+        }
+    }
+}
+
+impl Serialize for TemplateCommands {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if self.0.is_empty() {
+            serializer.serialize_str("")
+        } else if self.0.len() == 1 {
+            serializer.serialize_str(&self.0[0])
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TemplateCommands {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct TemplateCommandsVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for TemplateCommandsVisitor {
+            type Value = TemplateCommands;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string or a sequence of strings")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<TemplateCommands, E>
+            where
+                E: serde::de::Error,
+            {
+                if value.trim().is_empty() {
+                    Ok(TemplateCommands(Vec::new()))
+                } else {
+                    Ok(TemplateCommands(vec![value.to_string()]))
+                }
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<TemplateCommands, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(&value)
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<TemplateCommands, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut vec = Vec::new();
+                while let Some(element) = seq.next_element::<String>()? {
+                    if !element.trim().is_empty() {
+                        vec.push(element);
+                    }
+                }
+                Ok(TemplateCommands(vec))
+            }
+
+            fn visit_none<E>(self) -> Result<TemplateCommands, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(TemplateCommands(Vec::new()))
+            }
+
+            fn visit_unit<E>(self) -> Result<TemplateCommands, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(TemplateCommands(Vec::new()))
+            }
+        }
+
+        deserializer.deserialize_any(TemplateCommandsVisitor)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct CommandTemplate {
     #[serde(default)]
-    pub fetch_config: String,
+    pub fetch_config: TemplateCommands,
     #[serde(default)]
-    pub fetch_route: String,
+    pub fetch_route: TemplateCommands,
     #[serde(default)]
-    pub fetch_bgp: String,
+    pub fetch_bgp: TemplateCommands,
     #[serde(default)]
-    pub fetch_arp: String,
+    pub fetch_arp: TemplateCommands,
     #[serde(default)]
-    pub fetch_interfaces: String,
+    pub fetch_interfaces: TemplateCommands,
     #[serde(default)]
-    pub fetch_lldp: String,
+    pub fetch_lldp: TemplateCommands,
     #[serde(default)]
-    pub fetch_mac_table: String,
+    pub fetch_mac_table: TemplateCommands,
     #[serde(default)]
-    pub fetch_ospf: String,
+    pub fetch_ospf: TemplateCommands,
     #[serde(default)]
-    pub fetch_cpu: String,
+    pub fetch_cpu: TemplateCommands,
 }
 
 pub type CommandTemplates = HashMap<String, CommandTemplate>;
@@ -62,31 +249,31 @@ pub fn load_templates(app: &tauri::AppHandle) -> CommandTemplates {
             let entry = defaults
                 .entry(vendor)
                 .or_insert_with(CommandTemplate::default);
-            if !loaded_template.fetch_config.trim().is_empty() {
+            if !loaded_template.fetch_config.is_empty() {
                 entry.fetch_config = loaded_template.fetch_config;
             }
-            if !loaded_template.fetch_route.trim().is_empty() {
+            if !loaded_template.fetch_route.is_empty() {
                 entry.fetch_route = loaded_template.fetch_route;
             }
-            if !loaded_template.fetch_bgp.trim().is_empty() {
+            if !loaded_template.fetch_bgp.is_empty() {
                 entry.fetch_bgp = loaded_template.fetch_bgp;
             }
-            if !loaded_template.fetch_arp.trim().is_empty() {
+            if !loaded_template.fetch_arp.is_empty() {
                 entry.fetch_arp = loaded_template.fetch_arp;
             }
-            if !loaded_template.fetch_interfaces.trim().is_empty() {
+            if !loaded_template.fetch_interfaces.is_empty() {
                 entry.fetch_interfaces = loaded_template.fetch_interfaces;
             }
-            if !loaded_template.fetch_lldp.trim().is_empty() {
+            if !loaded_template.fetch_lldp.is_empty() {
                 entry.fetch_lldp = loaded_template.fetch_lldp;
             }
-            if !loaded_template.fetch_mac_table.trim().is_empty() {
+            if !loaded_template.fetch_mac_table.is_empty() {
                 entry.fetch_mac_table = loaded_template.fetch_mac_table;
             }
-            if !loaded_template.fetch_ospf.trim().is_empty() {
+            if !loaded_template.fetch_ospf.is_empty() {
                 entry.fetch_ospf = loaded_template.fetch_ospf;
             }
-            if !loaded_template.fetch_cpu.trim().is_empty() {
+            if !loaded_template.fetch_cpu.is_empty() {
                 entry.fetch_cpu = loaded_template.fetch_cpu;
             }
         }
@@ -343,5 +530,37 @@ mod tests {
         assert_eq!(map_vendor_type("A10"), "a10");
         assert_eq!(map_vendor_type("PaloAlto"), "paloalto_panos");
         assert_eq!(map_vendor_type("unknown_device"), "cisco_ios");
+    }
+
+    #[test]
+    fn test_template_commands_serde() {
+        // Test single string
+        let yaml_single = "fetch_config: \"show run\"\n";
+        #[derive(Deserialize, Serialize)]
+        struct TestConfig {
+            fetch_config: TemplateCommands,
+        }
+        let parsed: TestConfig = serde_yaml::from_str(yaml_single).unwrap();
+        assert_eq!(parsed.fetch_config, "show run");
+        assert_eq!(parsed.fetch_config.to_vec(), vec!["show run"]);
+
+        // Test array of strings
+        let yaml_array = "fetch_config:\n  - \"show interface\"\n  - \"show ip status\"\n";
+        let parsed_array: TestConfig = serde_yaml::from_str(yaml_array).unwrap();
+        assert_eq!(
+            parsed_array.fetch_config.to_vec(),
+            vec!["show interface", "show ip status"]
+        );
+        assert!(!parsed_array.fetch_config.is_empty());
+
+        // Test serialization
+        let serialized_single = serde_json::to_string(&parsed).unwrap();
+        assert_eq!(serialized_single, "{\"fetch_config\":\"show run\"}");
+
+        let serialized_array = serde_json::to_string(&parsed_array).unwrap();
+        assert_eq!(
+            serialized_array,
+            "{\"fetch_config\":[\"show interface\",\"show ip status\"]}"
+        );
     }
 }

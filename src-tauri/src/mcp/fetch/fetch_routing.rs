@@ -6,11 +6,11 @@ use tauri::Manager;
 pub(crate) struct RoutingFetcher;
 
 impl McpCommandFetcher for RoutingFetcher {
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        if !template.fetch_route.trim().is_empty() {
-            template.fetch_route.clone()
+    fn get_commands_from_template(&self, template: &CommandTemplate) -> Vec<String> {
+        if !template.fetch_route.is_empty() {
+            template.fetch_route.to_vec()
         } else {
-            "show ip route".to_string()
+            vec!["show ip route".to_string()]
         }
     }
 

@@ -25,6 +25,18 @@ impl NetmikoConnectionWrapper {
             .await
             .map_err(|e| e.to_string())
     }
+
+    /// Executes multiple show commands on the target device via Netmiko sequentially.
+    pub async fn execute_show_commands(
+        &self,
+        device: &NetmikoDeviceConfig,
+        commands: &[String],
+    ) -> Result<String, String> {
+        self.wrapper
+            .execute_show_commands(device, commands)
+            .await
+            .map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(test)]

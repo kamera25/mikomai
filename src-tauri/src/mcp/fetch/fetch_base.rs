@@ -147,7 +147,19 @@ pub async fn resolve_device_config(
 
 #[allow(async_fn_in_trait)]
 pub trait McpCommandFetcher {
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String;
+    fn get_commands_from_template(&self, template: &CommandTemplate) -> Vec<String> {
+        let single = self.get_command_from_template(template);
+        if single.trim().is_empty() {
+            Vec::new()
+        } else {
+            vec![single]
+        }
+    }
+
+    fn get_command_from_template(&self, _template: &CommandTemplate) -> String {
+        String::new()
+    }
+
     fn get_log_prefix(&self) -> &'static str;
 
     async fn fetch_device_info(
@@ -167,37 +179,64 @@ pub trait McpCommandFetcher {
             }
         };
 
-        let command = if self.get_log_prefix() == "config" {
-            super::command_template::get_show_running_config_command(&target_device.device_type)
+        let commands = if self.get_log_prefix() == "config" {
+            let from_tpl = self.get_commands_from_template(template);
+            if !from_tpl.is_empty() {
+                from_tpl
+            } else {
+                vec![super::command_template::get_show_running_config_command(
+                    &target_device.device_type,
+                )]
+            }
         } else {
-            self.get_command_from_template(template)
+            self.get_commands_from_template(template)
         };
-        if command.trim().is_empty() {
+
+        let valid_commands: Vec<String> = commands
+            .into_iter()
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty())
+            .collect();
+
+        if valid_commands.is_empty() {
             return Err(format!(
                 "Error: No command defined for '{}' on device type '{}'.",
                 self.get_log_prefix(),
                 target_device.device_type
             ));
         }
+
+        let cmd_desc = if valid_commands.len() == 1 {
+            format!("'{}'", valid_commands[0])
+        } else {
+            format!("{:?}", valid_commands)
+        };
+
         if let Some(ref port) = target_device.console_port {
             log::info!(
-                "Fetching {} for registered device '{}' via console port '{}' using command '{}'",
+                "Fetching {} for registered device '{}' via console port '{}' using command(s) {}",
                 self.get_log_prefix(),
                 device_name,
                 port,
-                command
+                cmd_desc
             );
         } else {
             log::info!(
-                "Fetching {} for registered device '{}' using command '{}'",
+                "Fetching {} for registered device '{}' using command(s) {}",
                 self.get_log_prefix(),
                 device_name,
-                command
+                cmd_desc
             );
         }
 
         let wrapper = NetmikoConnectionWrapper::new(app);
-        match wrapper.execute_show(&target_device, &command).await {
+        let exec_result = if valid_commands.len() == 1 {
+            wrapper.execute_show(&target_device, &valid_commands[0]).await
+        } else {
+            wrapper.execute_show_commands(&target_device, &valid_commands).await
+        };
+
+        match exec_result {
             Ok(output) => {
                 let saved_path: Option<std::path::PathBuf> = if !output.trim().is_empty() {
                     if let Ok(mut manager) = crate::snapshot::SnapshotManager::new(app) {
@@ -250,6 +289,7 @@ pub fn check_yaml_cache(
         .base_dir()
         .join("current")
         .join(format!("{}_{}.yaml", registered_name, suffix));
+
     if !yaml_path.exists() {
         return None;
     }
@@ -289,11 +329,11 @@ mod tests {
     #[test]
     fn test_command_template_serialization() {
         let template = CommandTemplate {
-            fetch_config: "show run".to_string(),
-            fetch_route: "show ip route".to_string(),
-            fetch_bgp: "show ip bgp".to_string(),
-            fetch_arp: "show ip arp".to_string(),
-            fetch_cpu: "show processes cpu".to_string(),
+            fetch_config: "show run".into(),
+            fetch_route: "show ip route".into(),
+            fetch_bgp: "show ip bgp".into(),
+            fetch_arp: "show ip arp".into(),
+            fetch_cpu: "show processes cpu".into(),
             ..Default::default()
         };
         let serialized = serde_json::to_string(&template).unwrap();

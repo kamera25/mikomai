@@ -5,8 +5,8 @@ use tauri::Manager;
 pub(crate) struct ConfigFetcher;
 
 impl McpCommandFetcher for ConfigFetcher {
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        template.fetch_config.clone()
+    fn get_commands_from_template(&self, template: &CommandTemplate) -> Vec<String> {
+        template.fetch_config.to_vec()
     }
 
     fn get_log_prefix(&self) -> &'static str {

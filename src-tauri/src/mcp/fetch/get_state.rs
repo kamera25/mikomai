@@ -8,12 +8,16 @@ use tauri::Manager;
 
 pub(crate) struct InterfacesFetcher;
 impl McpCommandFetcher for InterfacesFetcher {
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+    fn get_commands_from_template(&self, template: &CommandTemplate) -> Vec<String> {
         if !template.fetch_interfaces.is_empty() {
-            template.fetch_interfaces.clone()
+            template.fetch_interfaces.to_vec()
         } else {
-            "show interfaces".to_string()
+            vec!["show interfaces".to_string()]
         }
+    }
+
+    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -23,12 +27,16 @@ impl McpCommandFetcher for InterfacesFetcher {
 
 pub(crate) struct LldpFetcher;
 impl McpCommandFetcher for LldpFetcher {
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+    fn get_commands_from_template(&self, template: &CommandTemplate) -> Vec<String> {
         if !template.fetch_lldp.is_empty() {
-            template.fetch_lldp.clone()
+            template.fetch_lldp.to_vec()
         } else {
-            "show lldp neighbors".to_string()
+            vec!["show lldp neighbors".to_string()]
         }
+    }
+
+    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -38,12 +46,16 @@ impl McpCommandFetcher for LldpFetcher {
 
 pub(crate) struct MacTableFetcher;
 impl McpCommandFetcher for MacTableFetcher {
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+    fn get_commands_from_template(&self, template: &CommandTemplate) -> Vec<String> {
         if !template.fetch_mac_table.is_empty() {
-            template.fetch_mac_table.clone()
+            template.fetch_mac_table.to_vec()
         } else {
-            "show mac address-table".to_string()
+            vec!["show mac address-table".to_string()]
         }
+    }
+
+    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -53,12 +65,16 @@ impl McpCommandFetcher for MacTableFetcher {
 
 pub(crate) struct BgpFetcher;
 impl McpCommandFetcher for BgpFetcher {
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+    fn get_commands_from_template(&self, template: &CommandTemplate) -> Vec<String> {
         if !template.fetch_bgp.is_empty() {
-            template.fetch_bgp.clone()
+            template.fetch_bgp.to_vec()
         } else {
-            "show ip bgp summary".to_string()
+            vec!["show ip bgp summary".to_string()]
         }
+    }
+
+    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -68,12 +84,16 @@ impl McpCommandFetcher for BgpFetcher {
 
 pub(crate) struct OspfFetcher;
 impl McpCommandFetcher for OspfFetcher {
-    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+    fn get_commands_from_template(&self, template: &CommandTemplate) -> Vec<String> {
         if !template.fetch_ospf.is_empty() {
-            template.fetch_ospf.clone()
+            template.fetch_ospf.to_vec()
         } else {
-            "show ip ospf neighbor".to_string()
+            vec!["show ip ospf neighbor".to_string()]
         }
+    }
+
+    fn get_command_from_template(&self, template: &CommandTemplate) -> String {
+        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -85,8 +105,16 @@ impl McpCommandFetcher for OspfFetcher {
 /// per-vendor template; only its small, structured result is exposed to Watch.
 pub struct CpuFetcher;
 impl McpCommandFetcher for CpuFetcher {
+    fn get_commands_from_template(&self, template: &CommandTemplate) -> Vec<String> {
+        if !template.fetch_cpu.is_empty() {
+            template.fetch_cpu.to_vec()
+        } else {
+            vec!["show processes cpu".to_string()]
+        }
+    }
+
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        template.fetch_cpu.clone()
+        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -356,15 +384,15 @@ mod tests {
     #[test]
     fn test_fetchers_commands() {
         let template = CommandTemplate {
-            fetch_config: "show run".to_string(),
-            fetch_route: "show ip route".to_string(),
-            fetch_bgp: "show ip bgp summary".to_string(),
-            fetch_arp: "show ip arp".to_string(),
-            fetch_interfaces: "show interfaces".to_string(),
-            fetch_lldp: "show lldp neighbors".to_string(),
-            fetch_mac_table: "show mac address-table".to_string(),
-            fetch_ospf: "show ip ospf neighbor".to_string(),
-            fetch_cpu: "show processes cpu".to_string(),
+            fetch_config: "show run".into(),
+            fetch_route: "show ip route".into(),
+            fetch_bgp: "show ip bgp summary".into(),
+            fetch_arp: "show ip arp".into(),
+            fetch_interfaces: "show interfaces".into(),
+            fetch_lldp: "show lldp neighbors".into(),
+            fetch_mac_table: "show mac address-table".into(),
+            fetch_ospf: "show ip ospf neighbor".into(),
+            fetch_cpu: "show processes cpu".into(),
         };
 
         assert_eq!(
@@ -390,6 +418,16 @@ mod tests {
         assert_eq!(
             CpuFetcher.get_command_from_template(&template),
             "show processes cpu"
+        );
+
+        // Test array commands
+        let multi_template = CommandTemplate {
+            fetch_interfaces: vec!["show interfaces".to_string(), "show ip status".to_string()].into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            InterfacesFetcher.get_commands_from_template(&multi_template),
+            vec!["show interfaces", "show ip status"]
         );
     }
 

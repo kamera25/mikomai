@@ -164,7 +164,16 @@ def main():
         print("INFO: Connected successfully to device.", file=sys.stderr, flush=True)
         
         if args.action == "show":
-            if not args.command:
+            commands = []
+            if args.commands:
+                try:
+                    commands = json.loads(args.commands) if isinstance(args.commands, str) else args.commands
+                except Exception:
+                    commands = [args.commands]
+            elif args.command:
+                commands = [args.command]
+
+            if not commands:
                 print("Error: command is required for 'show' action", file=sys.stderr, flush=True)
                 sys.exit(1)
 
@@ -177,9 +186,17 @@ def main():
             except Exception as enable_err:
                 print(f"INFO: Privilege mode transition note: {str(enable_err)}", file=sys.stderr, flush=True)
 
-            print(f"INFO: Executing show command: {args.command}", file=sys.stderr, flush=True)
-            output = send_command_wait_for_prompt(net_connect, args.command)
-            print(output, flush=True)
+            if len(commands) == 1:
+                print(f"INFO: Executing show command: {commands[0]}", file=sys.stderr, flush=True)
+                output = send_command_wait_for_prompt(net_connect, commands[0])
+                print(output, flush=True)
+            else:
+                outputs = []
+                for cmd in commands:
+                    print(f"INFO: Executing show command: {cmd}", file=sys.stderr, flush=True)
+                    cmd_out = send_command_wait_for_prompt(net_connect, cmd)
+                    outputs.append(f"=== Command: {cmd} ===\n{cmd_out}")
+                print("\n\n".join(outputs), flush=True)
             
         elif args.action == "config":
             if not args.commands:

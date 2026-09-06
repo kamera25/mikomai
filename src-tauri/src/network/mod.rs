@@ -90,6 +90,22 @@ pub trait NetworkInterface {
         device: &NetmikoDeviceConfig,
         command: &str,
     ) -> Result<String, NetworkError>;
+    async fn execute_show_commands(
+        &self,
+        device: &NetmikoDeviceConfig,
+        commands: &[String],
+    ) -> Result<String, NetworkError> {
+        if commands.len() == 1 {
+            self.execute_show(device, &commands[0]).await
+        } else {
+            let mut results = Vec::new();
+            for cmd in commands {
+                let out = self.execute_show(device, cmd).await?;
+                results.push(format!("=== Command: {} ===\n{}", cmd, out));
+            }
+            Ok(results.join("\n\n"))
+        }
+    }
     async fn execute_config(
         &self,
         device: &NetmikoDeviceConfig,
@@ -318,6 +334,34 @@ impl NetworkInterface for SidecarNetmikoWrapper {
             "secret": device.enable_password.clone().unwrap_or_default(),
             "device_type": device.device_type,
             "command": command,
+            "console_port": device.console_port,
+            "console_baud_rate": device.console_baud_rate,
+            "auth_method": device.auth_method,
+            "key_file": device.private_key_path,
+            "passphrase": device.passphrase,
+            "allow_agent": device.agent_forwarding,
+        });
+        if device.console_port.is_none() {
+            payload["host"] = serde_json::json!(device.host);
+        }
+        self.run_sidecar(payload).await
+    }
+
+    async fn execute_show_commands(
+        &self,
+        device: &NetmikoDeviceConfig,
+        commands: &[String],
+    ) -> Result<String, NetworkError> {
+        if commands.len() == 1 {
+            return self.execute_show(device, &commands[0]).await;
+        }
+        let mut payload = serde_json::json!({
+            "action": "show",
+            "username": device.username,
+            "password": device.password.clone().unwrap_or_default(),
+            "secret": device.enable_password.clone().unwrap_or_default(),
+            "device_type": device.device_type,
+            "commands": commands,
             "console_port": device.console_port,
             "console_baud_rate": device.console_baud_rate,
             "auth_method": device.auth_method,
