@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { ipc } from "../platform";
 import { ModelState as BackendModelState } from "../types";
 import { useSettingsContext } from "./SettingsContext";
 
@@ -62,8 +61,8 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const checkStatus = async () => {
       try {
         const [status, loadedPath] = await Promise.all([
-          invoke<BackendModelState>("get_model_status"),
-          invoke<string | null>("get_loaded_model_path").catch(() => null),
+          ipc.command<BackendModelState>("get_model_status"),
+          ipc.command<string | null>("get_loaded_model_path").catch(() => null),
         ]);
         if (active) {
           updateStatus(status);
@@ -80,9 +79,9 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const setupListeners = async () => {
       try {
-        const unlistenStatus = await listen<BackendModelState>("model-status-changed", (event) => {
+        const unlistenStatus = await ipc.subscribe<BackendModelState>("model-status-changed", (payload) => {
           if (active) {
-            updateStatus(event.payload);
+            updateStatus(payload);
           }
         });
         if (!active) {
@@ -91,9 +90,9 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           unlistenStatusFn = unlistenStatus;
         }
 
-        const unlistenLoaded = await listen<string>("model-loaded", (event) => {
+        const unlistenLoaded = await ipc.subscribe<string>("model-loaded", (payload) => {
           if (active) {
-            dispatch({ type: "SET_LOADED_MODEL_PATH", payload: event.payload });
+            dispatch({ type: "SET_LOADED_MODEL_PATH", payload });
           }
         });
         if (!active) {
@@ -123,7 +122,7 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!modelPath) return;
     try {
       dispatch({ type: "SET_STATUS", payload: "Loading" });
-      await invoke("load_model", { path: modelPath });
+      await ipc.command("load_model", { path: modelPath });
       dispatch({ type: "SET_LOADED_MODEL_PATH", payload: modelPath });
       dispatch({ type: "SET_STATUS", payload: "Loaded" });
     } catch (e) {

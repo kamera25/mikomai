@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/mikomai-core",
+  "crates/mikomai-adapters",
+  "crates/mikomai-cli",
+  "src-tauri",
+]
+

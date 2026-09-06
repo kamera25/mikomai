@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { ipc } from "../../platform";
+import { operationService } from "../../features/operations/operationService";
 import { ConfigDiffData } from "../../contexts/UIContext";
 import { isActiveCommitPhase, STEP_DEFINITIONS, type CommitPhase, type CommandResult, type LogStep, type OperationPlan, type StepPhaseKey } from "./configDiffModel";
 
@@ -51,8 +51,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
   useEffect(() => {
     if (!isOpen) return;
 
-    const unlistenStatus = listen<any>("commit-status", (event) => {
-      const { id: eventId, phase: newPhase, message } = event.payload;
+    const unlistenStatus = ipc.subscribe<any>("commit-status", ({ id: eventId, phase: newPhase, message }) => {
       if (id && eventId && eventId !== id) return;
 
       if (newPhase) {
@@ -107,8 +106,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
       }
     });
 
-    const unlistenLog = listen<any>("commit-log", (event) => {
-      const { line } = event.payload;
+    const unlistenLog = ipc.subscribe<any>("commit-log", ({ line }) => {
       if (line !== undefined && line !== null) {
         setCommitLogs((prev) => [...prev, line]);
         setSteps((prev) => {
@@ -128,15 +126,13 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
       }
     });
 
-    const unlistenForceCommit = listen<any>("request-force-commit", (event) => {
-      const { id: eventId, forceId, errors, message } = event.payload;
+    const unlistenForceCommit = ipc.subscribe<any>("request-force-commit", ({ id: eventId, forceId, errors, message }) => {
       if (id && eventId && eventId !== id) return;
       setForceCommitReq({ forceId, errors: errors || [], message });
       setActiveTab("logs");
     });
 
-    const unlistenDiffResult = listen<any>("commit-diff-result", (event) => {
-      const { id: eventId, fileName, additions, deletions, diffLines, hostname, ip, status, message } = event.payload;
+    const unlistenDiffResult = ipc.subscribe<any>("commit-diff-result", ({ id: eventId, fileName, additions, deletions, diffLines, hostname, ip, status, message }) => {
       if (id && eventId && eventId !== id) return;
 
       const formattedLines = (diffLines || []).map((l: any) => ({
@@ -192,19 +188,16 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
       setStatusMessage("変更計画を作成して承認中...");
       setCommitLogs(["[SYSTEM] 変更計画を作成しました。内容はこの差分と同一です。"]);
       setActiveTab("logs");
-      const plan = await invoke<OperationPlan>("create_network_config_operation_plan", {
+      const plan = await operationService.createPlan<OperationPlan>({
         deviceName,
         commands,
         rationale: `画面に表示した ${commands.length} 行の設定差分を ${deviceName} に適用する`,
       });
       setOperationPlan(plan);
-      await invoke<OperationPlan>("approve_operation_plan", { id: plan.id, planHash: plan.planHash });
+      await operationService.approve<OperationPlan>(plan.id, plan.planHash);
       setOperationPlan((current) => current && { ...current, approvalStatus: "approved" });
       setCommitLogs((logs) => [...logs, `[SYSTEM] 変更計画 ${plan.id} を承認しました。`, "[SYSTEM] Dry-run を実行します。"]);
-      const result = await invoke<CommandResult>("execute_approved_operation_plan", {
-        id: plan.id,
-        planHash: plan.planHash,
-      });
+      const result = await operationService.execute<CommandResult>(plan.id, plan.planHash);
       setOperationPlan((current) =>
         current && { ...current, approvalStatus: result.success ? "executed" : "failed" }
       );
@@ -213,7 +206,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
       setStatusMessage(result.success ? "承認済みの変更計画を適用しました。" : "変更計画の実行に失敗しました。");
       // Wake the conversion worker without granting it permission to perform
       // a second, legacy configuration write.
-      await invoke("submit_user_choice", { id, choice: "operation_submitted" });
+      await ipc.command("submit_user_choice", { id, choice: "operation_submitted" });
     } catch (e) {
       console.error("Failed to execute approved operation plan:", e);
       setPhase("failed");
@@ -226,7 +219,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
     const targetForceId = forceCommitReq.forceId;
     setForceCommitReq(null);
     try {
-      await invoke("submit_user_choice", { id: targetForceId, choice });
+      await ipc.command("submit_user_choice", { id: targetForceId, choice });
     } catch (e) {
       console.error("Failed to submit force commit choice:", e);
     }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { ipc } from "../platform";
 import { useUIContext } from "../contexts/UIContext";
 
 export function useConfigDiffEvents() {
@@ -8,8 +8,7 @@ export function useConfigDiffEvents() {
 
   // Update ConfigDiffPanel with dynamic conversion diffs
   useEffect(() => {
-    const unlisten = listen<any>("chat-event", (event) => {
-      const chatEvent = event.payload;
+    const unlisten = ipc.subscribe<any>("chat-event", (chatEvent) => {
       if (chatEvent.type === "mcpToolFinished") {
         const { toolId, success, output, args } = chatEvent.payload;
         if (success && toolId === "convert_cisco_config") {
@@ -49,8 +48,7 @@ export function useConfigDiffEvents() {
 
   // Listen to request-diff-commit from Rust
   useEffect(() => {
-    const unlisten = listen<any>("request-diff-commit", (event) => {
-      const { id, config, fileName, hostname, ip } = event.payload;
+    const unlisten = ipc.subscribe<any>("request-diff-commit", ({ id, config, fileName, hostname, ip }) => {
       if (id) {
         setDiffCommitId(id);
       }

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { ipc } from "../platform";
 import { Message, ChatSession, HistoryItem, SummaryItem, HistoryMutation, HistorySnapshot } from "../types";
 import { useSettingsContext } from "./SettingsContext";
 import i18n from "../i18n";
@@ -207,7 +207,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Streaming responses update messages rapidly. Serializing mutations keeps a
     // slower, older disk write from overwriting a later session update.
     const mutationPromise = historyMutationQueue.current.then(async () => {
-      const snapshot = await invoke<HistorySnapshot>("mutate_history", { mutation });
+      const snapshot = await ipc.command<HistorySnapshot>("mutate_history", { mutation });
       dispatch({ type: "SET_HISTORY", payload: snapshot.history });
       return snapshot;
     });
@@ -225,7 +225,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const initHistory = async () => {
       try {
-        const snapshot = await invoke<HistorySnapshot>("initialize_history");
+        const snapshot = await ipc.command<HistorySnapshot>("initialize_history");
         const activeSession = findSession(snapshot.history, snapshot.activeSessionId);
         dispatch({
           type: "INIT_HISTORY",
@@ -288,7 +288,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const initSummaries = async () => {
       try {
-        const savedSummaries = await invoke<SummaryItem[]>("load_summaries");
+        const savedSummaries = await ipc.command<SummaryItem[]>("load_summaries");
         setSummaries(savedSummaries || []);
       } catch (e) {
         console.error("Failed to load summaries:", e);

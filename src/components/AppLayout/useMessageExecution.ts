@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { ipc } from "../../platform";
 import { Attachment, Message } from "../../types";
 
 interface QueuedMessage {
@@ -75,7 +75,7 @@ export function useMessageExecution(options: UseMessageExecutionOptions) {
   }, [execute, options]);
 
   const stop = useCallback(async () => {
-    try { await invoke("stop_llm"); } catch (error) { console.error("Failed to stop LLM:", error); }
+    try { await ipc.command("stop_llm"); } catch (error) { console.error("Failed to stop LLM:", error); }
     queueRef.current = [];
     executingRef.current = false;
     setIsGenerating(false);

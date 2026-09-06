@@ -1,6 +1,6 @@
 import { lazy, Suspense, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { invoke } from "@tauri-apps/api/core";
+import { ipc } from "../../platform";
 import "../../App.css";
 
 import { Chat } from "../Chat/Chat";
@@ -60,7 +60,7 @@ export function AppLayout() {
   const handleCloseConfigDiff = useCallback(() => {
     uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false });
     if (diffCommitId) {
-      invoke("submit_user_choice", { id: diffCommitId, choice: "cancel" }).catch((err) => {
+      ipc.command("submit_user_choice", { id: diffCommitId, choice: "cancel" }).catch((err) => {
         console.error("Failed to cancel user choice on close:", err);
       });
       setDiffCommitId(null);
@@ -263,7 +263,7 @@ export function AppLayout() {
     }]);
     setIsGenerating(true);
     try {
-      await invoke("resume_agent_task", { taskId: task.taskId });
+      await ipc.command("resume_agent_task", { taskId: task.taskId });
     } catch (reason) {
       setMessages((previous) => [...previous, {
         role: "ai", content: `調査を再開できませんでした: ${String(reason)}`,

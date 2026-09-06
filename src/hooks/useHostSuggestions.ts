@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { connectionService } from "../features/connections/connectionService";
 import { Connection, McpHost, SystemSettings } from "../types";
 
 interface UseHostSuggestionsProps {
@@ -33,16 +33,10 @@ export function useHostSuggestions({
 
   const fetchHosts = useCallback(async (hostToResolve?: string) => {
     try {
-      const [connections, mcpHosts] = await Promise.all([
-        invoke<Connection[]>("load_connections").catch((err) => {
+      const [connections, mcpHosts] = await connectionService.load().catch((err) => {
           console.error("Failed to load connections:", err);
-          return [];
-        }),
-        invoke<McpHost[]>("get_mcp_hosts").catch((err) => {
-          console.error("Failed to get MCP hosts:", err);
-          return [];
-        }),
-      ]);
+          return [[], []] as [Connection[], McpHost[]];
+      });
 
 
       const hostMap = new Map<string, string>();
@@ -62,7 +56,7 @@ export function useHostSuggestions({
         const isKnown = Array.from(hostMap.values()).includes(hostToResolve);
         if (!isKnown) {
           try {
-            const resolvedName = await invoke<string>("resolve_ip", { ip: hostToResolve });
+            const resolvedName = await connectionService.resolveIp(hostToResolve);
             if (resolvedName) {
               hostMap.set(resolvedName, hostToResolve);
             }

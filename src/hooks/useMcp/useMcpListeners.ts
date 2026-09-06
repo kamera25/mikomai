@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { listen } from "@tauri-apps/api/event";
-import { Message, SummaryItem, ChatEvent } from "../../types";
+import { ipc } from "../../platform";
+import { Message, SummaryItem } from "../../types";
 import i18n from "../../i18n";
 import { mergeTaskContent, typingStep, type TaskContentState } from "./mcpListenerState";
 
@@ -177,9 +177,8 @@ export function useMcpListeners({
     let unlistenStatusFn: (() => void) | null = null;
 
     const setupListeners = async () => {
-      const unlisten = await listen<ChatEvent>("chat-event", (event) => {
+      const unlisten = await ipc.subscribeChat((chatEvent) => {
         if (isCancelled) return;
-        const chatEvent = event.payload;
 
         switch (chatEvent.type) {
           case "arpYamlSaved": {
@@ -427,9 +426,9 @@ export function useMcpListeners({
         }
       });
 
-      const unlistenDiff = await listen<any>("request-diff-commit", (event) => {
+      const unlistenDiff = await ipc.subscribe<any>("request-diff-commit", (payload) => {
         if (isCancelled) return;
-        const targetId = event.payload?.id;
+        const targetId = payload?.id;
         const updateMsg = () => {
           setMessagesRef.current((prev) => {
             let targetIdx = -1;
@@ -458,9 +457,9 @@ export function useMcpListeners({
         setTimeout(updateMsg, 200);
       });
 
-      const unlistenStatus = await listen<any>("commit-status", (event) => {
+      const unlistenStatus = await ipc.subscribe<any>("commit-status", (payload) => {
         if (isCancelled) return;
-        const targetId = event.payload?.id;
+        const targetId = payload?.id;
         setMessagesRef.current((prev) => {
           let targetIdx = -1;
           if (targetId) {

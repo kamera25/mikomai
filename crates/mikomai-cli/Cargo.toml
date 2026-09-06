@@ -1,0 +1,8 @@
+[package]
+name = "mikomai-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mikomai-core = { path = "../mikomai-core" }
+mikomai-adapters = { path = "../mikomai-adapters" }

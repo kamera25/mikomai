@@ -1,4 +1,4 @@
-import { listen } from "@tauri-apps/api/event";
+import { ipc } from "../platform";
 import { useEffect, useState } from "react";
 import "./WatchNotificationToast.css";
 
@@ -13,8 +13,8 @@ export function WatchNotificationToast() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const unlisten = listen<WatchNotification>("watch-notification", (event) => {
-      setNotification(event.payload);
+    const unlisten = ipc.subscribe<WatchNotification>("watch-notification", (payload) => {
+      setNotification(payload);
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => setNotification(null), 10_000);
     });

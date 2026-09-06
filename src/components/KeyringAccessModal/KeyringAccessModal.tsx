@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { listen } from "@tauri-apps/api/event";
+import { ipc } from "../../platform";
 import "./KeyringAccessModal.css";
 
 export interface KeyringAccessModalProps {
@@ -18,10 +18,10 @@ export const KeyringAccessModal: React.FC<KeyringAccessModalProps> = ({ forceOpe
 
     const setupListeners = async () => {
       try {
-        const startPromise = listen("keyring-access-start", () => {
+        const startPromise = ipc.subscribe("keyring-access-start", () => {
           if (isMounted) setIsOpen(true);
         });
-        const endPromise = listen("keyring-access-end", () => {
+        const endPromise = ipc.subscribe("keyring-access-end", () => {
           if (isMounted) setIsOpen(false);
         });
 

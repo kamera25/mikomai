@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { settingsService } from "../features/settings/settingsService";
 import { SystemSettings } from "../types";
 import {
   DEFAULT_HISTORY_LIMIT,
@@ -67,7 +67,7 @@ export function useSettings() {
   useEffect(() => {
     const initSettings = async () => {
       try {
-        const loaded = await invoke<SystemSettings>("load_settings");
+        const loaded = await settingsService.load();
         if (loaded) {
           setSettings((prev) => {
             const nextState: SettingsState = {
@@ -145,7 +145,7 @@ export function useSettings() {
     };
 
     try {
-      await invoke("save_settings", { settings: payload });
+      await settingsService.save(payload);
     } catch (e) {
       console.error("Failed to save settings:", e);
     }

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { chatService } from "../features/chat/chatService";
 import { UseMcpProps } from "./useMcp/types";
 import { useMcpListeners } from "./useMcp/useMcpListeners";
 import { Attachment } from "../types";
@@ -17,15 +17,13 @@ export function useMcp({
 
   const handleMcpResponse = async (userMessage: string, attachments?: Attachment[]) => {
     try {
-      await invoke("handle_mcp_message", {
-        payload: {
-          userMessage,
-          summaries,
-          recentIps: recentIPs || [],
-          historyLimit,
-          mcpTimeout,
-          attachments,
-        },
+      await chatService.send({
+        userMessage,
+        summaries,
+        recentIps: recentIPs || [],
+        historyLimit,
+        mcpTimeout,
+        attachments,
       });
     } catch (e: unknown) {
       console.error("Failed to execute MCP message:", e);
@@ -34,4 +32,3 @@ export function useMcp({
 
   return { handleMcpResponse };
 }
-

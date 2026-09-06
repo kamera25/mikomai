@@ -1,4 +1,6 @@
 pub mod audit;
+pub mod application;
+pub mod ipc;
 pub(crate) mod background_work;
 pub mod cli;
 mod connections;

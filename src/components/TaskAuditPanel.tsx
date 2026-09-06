@@ -57,7 +57,7 @@ const eventDetail = (event: AuditEvent) =>
 export const TaskAuditPanel: React.FC<{
   onClose: () => void;
   onResume: (task: TaskSummary) => Promise<void>;
-}> = ({ onClose, onResume }) => {
+}> = ({ onClose: _onClose, onResume }) => {
   const { state: modelState, handleLoadModel } = useModelContext();
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [selected, setSelected] = useState<TaskAudit | null>(null);
