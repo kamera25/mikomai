@@ -124,7 +124,9 @@ function useScheduledTasksPresenter({ onClose }: ScheduledTasksPanelProps) {
   };
   const setEnabled = async (watch: Watch) => {
     try {
-      await ipc.command(watch.status === "enabled" ? COMMANDS.disableWatch : COMMANDS.enableWatch, { id: watch.id });
+      await ipc.command(watch.status === "enabled" ? COMMANDS.disableWatch : COMMANDS.enableWatch, {
+        id: watch.id,
+      });
       await loadWatches();
     } catch (reason) {
       setError(`状態を変更できませんでした: ${String(reason)}`);
@@ -147,12 +149,48 @@ function useScheduledTasksPresenter({ onClose }: ScheduledTasksPanelProps) {
       setError(`Watch を削除できませんでした: ${String(reason)}`);
     }
   };
-  return { onClose, watches, devices, query, setQuery, form, setForm, error,
-    filtered, loadWatches, save, setEnabled, run, remove };
+  const updateQuery = (value: string) => setQuery(value);
+  const openForm = (value: WatchForm) => setForm(value);
+  const closeForm = () => setForm(null);
+  const updateForm = (value: WatchForm) => setForm(value);
+  return {
+    onClose,
+    watches,
+    devices,
+    query,
+    updateQuery,
+    form,
+    openForm,
+    closeForm,
+    updateForm,
+    error,
+    filtered,
+    loadWatches,
+    save,
+    setEnabled,
+    run,
+    remove,
+  };
 }
 
-function ScheduledTasksView({ onClose, watches, devices, query, setQuery, form, setForm,
-  error, filtered, loadWatches, save, setEnabled, run, remove }: ReturnType<typeof useScheduledTasksPresenter>) {
+function ScheduledTasksView({
+  onClose,
+  watches,
+  devices,
+  query,
+  updateQuery,
+  form,
+  openForm,
+  closeForm,
+  updateForm,
+  error,
+  filtered,
+  loadWatches,
+  save,
+  setEnabled,
+  run,
+  remove,
+}: ReturnType<typeof useScheduledTasksPresenter>) {
   return (
     <div className="scheduled-tasks-overlay">
       <div className="scheduled-tasks-panel">
@@ -174,7 +212,7 @@ function ScheduledTasksView({ onClose, watches, devices, query, setQuery, form, 
               <input
                 placeholder="名前または対象機器を検索..."
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => updateQuery(event.target.value)}
               />
             </div>
           </div>
@@ -211,7 +249,7 @@ function ScheduledTasksView({ onClose, watches, devices, query, setQuery, form, 
                         <div className="task-icon">
                           <ClockIcon size={14} />
                         </div>
-                        <button className="watch-name-button" onClick={() => setForm(values)}>
+                        <button className="watch-name-button" onClick={() => openForm(values)}>
                           {watch.name}
                         </button>
                       </div>
@@ -243,7 +281,7 @@ function ScheduledTasksView({ onClose, watches, devices, query, setQuery, form, 
           </table>
         </div>
         <footer className="scheduled-panel-footer">
-          <button className="add-task-btn" onClick={() => setForm(emptyForm())}>
+          <button className="add-task-btn" onClick={() => openForm(emptyForm())}>
             CPU Watch を追加
           </button>
         </footer>
@@ -252,7 +290,7 @@ function ScheduledTasksView({ onClose, watches, devices, query, setQuery, form, 
             <div className="task-settings-card">
               <header className="settings-card-header">
                 <h3>{form.id ? "CPU Watch を編集" : "CPU Watch を追加"}</h3>
-                <button className="close-card-btn" onClick={() => setForm(null)}>
+                <button className="close-card-btn" onClick={closeForm}>
                   ×
                 </button>
               </header>
@@ -264,14 +302,14 @@ function ScheduledTasksView({ onClose, watches, devices, query, setQuery, form, 
                   名称
                   <input
                     value={form.name}
-                    onChange={(event) => setForm({ ...form, name: event.target.value })}
+                    onChange={(event) => updateForm({ ...form, name: event.target.value })}
                   />
                 </label>
                 <label className="settings-form-group">
                   対象機器
                   <select
                     value={form.device}
-                    onChange={(event) => setForm({ ...form, device: event.target.value })}
+                    onChange={(event) => updateForm({ ...form, device: event.target.value })}
                   >
                     <option value="">登録済み機器を選択...</option>
                     {devices.map((device) => (
@@ -295,7 +333,7 @@ function ScheduledTasksView({ onClose, watches, devices, query, setQuery, form, 
                     step="60"
                     value={form.intervalSeconds}
                     onChange={(event) =>
-                      setForm({ ...form, intervalSeconds: Number(event.target.value) })
+                      updateForm({ ...form, intervalSeconds: Number(event.target.value) })
                     }
                   />
                 </label>
@@ -308,13 +346,13 @@ function ScheduledTasksView({ onClose, watches, devices, query, setQuery, form, 
                     step="0.1"
                     value={form.threshold}
                     onChange={(event) =>
-                      setForm({ ...form, threshold: Number(event.target.value) })
+                      updateForm({ ...form, threshold: Number(event.target.value) })
                     }
                   />
                 </label>
               </div>
               <footer className="settings-card-footer">
-                <button className="settings-cancel-btn" onClick={() => setForm(null)}>
+                <button className="settings-cancel-btn" onClick={closeForm}>
                   キャンセル
                 </button>
                 <button className="settings-save-btn" onClick={() => void save()}>

@@ -247,6 +247,9 @@ function useRootMediator() {
         case "diff.toggle":
           uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: !uiState.isConfigDiffOpen });
           return true;
+        case "diff.close":
+          handleCloseConfigDiff();
+          return true;
         case "header.edit":
           handleStartRenameHeader();
           return true;
@@ -295,6 +298,7 @@ function useRootMediator() {
       uiState.isConfigDiffOpen,
       handleStartRenameHeader,
       handleSaveRenameHeader,
+      handleCloseConfigDiff,
       createNewSession,
       switchSession,
       toggleFolder,
@@ -347,7 +351,6 @@ function useRootMediator() {
     diffCommitId,
     diffPanelStyle,
     handleRightMouseDown,
-    handleCloseConfigDiff,
   };
 }
 
@@ -388,7 +391,6 @@ function AppLayoutView({
     diffCommitId,
     diffPanelStyle,
     handleRightMouseDown,
-    handleCloseConfigDiff,
 }: ReturnType<typeof useRootMediator>) {
   return (
     <GuiEventScope handle={mediate}>
@@ -498,7 +500,7 @@ function AppLayoutView({
                       isOpen={uiState.isConfigDiffOpen}
                       style={diffPanelStyle}
                       isResizing={isResizingRight}
-                      onClose={handleCloseConfigDiff}
+                      onClose={() => mediate({ type: "diff.close" })}
                     />
                   )}
                 </div>

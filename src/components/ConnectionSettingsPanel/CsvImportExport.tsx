@@ -5,33 +5,42 @@ import { useTranslation } from "react-i18next";
 import { Connection } from "../../types";
 
 interface CsvImportExportProps {
-  setConnections: React.Dispatch<React.SetStateAction<Connection[]>>;
-  onConnectionsChanged?: () => void;
+  onImported: (connections: Connection[]) => void;
 }
 
-function useCsvPresenter({
-  setConnections,
-  onConnectionsChanged,
-}: CsvImportExportProps) {
+function useCsvPresenter({ onImported }: CsvImportExportProps) {
   const { t } = useTranslation();
   const handleImportCsv = async () => {
-    const selected = await open({ multiple: false, filters: [{ name: "CSV", extensions: ["csv"] }] });
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+    });
     if (!selected || Array.isArray(selected)) return;
-    const result = await ipc.command<{ connections: Connection[]; importedCount: number; warnings: { row: number; reason: string }[] }>(COMMANDS.importConnections, { path: selected });
-    setConnections(result.connections);
-    onConnectionsChanged?.();
+    const result = await ipc.command<{
+      connections: Connection[];
+      importedCount: number;
+      warnings: { row: number; reason: string }[];
+    }>(COMMANDS.importConnections, { path: selected });
+    onImported(result.connections);
     await message(t("connection_panel.msg_csv_imported", { count: result.importedCount }));
   };
 
   const handleExportCsv = async () => {
-    const path = await save({ defaultPath: "connections.csv", filters: [{ name: "CSV", extensions: ["csv"] }] });
+    const path = await save({
+      defaultPath: "connections.csv",
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+    });
     if (path) await ipc.command(COMMANDS.exportConnections, { path });
   };
 
   return { t, handleImportCsv, handleExportCsv };
 }
 
-function CsvImportExportView({ t, handleImportCsv, handleExportCsv }: ReturnType<typeof useCsvPresenter>) {
+function CsvImportExportView({
+  t,
+  handleImportCsv,
+  handleExportCsv,
+}: ReturnType<typeof useCsvPresenter>) {
   return (
     <div className="csv-actions">
       <button className="toolbar-btn csv-btn" onClick={() => void handleImportCsv()}>

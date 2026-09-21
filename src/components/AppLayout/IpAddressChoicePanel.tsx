@@ -10,19 +10,10 @@ export interface IpAddressChoicePanelProps {
 
 export function ip2long(ip: string): number {
   const parts = ip.split(".").map(Number);
-  if (
-    parts.length !== 4 ||
-    parts.some(isNaN) ||
-    parts.some((p) => p < 0 || p > 255)
-  ) {
+  if (parts.length !== 4 || parts.some(isNaN) || parts.some((p) => p < 0 || p > 255)) {
     return -1;
   }
-  return (
-    ((parts[0] << 24) >>> 0) +
-    (parts[1] << 16) +
-    (parts[2] << 8) +
-    parts[3]
-  );
+  return ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
 }
 
 export function isIpInSubnet(ip: string, subnet: string): boolean {
@@ -89,8 +80,7 @@ export function validateIpAndSubnet(
   if (!isValidMask && maskText !== "") {
     return {
       isValid: false,
-      error:
-        "無効なサブネットマスクまたはプレフィックス長です (例: 255.255.255.0 または 24)",
+      error: "無効なサブネットマスクまたはプレフィックス長です (例: 255.255.255.0 または 24)",
     };
   }
 
@@ -132,9 +122,7 @@ function useIpAddressPresenter({
 
   const [ipAddress, setIpAddress] = useState(initialIp);
   const [subnetMask, setSubnetMask] = useState(initialSubnet);
-  const [validationError, setValidationError] = useState<string | undefined>(
-    undefined
-  );
+  const [validationError, setValidationError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!ipAddress && !subnetMask) {
@@ -169,16 +157,34 @@ function useIpAddressPresenter({
   };
 
   const isSubnetCidr = choice.subnet && choice.subnet.includes("/");
+  const updateIpAddress = (value: string) => setIpAddress(value);
+  const updateSubnetMask = (value: string) => setSubnetMask(value);
 
   return {
-    choice, progressPrefix, onCancel, ipAddress, setIpAddress, subnetMask,
-    setSubnetMask, validationError, handleSubmit, isSubnetCidr,
+    choice,
+    progressPrefix,
+    onCancel,
+    ipAddress,
+    updateIpAddress,
+    subnetMask,
+    updateSubnetMask,
+    validationError,
+    handleSubmit,
+    isSubnetCidr,
   };
 }
 
 function IpAddressChoiceView({
-    choice, progressPrefix, onCancel, ipAddress, setIpAddress, subnetMask,
-    setSubnetMask, validationError, handleSubmit, isSubnetCidr,
+  choice,
+  progressPrefix,
+  onCancel,
+  ipAddress,
+  updateIpAddress,
+  subnetMask,
+  updateSubnetMask,
+  validationError,
+  handleSubmit,
+  isSubnetCidr,
 }: ReturnType<typeof useIpAddressPresenter>) {
   return (
     <div
@@ -219,12 +225,8 @@ function IpAddressChoiceView({
             padding: "2px 6px",
             borderRadius: "4px",
           }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "var(--bg-tertiary)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.background = "transparent")
-          }
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-tertiary)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         >
           キャンセル (Esc)
         </button>
@@ -286,7 +288,7 @@ function IpAddressChoiceView({
           <input
             type="text"
             value={ipAddress}
-            onChange={(e) => setIpAddress(e.target.value)}
+            onChange={(e) => updateIpAddress(e.target.value)}
             placeholder="例: 192.168.1.1"
             style={{
               padding: "10px",
@@ -318,7 +320,7 @@ function IpAddressChoiceView({
           <input
             type="text"
             value={subnetMask}
-            onChange={(e) => setSubnetMask(e.target.value)}
+            onChange={(e) => updateSubnetMask(e.target.value)}
             placeholder="例: 24, 255.255.255.0"
             style={{
               padding: "10px",
@@ -361,10 +363,7 @@ function IpAddressChoiceView({
           fontWeight: "500",
           marginTop: "4px",
           opacity: validationError || !ipAddress || !subnetMask ? 0.6 : 1,
-          cursor:
-            validationError || !ipAddress || !subnetMask
-              ? "not-allowed"
-              : "pointer",
+          cursor: validationError || !ipAddress || !subnetMask ? "not-allowed" : "pointer",
         }}
       >
         設定を確定

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer } from "react";
+import { transitionWorkspace } from "../gui/stateMachine";
 
 export interface DiffLine {
   type: "normal" | "insert" | "delete";
@@ -55,33 +56,19 @@ export const initialUIState: UIState = {
   configDiffData: null,
 };
 
-function transitionPanel(state: UIState, panel: UIState["activePanel"]): UIState {
-  if (state.activePanel === panel) return state;
-  return {
-    ...state,
-    activePanel: panel,
-    isSettingsOpen: panel === "settings",
-    isConnectionOpen: panel === "connections",
-    isScheduledTasksOpen: panel === "scheduledTasks",
-    isTaskAuditOpen: panel === "taskAudit",
-    isSidebarOpen: panel === "chat" ? state.isSidebarOpen : false,
-    isConfigDiffOpen: panel === "chat" ? state.isConfigDiffOpen : false,
-  };
-}
-
 export function uiReducer(state: UIState, action: UIAction): UIState {
   switch (action.type) {
     case "NAVIGATE":
-      return transitionPanel(state, action.panel);
+      return transitionWorkspace(state, action.panel);
     case "SET_SIDEBAR_OPEN":
       return state.activePanel === "chat" ? { ...state, isSidebarOpen: action.payload } : state;
     case "SET_SETTINGS_OPEN":
-      return transitionPanel(
+      return transitionWorkspace(
         state,
         action.payload ? "settings" : state.activePanel === "settings" ? "chat" : state.activePanel
       );
     case "SET_CONNECTION_OPEN":
-      return transitionPanel(
+      return transitionWorkspace(
         state,
         action.payload
           ? "connections"
@@ -90,7 +77,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
             : state.activePanel
       );
     case "SET_SCHEDULED_TASKS_OPEN":
-      return transitionPanel(
+      return transitionWorkspace(
         state,
         action.payload
           ? "scheduledTasks"
@@ -99,7 +86,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
             : state.activePanel
       );
     case "SET_TASK_AUDIT_OPEN":
-      return transitionPanel(
+      return transitionWorkspace(
         state,
         action.payload
           ? "taskAudit"

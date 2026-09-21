@@ -3,7 +3,16 @@ import { useTranslation } from "react-i18next";
 import { HistoryItem, Message } from "../../types";
 import { dedupeTimelineMessages } from "../../features/chat/chatReducer";
 import { useGuiEvent } from "../../gui/events";
-import { UserIcon, BookIcon, TerminalIcon, MessageIcon, ChevronIcon, FolderIcon, MenuDotsIcon, PlusIcon } from "../Icons";
+import {
+  UserIcon,
+  BookIcon,
+  TerminalIcon,
+  MessageIcon,
+  ChevronIcon,
+  FolderIcon,
+  MenuDotsIcon,
+  PlusIcon,
+} from "../Icons";
 import "./Sidebar.css";
 
 interface SidebarProps {
@@ -15,14 +24,14 @@ interface SidebarProps {
   isResizing?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = React.memo(({
+function useSidebarPresenter({
   isSidebarOpen,
   history,
   activeSessionId,
   messages,
   style,
   isResizing,
-}) => {
+}: SidebarProps) {
   const { t } = useTranslation();
   const emit = useGuiEvent();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -123,7 +132,12 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               }}
             >
               <div className="folder-icon">
-                <ChevronIcon direction={item.isOpen ? "down" : "right"} size={12} strokeWidth={3} className={`chevron ${item.isOpen ? "open" : ""}`} />
+                <ChevronIcon
+                  direction={item.isOpen ? "down" : "right"}
+                  size={12}
+                  strokeWidth={3}
+                  className={`chevron ${item.isOpen ? "open" : ""}`}
+                />
               </div>
               <FolderIcon size={14} style={{ marginRight: 4, color: "var(--accent-color)" }} />
               <span className="folder-name">{item.name}</span>
@@ -246,6 +260,26 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
     });
   };
 
+  return {
+    isSidebarOpen,
+    history,
+    style,
+    isResizing,
+    t,
+    emit,
+    renderHistoryItems,
+  };
+}
+
+function SidebarView({
+  isSidebarOpen,
+  history,
+  style,
+  isResizing,
+  t,
+  emit,
+  renderHistoryItems,
+}: ReturnType<typeof useSidebarPresenter>) {
   return (
     <aside
       className={`sidebar ${isSidebarOpen ? "" : "collapsed"} ${isResizing ? "resizing" : ""}`}
@@ -254,7 +288,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       <div className="sidebar-header">
         <h2>{t("sidebar.history_title")}</h2>
         <div className="header-actions">
-          <button className="icon-button" title={t("sidebar.btn_new_chat")} onClick={() => emit({ type: "session.create" })}>
+          <button
+            className="icon-button"
+            title={t("sidebar.btn_new_chat")}
+            onClick={() => emit({ type: "session.create" })}
+          >
             <PlusIcon size={14} />
           </button>
         </div>
@@ -265,6 +303,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       </div>
     </aside>
   );
+}
+
+export const Sidebar: React.FC<SidebarProps> = React.memo((props) => {
+  const viewModel = useSidebarPresenter(props);
+  return <SidebarView {...viewModel} />;
 });
 
 Sidebar.displayName = "Sidebar";

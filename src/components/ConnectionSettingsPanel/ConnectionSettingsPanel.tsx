@@ -102,7 +102,9 @@ function useConnectionSettingsPresenter({
   useEffect(() => {
     const initConnections = async () => {
       try {
-        const savedConnections: Connection[] = await ipc.command<Connection[]>(COMMANDS.loadConnections);
+        const savedConnections: Connection[] = await ipc.command<Connection[]>(
+          COMMANDS.loadConnections
+        );
         setConnections(savedConnections || []);
       } catch (e) {
         console.error("Failed to load connections:", e);
@@ -146,9 +148,7 @@ function useConnectionSettingsPresenter({
           ? {
               ...conn,
               hostname:
-                formData.hostname ||
-                formData.ip ||
-                (formData.type === "Console" ? "Console" : ""),
+                formData.hostname || formData.ip || (formData.type === "Console" ? "Console" : ""),
               ip: formData.ip || "",
               port: formData.port ? parseInt(formData.port, 10) : undefined,
               type:
@@ -176,9 +176,7 @@ function useConnectionSettingsPresenter({
         id: Date.now().toString(),
         status: "offline",
         hostname:
-          formData.hostname ||
-          formData.ip ||
-          (formData.type === "Console" ? "Console" : ""),
+          formData.hostname || formData.ip || (formData.type === "Console" ? "Console" : ""),
         ip: formData.ip || "",
         port: formData.port ? parseInt(formData.port, 10) : undefined,
         type:
@@ -292,23 +290,66 @@ function useConnectionSettingsPresenter({
     }
   };
 
+  const updateSearchQuery = (value: string) => setSearchQuery(value);
+  const closeEditor = () => setIsEditing(false);
+  const applyImportedConnections = (imported: Connection[]) => {
+    setConnections(imported);
+    onConnectionsChanged?.();
+  };
+
   return {
-    t, connections, filteredConnections, searchQuery, setSearchQuery,
-    isNodeRefreshStarting, handleNodeDbBulkRefresh, setConnections,
-    onConnectionsChanged, selectedIds, isLoading, mcpHosts,
-    toggleSelect, toggleSelectAll, handleEdit, handleDeleteRow,
-    getAliasHelper, handleAddHost, handleDeleteSelected, isEditing,
-    editingId, deviceTypes, setIsEditing, handleSave, handleDeleteCurrent,
+    t,
+    connections,
+    filteredConnections,
+    searchQuery,
+    updateSearchQuery,
+    isNodeRefreshStarting,
+    handleNodeDbBulkRefresh,
+    applyImportedConnections,
+    selectedIds,
+    isLoading,
+    mcpHosts,
+    toggleSelect,
+    toggleSelectAll,
+    handleEdit,
+    handleDeleteRow,
+    getAliasHelper,
+    handleAddHost,
+    handleDeleteSelected,
+    isEditing,
+    editingId,
+    deviceTypes,
+    closeEditor,
+    handleSave,
+    handleDeleteCurrent,
   };
 }
 
 function ConnectionSettingsView({
-    t, connections, filteredConnections, searchQuery, setSearchQuery,
-    isNodeRefreshStarting, handleNodeDbBulkRefresh, setConnections,
-    onConnectionsChanged, selectedIds, isLoading, mcpHosts,
-    toggleSelect, toggleSelectAll, handleEdit, handleDeleteRow,
-    getAliasHelper, handleAddHost, handleDeleteSelected, isEditing,
-    editingId, deviceTypes, setIsEditing, handleSave, handleDeleteCurrent,
+  t,
+  connections,
+  filteredConnections,
+  searchQuery,
+  updateSearchQuery,
+  isNodeRefreshStarting,
+  handleNodeDbBulkRefresh,
+  applyImportedConnections,
+  selectedIds,
+  isLoading,
+  mcpHosts,
+  toggleSelect,
+  toggleSelectAll,
+  handleEdit,
+  handleDeleteRow,
+  getAliasHelper,
+  handleAddHost,
+  handleDeleteSelected,
+  isEditing,
+  editingId,
+  deviceTypes,
+  closeEditor,
+  handleSave,
+  handleDeleteCurrent,
 }: ReturnType<typeof useConnectionSettingsPresenter>) {
   return (
     <div className="connection-settings-overlay">
@@ -344,7 +385,7 @@ function ConnectionSettingsView({
                 type="text"
                 placeholder={t("connection_panel.search_placeholder")}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => updateSearchQuery(e.target.value)}
               />
             </div>
           </div>
@@ -386,10 +427,7 @@ function ConnectionSettingsView({
                 <polyline points="6 9 12 15 18 9"></polyline>
               </svg>
             </button>
-            <CsvImportExport
-              setConnections={setConnections}
-              onConnectionsChanged={onConnectionsChanged}
-            />
+            <CsvImportExport onImported={applyImportedConnections} />
           </div>
         </div>
 
@@ -420,7 +458,8 @@ function ConnectionSettingsView({
               cursor: selectedIds.length === 0 ? "not-allowed" : "pointer",
             }}
           >
-            {t("connection_panel.btn_delete_selected")} {selectedIds.length > 0 && `(${selectedIds.length})`}
+            {t("connection_panel.btn_delete_selected")}{" "}
+            {selectedIds.length > 0 && `(${selectedIds.length})`}
           </button>
         </footer>
 
@@ -430,7 +469,7 @@ function ConnectionSettingsView({
             connections={connections}
             deviceTypes={deviceTypes}
             getDeviceTypeAlias={getAliasHelper}
-            onClose={() => setIsEditing(false)}
+            onClose={closeEditor}
             onSave={handleSave}
             onDeleteCurrent={handleDeleteCurrent}
           />

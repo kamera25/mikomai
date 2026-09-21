@@ -7,6 +7,7 @@ export type GuiEvent =
   | { type: "navigate"; panel: Panel }
   | { type: "sidebar.toggle" }
   | { type: "diff.toggle" }
+  | { type: "diff.close" }
   | { type: "header.edit" }
   | { type: "header.change"; title: string }
   | { type: "header.save" }

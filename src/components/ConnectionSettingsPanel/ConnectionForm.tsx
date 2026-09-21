@@ -33,9 +33,7 @@ const customSelectStyles = {
       : state.isFocused
         ? "var(--bg-tertiary, #f1f5f9)"
         : "transparent",
-    color: state.isSelected
-      ? "white"
-      : "var(--text-primary, #1e293b)",
+    color: state.isSelected ? "white" : "var(--text-primary, #1e293b)",
     cursor: "pointer",
     fontSize: "0.95rem",
     "&:active": {
@@ -97,9 +95,7 @@ function useConnectionFormPresenter({
 }: ConnectionFormProps) {
   const { t } = useTranslation();
 
-  const editingConnection = editingId
-    ? connections.find((c) => c.id === editingId)
-    : null;
+  const editingConnection = editingId ? connections.find((c) => c.id === editingId) : null;
 
   const defaultValues = {
     hostname: editingConnection?.hostname || "",
@@ -142,7 +138,12 @@ function useConnectionFormPresenter({
     try {
       const selected = await open({
         multiple: false,
-        filters: [{ name: "SSH Key", extensions: ["*", "pem", "pub", "key", "id_rsa", "id_ed25519", "id_ecdsa"] }],
+        filters: [
+          {
+            name: "SSH Key",
+            extensions: ["*", "pem", "pub", "key", "id_rsa", "id_ed25519", "id_ecdsa"],
+          },
+        ],
       });
       if (selected && typeof selected === "string") {
         setValue("privateKeyPath", selected, { shouldDirty: true });
@@ -151,6 +152,7 @@ function useConnectionFormPresenter({
       console.error("Failed to select key file:", e);
     }
   };
+  const updatePortDigits = (value: string) => setValue("port", value.replace(/[^0-9]/g, ""));
 
   const onSubmit = (data: typeof defaultValues) => {
     const isPasswordDirty = !!dirtyFields.password;
@@ -160,22 +162,48 @@ function useConnectionFormPresenter({
   };
 
   return {
-    editingId, t, onClose, onDeleteCurrent, handleSubmit, onSubmit,
-    register, control, deviceTypeOptions, editingConnection, connectionType,
-    errors, setValue, authMethod, handleSelectKeyFile,
+    editingId,
+    t,
+    onClose,
+    onDeleteCurrent,
+    handleSubmit,
+    onSubmit,
+    register,
+    control,
+    deviceTypeOptions,
+    editingConnection,
+    connectionType,
+    errors,
+    authMethod,
+    handleSelectKeyFile,
+    updatePortDigits,
   };
 }
 
 function ConnectionFormView({
-    editingId, t, onClose, onDeleteCurrent, handleSubmit, onSubmit,
-    register, control, deviceTypeOptions, editingConnection, connectionType,
-    errors, setValue, authMethod, handleSelectKeyFile,
+  editingId,
+  t,
+  onClose,
+  onDeleteCurrent,
+  handleSubmit,
+  onSubmit,
+  register,
+  control,
+  deviceTypeOptions,
+  editingConnection,
+  connectionType,
+  errors,
+  authMethod,
+  handleSelectKeyFile,
+  updatePortDigits,
 }: ReturnType<typeof useConnectionFormPresenter>) {
   return (
     <div className="connection-form-modal-overlay">
       <form className="connection-form-card" onSubmit={handleSubmit(onSubmit)}>
         <header className="form-card-header">
-          <h3>{editingId ? t("connection_panel.header_edit") : t("connection_panel.header_new")}</h3>
+          <h3>
+            {editingId ? t("connection_panel.header_edit") : t("connection_panel.header_new")}
+          </h3>
           <button type="button" className="close-card-btn" onClick={onClose}>
             &times;
           </button>
@@ -219,7 +247,9 @@ function ConnectionFormView({
                     <Select
                       options={deviceTypeOptions}
                       value={deviceTypeOptions.find((opt) => opt.value === field.value)}
-                      onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : "")}
+                      onChange={(selectedOption) =>
+                        field.onChange(selectedOption ? selectedOption.value : "")
+                      }
                       styles={customSelectStyles}
                       placeholder="Select device type..."
                     />
@@ -295,7 +325,7 @@ function ConnectionFormView({
                       type="text"
                       {...register("port", {
                         onChange: (e) => {
-                          setValue("port", e.target.value.replace(/[^0-9]/g, ""));
+                          updatePortDigits(e.target.value);
                         },
                       })}
                       placeholder={
@@ -355,26 +385,24 @@ function ConnectionFormView({
 
                 <div className="auth-methods-list">
                   <div className="auth-method-item">
-                    <input
-                      type="radio"
-                      value="plain"
-                      {...register("authMethod")}
-                    />
+                    <input type="radio" value="plain" {...register("authMethod")} />
                     <div className="auth-method-content">
-                      <span className="auth-method-label">{t("connection_panel.auth_password")}</span>
+                      <span className="auth-method-label">
+                        {t("connection_panel.auth_password")}
+                      </span>
                     </div>
                   </div>
 
                   <div className="auth-method-item">
-                    <input
-                      type="radio"
-                      value="key"
-                      {...register("authMethod")}
-                    />
+                    <input type="radio" value="key" {...register("authMethod")} />
                     <div className="auth-method-content">
                       <span className="auth-method-label">{t("connection_panel.auth_key")}</span>
                       <div className="auth-method-details">
-                        <button type="button" className="btn-file-select" onClick={handleSelectKeyFile}>
+                        <button
+                          type="button"
+                          className="btn-file-select"
+                          onClick={handleSelectKeyFile}
+                        >
                           {t("connection_panel.key_select_btn")}
                         </button>
                         <input
@@ -389,11 +417,7 @@ function ConnectionFormView({
                   </div>
 
                   <div className="auth-method-item">
-                    <input
-                      type="radio"
-                      value="keyboard"
-                      {...register("authMethod")}
-                    />
+                    <input type="radio" value="keyboard" {...register("authMethod")} />
                     <div className="auth-method-content">
                       <span className="auth-method-label">
                         {t("connection_panel.auth_keyboard_interactive")}
@@ -402,13 +426,11 @@ function ConnectionFormView({
                   </div>
 
                   <div className="auth-method-item">
-                    <input
-                      type="radio"
-                      value="pageant"
-                      {...register("authMethod")}
-                    />
+                    <input type="radio" value="pageant" {...register("authMethod")} />
                     <div className="auth-method-content">
-                      <span className="auth-method-label">{t("connection_panel.auth_pageant")}</span>
+                      <span className="auth-method-label">
+                        {t("connection_panel.auth_pageant")}
+                      </span>
                     </div>
                   </div>
                 </div>

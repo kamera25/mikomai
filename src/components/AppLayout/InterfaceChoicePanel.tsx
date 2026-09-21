@@ -19,22 +19,46 @@ function useInterfaceChoicePresenter({
   const [customInterface, setCustomInterface] = useState("");
 
   const vendor = choice.vendor || "Cisco_IOS";
-  const isCisco =
-    vendor.toLowerCase().includes("cisco") || vendor.toLowerCase().includes("ios");
+  const isCisco = vendor.toLowerCase().includes("cisco") || vendor.toLowerCase().includes("ios");
   const isYamaha = vendor.toLowerCase().includes("yamaha");
   const isArista = vendor.toLowerCase().includes("arista");
+  const updateCiscoType = (value: string) => setCiscoType(value);
+  const updateCiscoNumber = (value: string) => setCiscoNum(value);
+  const updateCustomInterface = (value: string) => setCustomInterface(value);
 
   return {
-    choice, progressPrefix, onSelect, onCancel, ciscoType, setCiscoType,
-    ciscoNum, setCiscoNum, customInterface, setCustomInterface,
-    vendor, isCisco, isYamaha, isArista,
+    choice,
+    progressPrefix,
+    onSelect,
+    onCancel,
+    ciscoType,
+    updateCiscoType,
+    ciscoNum,
+    updateCiscoNumber,
+    customInterface,
+    updateCustomInterface,
+    vendor,
+    isCisco,
+    isYamaha,
+    isArista,
   };
 }
 
 function InterfaceChoiceView({
-    choice, progressPrefix, onSelect, onCancel, ciscoType, setCiscoType,
-    ciscoNum, setCiscoNum, customInterface, setCustomInterface,
-    vendor, isCisco, isYamaha, isArista,
+  choice,
+  progressPrefix,
+  onSelect,
+  onCancel,
+  ciscoType,
+  updateCiscoType,
+  ciscoNum,
+  updateCiscoNumber,
+  customInterface,
+  updateCustomInterface,
+  vendor,
+  isCisco,
+  isYamaha,
+  isArista,
 }: ReturnType<typeof useInterfaceChoicePresenter>) {
   return (
     <div
@@ -75,12 +99,8 @@ function InterfaceChoiceView({
             padding: "2px 6px",
             borderRadius: "4px",
           }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "var(--bg-tertiary)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.background = "transparent")
-          }
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-tertiary)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         >
           キャンセル (Esc)
         </button>
@@ -111,12 +131,10 @@ function InterfaceChoiceView({
                 gap: "4px",
               }}
             >
-              <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-                種別
-              </label>
+              <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>種別</label>
               <select
                 value={ciscoType}
-                onChange={(e) => setCiscoType(e.target.value)}
+                onChange={(e) => updateCiscoType(e.target.value)}
                 style={{
                   padding: "8px",
                   background: "var(--bg-tertiary)",
@@ -141,13 +159,11 @@ function InterfaceChoiceView({
                 gap: "4px",
               }}
             >
-              <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-                番号
-              </label>
+              <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>番号</label>
               <input
                 type="text"
                 value={ciscoNum}
-                onChange={(e) => setCiscoNum(e.target.value)}
+                onChange={(e) => updateCiscoNumber(e.target.value)}
                 placeholder="例: 0/1, 1/0/1"
                 style={{
                   padding: "8px",
@@ -191,12 +207,8 @@ function InterfaceChoiceView({
                   cursor: "pointer",
                   transition: "border-color 0.15s ease",
                 }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.borderColor = "var(--primary)")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.borderColor = "var(--border)")
-                }
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--primary)")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
               >
                 {opt}
               </button>
@@ -211,14 +223,12 @@ function InterfaceChoiceView({
               gap: "4px",
             }}
           >
-            <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-              カスタム入力
-            </label>
+            <label style={{ fontSize: "11px", color: "var(--text-secondary)" }}>カスタム入力</label>
             <div style={{ display: "flex", gap: "10px" }}>
               <input
                 type="text"
                 value={customInterface}
-                onChange={(e) => setCustomInterface(e.target.value)}
+                onChange={(e) => updateCustomInterface(e.target.value)}
                 placeholder="例: lan1.1, tunnel1"
                 style={{
                   flex: 1,
@@ -261,25 +271,23 @@ function InterfaceChoiceView({
                 marginBottom: "4px",
               }}
             >
-              {["Ethernet1", "Ethernet2", "Ethernet3", "Ethernet4"].map(
-                (opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => onSelect(choice.id, opt)}
-                    style={{
-                      padding: "6px 10px",
-                      background: "var(--bg-tertiary)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "6px",
-                      color: "var(--text-primary)",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                    }}
-                  >
-                    {opt}
-                  </button>
-                )
-              )}
+              {["Ethernet1", "Ethernet2", "Ethernet3", "Ethernet4"].map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => onSelect(choice.id, opt)}
+                  style={{
+                    padding: "6px 10px",
+                    background: "var(--bg-tertiary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    color: "var(--text-primary)",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                  }}
+                >
+                  {opt}
+                </button>
+              ))}
             </div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -290,7 +298,7 @@ function InterfaceChoiceView({
               <input
                 type="text"
                 value={customInterface}
-                onChange={(e) => setCustomInterface(e.target.value)}
+                onChange={(e) => updateCustomInterface(e.target.value)}
                 placeholder="例: Ethernet1, ge-0/0/0"
                 style={{
                   flex: 1,

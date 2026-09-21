@@ -3,7 +3,15 @@ import { useTranslation } from "react-i18next";
 import { ipc, EVENTS } from "../../platform";
 import { open } from "@tauri-apps/plugin-dialog";
 import { SuggestionsList } from "./SuggestionsList";
-import { RefreshIcon, GearIcon, SendIcon, StopIcon, PaperclipIcon, CrossIcon, FileTextIcon } from "../Icons";
+import {
+  RefreshIcon,
+  GearIcon,
+  SendIcon,
+  StopIcon,
+  PaperclipIcon,
+  CrossIcon,
+  FileTextIcon,
+} from "../Icons";
 import { Attachment, AttachmentPreparation, AttachmentSource } from "../../types";
 import { useSettingsContext } from "../../contexts/SettingsContext";
 import { ImageModal } from "../ImageModal/ImageModal";
@@ -34,519 +42,629 @@ interface ChatInputProps {
   setFilteredSuggestions: (value: { hostname: string; ip: string }[]) => void;
 }
 
-function useChatInputPresenter(props: ChatInputProps, ref: React.ForwardedRef<HTMLTextAreaElement>) {
+function useChatInputPresenter(
+  props: ChatInputProps,
+  ref: React.ForwardedRef<HTMLTextAreaElement>
+) {
   const {
-    modelStatus, modelPath, input, setInput, showSuggestions, setShowSuggestions,
-    filteredSuggestions, suggestionIndex, setSuggestionIndex, handleSelectSuggestion,
-    handleSend, handleStop, isGenerating = false, handleLoadModel, onOpenSettings,
-    cursorPos, setCursorPos, availableHosts, recentIPs, setFilteredSuggestions,
+    modelStatus,
+    modelPath,
+    input,
+    setInput,
+    showSuggestions,
+    setShowSuggestions,
+    filteredSuggestions,
+    suggestionIndex,
+    setSuggestionIndex,
+    handleSelectSuggestion,
+    handleSend,
+    handleStop,
+    isGenerating = false,
+    handleLoadModel,
+    onOpenSettings,
+    cursorPos,
+    setCursorPos,
+    availableHosts,
+    recentIPs,
+    setFilteredSuggestions,
   } = props;
-    const { t } = useTranslation();
-    const { visionEnabled, mmprojPath } = useSettingsContext();
-    const isVisionReady = visionEnabled && Boolean(mmprojPath && mmprojPath.trim());
-    const isVisionReadyRef = useRef(isVisionReady);
-    useEffect(() => {
-      isVisionReadyRef.current = isVisionReady;
-    }, [isVisionReady]);
+  const { t } = useTranslation();
+  const { visionEnabled, mmprojPath } = useSettingsContext();
+  const isVisionReady = visionEnabled && Boolean(mmprojPath && mmprojPath.trim());
+  const isVisionReadyRef = useRef(isVisionReady);
+  useEffect(() => {
+    isVisionReadyRef.current = isVisionReady;
+  }, [isVisionReady]);
 
-    const isComposingRef = useRef(false);
-    const suggestionListRef = useRef<HTMLDivElement>(null);
-    const [attachments, setAttachments] = useState<Attachment[]>([]);
-    const [selectedImage, setSelectedImage] = useState<{ src: string; alt?: string } | null>(null);
-    const [isDragging, setIsDragging] = useState(false);
-    const [showVisionWarning, setShowVisionWarning] = useState(false);
-    const [attachmentErrors, setAttachmentErrors] = useState<string[]>([]);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const processDroppedPathsRef = useRef<(paths: string[]) => Promise<void>>(async () => {});
+  const isComposingRef = useRef(false);
+  const suggestionListRef = useRef<HTMLDivElement>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [selectedImage, setSelectedImage] = useState<{ src: string; alt?: string } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [showVisionWarning, setShowVisionWarning] = useState(false);
+  const [attachmentErrors, setAttachmentErrors] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const processDroppedPathsRef = useRef<(paths: string[]) => Promise<void>>(async () => {});
+  const dismissVisionWarning = () => setShowVisionWarning(false);
+  const previewAttachment = (attachment: Attachment) =>
+    setSelectedImage({ src: attachment.content, alt: attachment.name });
+  const removeAttachment = (index: number) =>
+    setAttachments((previous) => previous.filter((_, itemIndex) => itemIndex !== index));
+  const closeAttachmentPreview = () => setSelectedImage(null);
+  const compositionStart = () => {
+    isComposingRef.current = true;
+  };
+  const compositionEnd = () => {
+    setTimeout(() => {
+      isComposingRef.current = false;
+    }, 150);
+  };
 
-    const addPreparedAttachments = async (sources: AttachmentSource[]) => {
-      const prepared = await ipc.prepareAttachments<AttachmentPreparation>(sources);
-      setAttachments((prev) => {
-        const existingNames = new Set(prev.map((attachment) => attachment.name));
-        return [...prev, ...prepared.attachments.filter((attachment) => !existingNames.has(attachment.name))];
-      });
-      setAttachmentErrors(prepared.rejected.map((rejection) => `${rejection.name}: ${rejection.reason}`));
-      if (prepared.rejected.some((rejection) => rejection.reason.includes("Vision"))) {
-        setShowVisionWarning(true);
-      }
-    };
+  const addPreparedAttachments = async (sources: AttachmentSource[]) => {
+    const prepared = await ipc.prepareAttachments<AttachmentPreparation>(sources);
+    setAttachments((prev) => {
+      const existingNames = new Set(prev.map((attachment) => attachment.name));
+      return [
+        ...prev,
+        ...prepared.attachments.filter((attachment) => !existingNames.has(attachment.name)),
+      ];
+    });
+    setAttachmentErrors(
+      prepared.rejected.map((rejection) => `${rejection.name}: ${rejection.reason}`)
+    );
+    if (prepared.rejected.some((rejection) => rejection.reason.includes("Vision"))) {
+      setShowVisionWarning(true);
+    }
+  };
 
-    const readFile = (file: File): Promise<AttachmentSource> =>
-      new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve({
+  const readFile = (file: File): Promise<AttachmentSource> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () =>
+        resolve({
           kind: "inline",
           name: file.name,
           content: String(reader.result || ""),
           mediaType: file.type || undefined,
         });
-        reader.onerror = () => reject(reader.error);
-        if (isImageFile(file)) reader.readAsDataURL(file);
-        else reader.readAsText(file);
+      reader.onerror = () => reject(reader.error);
+      if (isImageFile(file)) reader.readAsDataURL(file);
+      else reader.readAsText(file);
+    });
+
+  const handleFileAttach = async (files: FileList | null) => {
+    if (!files) return;
+    try {
+      await addPreparedAttachments(await Promise.all(Array.from(files).map(readFile)));
+    } catch (error) {
+      console.error("Failed to prepare attachments:", error);
+      setAttachmentErrors(["添付ファイルを読み込めませんでした"]);
+    }
+  };
+
+  const handleAttachClick = async () => {
+    try {
+      const selected = await open({
+        multiple: true,
       });
+      if (selected) {
+        const paths = Array.isArray(selected) ? selected : [selected];
+        await processDroppedPathsRef.current(paths);
+      }
+    } catch (err) {
+      console.error("Failed to open file dialog, falling back to input:", err);
+      fileInputRef.current?.click();
+    }
+  };
 
-    const handleFileAttach = async (files: FileList | null) => {
-      if (!files) return;
-      try {
-        await addPreparedAttachments(await Promise.all(Array.from(files).map(readFile)));
-      } catch (error) {
-        console.error("Failed to prepare attachments:", error);
-        setAttachmentErrors(["添付ファイルを読み込めませんでした"]);
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (e.clipboardData.files.length > 0) {
+      e.preventDefault();
+      handleFileAttach(e.clipboardData.files);
+    }
+  };
+
+  useEffect(() => {
+    const handleWindowDrop = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const hasImage = Array.from(e.dataTransfer.files).some(isImageFile);
+        if (hasImage && !isVisionReadyRef.current) {
+          setShowVisionWarning(true);
+        }
       }
     };
 
-    const handleAttachClick = async () => {
+    const handleWindowDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener("dragover", handleWindowDragOver);
+    window.addEventListener("drop", handleWindowDrop);
+
+    let unlistenDrop: (() => void) | undefined;
+    let unlistenOver: (() => void) | undefined;
+    let unlistenLeave: (() => void) | undefined;
+    let unlistenFileDrop: (() => void) | undefined;
+
+    const processDroppedPaths = async (paths: string[]) => {
+      if (!paths || paths.length === 0) return;
+
+      const hasImage = paths.some(isImagePath);
+      if (hasImage && !isVisionReadyRef.current) {
+        setShowVisionWarning(true);
+      }
+
       try {
-        const selected = await open({
-          multiple: true,
-        });
-        if (selected) {
-          const paths = Array.isArray(selected) ? selected : [selected];
-          await processDroppedPathsRef.current(paths);
-        }
+        await addPreparedAttachments(paths.map((path) => ({ kind: "path", path })));
       } catch (err) {
-        console.error("Failed to open file dialog, falling back to input:", err);
-        fileInputRef.current?.click();
+        console.error("Failed to read dropped files as attachments:", err);
+      }
+    };
+    processDroppedPathsRef.current = processDroppedPaths;
+
+    const setupTauriDnd = async () => {
+      try {
+        unlistenOver = await ipc.subscribe(EVENTS.dragOver, () => setIsDragging(true));
+        unlistenLeave = await ipc.subscribe(EVENTS.dragLeave, () => setIsDragging(false));
+        unlistenDrop = await ipc.subscribe<any>(EVENTS.dragDrop, async (payload) => {
+          setIsDragging(false);
+          const paths: string[] = Array.isArray(payload)
+            ? payload
+            : payload?.paths || payload?.payload?.paths || [];
+          await processDroppedPaths(paths);
+        });
+        unlistenFileDrop = await ipc.subscribe<any>(EVENTS.fileDrop, async (payload) => {
+          setIsDragging(false);
+          const paths: string[] = Array.isArray(payload)
+            ? payload
+            : payload?.paths || payload?.payload?.paths || [];
+          await processDroppedPaths(paths);
+        });
+      } catch (e) {
+        console.warn("Tauri drag-drop listener setup failed or non-Tauri environment:", e);
       }
     };
 
-    const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-      if (e.clipboardData.files.length > 0) {
-        e.preventDefault();
-        handleFileAttach(e.clipboardData.files);
-      }
+    setupTauriDnd();
+
+    return () => {
+      processDroppedPathsRef.current = async () => {};
+      window.removeEventListener("dragover", handleWindowDragOver);
+      window.removeEventListener("drop", handleWindowDrop);
+      if (unlistenDrop) unlistenDrop();
+      if (unlistenOver) unlistenOver();
+      if (unlistenLeave) unlistenLeave();
+      if (unlistenFileDrop) unlistenFileDrop();
     };
+  }, []);
 
-    useEffect(() => {
-      const handleWindowDrop = (e: DragEvent) => {
-        e.preventDefault();
-        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          const hasImage = Array.from(e.dataTransfer.files).some(isImageFile);
-          if (hasImage && !isVisionReadyRef.current) {
-            setShowVisionWarning(true);
-          }
-        }
-      };
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+    setIsDragging(true);
+  };
 
-      const handleWindowDragOver = (e: DragEvent) => {
-        e.preventDefault();
-      };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
 
-      window.addEventListener("dragover", handleWindowDragOver);
-      window.addEventListener("drop", handleWindowDrop);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+    setIsDragging(true);
+  };
 
-      let unlistenDrop: (() => void) | undefined;
-      let unlistenOver: (() => void) | undefined;
-      let unlistenLeave: (() => void) | undefined;
-      let unlistenFileDrop: (() => void) | undefined;
-
-      const processDroppedPaths = async (paths: string[]) => {
-        if (!paths || paths.length === 0) return;
-
-        const hasImage = paths.some(isImagePath);
-        if (hasImage && !isVisionReadyRef.current) {
-          setShowVisionWarning(true);
-        }
-
-        try {
-          await addPreparedAttachments(paths.map((path) => ({ kind: "path", path })));
-        } catch (err) {
-          console.error("Failed to read dropped files as attachments:", err);
-        }
-      };
-      processDroppedPathsRef.current = processDroppedPaths;
-
-      const setupTauriDnd = async () => {
-        try {
-          unlistenOver = await ipc.subscribe(EVENTS.dragOver, () => setIsDragging(true));
-          unlistenLeave = await ipc.subscribe(EVENTS.dragLeave, () => setIsDragging(false));
-          unlistenDrop = await ipc.subscribe<any>(EVENTS.dragDrop, async (payload) => {
-            setIsDragging(false);
-            const paths: string[] = Array.isArray(payload)
-              ? payload
-              : payload?.paths || payload?.payload?.paths || [];
-            await processDroppedPaths(paths);
-          });
-          unlistenFileDrop = await ipc.subscribe<any>(EVENTS.fileDrop, async (payload) => {
-            setIsDragging(false);
-            const paths: string[] = Array.isArray(payload)
-              ? payload
-              : payload?.paths || payload?.payload?.paths || [];
-            await processDroppedPaths(paths);
-          });
-        } catch (e) {
-          console.warn("Tauri drag-drop listener setup failed or non-Tauri environment:", e);
-        }
-      };
-
-      setupTauriDnd();
-
-      return () => {
-        processDroppedPathsRef.current = async () => {};
-        window.removeEventListener("dragover", handleWindowDragOver);
-        window.removeEventListener("drop", handleWindowDrop);
-        if (unlistenDrop) unlistenDrop();
-        if (unlistenOver) unlistenOver();
-        if (unlistenLeave) unlistenLeave();
-        if (unlistenFileDrop) unlistenFileDrop();
-      };
-    }, []);
-
-    const handleDragEnter = (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = "copy";
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const hasImage = Array.from(files).some(isImageFile);
+      if (hasImage && !isVisionReadyRef.current) {
+        setShowVisionWarning(true);
       }
-      setIsDragging(true);
-    };
+      handleFileAttach(files);
+    }
+  };
 
-    const handleDragLeave = (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
-    };
+  const onSend = () => {
+    if (input.trim() || attachments.length > 0) {
+      handleSend(input.trim(), attachments);
+      setInput("");
+      setAttachments([]);
+    }
+  };
 
-    const handleDragOver = (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = "copy";
-      }
-      setIsDragging(true);
-    };
+  useEffect(() => {
+    if (!showSuggestions) return;
 
-    const handleDrop = (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
-      const files = e.dataTransfer?.files;
-      if (files && files.length > 0) {
-        const hasImage = Array.from(files).some(isImageFile);
-        if (hasImage && !isVisionReadyRef.current) {
-          setShowVisionWarning(true);
-        }
-        handleFileAttach(files);
-      }
-    };
+    const textBeforeCursor = input.slice(0, cursorPos);
+    const atIndex = textBeforeCursor.lastIndexOf("@");
 
-    const onSend = () => {
-      if (input.trim() || attachments.length > 0) {
-        handleSend(input.trim(), attachments);
-        setInput("");
-        setAttachments([]);
-      }
-    };
-
-    useEffect(() => {
-      if (!showSuggestions) return;
-
-      const textBeforeCursor = input.slice(0, cursorPos);
-      const atIndex = textBeforeCursor.lastIndexOf("@");
-
-      if (atIndex !== -1) {
-        const query = textBeforeCursor.slice(atIndex + 1);
-        if (!query.includes(" ")) {
-          const combined = findHostSuggestions(query, availableHosts, recentIPs, {
-            localhost: t("chat_input.localhost"), pastIps: t("chat_input.past_ips"),
-          });
-          setFilteredSuggestions(combined);
-          if (combined.length === 0) {
-            setShowSuggestions(false);
-            setSuggestionIndex(0);
-          } else {
-            setSuggestionIndex((prev) => Math.min(prev, combined.length - 1));
-          }
-        }
-      }
-    }, [availableHosts, recentIPs, showSuggestions, input, cursorPos, t, setFilteredSuggestions, setShowSuggestions, setSuggestionIndex]);
-
-    const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      const isComp = isComposingRef.current || e.nativeEvent.isComposing || e.keyCode === 229;
-      if (isComp) {
-        return;
-      }
-
-      if (showSuggestions && filteredSuggestions.length > 0) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          setSuggestionIndex((prev) => {
-            const next = (prev + 1) % filteredSuggestions.length;
-            // Scroll into view logic
-            const items = suggestionListRef.current?.querySelectorAll(".suggestion-item");
-            if (items && items[next]) {
-              (items[next] as HTMLElement).scrollIntoView({ block: "nearest" });
-            }
-            return next;
-          });
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setSuggestionIndex((prev) => {
-            const next = (prev - 1 + filteredSuggestions.length) % filteredSuggestions.length;
-            // Scroll into view logic
-            const items = suggestionListRef.current?.querySelectorAll(".suggestion-item");
-            if (items && items[next]) {
-              (items[next] as HTMLElement).scrollIntoView({ block: "nearest" });
-            }
-            return next;
-          });
-          return;
-        }
-        if (e.key === "Enter" || e.key === "Tab") {
-          e.preventDefault();
-          handleSelectSuggestion(filteredSuggestions[suggestionIndex]);
-          return;
-        }
-        if (e.key === "Escape") {
-          e.preventDefault();
+    if (atIndex !== -1) {
+      const query = textBeforeCursor.slice(atIndex + 1);
+      if (!query.includes(" ")) {
+        const combined = findHostSuggestions(query, availableHosts, recentIPs, {
+          localhost: t("chat_input.localhost"),
+          pastIps: t("chat_input.past_ips"),
+        });
+        setFilteredSuggestions(combined);
+        if (combined.length === 0) {
           setShowSuggestions(false);
-          return;
-        }
-      }
-
-      if (e.key === "Enter") {
-        if (!e.shiftKey) {
-          e.preventDefault();
-          onSend();
-        }
-      }
-    };
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const newValue = e.target.value;
-      const pos = e.target.selectionStart;
-      setInput(newValue);
-      setCursorPos(pos);
-
-      // Detect @
-      const textBeforeCursor = newValue.slice(0, pos);
-      const atIndex = textBeforeCursor.lastIndexOf("@");
-
-      if (atIndex !== -1) {
-        const query = textBeforeCursor.slice(atIndex + 1);
-        // Check if there's space between @ and cursor
-        if (!query.includes(" ")) {
-          const combined = findHostSuggestions(query, availableHosts, recentIPs, {
-            localhost: t("chat_input.localhost"), pastIps: t("chat_input.past_ips"),
-          });
-          setFilteredSuggestions(combined);
-          setShowSuggestions(true);
           setSuggestionIndex(0);
         } else {
-          setShowSuggestions(false);
+          setSuggestionIndex((prev) => Math.min(prev, combined.length - 1));
         }
+      }
+    }
+  }, [
+    availableHosts,
+    recentIPs,
+    showSuggestions,
+    input,
+    cursorPos,
+    t,
+    setFilteredSuggestions,
+    setShowSuggestions,
+    setSuggestionIndex,
+  ]);
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const isComp = isComposingRef.current || e.nativeEvent.isComposing || e.keyCode === 229;
+    if (isComp) {
+      return;
+    }
+
+    if (showSuggestions && filteredSuggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSuggestionIndex((prev) => {
+          const next = (prev + 1) % filteredSuggestions.length;
+          // Scroll into view logic
+          const items = suggestionListRef.current?.querySelectorAll(".suggestion-item");
+          if (items && items[next]) {
+            (items[next] as HTMLElement).scrollIntoView({ block: "nearest" });
+          }
+          return next;
+        });
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSuggestionIndex((prev) => {
+          const next = (prev - 1 + filteredSuggestions.length) % filteredSuggestions.length;
+          // Scroll into view logic
+          const items = suggestionListRef.current?.querySelectorAll(".suggestion-item");
+          if (items && items[next]) {
+            (items[next] as HTMLElement).scrollIntoView({ block: "nearest" });
+          }
+          return next;
+        });
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        handleSelectSuggestion(filteredSuggestions[suggestionIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowSuggestions(false);
+        return;
+      }
+    }
+
+    if (e.key === "Enter") {
+      if (!e.shiftKey) {
+        e.preventDefault();
+        onSend();
+      }
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    const pos = e.target.selectionStart;
+    setInput(newValue);
+    setCursorPos(pos);
+
+    // Detect @
+    const textBeforeCursor = newValue.slice(0, pos);
+    const atIndex = textBeforeCursor.lastIndexOf("@");
+
+    if (atIndex !== -1) {
+      const query = textBeforeCursor.slice(atIndex + 1);
+      // Check if there's space between @ and cursor
+      if (!query.includes(" ")) {
+        const combined = findHostSuggestions(query, availableHosts, recentIPs, {
+          localhost: t("chat_input.localhost"),
+          pastIps: t("chat_input.past_ips"),
+        });
+        setFilteredSuggestions(combined);
+        setShowSuggestions(true);
+        setSuggestionIndex(0);
       } else {
         setShowSuggestions(false);
       }
-    };
+    } else {
+      setShowSuggestions(false);
+    }
+  };
 
   return {
-    t, modelStatus, modelPath, handleLoadModel, onOpenSettings, isDragging,
-    handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
-    showVisionWarning, setShowVisionWarning, attachmentErrors,
-    showSuggestions, filteredSuggestions, suggestionIndex, handleSelectSuggestion,
-    suggestionListRef, attachments, setAttachments, setSelectedImage, fileInputRef,
-    handleFileAttach, handleAttachClick, ref, input, handleInputChange, handlePaste,
-    isComposingRef, handleInputKeyDown, isGenerating, handleStop, onSend, selectedImage,
+    t,
+    modelStatus,
+    modelPath,
+    handleLoadModel,
+    onOpenSettings,
+    isDragging,
+    handleDragEnter,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    showVisionWarning,
+    dismissVisionWarning,
+    attachmentErrors,
+    showSuggestions,
+    filteredSuggestions,
+    suggestionIndex,
+    handleSelectSuggestion,
+    suggestionListRef,
+    attachments,
+    previewAttachment,
+    removeAttachment,
+    fileInputRef,
+    handleFileAttach,
+    handleAttachClick,
+    ref,
+    input,
+    handleInputChange,
+    handlePaste,
+    compositionStart,
+    compositionEnd,
+    handleInputKeyDown,
+    isGenerating,
+    handleStop,
+    onSend,
+    selectedImage,
+    closeAttachmentPreview,
   };
 }
 
 function ChatInputView({
-    t, modelStatus, modelPath, handleLoadModel, onOpenSettings, isDragging,
-    handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
-    showVisionWarning, setShowVisionWarning, attachmentErrors,
-    showSuggestions, filteredSuggestions, suggestionIndex, handleSelectSuggestion,
-    suggestionListRef, attachments, setAttachments, setSelectedImage, fileInputRef,
-    handleFileAttach, handleAttachClick, ref, input, handleInputChange, handlePaste,
-    isComposingRef, handleInputKeyDown, isGenerating, handleStop, onSend, selectedImage,
+  t,
+  modelStatus,
+  modelPath,
+  handleLoadModel,
+  onOpenSettings,
+  isDragging,
+  handleDragEnter,
+  handleDragOver,
+  handleDragLeave,
+  handleDrop,
+  showVisionWarning,
+  dismissVisionWarning,
+  attachmentErrors,
+  showSuggestions,
+  filteredSuggestions,
+  suggestionIndex,
+  handleSelectSuggestion,
+  suggestionListRef,
+  attachments,
+  previewAttachment,
+  removeAttachment,
+  fileInputRef,
+  handleFileAttach,
+  handleAttachClick,
+  ref,
+  input,
+  handleInputChange,
+  handlePaste,
+  compositionStart,
+  compositionEnd,
+  handleInputKeyDown,
+  isGenerating,
+  handleStop,
+  onSend,
+  selectedImage,
+  closeAttachmentPreview,
 }: ReturnType<typeof useChatInputPresenter>) {
   return (
-      <div className="input-area">
-        {modelStatus !== "Loaded" && (
-          <div className={`model-status-banner ${modelStatus.toLowerCase()}`}>
-            {modelStatus === "Loading" && <div className="status-spinner"></div>}
-            <span>
-              {modelStatus === "NotLoaded" &&
-                t("chat_input.error_no_model")}
-              {modelStatus === "Loading" && t("chat_input.status_loading_model")}
-              {modelStatus === "Error" &&
-                t("chat_input.status_failed_model")}
-            </span>
-            {(modelStatus === "NotLoaded" || modelStatus === "Error") && (
-              <div className="banner-actions">
-                {modelPath && (
-                  <button className="banner-button primary" onClick={handleLoadModel}>
-                    <RefreshIcon size={14} style={{ marginRight: "6px" }} />
-                    {t("chat_input.btn_load_model")}
-                  </button>
-                )}
-                <button className="banner-button" onClick={() => onOpenSettings()}>
-                  <GearIcon size={14} style={{ marginRight: "6px" }} />
-                  {t("chat_input.btn_settings")}
+    <div className="input-area">
+      {modelStatus !== "Loaded" && (
+        <div className={`model-status-banner ${modelStatus.toLowerCase()}`}>
+          {modelStatus === "Loading" && <div className="status-spinner"></div>}
+          <span>
+            {modelStatus === "NotLoaded" && t("chat_input.error_no_model")}
+            {modelStatus === "Loading" && t("chat_input.status_loading_model")}
+            {modelStatus === "Error" && t("chat_input.status_failed_model")}
+          </span>
+          {(modelStatus === "NotLoaded" || modelStatus === "Error") && (
+            <div className="banner-actions">
+              {modelPath && (
+                <button className="banner-button primary" onClick={handleLoadModel}>
+                  <RefreshIcon size={14} style={{ marginRight: "6px" }} />
+                  {t("chat_input.btn_load_model")}
                 </button>
+              )}
+              <button className="banner-button" onClick={() => onOpenSettings()}>
+                <GearIcon size={14} style={{ marginRight: "6px" }} />
+                {t("chat_input.btn_settings")}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      <div
+        className={`input-container ${isDragging ? "dragging" : ""}`}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {showVisionWarning && (
+          <div className="vision-warning-popup">
+            <div className="vision-warning-icon">⚠️</div>
+            <div className="vision-warning-content">
+              <div className="vision-warning-title">
+                {t("chat_input.vision_disabled_warning_title")}
               </div>
-            )}
+              <div className="vision-warning-desc">
+                {t("chat_input.vision_disabled_warning_desc")}
+              </div>
+            </div>
+            <div className="vision-warning-actions">
+              <button
+                type="button"
+                className="vision-warning-settings-btn"
+                onClick={() => {
+                  dismissVisionWarning();
+                  onOpenSettings();
+                }}
+              >
+                <GearIcon size={12} />
+                {t("chat_input.btn_open_settings")}
+              </button>
+              <button
+                type="button"
+                className="vision-warning-close-btn"
+                onClick={dismissVisionWarning}
+              >
+                <CrossIcon size={12} />
+              </button>
+            </div>
           </div>
         )}
-        <div
-          className={`input-container ${isDragging ? "dragging" : ""}`}
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {showVisionWarning && (
-            <div className="vision-warning-popup">
-              <div className="vision-warning-icon">⚠️</div>
-              <div className="vision-warning-content">
-                <div className="vision-warning-title">
-                  {t("chat_input.vision_disabled_warning_title")}
-                </div>
-                <div className="vision-warning-desc">
-                  {t("chat_input.vision_disabled_warning_desc")}
-                </div>
-              </div>
-              <div className="vision-warning-actions">
+        {attachmentErrors.length > 0 && (
+          <div className="attachment-errors" role="alert">
+            {attachmentErrors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        <SuggestionsList
+          showSuggestions={showSuggestions}
+          filteredSuggestions={filteredSuggestions}
+          suggestionIndex={suggestionIndex}
+          handleSelectSuggestion={handleSelectSuggestion}
+          suggestionListRef={suggestionListRef}
+        />
+        {attachments.length > 0 && (
+          <div className="attachments-preview">
+            {attachments.map((att, idx) => (
+              <div key={idx} className="attachment-preview-item">
+                {att.type === "image" ? (
+                  <img
+                    src={att.content}
+                    alt={att.name}
+                    className="attachment-thumb"
+                    onClick={() => previewAttachment(att)}
+                    style={{ cursor: "pointer" }}
+                    title={att.path ? `${att.name}\n${att.path}` : "クリックして拡大"}
+                  />
+                ) : (
+                  <div
+                    className="attachment-text-file"
+                    title={att.path ? `${att.name}\n${att.path}` : att.name}
+                  >
+                    <FileTextIcon size={16} />
+                    <span className="attachment-file-name">{att.name}</span>
+                  </div>
+                )}
                 <button
                   type="button"
-                  className="vision-warning-settings-btn"
+                  className="remove-attachment-btn"
                   onClick={() => {
-                    setShowVisionWarning(false);
-                    onOpenSettings();
+                    removeAttachment(idx);
                   }}
                 >
-                  <GearIcon size={12} />
-                  {t("chat_input.btn_open_settings")}
-                </button>
-                <button
-                  type="button"
-                  className="vision-warning-close-btn"
-                  onClick={() => setShowVisionWarning(false)}
-                >
-                  <CrossIcon size={12} />
+                  <CrossIcon size={10} />
                 </button>
               </div>
-            </div>
-          )}
-          {attachmentErrors.length > 0 && (
-            <div className="attachment-errors" role="alert">
-              {attachmentErrors.map((error) => <div key={error}>{error}</div>)}
-            </div>
-          )}
-          <SuggestionsList
-            showSuggestions={showSuggestions}
-            filteredSuggestions={filteredSuggestions}
-            suggestionIndex={suggestionIndex}
-            handleSelectSuggestion={handleSelectSuggestion}
-            suggestionListRef={suggestionListRef}
+            ))}
+          </div>
+        )}
+        <div className="input-wrapper">
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            multiple
+            onChange={(e) => handleFileAttach(e.target.files)}
           />
-          {attachments.length > 0 && (
-            <div className="attachments-preview">
-              {attachments.map((att, idx) => (
-                <div key={idx} className="attachment-preview-item">
-                  {att.type === "image" ? (
-                    <img
-                      src={att.content}
-                      alt={att.name}
-                      className="attachment-thumb"
-                      onClick={() => setSelectedImage({ src: att.content, alt: att.name })}
-                      style={{ cursor: "pointer" }}
-                      title={att.path ? `${att.name}\n${att.path}` : "クリックして拡大"}
-                    />
-                  ) : (
-                    <div className="attachment-text-file" title={att.path ? `${att.name}\n${att.path}` : att.name}>
-                      <FileTextIcon size={16} />
-                      <span className="attachment-file-name">{att.name}</span>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    className="remove-attachment-btn"
-                    onClick={() => {
-                      setAttachments((prev) => prev.filter((_, i) => i !== idx));
-                    }}
-                  >
-                    <CrossIcon size={10} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="input-wrapper">
-            <input
-              type="file"
-              ref={fileInputRef}
-              style={{ display: "none" }}
-              multiple
-              onChange={(e) => handleFileAttach(e.target.files)}
-            />
+          <button
+            type="button"
+            className="attach-button"
+            onClick={handleAttachClick}
+            title="ファイルを添付 (画像・テキスト・バイナリ)"
+          >
+            <PaperclipIcon size={16} />
+          </button>
+          <textarea
+            ref={ref}
+            className="chat-input"
+            placeholder={t("chat_input.placeholder")}
+            value={input}
+            onChange={handleInputChange}
+            onPaste={handlePaste}
+            rows={1}
+            onCompositionStart={() => {
+              compositionStart();
+            }}
+            onCompositionEnd={compositionEnd}
+            onKeyDown={handleInputKeyDown}
+            aria-label={t("chat_input.placeholder")}
+            aria-expanded={showSuggestions}
+            aria-controls={showSuggestions ? "host-suggestions" : undefined}
+          />
+          {isGenerating ? (
             <button
               type="button"
-              className="attach-button"
-              onClick={handleAttachClick}
-              title="ファイルを添付 (画像・テキスト・バイナリ)"
+              className="send-button stop-button"
+              onClick={handleStop}
+              title={t("chat_input.btn_stop")}
             >
-              <PaperclipIcon size={16} />
+              <StopIcon size={16} />
             </button>
-            <textarea
-              ref={ref}
-              className="chat-input"
-              placeholder={t("chat_input.placeholder")}
-              value={input}
-              onChange={handleInputChange}
-              onPaste={handlePaste}
-              rows={1}
-              onCompositionStart={() => {
-                isComposingRef.current = true;
-              }}
-              onCompositionEnd={() => {
-                setTimeout(() => {
-                  isComposingRef.current = false;
-                }, 150);
-              }}
-              onKeyDown={handleInputKeyDown}
-              aria-label={t("chat_input.placeholder")}
-              aria-expanded={showSuggestions}
-              aria-controls={showSuggestions ? "host-suggestions" : undefined}
-            />
-            {isGenerating ? (
-              <button
-                type="button"
-                className="send-button stop-button"
-                onClick={handleStop}
-                title={t("chat_input.btn_stop")}
-              >
-                <StopIcon size={16} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="send-button"
-                onClick={onSend}
-                disabled={!input.trim() && attachments.length === 0}
-                title={t("chat_input.btn_send")}
-              >
-                <SendIcon size={16} />
-              </button>
-            )}
-          </div>
+          ) : (
+            <button
+              type="button"
+              className="send-button"
+              onClick={onSend}
+              disabled={!input.trim() && attachments.length === 0}
+              title={t("chat_input.btn_send")}
+            >
+              <SendIcon size={16} />
+            </button>
+          )}
         </div>
-        {selectedImage && (
-          <ImageModal
-            src={selectedImage.src}
-            alt={selectedImage.alt}
-            onClose={() => setSelectedImage(null)}
-          />
-        )}
       </div>
+      {selectedImage && (
+        <ImageModal
+          src={selectedImage.src}
+          alt={selectedImage.alt}
+          onClose={closeAttachmentPreview}
+        />
+      )}
+    </div>
   );
 }
 
-export const ChatInput = memo(forwardRef<HTMLTextAreaElement, ChatInputProps>((props, ref) => {
-  const viewModel = useChatInputPresenter(props, ref);
-  return <ChatInputView {...viewModel} />;
-}));
+export const ChatInput = memo(
+  forwardRef<HTMLTextAreaElement, ChatInputProps>((props, ref) => {
+    const viewModel = useChatInputPresenter(props, ref);
+    return <ChatInputView {...viewModel} />;
+  })
+);
 
 ChatInput.displayName = "ChatInput";

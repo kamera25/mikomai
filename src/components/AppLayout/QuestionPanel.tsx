@@ -9,8 +9,16 @@ interface QuestionPanelProps {
   totalQuestionsCount: number;
 }
 
-export function QuestionPanel({ questionQueue, totalQuestionsCount }: QuestionPanelProps) {
+function useQuestionPanelPresenter({ questionQueue, totalQuestionsCount }: QuestionPanelProps) {
   const emit = useGuiEvent();
+  return { questionQueue, totalQuestionsCount, emit };
+}
+
+function QuestionPanelView({
+  questionQueue,
+  totalQuestionsCount,
+  emit,
+}: ReturnType<typeof useQuestionPanelPresenter>) {
   if (questionQueue.length === 0) return null;
 
   const currentQuestion = questionQueue[0];
@@ -50,4 +58,8 @@ export function QuestionPanel({ questionQueue, totalQuestionsCount }: QuestionPa
       onCancel={(id) => emit({ type: "question.cancel", kind: "interface", id })}
     />
   );
+}
+
+export function QuestionPanel(props: QuestionPanelProps) {
+  return <QuestionPanelView {...useQuestionPanelPresenter(props)} />;
 }

@@ -8,9 +8,13 @@ interface ActivityBarProps {
   activePanel: Panel;
 }
 
-export const ActivityBar: React.FC<ActivityBarProps> = React.memo(({ activePanel }) => {
+function ActivityBarPresenter({ activePanel }: ActivityBarProps) {
   const { t } = useTranslation();
   const emit = useGuiEvent();
+  return { activePanel, t, emit };
+}
+
+function ActivityBarView({ activePanel, t, emit }: ReturnType<typeof ActivityBarPresenter>) {
   const items = [
     { panel: "chat", title: t("activity_bar.chat"), icon: <MessageIcon size={20} /> },
     {
@@ -51,6 +55,10 @@ export const ActivityBar: React.FC<ActivityBarProps> = React.memo(({ activePanel
       ))}
     </nav>
   );
+}
+
+export const ActivityBar: React.FC<ActivityBarProps> = React.memo((props) => {
+  return <ActivityBarView {...ActivityBarPresenter(props)} />;
 });
 
 ActivityBar.displayName = "ActivityBar";

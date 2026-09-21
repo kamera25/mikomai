@@ -12,7 +12,7 @@ interface ChatHeaderProps {
   hostLabel?: string;
 }
 
-export function ChatHeader({
+function useChatHeaderPresenter({
   isSidebarOpen,
   isConfigDiffOpen,
   isEditing,
@@ -23,7 +23,19 @@ export function ChatHeader({
   const { t } = useTranslation();
   const emit = useGuiEvent();
   const isComposing = useRef(false);
+  const compositionStart = () => { isComposing.current = true; };
+  const compositionEnd = () => {
+    setTimeout(() => { isComposing.current = false; }, 150);
+  };
+  const isComposingNow = () => isComposing.current;
+  return { isSidebarOpen, isConfigDiffOpen, isEditing, draftTitle, sessionTitle, hostLabel,
+    t, emit, compositionStart, compositionEnd, isComposingNow };
+}
 
+function ChatHeaderView({
+  isSidebarOpen, isConfigDiffOpen, isEditing, draftTitle, sessionTitle, hostLabel,
+  t, emit, compositionStart, compositionEnd, isComposingNow,
+}: ReturnType<typeof useChatHeaderPresenter>) {
   return (
     <header className="chat-header">
       <div className="header-left">
@@ -40,16 +52,10 @@ export function ChatHeader({
             value={draftTitle}
             onChange={(event) => emit({ type: "header.change", title: event.target.value })}
             onBlur={() => emit({ type: "header.save" })}
-            onCompositionStart={() => {
-              isComposing.current = true;
-            }}
-            onCompositionEnd={() => {
-              setTimeout(() => {
-                isComposing.current = false;
-              }, 150);
-            }}
+            onCompositionStart={compositionStart}
+            onCompositionEnd={compositionEnd}
             onKeyDown={(event) => {
-              if (isComposing.current || event.nativeEvent.isComposing || event.keyCode === 229)
+              if (isComposingNow() || event.nativeEvent.isComposing || event.keyCode === 229)
                 return;
               if (event.key === "Enter") emit({ type: "header.save" });
               else if (event.key === "Escape") emit({ type: "header.cancel" });
@@ -83,4 +89,8 @@ export function ChatHeader({
       </div>
     </header>
   );
+}
+
+export function ChatHeader(props: ChatHeaderProps) {
+  return <ChatHeaderView {...useChatHeaderPresenter(props)} />;
 }

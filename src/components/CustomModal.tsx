@@ -64,18 +64,43 @@ function useCustomModalPresenter({
     if (type === "prompt" && !inputValue.trim()) return;
     onConfirm(type === "prompt" ? inputValue : undefined);
   };
+  const updateInputValue = (value: string) => setInputValue(value);
 
   return {
-    isOpen, type, title, message, placeholder, options, onConfirm, onCancel,
-    inputValue, setInputValue, inputRef, displayConfirmLabel, displayCancelLabel,
-    isDanger, handleSubmit,
+    isOpen,
+    type,
+    title,
+    message,
+    placeholder,
+    options,
+    onConfirm,
+    onCancel,
+    inputValue,
+    updateInputValue,
+    inputRef,
+    displayConfirmLabel,
+    displayCancelLabel,
+    isDanger,
+    handleSubmit,
   };
 }
 
 function CustomModalView({
-    isOpen, type, title, message, placeholder, options, onConfirm, onCancel,
-    inputValue, setInputValue, inputRef, displayConfirmLabel, displayCancelLabel,
-    isDanger, handleSubmit,
+  isOpen,
+  type,
+  title,
+  message,
+  placeholder,
+  options,
+  onConfirm,
+  onCancel,
+  inputValue,
+  updateInputValue,
+  inputRef,
+  displayConfirmLabel,
+  displayCancelLabel,
+  isDanger,
+  handleSubmit,
 }: ReturnType<typeof useCustomModalPresenter>) {
   if (!isOpen) return null;
 
@@ -132,7 +157,7 @@ function CustomModalView({
                 className="custom-modal-input"
                 placeholder={placeholder}
                 value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
+                onChange={(e) => updateInputValue(e.target.value)}
               />
             )}
             {type === "select" && (
