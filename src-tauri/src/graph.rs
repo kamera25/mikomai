@@ -251,7 +251,7 @@ DEFINE INDEX rag_chunk_embedding ON TABLE rag_chunk FIELDS embedding HNSW DIMENS
     ) -> Result<(), String> {
         let hash = fnv1a(&input.raw).to_string();
         let mut response = self.db.query(
-            "SELECT hash, raw FROM config_snapshot WHERE device_name = $device ORDER BY collected_at DESC LIMIT 1;"
+            "SELECT hash, raw, collected_at FROM config_snapshot WHERE device_name = $device ORDER BY collected_at DESC LIMIT 1;"
         ).bind(("device", input.device_name.clone())).await
             .map_err(|e| format!("Failed to read config history: {e}"))?;
         let previous: Vec<Value> = response
