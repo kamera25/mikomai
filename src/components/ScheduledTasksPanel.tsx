@@ -1,4 +1,4 @@
-import { ipc } from "../platform";
+import { ipc, COMMANDS, EVENTS } from "../platform";
 import React, { useEffect, useMemo, useState } from "react";
 import { ClockIcon, SearchIcon, UpdateIcon } from "./Icons";
 import "./ScheduledTasksPanel.css";
@@ -84,8 +84,8 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
   const loadWatches = async () => {
     try {
       const [loadedWatches, loadedDevices] = await Promise.all([
-        ipc.command<Watch[]>("list_watches"),
-        ipc.command<RegisteredDevice[]>("load_connections"),
+        ipc.command<Watch[]>(COMMANDS.getWatches),
+        ipc.command<RegisteredDevice[]>(COMMANDS.loadConnections),
       ]);
       setWatches(loadedWatches);
       setDevices(loadedDevices);
@@ -96,7 +96,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
   };
   useEffect(() => {
     void loadWatches();
-    const unlisten = ipc.subscribe("watch-executed", () => void loadWatches());
+    const unlisten = ipc.subscribe(EVENTS.watchExecuted, () => void loadWatches());
     return () => void unlisten.then((dispose) => dispose());
   }, []);
   const filtered = useMemo(
@@ -114,8 +114,8 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
     }
     try {
       const request = toRequest(form);
-      if (form.id) await ipc.command("update_watch", { id: form.id, request });
-      else await ipc.command("create_watch", { request });
+      if (form.id) await ipc.command(COMMANDS.updateWatch, { id: form.id, request });
+      else await ipc.command(COMMANDS.createWatch, { request });
       setForm(null);
       await loadWatches();
     } catch (reason) {
@@ -124,7 +124,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
   };
   const setEnabled = async (watch: Watch) => {
     try {
-      await ipc.command(watch.status === "enabled" ? "disable_watch" : "enable_watch", { id: watch.id });
+      await ipc.command(watch.status === "enabled" ? COMMANDS.disableWatch : COMMANDS.enableWatch, { id: watch.id });
       await loadWatches();
     } catch (reason) {
       setError(`状態を変更できませんでした: ${String(reason)}`);
@@ -132,7 +132,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
   };
   const run = async (id: string) => {
     try {
-      await ipc.command("execute_watch_now", { id });
+      await ipc.command(COMMANDS.executeWatchNow, { id });
       await loadWatches();
     } catch (reason) {
       setError(`Watch を実行できませんでした: ${String(reason)}`);
@@ -141,7 +141,7 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
   const remove = async (id: string) => {
     if (!window.confirm("この Watch を削除しますか？")) return;
     try {
-      await ipc.command("delete_watch", { id });
+      await ipc.command(COMMANDS.deleteWatch, { id });
       await loadWatches();
     } catch (reason) {
       setError(`Watch を削除できませんでした: ${String(reason)}`);

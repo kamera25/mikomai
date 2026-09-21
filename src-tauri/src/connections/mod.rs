@@ -344,7 +344,10 @@ pub fn save_connections(
     Ok(())
 }
 
-fn csv_connection(record: &csv::StringRecord, headers: &csv::StringRecord) -> Result<Connection, String> {
+fn csv_connection(
+    record: &csv::StringRecord,
+    headers: &csv::StringRecord,
+) -> Result<Connection, String> {
     let fields: HashMap<&str, &str> = headers.iter().zip(record.iter()).collect();
     let value = |name: &str| fields.get(name).copied().unwrap_or("").trim();
     let hostname = value("hostname");
@@ -368,42 +371,103 @@ fn csv_connection(record: &csv::StringRecord, headers: &csv::StringRecord) -> Re
 }
 
 #[tauri::command]
-pub fn import_connections_csv(app: tauri::AppHandle, path: String) -> Result<CsvImportResult, TauriError> {
-    let mut reader = csv::ReaderBuilder::new().flexible(true).from_path(path)
+pub fn import_connections_csv(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<CsvImportResult, TauriError> {
+    let mut reader = csv::ReaderBuilder::new()
+        .flexible(true)
+        .from_path(path)
         .map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
-    let headers = reader.headers().map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?.clone();
+    let headers = reader
+        .headers()
+        .map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?
+        .clone();
     let mut warnings = Vec::new();
     let mut imported = Vec::new();
     for (index, row) in reader.records().enumerate() {
-        match row.map_err(|error| error.to_string()).and_then(|record| csv_connection(&record, &headers)) {
+        match row
+            .map_err(|error| error.to_string())
+            .and_then(|record| csv_connection(&record, &headers))
+        {
             Ok(connection) => imported.push(connection),
-            Err(reason) => warnings.push(CsvImportWarning { row: index + 2, reason }),
+            Err(reason) => warnings.push(CsvImportWarning {
+                row: index + 2,
+                reason,
+            }),
         }
     }
-    let mut merged: HashMap<String, Connection> = load_connections_raw(&app)?.into_iter().map(|connection| (connection.id.to_string(), connection)).collect();
+    let mut merged: HashMap<String, Connection> = load_connections_raw(&app)?
+        .into_iter()
+        .map(|connection| (connection.id.to_string(), connection))
+        .collect();
     let imported_count = imported.len();
-    for connection in imported { merged.insert(connection.id.to_string(), connection); }
+    for connection in imported {
+        merged.insert(connection.id.to_string(), connection);
+    }
     let connections: Vec<Connection> = merged.into_values().collect();
     save_connections(app.clone(), connections)?;
-    Ok(CsvImportResult { connections: load_connections(app)?, imported_count, warnings })
+    Ok(CsvImportResult {
+        connections: load_connections(app)?,
+        imported_count,
+        warnings,
+    })
 }
 
 #[tauri::command]
 pub fn export_connections_csv(app: tauri::AppHandle, path: String) -> Result<(), TauriError> {
     let connections = load_connections_raw(&app)?;
-    let mut writer = csv::WriterBuilder::new().has_headers(true).from_path(path)
+    let mut writer = csv::WriterBuilder::new()
+        .has_headers(true)
+        .from_path(path)
         .map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
-    writer.write_record(["id", "status", "hostname", "ip", "port", "type", "lastConnected", "deviceType", "vendorType", "username"])
+    writer
+        .write_record([
+            "id",
+            "status",
+            "hostname",
+            "ip",
+            "port",
+            "type",
+            "lastConnected",
+            "deviceType",
+            "vendorType",
+            "username",
+        ])
         .map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
     for connection in connections {
-        writer.write_record([
-            connection.id.to_string(), connection.status.to_string(), connection.hostname.to_string(), connection.ip_string(),
-            connection.port.map(|port| port.to_string()).unwrap_or_default(), connection.conn_type.to_string(), connection.last_connected.to_string(),
-            connection.device_type.map(|value| value.to_string()).unwrap_or_default(), connection.vendor_type.map(|value| value.to_string()).unwrap_or_default(),
-            connection.username.map(|value| value.to_string()).unwrap_or_default(),
-        ]).map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
+        writer
+            .write_record([
+                connection.id.to_string(),
+                connection.status.to_string(),
+                connection.hostname.to_string(),
+                connection.ip_string(),
+                connection
+                    .port
+                    .map(|port| port.to_string())
+                    .unwrap_or_default(),
+                connection.conn_type.to_string(),
+                connection.last_connected.to_string(),
+                connection
+                    .device_type
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+                connection
+                    .vendor_type
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+                connection
+                    .username
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+            ])
+            .map_err(|error| {
+                TauriError(crate::error::MikomaiError::Validation(error.to_string()))
+            })?;
     }
-    writer.flush().map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
+    writer
+        .flush()
+        .map_err(|error| TauriError(crate::error::MikomaiError::Validation(error.to_string())))?;
     Ok(())
 }
 

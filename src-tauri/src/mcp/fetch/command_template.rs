@@ -29,7 +29,10 @@ impl TemplateCommands {
 
     #[allow(dead_code)]
     pub fn first_command(&self) -> Option<&str> {
-        self.0.iter().find(|s| !s.trim().is_empty()).map(|s| s.as_str())
+        self.0
+            .iter()
+            .find(|s| !s.trim().is_empty())
+            .map(|s| s.as_str())
     }
 }
 

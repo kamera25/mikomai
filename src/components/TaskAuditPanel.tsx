@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { ipc, COMMANDS } from "../platform";
 import React, { useEffect, useState } from "react";
 import { RefreshIcon } from "./Icons";
 import { useModelContext } from "../contexts/ModelContext";
@@ -57,7 +57,7 @@ const eventDetail = (event: AuditEvent) =>
 export const TaskAuditPanel: React.FC<{
   onClose: () => void;
   onResume: (task: TaskSummary) => Promise<void>;
-}> = ({ onClose: _onClose, onResume }) => {
+}> = ({ onClose, onResume }) => {
   const { state: modelState, handleLoadModel } = useModelContext();
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [selected, setSelected] = useState<TaskAudit | null>(null);
@@ -68,7 +68,7 @@ export const TaskAuditPanel: React.FC<{
   const loadTasks = async () => {
     setLoading(true);
     try {
-      setTasks(await invoke<TaskSummary[]>("list_agent_tasks"));
+      setTasks(await ipc.command<TaskSummary[]>(COMMANDS.listAgentTasks));
       setError(null);
     } catch (reason) {
       setError(`監査履歴を読み込めませんでした: ${String(reason)}`);
@@ -83,7 +83,7 @@ export const TaskAuditPanel: React.FC<{
 
   const selectTask = async (task: TaskSummary) => {
     try {
-      setSelected(await invoke<TaskAudit>("get_agent_task_audit", { taskId: task.taskId }));
+      setSelected(await ipc.command<TaskAudit>(COMMANDS.getAgentTaskAudit, { taskId: task.taskId }));
       setError(null);
     } catch (reason) {
       setError(`実行記録を読み込めませんでした: ${String(reason)}`);
@@ -115,6 +115,9 @@ export const TaskAuditPanel: React.FC<{
             <button className="toolbar-btn" onClick={() => void loadTasks()}>
               <RefreshIcon size={14} />
               更新
+            </button>
+            <button className="toolbar-btn" aria-label="閉じる" onClick={onClose}>
+              閉じる
             </button>
           </div>
         </header>

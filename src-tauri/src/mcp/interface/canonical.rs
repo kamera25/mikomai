@@ -321,9 +321,13 @@ mod tests {
 
         assert_eq!(extracted.evidence.len(), 3);
         assert_eq!(extracted.candidates.interfaces, ["LAN1", "LAN2", "WAN1"]);
-        assert_eq!(extracted.candidates.ip_addresses, ["192.0.2.1", "192.0.2.2"]);
-        assert!(extracted.evidence.iter().all(|line| {
-            !line.text.contains("=== Command:")
-        }));
+        assert_eq!(
+            extracted.candidates.ip_addresses,
+            ["192.0.2.1", "192.0.2.2"]
+        );
+        assert!(extracted
+            .evidence
+            .iter()
+            .all(|line| { !line.text.contains("=== Command:") }));
     }
 }

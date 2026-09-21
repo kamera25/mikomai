@@ -57,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         <div className="timeline-items">
           {timelineEvents.map((m, i) => (
             <div
-              key={m.task_id || i}
+              key={`${m.task_id || "event"}-${i}`}
               className={`sidebar-timeline-item ${m.role} ${m.status?.toLowerCase() || ""} ${m.event_type?.toLowerCase() || ""}`}
               onClick={(e) => {
                 e.stopPropagation();

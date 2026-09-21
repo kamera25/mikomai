@@ -7,7 +7,7 @@ import rehypeKatex from "rehype-katex";
 import { Terminal } from "../Terminal";
 import { CheckIcon, CopyIcon, BoxIcon, ChevronIcon, BookIcon, TerminalIcon, CrossIcon, SpeechIcon, RobotIcon, FileTextIcon, FolderIcon, DownloadIcon } from "../Icons";
 import { Message } from "../../types";
-import { invoke } from "@tauri-apps/api/core";
+import { ipc } from "../../platform";
 import { save } from "@tauri-apps/plugin-dialog";
 import { ImageModal } from "../ImageModal/ImageModal";
 import { defaultFilename, isChoiceTool, isNetworkDatabaseTool, messageContainerClass } from "./timelineModel";
@@ -63,7 +63,7 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
 
   const handleOpenPathInFileManager = async (path: string) => {
     try {
-      await invoke("open_path_in_file_manager", { path });
+      await ipc.openPathInFileManager(path);
     } catch (err) {
       console.error("Failed to open path in file manager: ", err);
     }
@@ -79,10 +79,7 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
       });
 
       if (selectedPath) {
-        await invoke("copy_file_to_destination", {
-          srcPath: savedPath,
-          destPath: selectedPath,
-        });
+        await ipc.copyFileToDestination(savedPath, selectedPath);
         setFileFetched(true);
         setTimeout(() => setFileFetched(false), 2000);
       }

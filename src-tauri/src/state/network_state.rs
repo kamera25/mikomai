@@ -132,7 +132,8 @@ impl NetworkState {
 
     pub fn is_mutating_action_already_executed(&self, action: &Action) -> bool {
         use crate::state::events::ActionType;
-        if action.action_type != ActionType::Configure && action.action_type != ActionType::Rollback {
+        if action.action_type != ActionType::Configure && action.action_type != ActionType::Rollback
+        {
             return false;
         }
         let action_key = action.compute_idempotency_key();

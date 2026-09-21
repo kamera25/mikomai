@@ -34,7 +34,9 @@ impl EventLog {
         let temp_name = format!(
             ".tmp_{}_{}",
             uuid::Uuid::new_v4(),
-            path.file_name().and_then(|s| s.to_str()).unwrap_or("event_log.json")
+            path.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("event_log.json")
         );
         let temp_path = parent.join(temp_name);
 

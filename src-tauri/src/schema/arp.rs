@@ -101,13 +101,19 @@ arp_table:
         assert_eq!(parsed.version, "1.0");
         assert_eq!(parsed.metadata.source_device, "Core-Router-01");
         assert_eq!(parsed.arp_table[0].ip_address, "192.168.1.1");
-        assert_eq!(parsed.arp_table[0].mac_address.as_deref(), Some("00:11:22:33:44:55"));
+        assert_eq!(
+            parsed.arp_table[0].mac_address.as_deref(),
+            Some("00:11:22:33:44:55")
+        );
         assert_eq!(parsed.arp_table[0].r#type, ArpEntryType::Dynamic);
         assert_eq!(parsed.arp_table[0].interface.as_deref(), Some("Ethernet1"));
         assert_eq!(parsed.arp_table[0].age_seconds, Some(120));
 
         assert_eq!(parsed.arp_table[1].ip_address, "10.0.0.1");
-        assert_eq!(parsed.arp_table[1].mac_address.as_deref(), Some("aa:bb:cc:dd:ee:ff"));
+        assert_eq!(
+            parsed.arp_table[1].mac_address.as_deref(),
+            Some("aa:bb:cc:dd:ee:ff")
+        );
         assert_eq!(parsed.arp_table[1].r#type, ArpEntryType::Static);
         assert_eq!(parsed.arp_table[1].interface.as_deref(), Some("Ethernet2"));
         assert_eq!(parsed.arp_table[1].age_seconds, None);

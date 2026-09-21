@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { ipc, COMMANDS } from "../platform";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import { useSettingsContext } from "../contexts/SettingsContext";
@@ -70,7 +70,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
     try {
       const statusMap: Record<string, boolean> = {};
       for (const preset of PRESET_MODELS) {
-        const exists = await invoke<boolean>("check_model_exists", {
+        const exists = await ipc.command<boolean>(COMMANDS.checkModelExists, {
           repo: preset.repo,
           filename: preset.filename,
         });
@@ -78,7 +78,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
       }
       setDownloadedPresets(statusMap);
 
-      const currentExists = await invoke<boolean>("check_model_exists", {
+      const currentExists = await ipc.command<boolean>(COMMANDS.checkModelExists, {
         repo: repoPath,
         filename: modelFilename,
       });
@@ -241,7 +241,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
           output?: string;
           error?: string;
         }
-        const result = await invoke<SerialPortsResponse>("network_list_serial_ports");
+        const result = await ipc.command<SerialPortsResponse>(COMMANDS.listSerialPorts);
         if (result && result.success && result.output) {
           const ports: string[] = [];
           const lines = result.output.split("\n");
@@ -272,7 +272,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
       setIsLoading(true);
       setDownloadStatus(t("settings.status_start_download"));
 
-      const downloadedPath = await invoke<string>("download_model", {
+      const downloadedPath = await ipc.command<string>(COMMANDS.downloadModel, {
         repo: repoPath,
         filename: modelFilename,
       });
@@ -285,14 +285,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
 
       let downloadedMmprojPath: string | null = null;
       try {
-        downloadedMmprojPath = await invoke<string>("download_model", {
+        downloadedMmprojPath = await ipc.command<string>(COMMANDS.downloadModel, {
           repo: repoPath,
           filename: mmprojFilenameToUse,
         });
       } catch (firstErr) {
         if (mmprojFilenameToUse !== "mmproj.gguf") {
           try {
-            downloadedMmprojPath = await invoke<string>("download_model", {
+            downloadedMmprojPath = await ipc.command<string>(COMMANDS.downloadModel, {
               repo: repoPath,
               filename: "mmproj.gguf",
             });
@@ -324,7 +324,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
 
       setDownloadStatus(`モデル準備完了: ${downloadedPath}. メモリへロード中...`);
 
-      const loadResult = await invoke<string>("load_model", {
+      const loadResult = await ipc.command<string>(COMMANDS.loadModel, {
         path: downloadedPath,
       });
 
@@ -341,7 +341,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
 
   const handleOpenModelDir = async () => {
     try {
-      await invoke("open_model_dir", { modelPath: savedModelPath });
+      await ipc.openModelDir(savedModelPath);
     } catch (e: unknown) {
       setDownloadStatus(`Error: ${getErrorMessage(e)}`);
     }

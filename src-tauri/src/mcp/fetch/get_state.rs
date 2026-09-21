@@ -17,7 +17,10 @@ impl McpCommandFetcher for InterfacesFetcher {
     }
 
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
+        self.get_commands_from_template(template)
+            .into_iter()
+            .next()
+            .unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -36,7 +39,10 @@ impl McpCommandFetcher for LldpFetcher {
     }
 
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
+        self.get_commands_from_template(template)
+            .into_iter()
+            .next()
+            .unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -55,7 +61,10 @@ impl McpCommandFetcher for MacTableFetcher {
     }
 
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
+        self.get_commands_from_template(template)
+            .into_iter()
+            .next()
+            .unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -74,7 +83,10 @@ impl McpCommandFetcher for BgpFetcher {
     }
 
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
+        self.get_commands_from_template(template)
+            .into_iter()
+            .next()
+            .unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -93,7 +105,10 @@ impl McpCommandFetcher for OspfFetcher {
     }
 
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
+        self.get_commands_from_template(template)
+            .into_iter()
+            .next()
+            .unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -114,7 +129,10 @@ impl McpCommandFetcher for CpuFetcher {
     }
 
     fn get_command_from_template(&self, template: &CommandTemplate) -> String {
-        self.get_commands_from_template(template).into_iter().next().unwrap_or_default()
+        self.get_commands_from_template(template)
+            .into_iter()
+            .next()
+            .unwrap_or_default()
     }
 
     fn get_log_prefix(&self) -> &'static str {
@@ -458,7 +476,8 @@ mod tests {
 
         // Test array commands
         let multi_template = CommandTemplate {
-            fetch_interfaces: vec!["show interfaces".to_string(), "show ip status".to_string()].into(),
+            fetch_interfaces: vec!["show interfaces".to_string(), "show ip status".to_string()]
+                .into(),
             ..Default::default()
         };
         assert_eq!(

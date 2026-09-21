@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ipc } from "../platform";
+import { ipc, EVENTS } from "../platform";
 
 export interface ChoiceConfig {
   id: string;
@@ -33,7 +33,7 @@ export function useQuestionQueue() {
 
   // Listen to user choice requests from Tauri backend
   useEffect(() => {
-    const unlisten = ipc.subscribe<any>("request-user-choice", ({ id, title, message, options }) => {
+    const unlisten = ipc.subscribe<any>(EVENTS.requestUserChoice, ({ id, title, message, options }) => {
       const item: QuestionItem = {
         type: "choice",
         data: { id: id || "default", title, message, options },
@@ -53,7 +53,7 @@ export function useQuestionQueue() {
 
   // Listen to interface choice requests from Tauri backend
   useEffect(() => {
-    const unlisten = ipc.subscribe<any>("request-interface-choice", ({ id, vendor, message }) => {
+    const unlisten = ipc.subscribe<any>(EVENTS.requestInterfaceChoice, ({ id, vendor, message }) => {
       const item: QuestionItem = {
         type: "interface",
         data: { id: id || "default", vendor, message },
@@ -73,7 +73,7 @@ export function useQuestionQueue() {
 
   // Listen to IP address choice requests from Tauri backend
   useEffect(() => {
-    const unlisten = ipc.subscribe<any>("request-ipaddress-choice", ({ id, title, message, subnet, defaultIp }) => {
+    const unlisten = ipc.subscribe<any>(EVENTS.requestIpAddressChoice, ({ id, title, message, subnet, defaultIp }) => {
       const item: QuestionItem = {
         type: "ipaddress",
         data: { id: id || "default", title, message, subnet, defaultIp },
@@ -98,7 +98,7 @@ export function useQuestionQueue() {
       return next;
     });
     try {
-      await ipc.command("submit_user_choice", { id, choice: option });
+      await ipc.submitChoice(id, option);
     } catch (err) {
       console.error("Failed to submit user choice:", err);
     }
@@ -111,7 +111,7 @@ export function useQuestionQueue() {
       return next;
     });
     try {
-      await ipc.command("submit_user_choice", { id, choice: "cancelled" });
+      await ipc.submitChoice(id, "cancelled");
     } catch (err) {
       console.error("Failed to cancel user choice:", err);
     }
@@ -124,7 +124,7 @@ export function useQuestionQueue() {
       return next;
     });
     try {
-      await ipc.command("submit_interface_choice", { id, choice: option });
+      await ipc.submitInterfaceChoice(id, option);
     } catch (err) {
       console.error("Failed to submit interface choice:", err);
     }
@@ -137,7 +137,7 @@ export function useQuestionQueue() {
       return next;
     });
     try {
-      await ipc.command("submit_interface_choice", { id, choice: "cancelled" });
+      await ipc.submitInterfaceChoice(id, "cancelled");
     } catch (err) {
       console.error("Failed to cancel interface choice:", err);
     }
@@ -150,7 +150,7 @@ export function useQuestionQueue() {
       return next;
     });
     try {
-      await ipc.command("submit_ipaddress_choice", { id, choice: option });
+      await ipc.submitIpAddressChoice(id, option);
     } catch (err) {
       console.error("Failed to submit IP address choice:", err);
     }
@@ -163,7 +163,7 @@ export function useQuestionQueue() {
       return next;
     });
     try {
-      await ipc.command("submit_ipaddress_choice", { id, choice: "cancelled" });
+      await ipc.submitIpAddressChoice(id, "cancelled");
     } catch (err) {
       console.error("Failed to cancel IP address choice:", err);
     }

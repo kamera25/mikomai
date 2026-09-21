@@ -98,11 +98,18 @@ pub fn list_agent_tasks(app: AppHandle) -> Result<Vec<AgentTaskSummary>, String>
     let mut tasks = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else { continue };
-        let Ok(task_id) = uuid::Uuid::parse_str(stem) else { continue };
+        let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        let Ok(task_id) = uuid::Uuid::parse_str(stem) else {
+            continue;
+        };
         match EventLog::load_from_path(&path).and_then(|log| summary_from_log(task_id, &log)) {
             Ok(summary) => tasks.push(summary),
-            Err(error) => log::warn!("Skipping unreadable agent event log {}: {error}", path.display()),
+            Err(error) => log::warn!(
+                "Skipping unreadable agent event log {}: {error}",
+                path.display()
+            ),
         }
     }
     tasks.sort_by(|left, right| right.last_event_at.cmp(&left.last_event_at));
@@ -149,9 +156,18 @@ mod tests {
         let task_id = uuid::Uuid::new_v4();
         let time = Utc::now();
         let mut log = EventLog::new();
-        log.push(HarnessEvent::TaskStarted { task_id, timestamp: time });
-        log.push(HarnessEvent::GoalSet { goal: "R1 を調査".into(), timestamp: time });
-        log.push(HarnessEvent::Finished { reason: "done".into(), timestamp: time });
+        log.push(HarnessEvent::TaskStarted {
+            task_id,
+            timestamp: time,
+        });
+        log.push(HarnessEvent::GoalSet {
+            goal: "R1 を調査".into(),
+            timestamp: time,
+        });
+        log.push(HarnessEvent::Finished {
+            reason: "done".into(),
+            timestamp: time,
+        });
         let summary = summary_from_log(task_id, &log).unwrap();
         assert_eq!(summary.goal, "R1 を調査");
         assert_eq!(summary.status, "finished");

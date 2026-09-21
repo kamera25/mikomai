@@ -12,7 +12,10 @@ impl TargetVendor {
         match value.trim().to_ascii_lowercase().as_str() {
             "juniper" => Ok(Self::Juniper),
             "arista" => Ok(Self::Arista),
-            _ => Err(format!("Unsupported target vendor: '{}'. Supported: 'juniper', 'arista'", value)),
+            _ => Err(format!(
+                "Unsupported target vendor: '{}'. Supported: 'juniper', 'arista'",
+                value
+            )),
         }
     }
 
@@ -36,7 +39,10 @@ mod tests {
 
     #[test]
     fn parses_supported_vendor_case_insensitively() {
-        assert_eq!(TargetVendor::parse(" JUNIPER ").unwrap(), TargetVendor::Juniper);
+        assert_eq!(
+            TargetVendor::parse(" JUNIPER ").unwrap(),
+            TargetVendor::Juniper
+        );
         assert_eq!(TargetVendor::parse("arista").unwrap().as_str(), "arista");
     }
 

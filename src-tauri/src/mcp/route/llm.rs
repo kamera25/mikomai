@@ -102,7 +102,11 @@ mod tests {
         let raw_llm_output = "```yaml\nentries:\n- line_idx: 0\ndestination_idx: 0\ngateway_idx: 1\ninterface_idx: 2\nflags_idx: null\nmetric: null\n```";
         let cleaned = clean_yaml_output(raw_llm_output);
         let parsed: Result<RouteSelection, _> = serde_yaml::from_str(&cleaned);
-        assert!(parsed.is_ok(), "Failed to parse cleaned YAML: {:?}", parsed.err());
+        assert!(
+            parsed.is_ok(),
+            "Failed to parse cleaned YAML: {:?}",
+            parsed.err()
+        );
         let selection = parsed.unwrap();
         assert_eq!(selection.entries.len(), 1);
         assert_eq!(selection.entries[0].line_idx, 0);
@@ -110,4 +114,3 @@ mod tests {
         assert_eq!(selection.entries[0].gateway_idx, 1);
     }
 }
-

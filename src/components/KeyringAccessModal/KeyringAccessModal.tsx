@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ipc } from "../../platform";
+import { ipc, EVENTS } from "../../platform";
 import "./KeyringAccessModal.css";
 
 export interface KeyringAccessModalProps {
@@ -18,10 +18,10 @@ export const KeyringAccessModal: React.FC<KeyringAccessModalProps> = ({ forceOpe
 
     const setupListeners = async () => {
       try {
-        const startPromise = ipc.subscribe("keyring-access-start", () => {
+        const startPromise = ipc.subscribe(EVENTS.keyringAccessStart, () => {
           if (isMounted) setIsOpen(true);
         });
-        const endPromise = ipc.subscribe("keyring-access-end", () => {
+        const endPromise = ipc.subscribe(EVENTS.keyringAccessEnd, () => {
           if (isMounted) setIsOpen(false);
         });
 

@@ -15,7 +15,10 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    // Use IPv4 loopback by default. On restricted macOS environments,
+    // resolving localhost to ::1 can make the dev server fail to bind and
+    // leave the Tauri window blank while it waits for devUrl.
+    host: host || "127.0.0.1",
     hmr: host
       ? {
           protocol: "ws",

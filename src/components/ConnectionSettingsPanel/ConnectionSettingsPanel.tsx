@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { ipc, COMMANDS } from "../../platform";
 import { message } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import "./ConnectionSettingsPanel.css";
@@ -77,7 +77,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     const fetchDeviceTypes = async () => {
       try {
         const response: { deviceTypes: string[]; deviceTypeAliases: { [key: string]: string } } =
-          await invoke("get_device_types");
+          await ipc.command(COMMANDS.deviceTypes);
         setDeviceTypes(response.deviceTypes || []);
         setDeviceTypeAliases(response.deviceTypeAliases || {});
       } catch (e) {
@@ -90,7 +90,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   useEffect(() => {
     const fetchMcpHosts = async () => {
       try {
-        const hosts: McpHost[] = await invoke("get_mcp_hosts");
+        const hosts: McpHost[] = await ipc.command<McpHost[]>(COMMANDS.mcpHosts);
         setMcpHosts(hosts);
       } catch (e) {
         console.error("Failed to fetch MCP hosts:", e);
@@ -102,7 +102,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   useEffect(() => {
     const initConnections = async () => {
       try {
-        const savedConnections: Connection[] = await invoke("load_connections");
+        const savedConnections: Connection[] = await ipc.command<Connection[]>(COMMANDS.loadConnections);
         setConnections(savedConnections || []);
       } catch (e) {
         console.error("Failed to load connections:", e);
@@ -204,7 +204,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     }
 
     try {
-      await invoke("save_connections", { connections: updatedConnections });
+      await ipc.command(COMMANDS.saveConnections, { connections: updatedConnections });
       setConnections(updatedConnections);
       onConnectionsChanged?.();
       setIsEditing(false);
@@ -225,7 +225,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     setSelectedIds((prev) => prev.filter((id) => id !== editingId));
 
     try {
-      await invoke("save_connections", { connections: updatedConnections });
+      await ipc.command(COMMANDS.saveConnections, { connections: updatedConnections });
       onConnectionsChanged?.();
     } catch (e) {
       console.error("Failed to delete connection:", e);
@@ -241,7 +241,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     setSelectedIds((prev) => prev.filter((i) => i !== id));
 
     try {
-      await invoke("save_connections", { connections: updatedConnections });
+      await ipc.command(COMMANDS.saveConnections, { connections: updatedConnections });
       onConnectionsChanged?.();
     } catch (e) {
       console.error("Failed to delete connection:", e);
@@ -268,7 +268,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     setSelectedIds([]);
 
     try {
-      await invoke("save_connections", { connections: updatedConnections });
+      await ipc.command(COMMANDS.saveConnections, { connections: updatedConnections });
       onConnectionsChanged?.();
     } catch (e) {
       console.error("Failed to delete connections:", e);
@@ -280,7 +280,7 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
   const handleNodeDbBulkRefresh = async () => {
     setIsNodeRefreshStarting(true);
     try {
-      const result = await invoke<{ nodeCount: number }>("start_node_db_bulk_refresh");
+      const result = await ipc.command<{ nodeCount: number }>(COMMANDS.refreshNodeDb);
       await message(t("connection_panel.msg_node_db_refresh_started", { count: result.nodeCount }));
     } catch (e) {
       await message(t("connection_panel.msg_node_db_refresh_failed", { error: String(e) }), {

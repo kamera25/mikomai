@@ -1,9 +1,9 @@
 import { lazy, Suspense, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { ipc } from "../../platform";
+import { ipc, COMMANDS } from "../../platform";
 import "../../App.css";
 
-import { Chat } from "../Chat/Chat";
+import { ChatPanel } from "../../features/chat/ChatPanel";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { Sidebar } from "../Sidebar/Sidebar";
 import { ActivityBar } from "../ActivityBar/ActivityBar";
@@ -23,11 +23,12 @@ import { SidebarIcon, ServerIcon, DiffIcon } from "../Icons";
 import { Attachment } from "../../types";
 import { formatMessageTime } from "../../utils/messageTime";
 import { useMessageExecution } from "./useMessageExecution";
+import { useAppLayoutActions } from "./useAppLayoutActions";
 
 // These panels are not part of the chat's critical rendering path. Loading
 // them only when opened reduces startup parsing and keeps their effects idle.
 const SettingsPanel = lazy(() =>
-  import("../SettingsPanel").then(({ SettingsPanel }) => ({ default: SettingsPanel }))
+  import("../../features/settings/SettingsPanel").then(({ SettingsPanel }) => ({ default: SettingsPanel }))
 );
 const ConnectionSettingsPanel = lazy(() =>
   import("../ConnectionSettingsPanel").then(({ ConnectionSettingsPanel }) => ({
@@ -40,7 +41,7 @@ const ScheduledTasksPanel = lazy(() =>
   }))
 );
 const ConfigDiffPanel = lazy(() =>
-  import("../ConfigDiffPanel/ConfigDiffPanel").then(({ ConfigDiffPanel }) => ({
+  import("../../features/operations/ConfigDiffPanel").then(({ ConfigDiffPanel }) => ({
     default: ConfigDiffPanel,
   }))
 );
@@ -60,7 +61,7 @@ export function AppLayout() {
   const handleCloseConfigDiff = useCallback(() => {
     uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: false });
     if (diffCommitId) {
-      ipc.command("submit_user_choice", { id: diffCommitId, choice: "cancel" }).catch((err) => {
+      ipc.submitChoice(diffCommitId, "cancel").catch((err) => {
         console.error("Failed to cancel user choice on close:", err);
       });
       setDiffCommitId(null);
@@ -121,20 +122,6 @@ export function AppLayout() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const isComposingHeader = useRef(false);
-  const handleStartRenameHeader = () => {
-    if (activeSession) {
-      uiDispatch({ type: "START_EDITING_HEADER", payload: activeSession.title });
-    }
-  };
-
-  const handleSaveRenameHeader = () => {
-    if (chatState.activeSessionId && uiState.headerTitle.trim()) {
-      renameSession(chatState.activeSessionId, uiState.headerTitle.trim());
-    }
-    uiDispatch({ type: "STOP_EDITING_HEADER" });
-  };
-
   const {
     availableHosts,
     showSuggestions,
@@ -194,7 +181,9 @@ export function AppLayout() {
   // Keep callbacks passed to the chat stable. In particular, typing in the
   // input must not re-render the full message timeline.
   const sendMessageRef = useRef(sendMessage);
-  sendMessageRef.current = sendMessage;
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  }, [sendMessage]);
   const handleSend = useCallback(
     (text?: string, attachments?: Attachment[]) => sendMessageRef.current(text, attachments),
     []
@@ -213,66 +202,28 @@ export function AppLayout() {
     [diffWidth]
   );
 
-  const handleSetConnectionOpen = useCallback(
-    (valueOrFn: React.SetStateAction<boolean>) => {
-      uiDispatch({
-        type: "SET_CONNECTION_OPEN",
-        payload: typeof valueOrFn === "function" ? valueOrFn(uiState.isConnectionOpen) : valueOrFn,
-      });
-    },
-    [uiState.isConnectionOpen, uiDispatch]
-  );
-
-  const handleSetScheduledTasksOpen = useCallback(
-    (valueOrFn: React.SetStateAction<boolean>) => {
-      uiDispatch({
-        type: "SET_SCHEDULED_TASKS_OPEN",
-        payload:
-          typeof valueOrFn === "function" ? valueOrFn(uiState.isScheduledTasksOpen) : valueOrFn,
-      });
-    },
-    [uiState.isScheduledTasksOpen, uiDispatch]
-  );
-
-  const handleSetSettingsOpen = useCallback(
-    (valueOrFn: React.SetStateAction<boolean>) => {
-      uiDispatch({
-        type: "SET_SETTINGS_OPEN",
-        payload: typeof valueOrFn === "function" ? valueOrFn(uiState.isSettingsOpen) : valueOrFn,
-      });
-    },
-    [uiState.isSettingsOpen, uiDispatch]
-  );
-
-  const handleSetTaskAuditOpen = useCallback(
-    (valueOrFn: React.SetStateAction<boolean>) => {
-      uiDispatch({
-        type: "SET_TASK_AUDIT_OPEN",
-        payload: typeof valueOrFn === "function" ? valueOrFn(uiState.isTaskAuditOpen) : valueOrFn,
-      });
-    },
-    [uiState.isTaskAuditOpen, uiDispatch]
-  );
-
-  const resumeTask = useCallback(async (task: { taskId: string; goal: string }) => {
-    if (isCurrentlyGenerating) return;
-    uiDispatch({ type: "SET_TASK_AUDIT_OPEN", payload: false });
-    setMessages((previous) => [...previous, {
-      role: "user", content: `前回の調査を再開: ${task.goal}`, timestamp: new Date().toISOString(),
-      event_type: "UserInput", task_id: crypto.randomUUID(),
-    }]);
-    setIsGenerating(true);
-    try {
-      await ipc.command("resume_agent_task", { taskId: task.taskId });
-    } catch (reason) {
-      setMessages((previous) => [...previous, {
-        role: "ai", content: `調査を再開できませんでした: ${String(reason)}`,
-        timestamp: new Date().toISOString(), event_type: "SystemMessage",
-      }]);
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [isCurrentlyGenerating, setMessages, uiDispatch]);
+  const layoutActions = useAppLayoutActions({
+    uiState,
+    uiDispatch,
+    activeSession,
+    activeSessionId: chatState.activeSessionId,
+    headerTitle: uiState.headerTitle,
+    renameSession,
+    isCurrentlyGenerating,
+    setMessages,
+    setIsGenerating,
+    resumeAgent: (taskId) => ipc.command(COMMANDS.resumeAgentTask, { taskId }),
+  });
+  const {
+    isComposingHeaderRef,
+    handleStartRenameHeader,
+    handleSaveRenameHeader,
+    handleSetConnectionOpen,
+    handleSetScheduledTasksOpen,
+    handleSetSettingsOpen,
+    handleSetTaskAuditOpen,
+    resumeTask,
+  } = layoutActions;
 
   return (
     <div className="app-container">
@@ -356,16 +307,16 @@ export function AppLayout() {
                           }
                           onBlur={handleSaveRenameHeader}
                           onCompositionStart={() => {
-                            isComposingHeader.current = true;
+                            isComposingHeaderRef.current = true;
                           }}
                           onCompositionEnd={() => {
                             setTimeout(() => {
-                              isComposingHeader.current = false;
+                              isComposingHeaderRef.current = false;
                             }, 150);
                           }}
                           onKeyDown={(e) => {
                             const isComp =
-                              isComposingHeader.current ||
+                              isComposingHeaderRef.current ||
                               e.nativeEvent.isComposing ||
                               e.keyCode === 229;
                             if (isComp) {
@@ -424,7 +375,7 @@ export function AppLayout() {
                     </div>
                   </header>
 
-                  <Chat
+                  <ChatPanel
                     ref={messagesEndRef}
                     messages={chatState.messages}
                     formatMessageTime={formatMessageTime}

@@ -1,10 +1,10 @@
 use crate::network::CommandResult;
 use serde::{Deserialize, Serialize};
 
+use super::choice_broker::ChoiceBroker;
 #[allow(unused_imports)]
 pub use super::config_diff::{compute_line_diff, normalize_config_for_diff};
 use super::config_types::TargetVendor;
-use super::choice_broker::ChoiceBroker;
 
 pub struct ChoiceManager {
     pub broker: ChoiceBroker,
@@ -26,7 +26,8 @@ pub async fn submit_user_choice(
 ) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
     let mut lock = state
-        .broker.txs
+        .broker
+        .txs
         .lock()
         .map_err(|_| "Mutex lock poisoned".to_string())?;
     if let Some(tx) = lock.remove(&id) {
@@ -138,7 +139,8 @@ pub async fn validate_cisco_config_impl(
             let (tx, rx) = tokio::sync::oneshot::channel();
             {
                 let mut lock = choice_manager
-                    .broker.txs
+                    .broker
+                    .txs
                     .lock()
                     .map_err(|_| "Mutex lock poisoned".to_string())?;
                 lock.insert(id.clone(), tx);
@@ -346,10 +348,10 @@ pub async fn validate_cisco_config_impl(
                                         let (force_tx, force_rx) = tokio::sync::oneshot::channel();
                                         let force_id = format!("{}_force", id);
                                         {
-                                            let mut lock = choice_manager
-                                                .broker.txs
-                                                .lock()
-                                                .map_err(|_| "Mutex lock poisoned".to_string())?;
+                                            let mut lock =
+                                                choice_manager.broker.txs.lock().map_err(|_| {
+                                                    "Mutex lock poisoned".to_string()
+                                                })?;
                                             lock.insert(force_id.clone(), force_tx);
                                         }
 
@@ -695,7 +697,8 @@ pub async fn ask_user_choice(
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
         let mut lock = choice_manager
-            .broker.txs
+            .broker
+            .txs
             .lock()
             .map_err(|_| "Mutex lock poisoned".to_string())?;
         lock.insert(id.clone(), tx);
@@ -738,7 +741,8 @@ pub async fn submit_interface_choice(
 ) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
     let mut lock = state
-        .broker.txs
+        .broker
+        .txs
         .lock()
         .map_err(|_| "Mutex lock poisoned".to_string())?;
     if let Some(tx) = lock.remove(&id) {
@@ -763,7 +767,8 @@ pub async fn ask_interface_choice(
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
         let mut lock = choice_manager
-            .broker.txs
+            .broker
+            .txs
             .lock()
             .map_err(|_| "Mutex lock poisoned".to_string())?;
         lock.insert(id.clone(), tx);
@@ -805,7 +810,8 @@ pub async fn submit_ipaddress_choice(
 ) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
     let mut lock = state
-        .broker.txs
+        .broker
+        .txs
         .lock()
         .map_err(|_| "Mutex lock poisoned".to_string())?;
     if let Some(tx) = lock.remove(&id) {
@@ -832,7 +838,8 @@ pub async fn ask_ipaddress_choice(
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
         let mut lock = choice_manager
-            .broker.txs
+            .broker
+            .txs
             .lock()
             .map_err(|_| "Mutex lock poisoned".to_string())?;
         lock.insert(id.clone(), tx);

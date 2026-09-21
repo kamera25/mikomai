@@ -4673,7 +4673,10 @@ dependencies = [
 name = "mikomai-adapters"
 version = "0.1.0"
 dependencies = [
+ "futures-lite",
  "mikomai-core",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -4681,16 +4684,20 @@ dependencies = [
 name = "mikomai-cli"
 version = "0.1.0"
 dependencies = [
+ "futures-lite",
  "mikomai-adapters",
  "mikomai-core",
+ "serde_json",
 ]
 
 [[package]]
 name = "mikomai-core"
 version = "0.1.0"
 dependencies = [
+ "futures-lite",
  "serde",
  "serde_json",
+ "sha2",
  "uuid",
 ]
 

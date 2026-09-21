@@ -9,18 +9,29 @@ pub struct ChoiceBroker {
 
 impl ChoiceBroker {
     pub fn new() -> Self {
-        Self { txs: Mutex::new(HashMap::new()) }
+        Self {
+            txs: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn register(&self, id: String) -> Result<oneshot::Receiver<String>, String> {
         let (sender, receiver) = oneshot::channel();
-        self.txs.lock().map_err(|_| "Mutex lock poisoned".to_string())?.insert(id, sender);
+        self.txs
+            .lock()
+            .map_err(|_| "Mutex lock poisoned".to_string())?
+            .insert(id, sender);
         Ok(receiver)
     }
 
     pub fn resolve(&self, id: &str, choice: String) -> Result<(), String> {
-        let sender = self.txs.lock().map_err(|_| "Mutex lock poisoned".to_string())?.remove(id);
-        if let Some(sender) = sender { let _ = sender.send(choice); }
+        let sender = self
+            .txs
+            .lock()
+            .map_err(|_| "Mutex lock poisoned".to_string())?
+            .remove(id);
+        if let Some(sender) = sender {
+            let _ = sender.send(choice);
+        }
         Ok(())
     }
 }

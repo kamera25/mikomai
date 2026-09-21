@@ -1,9 +1,9 @@
+use super::command_classifier::{is_arp_show_command, is_route_show_command};
 use super::extract::*;
 use super::registry::McpTool;
 use crate::network::CommandResult;
 use std::collections::HashMap;
 use tauri::Manager;
-use super::command_classifier::{is_arp_show_command, is_route_show_command};
 
 macro_rules! define_tool {
     ($struct_name:ident, $tool_name:expr, |$app:ident, $args:ident| $body:expr) => {

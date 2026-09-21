@@ -1,22 +1,23 @@
-pub mod audit;
 pub mod application;
-pub mod ipc;
+pub mod audit;
 pub(crate) mod background_work;
 pub mod cli;
-mod connections;
+pub mod commands;
+pub(crate) mod connections;
 pub mod crypto;
 pub(crate) mod error;
 pub(crate) mod graph;
 pub(crate) mod graph_identity;
 pub mod harness;
-mod history;
-mod history_types;
-mod history_attachments;
+pub(crate) mod history;
+pub(crate) mod history_attachments;
 mod history_store;
-mod llm;
+mod history_types;
+pub mod ipc;
+pub(crate) mod llm;
 mod logger;
 pub(crate) mod mcp;
-mod network;
+pub(crate) mod network;
 pub(crate) mod node_refresh;
 pub mod operations;
 pub mod planner;
@@ -28,8 +29,6 @@ pub mod task_audit;
 pub mod validator;
 pub(crate) mod watch;
 
-use tauri::Manager;
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logger::init().expect("Failed to initialize logger");
@@ -37,33 +36,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
-                let history_app_handle = app_handle.clone();
-                let _ = tauri::async_runtime::block_on(async move {
-                    history::cleanup_running_history_on_exit(history_app_handle).await
-                });
-                let state = app_handle.state::<llm::LlamaState>();
-                let status = state.status.blocking_lock();
-                if let llm::ModelState::Loading = *status {
-                    log::info!("Exiting while model is loading; using fast exit to prevent crash.");
-                    #[cfg(unix)]
-                    unsafe {
-                        extern "C" {
-                            fn _exit(status: std::os::raw::c_int) -> !;
-                        }
-                        _exit(0);
-                    }
-                    #[cfg(windows)]
-                    unsafe {
-                        extern "system" {
-                            fn ExitProcess(uExitCode: u32) -> !;
-                        }
-                        ExitProcess(0);
-                    }
-                } else {
-                    let mut shared = state.shared.blocking_lock();
-                    *shared = None;
-                    log::info!("Llama model cleared on exit.");
-                }
+                application::shutdown_desktop(app_handle);
             }
             _ => {}
         });
@@ -76,20 +49,8 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
     tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle().clone();
-            let operation_store = operations::OperationStore::load(&app_handle)
-                .expect("Failed to initialize operation-plan storage");
-            app_handle.manage(operation_store);
-            tauri::async_runtime::block_on(async move {
-                let watch_state = watch::init_watch_scheduler(&app_handle).await;
-                app_handle.manage(watch_state);
-                let graph_state = graph::SurrealDbState::initialize(&app_handle)
-                    .await
-                    .expect("Failed to initialize embedded SurrealDB");
-                history_store::initialize(&graph_state)
-                    .await
-                    .expect("Failed to initialize chat history storage");
-                app_handle.manage(graph_state);
-            });
+            tauri::async_runtime::block_on(application::initialize_desktop_state(app_handle))
+                .expect("Failed to initialize desktop services");
 
             Ok(())
         })
@@ -131,6 +92,8 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
             mcp::fetch::get_state::get_state,
             graph::query_network_graph,
             node_refresh::start_node_db_bulk_refresh,
+            commands::tasks::start_task,
+            commands::tasks::resume_task,
             history::load_history,
             history::save_history,
             history::mutate_history,

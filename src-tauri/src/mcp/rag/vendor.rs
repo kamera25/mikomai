@@ -11,8 +11,6 @@ pub fn check_registered_device(query: &str, app: &tauri::AppHandle) -> Option<St
     crate::mcp::devices::get_registered_device_info(query, app)
 }
 
-
-
 pub fn parse_vendor_context_with_app(query: &str, app: &tauri::AppHandle) -> ProcessedQuery {
     let connections = crate::connections::load_connections(app.clone()).ok();
     parse_vendor_context_with_connections(query, connections.as_deref())

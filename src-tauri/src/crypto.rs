@@ -227,7 +227,10 @@ pub fn decrypt_with_key(key: &Key<Aes256Gcm>, encrypted_data: &str) -> Result<St
     Ok(String::from_utf8(plaintext)?)
 }
 
-pub fn encrypt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, data: &str) -> Result<String, CryptoError> {
+pub fn encrypt<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    data: &str,
+) -> Result<String, CryptoError> {
     if data.is_empty() {
         return Ok("".to_string());
     }
@@ -236,7 +239,10 @@ pub fn encrypt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, data: &str) -> Resu
     encrypt_with_key(&key, data)
 }
 
-pub fn decrypt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, encrypted_data: &str) -> Result<String, CryptoError> {
+pub fn decrypt<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    encrypted_data: &str,
+) -> Result<String, CryptoError> {
     if encrypted_data.is_empty() {
         return Ok("".to_string());
     }

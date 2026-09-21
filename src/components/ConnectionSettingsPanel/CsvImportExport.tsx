@@ -1,5 +1,5 @@
 import React from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { ipc, COMMANDS } from "../../platform";
 import { message, open, save } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import { Connection } from "../../types";
@@ -17,7 +17,7 @@ export const CsvImportExport: React.FC<CsvImportExportProps> = ({
   const handleImportCsv = async () => {
     const selected = await open({ multiple: false, filters: [{ name: "CSV", extensions: ["csv"] }] });
     if (!selected || Array.isArray(selected)) return;
-    const result = await invoke<{ connections: Connection[]; importedCount: number; warnings: { row: number; reason: string }[] }>("import_connections_csv", { path: selected });
+    const result = await ipc.command<{ connections: Connection[]; importedCount: number; warnings: { row: number; reason: string }[] }>(COMMANDS.importConnections, { path: selected });
     setConnections(result.connections);
     onConnectionsChanged?.();
     await message(t("connection_panel.msg_csv_imported", { count: result.importedCount }));
@@ -25,7 +25,7 @@ export const CsvImportExport: React.FC<CsvImportExportProps> = ({
 
   const handleExportCsv = async () => {
     const path = await save({ defaultPath: "connections.csv", filters: [{ name: "CSV", extensions: ["csv"] }] });
-    if (path) await invoke("export_connections_csv", { path });
+    if (path) await ipc.command(COMMANDS.exportConnections, { path });
   };
 
   return (

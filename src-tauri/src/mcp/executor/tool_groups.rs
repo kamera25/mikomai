@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use super::registry::McpTool;
+use std::collections::HashMap;
 
 fn add<T: McpTool + 'static>(registry: &mut HashMap<String, Box<dyn McpTool>>, tool: T) {
     registry.insert(tool.name().to_string(), Box::new(tool));

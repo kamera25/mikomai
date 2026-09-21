@@ -34,16 +34,25 @@ pub struct ExtractedCandidates {
 
 fn ip_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b").unwrap())
+    RE.get_or_init(|| {
+        Regex::new(r"\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b")
+            .unwrap()
+    })
 }
 
 fn mac_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"(?i)\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b|\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b").unwrap())
+    RE.get_or_init(|| {
+        Regex::new(
+            r"(?i)\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b|\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b",
+        )
+        .unwrap()
+    })
 }
 
 pub fn normalize_mac(value: &str) -> String {
-    value.chars()
+    value
+        .chars()
         .filter(|c| c.is_ascii_hexdigit())
         .collect::<String>()
         .to_ascii_lowercase()
@@ -64,36 +73,75 @@ where
     let mut candidates = CandidateVectors::default();
     let mut evidence = Vec::new();
     for (line_number, text) in raw.lines().enumerate() {
-        let ips = ip_re().find_iter(text).map(|m| m.as_str().to_string()).collect::<Vec<_>>();
-        let macs = mac_re().find_iter(text).map(|m| normalize_mac(m.as_str())).collect::<Vec<_>>();
+        let ips = ip_re()
+            .find_iter(text)
+            .map(|m| m.as_str().to_string())
+            .collect::<Vec<_>>();
+        let macs = mac_re()
+            .find_iter(text)
+            .map(|m| normalize_mac(m.as_str()))
+            .collect::<Vec<_>>();
         let interface = interface_from_line(text);
         // Numeric scalar attributes are complete whitespace-delimited tokens.
         // This intentionally excludes digits embedded in addresses (IPs, MACs,
         // and interface names such as LAN1 or Gi1/0/1).
-        let scalar_values = text.split_whitespace()
-            .filter_map(|token| token.trim_matches(|c: char| matches!(c, '(' | ')' | ',' | ';' | '[' | ']')).parse::<u32>().ok())
+        let scalar_values = text
+            .split_whitespace()
+            .filter_map(|token| {
+                token
+                    .trim_matches(|c: char| matches!(c, '(' | ')' | ',' | ';' | '[' | ']'))
+                    .parse::<u32>()
+                    .ok()
+            })
             .collect();
-        let ip_indexes: Vec<usize> = ips.iter().map(|value| intern(&mut candidates.ip_addresses, value)).collect();
-        let mac_indexes: Vec<usize> = macs.iter().map(|value| intern(&mut candidates.mac_addresses, value)).collect();
-        let interface_indexes: Vec<usize> = interface.iter().map(|value| intern(&mut candidates.interfaces, value)).collect();
+        let ip_indexes: Vec<usize> = ips
+            .iter()
+            .map(|value| intern(&mut candidates.ip_addresses, value))
+            .collect();
+        let mac_indexes: Vec<usize> = macs
+            .iter()
+            .map(|value| intern(&mut candidates.mac_addresses, value))
+            .collect();
+        let interface_indexes: Vec<usize> = interface
+            .iter()
+            .map(|value| intern(&mut candidates.interfaces, value))
+            .collect();
         if !ip_indexes.is_empty() || !mac_indexes.is_empty() || !interface_indexes.is_empty() {
-            evidence.push(EvidenceLine { line: line_number + 1, text: text.to_string(), ip_indexes, mac_indexes, interface_indexes, scalar_values });
+            evidence.push(EvidenceLine {
+                line: line_number + 1,
+                text: text.to_string(),
+                ip_indexes,
+                mac_indexes,
+                interface_indexes,
+                scalar_values,
+            });
         }
     }
-    ExtractedCandidates { candidates, evidence }
+    ExtractedCandidates {
+        candidates,
+        evidence,
+    }
 }
 
 fn intern(values: &mut Vec<String>, value: &str) -> usize {
     match values.iter().position(|existing| existing == value) {
         Some(index) => index,
-        None => { values.push(value.to_string()); values.len() - 1 }
+        None => {
+            values.push(value.to_string());
+            values.len() - 1
+        }
     }
 }
 
-pub fn ensure_unique<T: std::hash::Hash + Eq>(values: impl IntoIterator<Item = T>, label: &str) -> Result<(), String> {
+pub fn ensure_unique<T: std::hash::Hash + Eq>(
+    values: impl IntoIterator<Item = T>,
+    label: &str,
+) -> Result<(), String> {
     let mut seen = HashSet::new();
     for value in values {
-        if !seen.insert(value) { return Err(format!("duplicate {label} selected")); }
+        if !seen.insert(value) {
+            return Err(format!("duplicate {label} selected"));
+        }
     }
     Ok(())
 }
@@ -178,4 +226,3 @@ mod tests {
         assert_eq!(normalize_yaml_indentation(proper), proper);
     }
 }
-

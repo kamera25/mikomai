@@ -1,8 +1,8 @@
-pub mod extract;
 pub(crate) mod command_classifier;
-pub(crate) mod tool_groups;
+pub mod extract;
 pub mod flow;
 pub mod registry;
+pub(crate) mod tool_groups;
 pub mod tools;
 
 pub use extract::*;
@@ -98,7 +98,8 @@ pub async fn handle_chat_request(
     if !has_image_attachment {
         if let Some(decision) = crate::llm::router::shortcut::detect_shortcut(&user_message) {
             if decision.confidence >= 0.8 {
-                return run_shortcut_request(app, window, user_message, decision, llama_state).await;
+                return run_shortcut_request(app, window, user_message, decision, llama_state)
+                    .await;
             }
         }
     }
@@ -238,7 +239,9 @@ async fn run_worker_request(
     .await
     {
         Ok((_, crate::llm::worker::Route::Agent)) => {
-            log::info!("[run_worker_request] LLM router identified Route::Agent; handing off to AgentLoop");
+            log::info!(
+                "[run_worker_request] LLM router identified Route::Agent; handing off to AgentLoop"
+            );
             let mut agent_loop = crate::harness::agent_loop::AgentLoop::new(app, window, 10);
             return agent_loop.run(user_message, llama_state).await;
         }
@@ -335,7 +338,9 @@ async fn run_knowledge_retrieval(
             );
 
             let graph = app.state::<crate::graph::SurrealDbState>();
-            let previews = match crate::mcp::rag::previews_for_search_result(&result.output, &graph).await {
+            let previews = match crate::mcp::rag::previews_for_search_result(&result.output, &graph)
+                .await
+            {
                 Ok(previews) => previews,
                 Err(error) => {
                     log::warn!("[KnowledgeWorker] Failed to load RAG document previews: {error}");
@@ -353,22 +358,33 @@ async fn run_knowledge_retrieval(
                         &previews,
                         settings.temperature,
                         settings.repetition_penalty,
-                    ).map_err(|error| log::warn!("[KnowledgeWorker] {error}")).ok()
+                    )
+                    .map_err(|error| log::warn!("[KnowledgeWorker] {error}"))
+                    .ok()
                 })
             };
             // The selector must not make an empty or malformed decision hide
             // every source. Use the highest-ranked previews as a bounded,
             // observable fallback.
-            let selected_paths = selected_paths.filter(|paths| !paths.is_empty()).unwrap_or_else(|| {
-                previews.iter().take(3).map(|preview| preview.path.clone()).collect()
-            });
-            let expanded_documents = match crate::mcp::rag::expand_selected_documents(&selected_paths, &graph).await {
-                Ok(documents) => documents,
-                Err(error) => {
-                    log::warn!("[KnowledgeWorker] Failed to expand selected RAG documents: {error}");
-                    String::new()
-                }
-            };
+            let selected_paths = selected_paths
+                .filter(|paths| !paths.is_empty())
+                .unwrap_or_else(|| {
+                    previews
+                        .iter()
+                        .take(3)
+                        .map(|preview| preview.path.clone())
+                        .collect()
+                });
+            let expanded_documents =
+                match crate::mcp::rag::expand_selected_documents(&selected_paths, &graph).await {
+                    Ok(documents) => documents,
+                    Err(error) => {
+                        log::warn!(
+                            "[KnowledgeWorker] Failed to expand selected RAG documents: {error}"
+                        );
+                        String::new()
+                    }
+                };
             let _ = window.emit(
                 "chat-event",
                 crate::mcp::protocol::ChatEvent::LlmChunk(format!(
@@ -412,7 +428,8 @@ async fn run_shortcut_request(
     llama_state: &crate::llm::llm::LlamaState,
 ) -> Result<String, String> {
     let planner = crate::harness::shortcut_planner::ShortcutPlanner::new(decision);
-    let executor = crate::harness::ports::McpToolExecutorPort::new(app.clone(), window.clone(), llama_state);
+    let executor =
+        crate::harness::ports::McpToolExecutorPort::new(app.clone(), window.clone(), llama_state);
     let reporter = crate::harness::ports::TauriReporterPort::new(window.clone());
     let mut agent_loop = crate::harness::agent_loop::AgentLoop::new(app, window, 5);
     agent_loop

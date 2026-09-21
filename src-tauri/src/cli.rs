@@ -193,7 +193,9 @@ fn run_chat(message: String) -> Result<String, String> {
         .lock()
         .expect("CLI chat result lock poisoned")
         .take()
-        .ok_or_else(|| "The Tauri event loop exited before the chat command completed".to_string())?;
+        .ok_or_else(|| {
+            "The Tauri event loop exited before the chat command completed".to_string()
+        })?;
     response
 }
 
@@ -207,11 +209,13 @@ fn run_from(cli: Cli) -> Result<(), String> {
             ensure_graph_state(&handle)?;
             let rag = handle.state::<crate::mcp::rag::RagState>();
             let graph = handle.state::<crate::graph::SurrealDbState>();
-            let chunks = tauri::async_runtime::block_on(crate::mcp::rag::ingest_path(
-                &path, &rag, &graph,
-            ))?;
+            let chunks =
+                tauri::async_runtime::block_on(crate::mcp::rag::ingest_path(&path, &rag, &graph))?;
             if cli.json {
-                print_json(&CliResult { ok: true, data: serde_json::json!({ "chunks": chunks }) })
+                print_json(&CliResult {
+                    ok: true,
+                    data: serde_json::json!({ "chunks": chunks }),
+                })
             } else {
                 println!("Ingested {chunks} knowledge chunks into SurrealDB.");
                 Ok(())
@@ -227,7 +231,10 @@ fn run_from(cli: Cli) -> Result<(), String> {
                 query, None, rag, handle,
             ))?;
             if cli.json {
-                print_json(&CliResult { ok: result.success, data: result })
+                print_json(&CliResult {
+                    ok: result.success,
+                    data: result,
+                })
             } else {
                 print!("{}", result.output);
                 Ok(())
@@ -414,6 +421,3 @@ mod tests {
         assert!(!cli_default.json);
     }
 }
-
-
-

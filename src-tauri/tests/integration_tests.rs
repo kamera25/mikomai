@@ -18,4 +18,3 @@ fn test_crypto_roundtrip() {
     let empty_decrypted = decrypt_with_key(&key, "").expect("empty decryption should succeed");
     assert_eq!(empty_decrypted, "");
 }
-

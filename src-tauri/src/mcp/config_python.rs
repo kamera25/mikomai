@@ -10,16 +10,23 @@ pub fn run(payload: serde_json::Value) -> Result<String, String> {
     }
 
     let python_path = current_dir.join("venv").join("bin").join("python");
-    let wrapper_path = current_dir.join("src-tauri").join("python").join("config_helper.py");
+    let wrapper_path = current_dir
+        .join("src-tauri")
+        .join("python")
+        .join("config_helper.py");
     if !python_path.exists() {
-        return Err(format!("Python virtual environment binary not found at {python_path:?}"));
+        return Err(format!(
+            "Python virtual environment binary not found at {python_path:?}"
+        ));
     }
     if !wrapper_path.exists() {
-        return Err(format!("config_helper script not found at {wrapper_path:?}"));
+        return Err(format!(
+            "config_helper script not found at {wrapper_path:?}"
+        ));
     }
 
-    let payload_str = serde_json::to_string(&payload)
-        .map_err(|e| format!("Failed to serialize payload: {e}"))?;
+    let payload_str =
+        serde_json::to_string(&payload).map_err(|e| format!("Failed to serialize payload: {e}"))?;
     let mut child = Command::new(&python_path)
         .arg(&wrapper_path)
         .stdin(std::process::Stdio::piped())
@@ -44,4 +51,3 @@ pub fn run(payload: serde_json::Value) -> Result<String, String> {
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
-

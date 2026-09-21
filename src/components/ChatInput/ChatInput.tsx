@@ -1,7 +1,6 @@
 import React, { forwardRef, useRef, useEffect, useState, memo } from "react";
 import { useTranslation } from "react-i18next";
-import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { ipc, EVENTS } from "../../platform";
 import { open } from "@tauri-apps/plugin-dialog";
 import { SuggestionsList } from "./SuggestionsList";
 import { RefreshIcon, GearIcon, SendIcon, StopIcon, PaperclipIcon, CrossIcon, FileTextIcon } from "../Icons";
@@ -81,7 +80,7 @@ export const ChatInput = memo(
     const processDroppedPathsRef = useRef<(paths: string[]) => Promise<void>>(async () => {});
 
     const addPreparedAttachments = async (sources: AttachmentSource[]) => {
-      const prepared = await invoke<AttachmentPreparation>("prepare_attachments", { sources });
+      const prepared = await ipc.prepareAttachments<AttachmentPreparation>(sources);
       setAttachments((prev) => {
         const existingNames = new Set(prev.map((attachment) => attachment.name));
         return [...prev, ...prepared.attachments.filter((attachment) => !existingNames.has(attachment.name))];
@@ -179,19 +178,17 @@ export const ChatInput = memo(
 
       const setupTauriDnd = async () => {
         try {
-          unlistenOver = await listen("tauri://drag-over", () => setIsDragging(true));
-          unlistenLeave = await listen("tauri://drag-leave", () => setIsDragging(false));
-          unlistenDrop = await listen<any>("tauri://drag-drop", async (event) => {
+          unlistenOver = await ipc.subscribe(EVENTS.dragOver, () => setIsDragging(true));
+          unlistenLeave = await ipc.subscribe(EVENTS.dragLeave, () => setIsDragging(false));
+          unlistenDrop = await ipc.subscribe<any>(EVENTS.dragDrop, async (payload) => {
             setIsDragging(false);
-            const payload = event.payload;
             const paths: string[] = Array.isArray(payload)
               ? payload
               : payload?.paths || payload?.payload?.paths || [];
             await processDroppedPaths(paths);
           });
-          unlistenFileDrop = await listen<any>("tauri://file-drop", async (event) => {
+          unlistenFileDrop = await ipc.subscribe<any>(EVENTS.fileDrop, async (payload) => {
             setIsDragging(false);
-            const payload = event.payload;
             const paths: string[] = Array.isArray(payload)
               ? payload
               : payload?.paths || payload?.payload?.paths || [];

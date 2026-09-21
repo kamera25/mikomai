@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ipc } from "../../platform";
+import { ipc, EVENTS } from "../../platform";
 import { Message, SummaryItem } from "../../types";
 import i18n from "../../i18n";
 import { mergeTaskContent, typingStep, type TaskContentState } from "./mcpListenerState";
@@ -410,6 +410,7 @@ export function useMcpListeners({
               );
             } else {
               finishTaskContentRef.current(taskId, content, summaryText);
+              if (!summary) break;
               setSummariesRef.current((prev) => {
                 const next = [...prev, summary];
                 return next.length > 20 ? next.slice(next.length - 20) : next;
@@ -426,7 +427,7 @@ export function useMcpListeners({
         }
       });
 
-      const unlistenDiff = await ipc.subscribe<any>("request-diff-commit", (payload) => {
+      const unlistenDiff = await ipc.subscribe<any>(EVENTS.diffRequested, (payload) => {
         if (isCancelled) return;
         const targetId = payload?.id;
         const updateMsg = () => {
@@ -457,7 +458,7 @@ export function useMcpListeners({
         setTimeout(updateMsg, 200);
       });
 
-      const unlistenStatus = await ipc.subscribe<any>("commit-status", (payload) => {
+      const unlistenStatus = await ipc.subscribe<any>(EVENTS.commitStatus, (payload) => {
         if (isCancelled) return;
         const targetId = payload?.id;
         setMessagesRef.current((prev) => {

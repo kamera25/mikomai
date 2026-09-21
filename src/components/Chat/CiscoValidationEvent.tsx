@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { invoke } from "@tauri-apps/api/core";
+import { ipc } from "../../platform";
 import { Terminal } from "../Terminal";
 import { CheckIcon, CrossIcon } from "../Icons";
 import { Message } from "../../types";
@@ -13,7 +13,7 @@ export function CiscoValidationEvent({ msg }: { msg: Message }) {
 if (msg.event_type === "ToolExecution" && msg.tool_id === "validate_cisco_config") {
   const handleCommitChoice = async (choice: "commit" | "cancelled") => {
     try {
-      await invoke("submit_user_choice", { id: msg.task_id, choice });
+      if (msg.task_id) await ipc.submitChoice(msg.task_id, choice);
     } catch (err) {
       console.error(`Failed to submit choice ${choice}:`, err);
     }

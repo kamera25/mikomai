@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ipc } from "../../platform";
+import { ipc, EVENTS } from "../../platform";
 import { operationService } from "../../features/operations/operationService";
 import { ConfigDiffData } from "../../contexts/UIContext";
 import { isActiveCommitPhase, STEP_DEFINITIONS, type CommitPhase, type CommandResult, type LogStep, type OperationPlan, type StepPhaseKey } from "./configDiffModel";
@@ -18,7 +18,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
 
   const [steps, setSteps] = useState<LogStep[]>([]);
   const [collapsedSteps, setCollapsedSteps] = useState<Record<string, boolean>>({});
-  const [currentTime, setCurrentTime] = useState<number>(Date.now());
+  const [currentTime, setCurrentTime] = useState<number>(() => Date.now());
 
   // Timer tick for active step duration
   useEffect(() => {
@@ -51,7 +51,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
   useEffect(() => {
     if (!isOpen) return;
 
-    const unlistenStatus = ipc.subscribe<any>("commit-status", ({ id: eventId, phase: newPhase, message }) => {
+    const unlistenStatus = ipc.subscribe<any>(EVENTS.commitStatus, ({ id: eventId, phase: newPhase, message }) => {
       if (id && eventId && eventId !== id) return;
 
       if (newPhase) {
@@ -106,7 +106,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
       }
     });
 
-    const unlistenLog = ipc.subscribe<any>("commit-log", ({ line }) => {
+    const unlistenLog = ipc.subscribe<any>(EVENTS.commitLog, ({ line }) => {
       if (line !== undefined && line !== null) {
         setCommitLogs((prev) => [...prev, line]);
         setSteps((prev) => {
@@ -126,13 +126,13 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
       }
     });
 
-    const unlistenForceCommit = ipc.subscribe<any>("request-force-commit", ({ id: eventId, forceId, errors, message }) => {
+    const unlistenForceCommit = ipc.subscribe<any>(EVENTS.requestForceCommit, ({ id: eventId, forceId, errors, message }) => {
       if (id && eventId && eventId !== id) return;
       setForceCommitReq({ forceId, errors: errors || [], message });
       setActiveTab("logs");
     });
 
-    const unlistenDiffResult = ipc.subscribe<any>("commit-diff-result", ({ id: eventId, fileName, additions, deletions, diffLines, hostname, ip, status, message }) => {
+    const unlistenDiffResult = ipc.subscribe<any>(EVENTS.commitDiffResult, ({ id: eventId, fileName, additions, deletions, diffLines, hostname, ip, status, message }) => {
       if (id && eventId && eventId !== id) return;
 
       const formattedLines = (diffLines || []).map((l: any) => ({
@@ -206,7 +206,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
       setStatusMessage(result.success ? "承認済みの変更計画を適用しました。" : "変更計画の実行に失敗しました。");
       // Wake the conversion worker without granting it permission to perform
       // a second, legacy configuration write.
-      await ipc.command("submit_user_choice", { id, choice: "operation_submitted" });
+      if (id) await ipc.submitChoice(id, "operation_submitted");
     } catch (e) {
       console.error("Failed to execute approved operation plan:", e);
       setPhase("failed");
@@ -219,7 +219,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
     const targetForceId = forceCommitReq.forceId;
     setForceCommitReq(null);
     try {
-      await ipc.command("submit_user_choice", { id: targetForceId, choice });
+      await ipc.submitChoice(targetForceId, choice);
     } catch (e) {
       console.error("Failed to submit force commit choice:", e);
     }

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect } from "react";
-import { ipc } from "../platform";
+import { ipc, COMMANDS, EVENTS } from "../platform";
 import { ModelState as BackendModelState } from "../types";
 import { useSettingsContext } from "./SettingsContext";
 
@@ -61,8 +61,8 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const checkStatus = async () => {
       try {
         const [status, loadedPath] = await Promise.all([
-          ipc.command<BackendModelState>("get_model_status"),
-          ipc.command<string | null>("get_loaded_model_path").catch(() => null),
+          ipc.command<BackendModelState>(COMMANDS.getModelStatus),
+          ipc.command<string | null>(COMMANDS.getLoadedModelPath).catch(() => null),
         ]);
         if (active) {
           updateStatus(status);
@@ -79,7 +79,7 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const setupListeners = async () => {
       try {
-        const unlistenStatus = await ipc.subscribe<BackendModelState>("model-status-changed", (payload) => {
+        const unlistenStatus = await ipc.subscribe<BackendModelState>(EVENTS.modelStatus, (payload) => {
           if (active) {
             updateStatus(payload);
           }
@@ -90,7 +90,7 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           unlistenStatusFn = unlistenStatus;
         }
 
-        const unlistenLoaded = await ipc.subscribe<string>("model-loaded", (payload) => {
+        const unlistenLoaded = await ipc.subscribe<string>(EVENTS.modelLoaded, (payload) => {
           if (active) {
             dispatch({ type: "SET_LOADED_MODEL_PATH", payload });
           }
@@ -122,7 +122,7 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!modelPath) return;
     try {
       dispatch({ type: "SET_STATUS", payload: "Loading" });
-      await ipc.command("load_model", { path: modelPath });
+      await ipc.command(COMMANDS.loadModel, { path: modelPath });
       dispatch({ type: "SET_LOADED_MODEL_PATH", payload: modelPath });
       dispatch({ type: "SET_STATUS", payload: "Loaded" });
     } catch (e) {

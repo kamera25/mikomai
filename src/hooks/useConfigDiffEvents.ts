@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ipc } from "../platform";
+import { ipc, EVENTS } from "../platform";
 import { useUIContext } from "../contexts/UIContext";
 
 export function useConfigDiffEvents() {
@@ -8,7 +8,7 @@ export function useConfigDiffEvents() {
 
   // Update ConfigDiffPanel with dynamic conversion diffs
   useEffect(() => {
-    const unlisten = ipc.subscribe<any>("chat-event", (chatEvent) => {
+    const unlisten = ipc.subscribe<any>(EVENTS.chat, (chatEvent) => {
       if (chatEvent.type === "mcpToolFinished") {
         const { toolId, success, output, args } = chatEvent.payload;
         if (success && toolId === "convert_cisco_config") {
@@ -48,7 +48,7 @@ export function useConfigDiffEvents() {
 
   // Listen to request-diff-commit from Rust
   useEffect(() => {
-    const unlisten = ipc.subscribe<any>("request-diff-commit", ({ id, config, fileName, hostname, ip }) => {
+    const unlisten = ipc.subscribe<any>(EVENTS.diffRequested, ({ id, config, fileName, hostname, ip }) => {
       if (id) {
         setDiffCommitId(id);
       }

@@ -151,10 +151,9 @@ impl OperationStore {
         let Some(path) = &self.storage_path else {
             return Ok(());
         };
-        let serialized = serde_json::to_string_pretty(
-            &plans.values().cloned().collect::<Vec<OperationPlan>>(),
-        )
-        .map_err(|error| format!("Failed to serialize operation plans: {error}"))?;
+        let serialized =
+            serde_json::to_string_pretty(&plans.values().cloned().collect::<Vec<OperationPlan>>())
+                .map_err(|error| format!("Failed to serialize operation plans: {error}"))?;
         let temporary_path = path.with_extension("json.tmp");
         fs::write(&temporary_path, serialized)
             .map_err(|error| format!("Failed to write operation plans: {error}"))?;
@@ -459,7 +458,8 @@ mod tests {
 
     #[test]
     fn persists_approval_status_before_execution() {
-        let directory = std::env::temp_dir().join(format!("mikomai-operation-test-{}", uuid::Uuid::new_v4()));
+        let directory =
+            std::env::temp_dir().join(format!("mikomai-operation-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let storage_path = directory.join("operation-plans.json");
         let store = OperationStore {
@@ -479,7 +479,8 @@ mod tests {
             .unwrap();
         store.approve(plan.id, &plan.plan_hash).unwrap();
 
-        let saved: Vec<OperationPlan> = serde_json::from_str(&std::fs::read_to_string(&storage_path).unwrap()).unwrap();
+        let saved: Vec<OperationPlan> =
+            serde_json::from_str(&std::fs::read_to_string(&storage_path).unwrap()).unwrap();
         assert_eq!(saved.len(), 1);
         assert_eq!(saved[0].approval_status, ApprovalStatus::Approved);
         std::fs::remove_dir_all(directory).unwrap();

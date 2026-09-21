@@ -4,6 +4,7 @@
 //! supply a `GraphIngestInput`; raw payloads and provenance are retained even
 //! when a normalizer cannot extract every vendor-specific setting.
 
+use crate::graph_identity::{content_hash as fnv1a, record_key};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -12,7 +13,6 @@ use surrealdb::engine::local::{Db, RocksDb};
 use surrealdb::Surreal;
 use tauri::Manager;
 use validator::Validate;
-use crate::graph_identity::{content_hash as fnv1a, record_key};
 
 pub const GRAPH_TTL_MINUTES: i64 = 20;
 
@@ -187,11 +187,13 @@ DEFINE INDEX rag_chunk_embedding ON TABLE rag_chunk FIELDS embedding HNSW DIMENS
         }
         if matches!(&input.kind, GraphDataKind::Interfaces) {
             if let Some(canonical) = &input.canonical {
-                let table = serde_json::from_value::<crate::schema::interface::UniversalInterfaceTable>(canonical.clone())
-                    .map_err(|error| format!("Invalid canonical interface document: {error}"))?;
-                table
-                    .validate()
-                    .map_err(|error| format!("Canonical interface document failed validation: {error}"))?;
+                let table = serde_json::from_value::<
+                    crate::schema::interface::UniversalInterfaceTable,
+                >(canonical.clone())
+                .map_err(|error| format!("Invalid canonical interface document: {error}"))?;
+                table.validate().map_err(|error| {
+                    format!("Canonical interface document failed validation: {error}")
+                })?;
             }
         }
         let observation_id = uuid::Uuid::new_v4().to_string();
@@ -620,8 +622,9 @@ pub async fn canonicalize_arp_on_read(
             };
             let yaml = serde_yaml::to_string(&table)
                 .map_err(|error| format!("Failed to serialize local ARP table: {error}"))?;
-            let canonical = serde_json::to_value(&table)
-                .map_err(|error| format!("Failed to serialize local ARP canonical data: {error}"))?;
+            let canonical = serde_json::to_value(&table).map_err(|error| {
+                format!("Failed to serialize local ARP canonical data: {error}")
+            })?;
             (
                 canonical,
                 normalize_yaml(GraphDataKind::Arp, &yaml),
@@ -868,5 +871,4 @@ mod tests {
         .unwrap();
         assert_eq!(array(&value, "ip_addresses")[0]["address"], "192.0.2.1");
     }
-
 }

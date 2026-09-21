@@ -192,26 +192,18 @@ pub enum HistoryItem {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum HistoryMutation {
     #[serde(rename_all = "camelCase")]
-    CreateSession {
-        title: Option<String>,
-    },
+    CreateSession { title: Option<String> },
     #[serde(rename_all = "camelCase")]
-    CreateFolder {
-        name: Option<String>,
-    },
+    CreateFolder { name: Option<String> },
     #[serde(rename_all = "camelCase")]
     RenameSession {
         session_id: uuid::Uuid,
         title: String,
     },
     #[serde(rename_all = "camelCase")]
-    DeleteSession {
-        session_id: uuid::Uuid,
-    },
+    DeleteSession { session_id: uuid::Uuid },
     #[serde(rename_all = "camelCase")]
-    ToggleFolder {
-        folder_id: uuid::Uuid,
-    },
+    ToggleFolder { folder_id: uuid::Uuid },
     #[serde(rename_all = "camelCase")]
     UpdateSessionMessages {
         session_id: uuid::Uuid,
@@ -240,4 +232,3 @@ pub enum HistoryError {
     #[error("Database error: {0}")]
     Database(String),
 }
-

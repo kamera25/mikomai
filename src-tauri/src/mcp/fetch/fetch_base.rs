@@ -231,9 +231,13 @@ pub trait McpCommandFetcher {
 
         let wrapper = NetmikoConnectionWrapper::new(app);
         let exec_result = if valid_commands.len() == 1 {
-            wrapper.execute_show(&target_device, &valid_commands[0]).await
+            wrapper
+                .execute_show(&target_device, &valid_commands[0])
+                .await
         } else {
-            wrapper.execute_show_commands(&target_device, &valid_commands).await
+            wrapper
+                .execute_show_commands(&target_device, &valid_commands)
+                .await
         };
 
         match exec_result {

@@ -110,12 +110,21 @@ Interface: 192.168.50.15 --- 0x12
         assert_eq!(parsed.arp_table.len(), 2);
 
         assert_eq!(parsed.arp_table[0].ip_address, "192.168.50.1");
-        assert_eq!(parsed.arp_table[0].mac_address.as_deref(), Some("ac:44:f2:91:fa:f8"));
+        assert_eq!(
+            parsed.arp_table[0].mac_address.as_deref(),
+            Some("ac:44:f2:91:fa:f8")
+        );
         assert_eq!(parsed.arp_table[0].r#type, ArpEntryType::Dynamic);
-        assert_eq!(parsed.arp_table[0].interface.as_deref(), Some("192.168.50.15"));
+        assert_eq!(
+            parsed.arp_table[0].interface.as_deref(),
+            Some("192.168.50.15")
+        );
 
         assert_eq!(parsed.arp_table[1].ip_address, "192.168.50.22");
-        assert_eq!(parsed.arp_table[1].mac_address.as_deref(), Some("01:00:5e:00:00:16"));
+        assert_eq!(
+            parsed.arp_table[1].mac_address.as_deref(),
+            Some("01:00:5e:00:00:16")
+        );
         assert_eq!(parsed.arp_table[1].r#type, ArpEntryType::Static);
     }
 }

@@ -1,4 +1,4 @@
-import { ipc } from "../platform";
+import { ipc, EVENTS } from "../platform";
 import { useEffect, useState } from "react";
 import "./WatchNotificationToast.css";
 
@@ -13,7 +13,7 @@ export function WatchNotificationToast() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const unlisten = ipc.subscribe<WatchNotification>("watch-notification", (payload) => {
+    const unlisten = ipc.subscribe<WatchNotification>(EVENTS.watchNotification, (payload) => {
       setNotification(payload);
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => setNotification(null), 10_000);

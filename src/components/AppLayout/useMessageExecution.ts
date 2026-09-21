@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from "react";
-import { ipc } from "../../platform";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ipc, COMMANDS } from "../../platform";
 import { Attachment, Message } from "../../types";
 
 interface QueuedMessage {
@@ -20,36 +20,49 @@ interface UseMessageExecutionOptions {
   stoppedLabel: string;
 }
 
-export function useMessageExecution(options: UseMessageExecutionOptions) {
+export function useMessageExecution({
+  input,
+  setInput,
+  activeSessionId,
+  createNewSession,
+  setMessages,
+  updateRecentHosts,
+  handleMcpResponse,
+  stoppedLabel,
+}: UseMessageExecutionOptions) {
   const [isGenerating, setIsGenerating] = useState(false);
   const executingRef = useRef(false);
   const queueRef = useRef<QueuedMessage[]>([]);
+  const executeRef = useRef<((message: string, attachments?: Attachment[]) => Promise<void>) | undefined>(undefined);
 
   const execute = useCallback(async (message: string, attachments?: Attachment[]) => {
     executingRef.current = true;
     setIsGenerating(true);
     try {
-      await options.handleMcpResponse(message, attachments);
+      await handleMcpResponse(message, attachments);
     } catch (error) {
       console.error("Failed to handle MCP response:", error);
     } finally {
       const next = queueRef.current.shift();
       if (next) {
-        void execute(next.content, next.attachments);
+        void executeRef.current?.(next.content, next.attachments);
       } else {
         executingRef.current = false;
         setIsGenerating(false);
       }
     }
-  }, [options.handleMcpResponse]);
+  }, [handleMcpResponse]);
+  useEffect(() => {
+    executeRef.current = execute;
+  }, [execute]);
 
   const sendMessage = useCallback(async (text?: string, attachments?: Attachment[]) => {
-    const messageText = text !== undefined ? text : options.input.trim();
+    const messageText = text !== undefined ? text : input.trim();
     if (!messageText && (!attachments || attachments.length === 0)) return;
 
-    let sessionId = options.activeSessionId;
+    let sessionId = activeSessionId;
     if (!sessionId) {
-      const session = await options.createNewSession();
+      const session = await createNewSession();
       if (!session) return;
       sessionId = session.id;
     }
@@ -59,11 +72,11 @@ export function useMessageExecution(options: UseMessageExecutionOptions) {
       ...(messageText.match(/@([a-zA-Z0-9.-]+)/g) || []).map((value) => value.slice(1)),
       ...(messageText.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g) || []),
     ])];
-    if (foundHosts.length) options.updateRecentHosts(foundHosts);
-    if (text === undefined) options.setInput("");
+    if (foundHosts.length) updateRecentHosts(foundHosts);
+    if (text === undefined) setInput("");
 
     const queued = executingRef.current;
-    options.setMessages((previous) => [...previous, {
+    setMessages((previous) => [...previous, {
       role: "user", content: messageText, timestamp, event_type: "UserInput", task_id: taskId,
       status: queued ? "Pending" : undefined, attachments,
     }]);
@@ -72,19 +85,19 @@ export function useMessageExecution(options: UseMessageExecutionOptions) {
     } else {
       void execute(messageText, attachments);
     }
-  }, [execute, options]);
+  }, [activeSessionId, createNewSession, execute, input, setInput, setMessages, updateRecentHosts]);
 
   const stop = useCallback(async () => {
-    try { await ipc.command("stop_llm"); } catch (error) { console.error("Failed to stop LLM:", error); }
+    try { await ipc.command(COMMANDS.stopLlm); } catch (error) { console.error("Failed to stop LLM:", error); }
     queueRef.current = [];
     executingRef.current = false;
     setIsGenerating(false);
-    options.setMessages((previous) => previous.map((message) =>
+    setMessages((previous) => previous.map((message) =>
       message.status === "Running" || message.isToolLoading
-        ? { ...message, isToolLoading: false, status: "Failed", summary_text: message.summary_text ? `${message.summary_text} (${options.stoppedLabel})` : options.stoppedLabel } as Message
+        ? { ...message, isToolLoading: false, status: "Failed", summary_text: message.summary_text ? `${message.summary_text} (${stoppedLabel})` : stoppedLabel } as Message
         : message
     ));
-  }, [options]);
+  }, [setMessages, stoppedLabel]);
 
   return { isGenerating, setIsGenerating, isCurrentlyGenerating: isGenerating, sendMessage, stop };
 }

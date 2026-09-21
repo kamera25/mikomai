@@ -1,4 +1,7 @@
-use crate::mcp::arp::canonical::{evidence, extract, prompt_contract, reconstruct_and_validate, ArpCanonicalizationEvidence, ArpSelection};
+use crate::mcp::arp::canonical::{
+    evidence, extract, prompt_contract, reconstruct_and_validate, ArpCanonicalizationEvidence,
+    ArpSelection,
+};
 
 #[derive(Debug, Clone)]
 pub struct CanonicalArpResult {
@@ -33,7 +36,7 @@ pub async fn convert_raw_to_yaml(
     raw_output: &str,
     device_name: &str,
     os_type: &str,
- ) -> Result<CanonicalArpResult, String> {
+) -> Result<CanonicalArpResult, String> {
     let extracted = extract(raw_output);
     if extracted.candidates.ip_addresses.is_empty() {
         return Err("ARP candidate extraction found no IP candidates".to_string());
@@ -66,13 +69,25 @@ pub async fn convert_raw_to_yaml(
 
         match serde_yaml::from_str::<ArpSelection>(&clean_yaml)
             .map_err(|error| format!("invalid constrained ARP selection: {error}"))
-            .and_then(|selection| reconstruct_and_validate(selection, &extracted, device_name, os_type, generated_at)) {
-            Ok(table) => return Ok(CanonicalArpResult { yaml: serde_yaml::to_string(&table).map_err(|error| error.to_string())?, evidence: evidence(&extracted) }),
+            .and_then(|selection| {
+                reconstruct_and_validate(selection, &extracted, device_name, os_type, generated_at)
+            }) {
+            Ok(table) => {
+                return Ok(CanonicalArpResult {
+                    yaml: serde_yaml::to_string(&table).map_err(|error| error.to_string())?,
+                    evidence: evidence(&extracted),
+                })
+            }
             Err(error) if retry_count < max_retries => {
                 log::warn!("Constrained ARP selection validation failed: {error}");
                 current_user_prompt = format!("The prior index selection was rejected: {error}. Return the complete corrected YAML selection only.\n\n{}", prompt_contract(&extracted, raw_output));
             }
-            Err(error) => return Err(format!("ARP canonicalization failed after {} attempts: {error}", max_retries + 1)),
+            Err(error) => {
+                return Err(format!(
+                    "ARP canonicalization failed after {} attempts: {error}",
+                    max_retries + 1
+                ))
+            }
         }
     }
     unreachable!("retry loop always returns")

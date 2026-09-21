@@ -49,8 +49,6 @@ pub struct HostArgs {
     pub ip: Option<IpAddress>,
 }
 
-
-
 pub fn normalize_host_args_struct<R: Runtime>(
     app: &AppHandle<R>,
     args: &HostArgs,

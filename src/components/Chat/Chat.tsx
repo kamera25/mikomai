@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useRef, useState, memo, useCallback } from "reac
 import { useTranslation } from "react-i18next";
 import { ChevronIcon } from "../Icons";
 import { Message } from "../../types";
-import { TimelineEvent } from "./TimelineEvent";
+import { TimelineEvent } from "../../features/chat/TimelineEvent";
 import "./Chat.css";
 
 interface ChatProps {
@@ -101,7 +101,9 @@ export const Chat = memo(
           ) : (
             messages.map((msg, idx) => (
               <TimelineEvent
-                key={msg.task_id || idx}
+                // A task can produce several timeline messages while the
+                // worker streams progress; task_id alone is not unique.
+                key={`${msg.task_id || "message"}-${idx}`}
                 msg={msg}
                 formatMessageTime={formatMessageTime}
                 sendMessage={sendMessage}

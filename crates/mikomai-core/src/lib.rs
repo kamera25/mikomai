@@ -1,69 +1,77 @@
 //! GUI and infrastructure independent application core.
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 pub mod application;
+pub mod dispatch;
 pub mod domain;
 pub mod port;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Task { pub id: Uuid, pub goal: String }
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Evidence { pub source: String, pub content: String }
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum TaskStatus { Pending, Running, AwaitingApproval, Completed, Failed, Unknown }
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct OperationPlan { pub id: Uuid, pub tool: String, pub target: String, pub arguments: serde_json::Value, pub plan_hash: String }
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct TaskSnapshot { pub task: Task, pub status: TaskStatus, pub evidence: Vec<Evidence> }
-
-/// Ports used by application services. Implementations belong to adapters.
-pub trait Planner: Send + Sync { fn plan(&self, task: &TaskSnapshot) -> Result<serde_json::Value, String>; }
-pub trait ToolExecutor: Send + Sync { fn execute(&self, plan: &OperationPlan) -> Result<String, String>; }
-pub trait TaskRepository: Send + Sync { fn save(&self, snapshot: &TaskSnapshot) -> Result<(), String>; fn load(&self, id: Uuid) -> Result<Option<TaskSnapshot>, String>; }
-
-pub struct ApplicationService<R> { pub repository: R }
-impl<R: TaskRepository> ApplicationService<R> {
-    pub fn start(&self, goal: impl Into<String>) -> Result<TaskSnapshot, String> {
-        let snapshot = TaskSnapshot { task: Task { id: Uuid::new_v4(), goal: goal.into() }, status: TaskStatus::Pending, evidence: Vec::new() };
-        self.repository.save(&snapshot)?;
-        Ok(snapshot)
-    }
-    pub fn resume(&self, id: Uuid) -> Result<Option<TaskSnapshot>, String> { self.repository.load(id) }
-}
-
-/// Pure policy gate for side effects. Transport adapters must call this before
-/// sending a change to a device.
-pub struct OperationGate;
-impl OperationGate {
-    pub fn authorize(plan: &OperationPlan, approved_hash: Option<&str>) -> Result<(), String> {
-        if plan.tool.trim().is_empty() || plan.target.trim().is_empty() { return Err("operation plan is incomplete".into()); }
-        match approved_hash { Some(hash) if hash == plan.plan_hash => Ok(()), _ => Err("operation plan is not approved".into()) }
-    }
-}
+pub use application::{ApplicationError, ApplicationResult, TaskManager};
+pub use application::{ChangeService, ChatService, DiagnoseService};
+pub use dispatch::{select_dispatch_mode, DispatchMode};
+pub use domain::{
+    ActionType, Decision, Evidence, Observation, ObservationSource, OperationClass, OperationGate,
+    OperationPlan, OperationStatus, Provenance, ProvenanceOrigin, Task, TaskSnapshot, TaskStatus,
+};
+pub use port::{
+    HistoryRepository, InferencePort, OperationRepository, PlanDecision, PlannerPort, PortFuture,
+    ReportEvent, ReporterPort, SearchHit, SearchPort, TaskRepository, ToolExecutorPort, ToolResult,
+};
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Mutex;
+    use uuid::Uuid;
+    #[derive(Default)]
     struct Repo(Mutex<Vec<TaskSnapshot>>);
     impl TaskRepository for Repo {
-        fn save(&self, value: &TaskSnapshot) -> Result<(), String> { self.0.lock().unwrap().push(value.clone()); Ok(()) }
-        fn load(&self, id: Uuid) -> Result<Option<TaskSnapshot>, String> { Ok(self.0.lock().unwrap().iter().find(|v| v.task.id == id).cloned()) }
+        fn save(&self, value: &TaskSnapshot) -> ApplicationResult<()> {
+            self.0
+                .lock()
+                .map_err(|_| ApplicationError::storage("repo lock poisoned"))?
+                .push(value.clone());
+            Ok(())
+        }
+        fn load(&self, id: Uuid) -> ApplicationResult<Option<TaskSnapshot>> {
+            Ok(self
+                .0
+                .lock()
+                .map_err(|_| ApplicationError::storage("repo lock poisoned"))?
+                .iter()
+                .find(|v| v.task.id == id)
+                .cloned())
+        }
     }
     #[test]
-    fn application_service_persists_without_gui_or_adapter() {
-        let service = ApplicationService { repository: Repo(Mutex::new(Vec::new())) };
-        let task = service.start("diagnose vlan").unwrap();
-        assert_eq!(service.resume(task.task.id).unwrap().unwrap().task.goal, "diagnose vlan");
+    fn task_manager_persists_without_gui_or_adapter() {
+        let manager = application::TaskManager::new(Repo::default());
+        let task = manager.start("diagnose vlan").unwrap();
+        assert_eq!(
+            manager.resume(task.task.id).unwrap().unwrap().task.goal,
+            "diagnose vlan"
+        );
     }
     #[test]
     fn operation_gate_requires_exact_plan_hash() {
-        let plan = OperationPlan { id: Uuid::new_v4(), tool: "set_vlan".into(), target: "sw1".into(), arguments: serde_json::json!({"vlan": 10}), plan_hash: "h".into() };
-        assert!(OperationGate::authorize(&plan, Some("h")).is_ok());
+        let mut plan = OperationPlan::new(
+            "network_config",
+            Some("sw1".into()),
+            serde_json::json!({"vlan": 10}),
+            "requested",
+        )
+        .unwrap();
+        plan.status = domain::OperationStatus::Approved;
+        assert!(OperationGate::authorize(&plan, Some(&plan.plan_hash)).is_ok());
         assert!(OperationGate::authorize(&plan, Some("other")).is_err());
+    }
+
+    #[test]
+    fn dispatches_explanations_to_worker_and_live_checks_to_agent() {
+        assert_eq!(
+            select_dispatch_mode("F220のVLAN設定方法を教えて"),
+            DispatchMode::Worker
+        );
+        assert_eq!(
+            select_dispatch_mode("F220の状態を確認して"),
+            DispatchMode::Agent
+        );
     }
 }

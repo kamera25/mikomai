@@ -1,21 +1,21 @@
-use std::fs;
-use std::path::PathBuf;
-use tauri::Manager;
-use crate::graph::SurrealDbState;
 use crate::error::TauriError;
-use crate::history_store;
+use crate::graph::SurrealDbState;
 #[allow(unused_imports)]
 pub use crate::history_attachments::{
-    attachment_from_inline, attachment_from_path, prepare_attachments, prepare_attachments_for_sources,
-    read_files_as_attachments, MAX_IMAGE_ATTACHMENT_SIZE,
+    attachment_from_inline, attachment_from_path, prepare_attachments,
+    prepare_attachments_for_sources, read_files_as_attachments, MAX_IMAGE_ATTACHMENT_SIZE,
     MAX_INLINE_ATTACHMENT_SIZE, MAX_TEXT_ATTACHMENT_SIZE,
 };
+use crate::history_store;
 #[allow(unused_imports)]
 pub use crate::history_types::{
     Attachment, AttachmentPreparation, AttachmentRejection, AttachmentSource, AttachmentType,
     BaseMessage, ChatSession, ExecutionStatus, Folder, HistoryError, HistoryItem, HistoryMutation,
     HistorySnapshot, Message, MessageRole, SummaryItem,
 };
+use std::fs;
+use std::path::PathBuf;
+use tauri::Manager;
 
 pub fn sanitize_history_items(items: &mut Vec<HistoryItem>) -> bool {
     let mut modified = false;
@@ -84,9 +84,7 @@ async fn save_history_to_store(
     Ok(())
 }
 
-async fn load_history_from_store(
-    db: &SurrealDbState,
-) -> Result<Vec<HistoryItem>, TauriError> {
+async fn load_history_from_store(db: &SurrealDbState) -> Result<Vec<HistoryItem>, TauriError> {
     let stored = history_store::load(db)
         .await
         .map_err(HistoryError::Database)?;
@@ -432,9 +430,13 @@ mod tests {
         ];
 
         let atts = prepare_attachments_for_sources(
-            paths.into_iter().map(|path| AttachmentSource::Path { path }).collect(),
+            paths
+                .into_iter()
+                .map(|path| AttachmentSource::Path { path })
+                .collect(),
             true,
-        ).attachments;
+        )
+        .attachments;
         assert_eq!(atts.len(), 2);
 
         let text_att = &atts[0];
@@ -455,23 +457,26 @@ mod tests {
 
     #[test]
     fn prepares_inline_attachments_and_rejects_duplicates_and_large_content() {
-        let result = prepare_attachments_for_sources(vec![
-            AttachmentSource::Inline {
-                name: "note.txt".to_string(),
-                content: "router configuration".to_string(),
-                media_type: Some("text/plain".to_string()),
-            },
-            AttachmentSource::Inline {
-                name: "note.txt".to_string(),
-                content: "duplicate".to_string(),
-                media_type: Some("text/plain".to_string()),
-            },
-            AttachmentSource::Inline {
-                name: "large.txt".to_string(),
-                content: "x".repeat(MAX_INLINE_ATTACHMENT_SIZE + 1),
-                media_type: Some("text/plain".to_string()),
-            },
-        ], true);
+        let result = prepare_attachments_for_sources(
+            vec![
+                AttachmentSource::Inline {
+                    name: "note.txt".to_string(),
+                    content: "router configuration".to_string(),
+                    media_type: Some("text/plain".to_string()),
+                },
+                AttachmentSource::Inline {
+                    name: "note.txt".to_string(),
+                    content: "duplicate".to_string(),
+                    media_type: Some("text/plain".to_string()),
+                },
+                AttachmentSource::Inline {
+                    name: "large.txt".to_string(),
+                    content: "x".repeat(MAX_INLINE_ATTACHMENT_SIZE + 1),
+                    media_type: Some("text/plain".to_string()),
+                },
+            ],
+            true,
+        );
         assert_eq!(result.attachments.len(), 1);
         assert_eq!(result.attachments[0].mime_type, AttachmentType::Text);
         assert_eq!(result.rejected.len(), 2);
@@ -516,7 +521,10 @@ mod tests {
             messages: vec![],
             recent_ips: None,
         })];
-        assert!(mutate_items(&mut items, &HistoryMutation::DeleteSession { session_id: id }));
+        assert!(mutate_items(
+            &mut items,
+            &HistoryMutation::DeleteSession { session_id: id }
+        ));
         assert!(items.is_empty());
         assert!(first_session_id(&items).is_none());
     }
@@ -555,12 +563,17 @@ mod tests {
             ]
         }"#;
         let mutation: Result<HistoryMutation, _> = serde_json::from_str(json_data);
-        assert!(mutation.is_ok(), "Failed to deserialize mutation: {:?}", mutation.err());
+        assert!(
+            mutation.is_ok(),
+            "Failed to deserialize mutation: {:?}",
+            mutation.err()
+        );
     }
 
     #[tokio::test]
     async fn test_full_surrealdb_history_lifecycle() {
-        let temp_dir = std::env::temp_dir().join(format!("mikomai-full-test-{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("mikomai-full-test-{}", uuid::Uuid::new_v4()));
         let state = SurrealDbState::initialize_at(&temp_dir).await.unwrap();
         history_store::initialize(&state).await.unwrap();
 
@@ -621,16 +634,20 @@ mod tests {
         }
 
         // 4. Test mutation serialization via JSON (matching frontend Tauri invoke)
-        let rename_json = format!(r#"{{
+        let rename_json = format!(
+            r#"{{
             "type": "renameSession",
             "sessionId": "{session_id}",
             "title": "更新されたタイトル"
-        }}"#);
+        }}"#
+        );
         let mutation: HistoryMutation = serde_json::from_str(&rename_json).unwrap();
         let mut mutated_history = loaded;
         let mutated = mutate_items(&mut mutated_history, &mutation);
         assert!(mutated);
-        save_history_to_store(&state, &mutated_history).await.unwrap();
+        save_history_to_store(&state, &mutated_history)
+            .await
+            .unwrap();
 
         // 5. Simulate reopening SurrealDB (app restart)
         drop(state);
@@ -658,7 +675,11 @@ mod tests {
             "task_id": "not-a-valid-uuid"
         }"#;
         let result: Result<Message, _> = serde_json::from_str(json_data);
-        assert!(result.is_err(), "Expected error when task_id is not a valid UUID, but got: {:?}", result);
+        assert!(
+            result.is_err(),
+            "Expected error when task_id is not a valid UUID, but got: {:?}",
+            result
+        );
     }
 }
 

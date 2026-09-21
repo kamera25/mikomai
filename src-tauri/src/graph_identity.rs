@@ -1,12 +1,19 @@
 /// Stable identifiers used by graph records and ingested snapshots.
 pub fn record_key(input: &str) -> String {
-    input.as_bytes().iter().map(|byte| format!("{byte:02x}")).collect()
+    input
+        .as_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 pub fn content_hash(input: &str) -> u64 {
-    input.as_bytes().iter().fold(0xcbf29ce484222325u64, |hash, byte| {
-        (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
-    })
+    input
+        .as_bytes()
+        .iter()
+        .fold(0xcbf29ce484222325u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+        })
 }
 
 #[cfg(test)]

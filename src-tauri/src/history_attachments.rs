@@ -1,8 +1,10 @@
-use std::fs;
-use std::path::PathBuf;
+use super::history_types::{
+    Attachment, AttachmentPreparation, AttachmentRejection, AttachmentSource, AttachmentType,
+};
 use crate::error::TauriError;
 use base64::{engine::general_purpose, Engine as _};
-use super::history_types::{Attachment, AttachmentPreparation, AttachmentRejection, AttachmentSource, AttachmentType};
+use std::fs;
+use std::path::PathBuf;
 
 pub const MAX_TEXT_ATTACHMENT_SIZE: u64 = 512 * 1024;
 pub const MAX_INLINE_ATTACHMENT_SIZE: usize = 512 * 1024;
@@ -35,7 +37,9 @@ pub fn attachment_from_path(path_str: String) -> Result<Attachment, AttachmentRe
     );
 
     if is_image {
-        let file_size = fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
+        let file_size = fs::metadata(&path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
         if file_size > MAX_IMAGE_ATTACHMENT_SIZE {
             return Err(AttachmentRejection {
                 name: file_name,
@@ -129,7 +133,10 @@ pub fn attachment_from_inline(
     })
 }
 
-pub fn prepare_attachments_for_sources(sources: Vec<AttachmentSource>, vision_ready: bool) -> AttachmentPreparation {
+pub fn prepare_attachments_for_sources(
+    sources: Vec<AttachmentSource>,
+    vision_ready: bool,
+) -> AttachmentPreparation {
     let mut attachments = Vec::new();
     let mut rejected = Vec::new();
     let mut names = std::collections::HashSet::new();
@@ -144,7 +151,10 @@ pub fn prepare_attachments_for_sources(sources: Vec<AttachmentSource>, vision_re
         };
         match result {
             Ok(attachment) if attachment.mime_type == AttachmentType::Image && !vision_ready => {
-                rejected.push(AttachmentRejection { name: attachment.name, reason: "画像添付には Vision モデルの設定が必要です".to_string() });
+                rejected.push(AttachmentRejection {
+                    name: attachment.name,
+                    reason: "画像添付には Vision モデルの設定が必要です".to_string(),
+                });
             }
             Ok(attachment) if names.insert(attachment.name.clone()) => attachments.push(attachment),
             Ok(attachment) => rejected.push(AttachmentRejection {
@@ -161,15 +171,24 @@ pub fn prepare_attachments_for_sources(sources: Vec<AttachmentSource>, vision_re
 }
 
 #[tauri::command]
-pub fn prepare_attachments(app: tauri::AppHandle, sources: Vec<AttachmentSource>) -> AttachmentPreparation {
+pub fn prepare_attachments(
+    app: tauri::AppHandle,
+    sources: Vec<AttachmentSource>,
+) -> AttachmentPreparation {
     let settings = crate::settings::load_settings(app).unwrap_or_default();
     let vision_ready = settings.vision_enabled
-        && settings.mmproj_path.as_deref().is_some_and(|path| !path.trim().is_empty());
+        && settings
+            .mmproj_path
+            .as_deref()
+            .is_some_and(|path| !path.trim().is_empty());
     prepare_attachments_for_sources(sources, vision_ready)
 }
 
 #[tauri::command]
-pub fn read_files_as_attachments(app: tauri::AppHandle, paths: Vec<String>) -> Result<Vec<Attachment>, TauriError> {
+pub fn read_files_as_attachments(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+) -> Result<Vec<Attachment>, TauriError> {
     let settings = crate::settings::load_settings(app).unwrap_or_default();
     Ok(prepare_attachments_for_sources(
         paths
