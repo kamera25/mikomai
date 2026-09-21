@@ -57,10 +57,10 @@ export const getDeviceTypeAlias = (
     .join(" ");
 };
 
-export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = ({
+function useConnectionSettingsPresenter({
   onClose: _onClose,
   onConnectionsChanged,
-}) => {
+}: ConnectionSettingsPanelProps) {
   const { t } = useTranslation();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -292,6 +292,24 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
     }
   };
 
+  return {
+    t, connections, filteredConnections, searchQuery, setSearchQuery,
+    isNodeRefreshStarting, handleNodeDbBulkRefresh, setConnections,
+    onConnectionsChanged, selectedIds, isLoading, mcpHosts,
+    toggleSelect, toggleSelectAll, handleEdit, handleDeleteRow,
+    getAliasHelper, handleAddHost, handleDeleteSelected, isEditing,
+    editingId, deviceTypes, setIsEditing, handleSave, handleDeleteCurrent,
+  };
+}
+
+function ConnectionSettingsView({
+    t, connections, filteredConnections, searchQuery, setSearchQuery,
+    isNodeRefreshStarting, handleNodeDbBulkRefresh, setConnections,
+    onConnectionsChanged, selectedIds, isLoading, mcpHosts,
+    toggleSelect, toggleSelectAll, handleEdit, handleDeleteRow,
+    getAliasHelper, handleAddHost, handleDeleteSelected, isEditing,
+    editingId, deviceTypes, setIsEditing, handleSave, handleDeleteCurrent,
+}: ReturnType<typeof useConnectionSettingsPresenter>) {
   return (
     <div className="connection-settings-overlay">
       <div className="connection-settings-panel">
@@ -420,4 +438,9 @@ export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (
       </div>
     </div>
   );
+}
+
+export const ConnectionSettingsPanel: React.FC<ConnectionSettingsPanelProps> = (props) => {
+  const viewModel = useConnectionSettingsPresenter(props);
+  return <ConnectionSettingsView {...viewModel} />;
 };

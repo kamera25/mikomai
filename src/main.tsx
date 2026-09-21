@@ -4,12 +4,8 @@ import App from "./App";
 import "./index.css";
 import "./i18n";
 
-import { SettingsProvider } from "./contexts/SettingsContext";
-
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <SettingsProvider>
-      <App />
-    </SettingsProvider>
+    <App />
   </React.StrictMode>
 );

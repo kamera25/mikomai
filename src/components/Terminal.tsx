@@ -238,7 +238,7 @@ function parseAnsi(text: string): React.ReactNode[] {
   return nodes;
 }
 
-export const Terminal: React.FC<TerminalProps> = ({ content }) => {
+function useTerminalPresenter({ content }: TerminalProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
@@ -269,6 +269,10 @@ export const Terminal: React.FC<TerminalProps> = ({ content }) => {
     ));
   }, [content]);
 
+  return { t, copied, handleCopy, renderedLines };
+}
+
+function TerminalView({ t, copied, handleCopy, renderedLines }: ReturnType<typeof useTerminalPresenter>) {
   return (
     <div className="terminal-container">
       <div className="terminal-header">
@@ -301,4 +305,9 @@ export const Terminal: React.FC<TerminalProps> = ({ content }) => {
       </pre>
     </div>
   );
+}
+
+export const Terminal: React.FC<TerminalProps> = (props) => {
+  const viewModel = useTerminalPresenter(props);
+  return <TerminalView {...viewModel} />;
 };

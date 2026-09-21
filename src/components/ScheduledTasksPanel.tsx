@@ -75,7 +75,7 @@ function toRequest(form: WatchForm) {
 }
 const formatTime = (value?: string | null) => (value ? new Date(value).toLocaleString() : "未実行");
 
-export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClose }) => {
+function useScheduledTasksPresenter({ onClose }: ScheduledTasksPanelProps) {
   const [watches, setWatches] = useState<Watch[]>([]);
   const [devices, setDevices] = useState<RegisteredDevice[]>([]);
   const [query, setQuery] = useState("");
@@ -147,6 +147,12 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
       setError(`Watch を削除できませんでした: ${String(reason)}`);
     }
   };
+  return { onClose, watches, devices, query, setQuery, form, setForm, error,
+    filtered, loadWatches, save, setEnabled, run, remove };
+}
+
+function ScheduledTasksView({ onClose, watches, devices, query, setQuery, form, setForm,
+  error, filtered, loadWatches, save, setEnabled, run, remove }: ReturnType<typeof useScheduledTasksPresenter>) {
   return (
     <div className="scheduled-tasks-overlay">
       <div className="scheduled-tasks-panel">
@@ -321,4 +327,9 @@ export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = ({ onClos
       </div>
     </div>
   );
+}
+
+export const ScheduledTasksPanel: React.FC<ScheduledTasksPanelProps> = (props) => {
+  const viewModel = useScheduledTasksPresenter(props);
+  return <ScheduledTasksView {...viewModel} />;
 };

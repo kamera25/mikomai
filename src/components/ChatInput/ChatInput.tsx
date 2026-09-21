@@ -26,7 +26,7 @@ interface ChatInputProps {
   handleStop?: () => void;
   isGenerating?: boolean;
   handleLoadModel: () => void;
-  setIsSettingsOpen: (value: boolean) => void;
+  onOpenSettings: () => void;
   cursorPos: number;
   setCursorPos: (value: number) => void;
   availableHosts: { hostname: string; ip: string }[];
@@ -34,33 +34,13 @@ interface ChatInputProps {
   setFilteredSuggestions: (value: { hostname: string; ip: string }[]) => void;
 }
 
-export const ChatInput = memo(
-  forwardRef<HTMLTextAreaElement, ChatInputProps>(
-    (
-      {
-      modelStatus,
-      modelPath,
-      input,
-      setInput,
-      showSuggestions,
-      setShowSuggestions,
-      filteredSuggestions,
-      suggestionIndex,
-      setSuggestionIndex,
-      handleSelectSuggestion,
-      handleSend,
-      handleStop,
-      isGenerating = false,
-      handleLoadModel,
-      setIsSettingsOpen,
-      cursorPos,
-      setCursorPos,
-      availableHosts,
-      recentIPs,
-      setFilteredSuggestions,
-    },
-    ref
-  ) => {
+function useChatInputPresenter(props: ChatInputProps, ref: React.ForwardedRef<HTMLTextAreaElement>) {
+  const {
+    modelStatus, modelPath, input, setInput, showSuggestions, setShowSuggestions,
+    filteredSuggestions, suggestionIndex, setSuggestionIndex, handleSelectSuggestion,
+    handleSend, handleStop, isGenerating = false, handleLoadModel, onOpenSettings,
+    cursorPos, setCursorPos, availableHosts, recentIPs, setFilteredSuggestions,
+  } = props;
     const { t } = useTranslation();
     const { visionEnabled, mmprojPath } = useSettingsContext();
     const isVisionReady = visionEnabled && Boolean(mmprojPath && mmprojPath.trim());
@@ -69,7 +49,7 @@ export const ChatInput = memo(
       isVisionReadyRef.current = isVisionReady;
     }, [isVisionReady]);
 
-    const isComposing = useRef(false);
+    const isComposingRef = useRef(false);
     const suggestionListRef = useRef<HTMLDivElement>(null);
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [selectedImage, setSelectedImage] = useState<{ src: string; alt?: string } | null>(null);
@@ -282,7 +262,7 @@ export const ChatInput = memo(
     }, [availableHosts, recentIPs, showSuggestions, input, cursorPos, t, setFilteredSuggestions, setShowSuggestions, setSuggestionIndex]);
 
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      const isComp = isComposing.current || e.nativeEvent.isComposing || e.keyCode === 229;
+      const isComp = isComposingRef.current || e.nativeEvent.isComposing || e.keyCode === 229;
       if (isComp) {
         return;
       }
@@ -362,7 +342,27 @@ export const ChatInput = memo(
       }
     };
 
-    return (
+  return {
+    t, modelStatus, modelPath, handleLoadModel, onOpenSettings, isDragging,
+    handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
+    showVisionWarning, setShowVisionWarning, attachmentErrors,
+    showSuggestions, filteredSuggestions, suggestionIndex, handleSelectSuggestion,
+    suggestionListRef, attachments, setAttachments, setSelectedImage, fileInputRef,
+    handleFileAttach, handleAttachClick, ref, input, handleInputChange, handlePaste,
+    isComposingRef, handleInputKeyDown, isGenerating, handleStop, onSend, selectedImage,
+  };
+}
+
+function ChatInputView({
+    t, modelStatus, modelPath, handleLoadModel, onOpenSettings, isDragging,
+    handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
+    showVisionWarning, setShowVisionWarning, attachmentErrors,
+    showSuggestions, filteredSuggestions, suggestionIndex, handleSelectSuggestion,
+    suggestionListRef, attachments, setAttachments, setSelectedImage, fileInputRef,
+    handleFileAttach, handleAttachClick, ref, input, handleInputChange, handlePaste,
+    isComposingRef, handleInputKeyDown, isGenerating, handleStop, onSend, selectedImage,
+}: ReturnType<typeof useChatInputPresenter>) {
+  return (
       <div className="input-area">
         {modelStatus !== "Loaded" && (
           <div className={`model-status-banner ${modelStatus.toLowerCase()}`}>
@@ -382,7 +382,7 @@ export const ChatInput = memo(
                     {t("chat_input.btn_load_model")}
                   </button>
                 )}
-                <button className="banner-button" onClick={() => setIsSettingsOpen(true)}>
+                <button className="banner-button" onClick={() => onOpenSettings()}>
                   <GearIcon size={14} style={{ marginRight: "6px" }} />
                   {t("chat_input.btn_settings")}
                 </button>
@@ -414,7 +414,7 @@ export const ChatInput = memo(
                   className="vision-warning-settings-btn"
                   onClick={() => {
                     setShowVisionWarning(false);
-                    setIsSettingsOpen(true);
+                    onOpenSettings();
                   }}
                 >
                   <GearIcon size={12} />
@@ -499,11 +499,11 @@ export const ChatInput = memo(
               onPaste={handlePaste}
               rows={1}
               onCompositionStart={() => {
-                isComposing.current = true;
+                isComposingRef.current = true;
               }}
               onCompositionEnd={() => {
                 setTimeout(() => {
-                  isComposing.current = false;
+                  isComposingRef.current = false;
                 }, 150);
               }}
               onKeyDown={handleInputKeyDown}
@@ -541,9 +541,12 @@ export const ChatInput = memo(
           />
         )}
       </div>
-    );
-  }
-)
-);
+  );
+}
+
+export const ChatInput = memo(forwardRef<HTMLTextAreaElement, ChatInputProps>((props, ref) => {
+  const viewModel = useChatInputPresenter(props, ref);
+  return <ChatInputView {...viewModel} />;
+}));
 
 ChatInput.displayName = "ChatInput";

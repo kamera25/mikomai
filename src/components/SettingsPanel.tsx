@@ -17,7 +17,7 @@ interface SettingsPanelProps {
 export type { ModelPreset } from "./settingsModelPresets";
 export { PRESET_MODELS } from "./settingsModelPresets";
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _onClose }) => {
+function useSettingsPresenter({ isOpen, onClose: _onClose }: SettingsPanelProps) {
   const { t } = useTranslation();
   const {
     historyLimit,
@@ -388,6 +388,122 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
     }
   };
 
+  return {
+    isOpen,
+    t,
+    activeTab,
+    scrollToCategory,
+    bodyRef,
+    handleScroll,
+    PRESET_MODELS,
+    historyLimit,
+    temperature,
+    repetitionPenalty,
+    mcpTimeout,
+    cacheExpiryMinutes,
+    ipVersion,
+    consolePort,
+    consoleBaudRate,
+    preloadKnowledge,
+    preloadAnalysis,
+    preloadRag,
+    preloadPlotter,
+    preloadBuilder,
+    preloadSummarization,
+    visionEnabled,
+    autoDryRun,
+    mmprojPath,
+    repoPath,
+    modelFilename,
+    selectedPresetId,
+    availablePorts,
+    downloadedPresets,
+    isCurrentModelDownloaded,
+    downloadStatus,
+    isLoading,
+    handleHistoryLimitChange,
+    handleTemperatureChange,
+    handleRepetitionPenaltyChange,
+    handleMcpTimeoutChange,
+    handleCacheExpiryMinutesChange,
+    handleIpVersionChange,
+    handleConsolePortChange,
+    handleConsoleBaudRateChange,
+    handlePreloadKnowledgeChange,
+    handlePreloadAnalysisChange,
+    handlePreloadRagChange,
+    handlePreloadPlotterChange,
+    handlePreloadBuilderChange,
+    handlePreloadSummarizationChange,
+    handleVisionEnabledChange,
+    handleAutoDryRunChange,
+    handleMmprojPathChange,
+    handleSelectMmprojFile,
+    handlePresetSelect,
+    handleRepoPathChange,
+    handleModelFilenameChange,
+    handleDownloadAndLoad,
+    handleOpenModelDir
+  };
+}
+
+function SettingsView({
+    isOpen,
+    t,
+    activeTab,
+    scrollToCategory,
+    bodyRef,
+    handleScroll,
+    PRESET_MODELS,
+    historyLimit,
+    temperature,
+    repetitionPenalty,
+    mcpTimeout,
+    cacheExpiryMinutes,
+    ipVersion,
+    consolePort,
+    consoleBaudRate,
+    preloadKnowledge,
+    preloadAnalysis,
+    preloadRag,
+    preloadPlotter,
+    preloadBuilder,
+    preloadSummarization,
+    visionEnabled,
+    autoDryRun,
+    mmprojPath,
+    repoPath,
+    modelFilename,
+    selectedPresetId,
+    availablePorts,
+    downloadedPresets,
+    isCurrentModelDownloaded,
+    downloadStatus,
+    isLoading,
+    handleHistoryLimitChange,
+    handleTemperatureChange,
+    handleRepetitionPenaltyChange,
+    handleMcpTimeoutChange,
+    handleCacheExpiryMinutesChange,
+    handleIpVersionChange,
+    handleConsolePortChange,
+    handleConsoleBaudRateChange,
+    handlePreloadKnowledgeChange,
+    handlePreloadAnalysisChange,
+    handlePreloadRagChange,
+    handlePreloadPlotterChange,
+    handlePreloadBuilderChange,
+    handlePreloadSummarizationChange,
+    handleVisionEnabledChange,
+    handleAutoDryRunChange,
+    handleMmprojPathChange,
+    handleSelectMmprojFile,
+    handlePresetSelect,
+    handleRepoPathChange,
+    handleModelFilenameChange,
+    handleDownloadAndLoad,
+    handleOpenModelDir
+}: ReturnType<typeof useSettingsPresenter>) {
   if (!isOpen) return null;
 
   return (
@@ -505,4 +621,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose: _
       </div>
     </div>
   );
+}
+
+export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
+  const viewModel = useSettingsPresenter(props);
+  return <SettingsView {...viewModel} />;
 };

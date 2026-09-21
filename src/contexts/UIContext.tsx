@@ -30,6 +30,7 @@ export interface UIState {
 }
 
 export type UIAction =
+  | { type: "NAVIGATE"; panel: UIState["activePanel"] }
   | { type: "SET_SIDEBAR_OPEN"; payload: boolean }
   | { type: "SET_SETTINGS_OPEN"; payload: boolean }
   | { type: "SET_CONNECTION_OPEN"; payload: boolean }
@@ -54,48 +55,60 @@ export const initialUIState: UIState = {
   configDiffData: null,
 };
 
+function transitionPanel(state: UIState, panel: UIState["activePanel"]): UIState {
+  if (state.activePanel === panel) return state;
+  return {
+    ...state,
+    activePanel: panel,
+    isSettingsOpen: panel === "settings",
+    isConnectionOpen: panel === "connections",
+    isScheduledTasksOpen: panel === "scheduledTasks",
+    isTaskAuditOpen: panel === "taskAudit",
+    isSidebarOpen: panel === "chat" ? state.isSidebarOpen : false,
+    isConfigDiffOpen: panel === "chat" ? state.isConfigDiffOpen : false,
+  };
+}
+
 export function uiReducer(state: UIState, action: UIAction): UIState {
   switch (action.type) {
+    case "NAVIGATE":
+      return transitionPanel(state, action.panel);
     case "SET_SIDEBAR_OPEN":
-      return { ...state, isSidebarOpen: action.payload };
-    case "SET_SETTINGS_OPEN": {
-      const nextOpen = action.payload;
-      return {
-        ...state,
-        activePanel: nextOpen ? "settings" : state.activePanel === "settings" ? "chat" : state.activePanel,
-        isSettingsOpen: nextOpen,
-        ...(nextOpen ? { isConnectionOpen: false, isScheduledTasksOpen: false, isTaskAuditOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
-      };
-    }
-    case "SET_CONNECTION_OPEN": {
-      const nextOpen = action.payload;
-      return {
-        ...state,
-        activePanel: nextOpen ? "connections" : state.activePanel === "connections" ? "chat" : state.activePanel,
-        isConnectionOpen: nextOpen,
-        ...(nextOpen ? { isSettingsOpen: false, isScheduledTasksOpen: false, isTaskAuditOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
-      };
-    }
-    case "SET_SCHEDULED_TASKS_OPEN": {
-      const nextOpen = action.payload;
-      return {
-        ...state,
-        activePanel: nextOpen ? "scheduledTasks" : state.activePanel === "scheduledTasks" ? "chat" : state.activePanel,
-        isScheduledTasksOpen: nextOpen,
-        ...(nextOpen ? { isSettingsOpen: false, isConnectionOpen: false, isTaskAuditOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
-      };
-    }
-    case "SET_TASK_AUDIT_OPEN": {
-      const nextOpen = action.payload;
-      return {
-        ...state,
-        activePanel: nextOpen ? "taskAudit" : state.activePanel === "taskAudit" ? "chat" : state.activePanel,
-        isTaskAuditOpen: nextOpen,
-        ...(nextOpen ? { isSettingsOpen: false, isConnectionOpen: false, isScheduledTasksOpen: false, isSidebarOpen: false, isConfigDiffOpen: false } : {}),
-      };
-    }
+      return state.activePanel === "chat" ? { ...state, isSidebarOpen: action.payload } : state;
+    case "SET_SETTINGS_OPEN":
+      return transitionPanel(
+        state,
+        action.payload ? "settings" : state.activePanel === "settings" ? "chat" : state.activePanel
+      );
+    case "SET_CONNECTION_OPEN":
+      return transitionPanel(
+        state,
+        action.payload
+          ? "connections"
+          : state.activePanel === "connections"
+            ? "chat"
+            : state.activePanel
+      );
+    case "SET_SCHEDULED_TASKS_OPEN":
+      return transitionPanel(
+        state,
+        action.payload
+          ? "scheduledTasks"
+          : state.activePanel === "scheduledTasks"
+            ? "chat"
+            : state.activePanel
+      );
+    case "SET_TASK_AUDIT_OPEN":
+      return transitionPanel(
+        state,
+        action.payload
+          ? "taskAudit"
+          : state.activePanel === "taskAudit"
+            ? "chat"
+            : state.activePanel
+      );
     case "SET_CONFIG_DIFF_OPEN":
-      return { ...state, isConfigDiffOpen: action.payload };
+      return state.activePanel === "chat" ? { ...state, isConfigDiffOpen: action.payload } : state;
     case "START_EDITING_HEADER":
       return { ...state, isEditingHeader: true, headerTitle: action.payload };
     case "SET_HEADER_TITLE":

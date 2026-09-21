@@ -11,17 +11,15 @@ interface ApprovalModalProps {
   diffText?: string;
 }
 
-export const ApprovalModal: React.FC<ApprovalModalProps> = ({
+function useApprovalPresenter({
   isOpen,
   onClose,
   onApprove,
   commands,
   rationale,
   diffText,
-}) => {
+}: ApprovalModalProps) {
   const [isArmed, setIsArmed] = useState(false);
-
-  if (!isOpen) return null;
 
   const handleApprove = () => {
     if (!isArmed) {
@@ -37,6 +35,15 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
     onClose();
   };
 
+  return {
+    isOpen, isArmed, handleApprove, handleCancel, commands, rationale, diffText,
+  };
+}
+
+function ApprovalView({
+    isOpen, isArmed, handleApprove, handleCancel, commands, rationale, diffText,
+}: ReturnType<typeof useApprovalPresenter>) {
+  if (!isOpen) return null;
   return (
     <div className="modal-overlay">
       <div className="modal-content">
@@ -100,4 +107,9 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
       </div>
     </div>
   );
+}
+
+export const ApprovalModal: React.FC<ApprovalModalProps> = (props) => {
+  const viewModel = useApprovalPresenter(props);
+  return <ApprovalView {...viewModel} />;
 };

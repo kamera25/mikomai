@@ -6,11 +6,10 @@ import rehypeKatex from "rehype-katex";
 import { ipc } from "../../platform";
 import { Terminal } from "../Terminal";
 import { CheckIcon, CrossIcon } from "../Icons";
-import { Message } from "../../types";
+import { Message, ToolExecutionMessage } from "../../types";
 import { messageContainerClass } from "./timelineModel";
 
-export function CiscoValidationEvent({ msg }: { msg: Message }) {
-if (msg.event_type === "ToolExecution" && msg.tool_id === "validate_cisco_config") {
+function createCiscoValidationPresenter(msg: ToolExecutionMessage) {
   const handleCommitChoice = async (choice: "commit" | "cancelled") => {
     try {
       if (msg.task_id) await ipc.submitChoice(msg.task_id, choice);
@@ -30,6 +29,10 @@ if (msg.event_type === "ToolExecution" && msg.tool_id === "validate_cisco_config
     cardClass += msg.status === "Success" ? " success" : " failed";
   }
 
+  return { msg, cardClass, handleCommitChoice };
+}
+
+function CiscoValidationView({ msg, cardClass, handleCommitChoice }: ReturnType<typeof createCiscoValidationPresenter>) {
   return (
     <div className={messageContainerClass(msg)} id={msg.task_id}>
       <div className="timeline-node"></div>
@@ -115,6 +118,7 @@ if (msg.event_type === "ToolExecution" && msg.tool_id === "validate_cisco_config
   );
 }
 
-
-  return null;
+export function CiscoValidationEvent({ msg }: { msg: Message }) {
+  if (msg.event_type !== "ToolExecution" || msg.tool_id !== "validate_cisco_config") return null;
+  return <CiscoValidationView {...createCiscoValidationPresenter(msg)} />;
 }

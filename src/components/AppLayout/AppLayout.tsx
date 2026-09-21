@@ -19,16 +19,21 @@ import { useQuestionQueue } from "../../hooks/useQuestionQueue";
 import { useConfigDiffEvents } from "../../hooks/useConfigDiffEvents";
 import { QuestionPanel } from "./QuestionPanel";
 import { CustomModal } from "../CustomModal";
-import { SidebarIcon, ServerIcon, DiffIcon } from "../Icons";
+import { ChatHeader } from "./ChatHeader";
 import { Attachment } from "../../types";
 import { formatMessageTime } from "../../utils/messageTime";
 import { useMessageExecution } from "./useMessageExecution";
 import { useAppLayoutActions } from "./useAppLayoutActions";
+import { GuiEventScope, type GuiEvent } from "../../gui/events";
+import { WatchNotificationToast } from "../WatchNotificationToast";
+import { KeyringAccessModal } from "../KeyringAccessModal";
 
 // These panels are not part of the chat's critical rendering path. Loading
 // them only when opened reduces startup parsing and keeps their effects idle.
 const SettingsPanel = lazy(() =>
-  import("../../features/settings/SettingsPanel").then(({ SettingsPanel }) => ({ default: SettingsPanel }))
+  import("../../features/settings/SettingsPanel").then(({ SettingsPanel }) => ({
+    default: SettingsPanel,
+  }))
 );
 const ConnectionSettingsPanel = lazy(() =>
   import("../ConnectionSettingsPanel").then(({ ConnectionSettingsPanel }) => ({
@@ -49,7 +54,7 @@ const TaskAuditPanel = lazy(() =>
   import("../TaskAuditPanel").then(({ TaskAuditPanel }) => ({ default: TaskAuditPanel }))
 );
 
-export function AppLayout() {
+function useRootMediator() {
   const { t } = useTranslation();
   const { historyLimit, modelPath, mcpTimeout, recentIPs, setRecentIPs, saveAllSettings } =
     useSettingsContext();
@@ -102,7 +107,6 @@ export function AppLayout() {
 
   const {
     state: chatState,
-    createNewFolder,
     createNewSession,
     toggleFolder,
     switchSession,
@@ -145,6 +149,16 @@ export function AppLayout() {
     setInput,
     textareaRef,
   });
+  const hostLabel = useMemo(() => {
+    const current = recentIPs[0];
+    if (!current) return undefined;
+    const host = availableHosts.find(
+      (candidate) => candidate.ip === current || candidate.hostname === current
+    );
+    return host?.hostname && host.ip && host.hostname !== host.ip
+      ? `${host.hostname} (${host.ip})`
+      : current;
+  }, [recentIPs, availableHosts]);
 
   const { handleMcpResponse } = useMcp({
     messages: chatState.messages,
@@ -165,7 +179,12 @@ export function AppLayout() {
     }
   }, [chatState.input]);
 
-  const { isGenerating, setIsGenerating, sendMessage, stop: handleStop } = useMessageExecution({
+  const {
+    isGenerating,
+    setIsGenerating,
+    sendMessage,
+    stop: handleStop,
+  } = useMessageExecution({
     input: chatState.input,
     setInput,
     activeSessionId: chatState.activeSessionId,
@@ -176,7 +195,8 @@ export function AppLayout() {
     stoppedLabel: t("chat.stopped"),
   });
   const isCurrentlyGenerating =
-    isGenerating || chatState.messages.some((message) => message.status === "Running" || message.isToolLoading);
+    isGenerating ||
+    chatState.messages.some((message) => message.status === "Running" || message.isToolLoading);
 
   // Keep callbacks passed to the chat stable. In particular, typing in the
   // input must not re-render the full message timeline.
@@ -203,7 +223,6 @@ export function AppLayout() {
   );
 
   const layoutActions = useAppLayoutActions({
-    uiState,
     uiDispatch,
     activeSession,
     activeSessionId: chatState.activeSessionId,
@@ -214,243 +233,293 @@ export function AppLayout() {
     setIsGenerating,
     resumeAgent: (taskId) => ipc.command(COMMANDS.resumeAgentTask, { taskId }),
   });
-  const {
-    isComposingHeaderRef,
-    handleStartRenameHeader,
-    handleSaveRenameHeader,
-    handleSetConnectionOpen,
-    handleSetScheduledTasksOpen,
-    handleSetSettingsOpen,
-    handleSetTaskAuditOpen,
-    resumeTask,
-  } = layoutActions;
+  const { handleStartRenameHeader, handleSaveRenameHeader, resumeTask } = layoutActions;
 
-  return (
-    <div className="app-container">
-      <div className="main-layout">
-        <ActivityBar
-          isConnectionOpen={uiState.isConnectionOpen}
-          setIsConnectionOpen={handleSetConnectionOpen}
-          isScheduledTasksOpen={uiState.isScheduledTasksOpen}
-          setIsScheduledTasksOpen={handleSetScheduledTasksOpen}
-          isTaskAuditOpen={uiState.isTaskAuditOpen}
-          setIsTaskAuditOpen={handleSetTaskAuditOpen}
-          isSettingsOpen={uiState.isSettingsOpen}
-          setIsSettingsOpen={handleSetSettingsOpen}
-        />
-
-        <Sidebar
-          isSidebarOpen={uiState.isSidebarOpen}
-          history={chatState.history}
-          activeSessionId={chatState.activeSessionId}
-          messages={chatState.messages}
-          createNewFolder={createNewFolder}
-          createNewSession={createNewSession}
-          toggleFolder={toggleFolder}
-          onTimelineItemClick={scrollToMessage}
-          switchSession={switchSession}
-          renameSession={renameSession}
-          deleteSession={deleteSession}
-          style={sidebarStyle}
-          isResizing={isResizingLeft}
-        />
-        {uiState.isSidebarOpen && (
-          <div
-            className={`resize-handle ${isResizingLeft ? "active" : ""}`}
-            onMouseDown={handleLeftMouseDown}
-          />
-        )}
-
-        <div className="main-viewport">
-          <Suspense fallback={null}>
-            {uiState.isSettingsOpen ? (
-              <SettingsPanel
-                isOpen={uiState.isSettingsOpen}
-                onClose={() => uiDispatch({ type: "SET_SETTINGS_OPEN", payload: false })}
-              />
-            ) : uiState.isConnectionOpen ? (
-              <ConnectionSettingsPanel
-                onClose={() => uiDispatch({ type: "SET_CONNECTION_OPEN", payload: false })}
-                onConnectionsChanged={fetchHosts}
-              />
-            ) : uiState.isScheduledTasksOpen ? (
-              <ScheduledTasksPanel
-                onClose={() => uiDispatch({ type: "SET_SCHEDULED_TASKS_OPEN", payload: false })}
-              />
-            ) : uiState.isTaskAuditOpen ? (
-              <TaskAuditPanel
-                onClose={() => uiDispatch({ type: "SET_TASK_AUDIT_OPEN", payload: false })}
-                onResume={resumeTask}
-              />
-            ) : (
-              <div className="chat-workspace-container">
-                <main className="main-chat">
-                  <header className="chat-header">
-                    <div className="header-left">
-                      <button
-                        className="sidebar-toggle-button"
-                        onClick={() =>
-                          uiDispatch({ type: "SET_SIDEBAR_OPEN", payload: !uiState.isSidebarOpen })
-                        }
-                        title={
-                          uiState.isSidebarOpen ? t("app.sidebar_close") : t("app.sidebar_open")
-                        }
-                      >
-                        <SidebarIcon size={20} />
-                      </button>
-                      {uiState.isEditingHeader ? (
-                        <input
-                          className="header-title-input"
-                          value={uiState.headerTitle}
-                          onChange={(e) =>
-                            uiDispatch({ type: "SET_HEADER_TITLE", payload: e.target.value })
-                          }
-                          onBlur={handleSaveRenameHeader}
-                          onCompositionStart={() => {
-                            isComposingHeaderRef.current = true;
-                          }}
-                          onCompositionEnd={() => {
-                            setTimeout(() => {
-                              isComposingHeaderRef.current = false;
-                            }, 150);
-                          }}
-                          onKeyDown={(e) => {
-                            const isComp =
-                              isComposingHeaderRef.current ||
-                              e.nativeEvent.isComposing ||
-                              e.keyCode === 229;
-                            if (isComp) {
-                              return;
-                            }
-                            if (e.key === "Enter") {
-                              handleSaveRenameHeader();
-                            } else if (e.key === "Escape") {
-                              uiDispatch({ type: "STOP_EDITING_HEADER" });
-                            }
-                          }}
-                          autoFocus
-                        />
-                      ) : (
-                        <h1
-                          className="header-title clickable"
-                          onDoubleClick={handleStartRenameHeader}
-                          title={t("app.double_click_rename")}
-                        >
-                          {activeSession?.title || "mikomai"}
-                        </h1>
-                      )}
-                      {recentIPs.length > 0 && (
-                        <div style={{ display: "flex", alignItems: "center" }}>
-                          <ServerIcon size={12} style={{ marginRight: "4px" }} />
-                          <span className="header-hostname">
-                            {(() => {
-                              const current = recentIPs[0];
-                              const host = availableHosts.find(
-                                (h) => h.ip === current || h.hostname === current
-                              );
-                              if (host && host.hostname && host.ip && host.hostname !== host.ip) {
-                                return `${host.hostname} (${host.ip})`;
-                              }
-                              return current;
-                            })()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="header-right">
-                      <button
-                        className={`sidebar-toggle-button ${uiState.isConfigDiffOpen ? "active" : ""}`}
-                        onClick={() =>
-                          uiDispatch({
-                            type: "SET_CONFIG_DIFF_OPEN",
-                            payload: !uiState.isConfigDiffOpen,
-                          })
-                        }
-                        title={
-                          uiState.isConfigDiffOpen ? t("app.diff_close") : t("app.diff_open")
-                        }
-                      >
-                        <DiffIcon size={20} />
-                      </button>
-                    </div>
-                  </header>
-
-                  <ChatPanel
-                    ref={messagesEndRef}
-                    messages={chatState.messages}
-                    formatMessageTime={formatMessageTime}
-                    sendMessage={handleSend}
-                    isResizing={isResizingLeft || isResizingRight}
-                  />
-
-                  <div
-                    className="input-area-wrapper"
-                    style={{ display: "flex", flexDirection: "column", gap: "8px" }}
-                  >
-                    {chatState.messages.some((m) => m.status === "Running") && (
-                      <div className="global-loading-indicator"></div>
-                    )}
-                    <QuestionPanel
-                      questionQueue={questionQueue}
-                      totalQuestionsCount={totalQuestionsCount}
-                      handleSelectChoice={handleSelectChoice}
-                      handleCancelChoice={handleCancelChoice}
-                      handleSelectInterface={handleSelectInterface}
-                      handleCancelInterface={handleCancelInterface}
-                      handleSelectIpAddress={handleSelectIpAddress}
-                      handleCancelIpAddress={handleCancelIpAddress}
-                    />
-                    <ChatInput
-                      ref={textareaRef}
-                      modelStatus={modelState.modelStatus}
-                      modelPath={modelPath}
-                      input={chatState.input}
-                      setInput={setInput}
-                      showSuggestions={showSuggestions}
-                      setShowSuggestions={setShowSuggestions}
-                      filteredSuggestions={filteredSuggestions}
-                      suggestionIndex={suggestionIndex}
-                      setSuggestionIndex={setSuggestionIndex}
-                      handleSelectSuggestion={handleSelectSuggestion}
-                      handleSend={handleSend}
-                      handleStop={handleStop}
-                      isGenerating={isCurrentlyGenerating}
-                      handleLoadModel={handleLoadModel}
-                      setIsSettingsOpen={handleSetSettingsOpen}
-                      cursorPos={cursorPos}
-                      setCursorPos={setCursorPos}
-                      availableHosts={availableHosts}
-                      recentIPs={recentIPs}
-                      setFilteredSuggestions={setFilteredSuggestions}
-                    />
-                  </div>
-                </main>
-                {uiState.isConfigDiffOpen && (
-                  <div
-                    className={`resize-handle ${isResizingRight ? "active" : ""}`}
-                    onMouseDown={handleRightMouseDown}
-                  />
-                )}
-                {uiState.isConfigDiffOpen && (
-                  <ConfigDiffPanel
-                    id={diffCommitId}
-                    isOpen={uiState.isConfigDiffOpen}
-                    style={diffPanelStyle}
-                    isResizing={isResizingRight}
-                    onClose={handleCloseConfigDiff}
-                  />
-                )}
-              </div>
-            )}
-          </Suspense>
-        </div>
-      </div>
-      <StatusBar
-        modelStatus={modelState.modelStatus}
-        modelPath={modelPath}
-        loadedModelPath={modelState.loadedModelPath}
-      />
-      {chatState.modalConfig && <CustomModal {...chatState.modalConfig} />}
-    </div>
+  const mediate = useCallback(
+    (event: GuiEvent): boolean => {
+      switch (event.type) {
+        case "navigate":
+          uiDispatch({ type: "NAVIGATE", panel: event.panel });
+          return true;
+        case "sidebar.toggle":
+          uiDispatch({ type: "SET_SIDEBAR_OPEN", payload: !uiState.isSidebarOpen });
+          return true;
+        case "diff.toggle":
+          uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: !uiState.isConfigDiffOpen });
+          return true;
+        case "header.edit":
+          handleStartRenameHeader();
+          return true;
+        case "header.change":
+          uiDispatch({ type: "SET_HEADER_TITLE", payload: event.title });
+          return true;
+        case "header.save":
+          handleSaveRenameHeader();
+          return true;
+        case "header.cancel":
+          uiDispatch({ type: "STOP_EDITING_HEADER" });
+          return true;
+        case "session.create":
+          createNewSession();
+          return true;
+        case "session.select":
+          switchSession(event.id);
+          return true;
+        case "session.folder.toggle":
+          toggleFolder(event.id);
+          return true;
+        case "session.rename":
+          renameSession(event.id, event.title);
+          return true;
+        case "session.delete":
+          deleteSession(event.id);
+          return true;
+        case "timeline.scroll":
+          scrollToMessage(event.taskId);
+          return true;
+        case "question.answer":
+          if (event.kind === "choice") handleSelectChoice(event.id, event.value);
+          else if (event.kind === "interface") handleSelectInterface(event.id, event.value);
+          else handleSelectIpAddress(event.id, event.value);
+          return true;
+        case "question.cancel":
+          if (event.kind === "choice") handleCancelChoice(event.id);
+          else if (event.kind === "interface") handleCancelInterface(event.id);
+          else handleCancelIpAddress(event.id);
+          return true;
+      }
+    },
+    [
+      uiDispatch,
+      uiState.isSidebarOpen,
+      uiState.isConfigDiffOpen,
+      handleStartRenameHeader,
+      handleSaveRenameHeader,
+      createNewSession,
+      switchSession,
+      toggleFolder,
+      renameSession,
+      deleteSession,
+      scrollToMessage,
+      handleSelectChoice,
+      handleSelectInterface,
+      handleSelectIpAddress,
+      handleCancelChoice,
+      handleCancelInterface,
+      handleCancelIpAddress,
+    ]
   );
+
+  return {
+    mediate,
+    uiState,
+    chatState,
+    sidebarStyle,
+    isResizingLeft,
+    handleLeftMouseDown,
+    fetchHosts,
+    resumeTask,
+    activeSession,
+    hostLabel,
+    messagesEndRef,
+    handleSend,
+    isResizingRight,
+    questionQueue,
+    totalQuestionsCount,
+    textareaRef,
+    modelState,
+    modelPath,
+    setInput,
+    showSuggestions,
+    setShowSuggestions,
+    filteredSuggestions,
+    suggestionIndex,
+    setSuggestionIndex,
+    handleSelectSuggestion,
+    handleStop,
+    isCurrentlyGenerating,
+    handleLoadModel,
+    cursorPos,
+    setCursorPos,
+    availableHosts,
+    recentIPs,
+    setFilteredSuggestions,
+    diffCommitId,
+    diffPanelStyle,
+    handleRightMouseDown,
+    handleCloseConfigDiff,
+  };
+}
+
+function AppLayoutView({
+    mediate,
+    uiState,
+    chatState,
+    sidebarStyle,
+    isResizingLeft,
+    handleLeftMouseDown,
+    fetchHosts,
+    resumeTask,
+    activeSession,
+    hostLabel,
+    messagesEndRef,
+    handleSend,
+    isResizingRight,
+    questionQueue,
+    totalQuestionsCount,
+    textareaRef,
+    modelState,
+    modelPath,
+    setInput,
+    showSuggestions,
+    setShowSuggestions,
+    filteredSuggestions,
+    suggestionIndex,
+    setSuggestionIndex,
+    handleSelectSuggestion,
+    handleStop,
+    isCurrentlyGenerating,
+    handleLoadModel,
+    cursorPos,
+    setCursorPos,
+    availableHosts,
+    recentIPs,
+    setFilteredSuggestions,
+    diffCommitId,
+    diffPanelStyle,
+    handleRightMouseDown,
+    handleCloseConfigDiff,
+}: ReturnType<typeof useRootMediator>) {
+  return (
+    <GuiEventScope handle={mediate}>
+      <div className="app-container">
+        <div className="main-layout">
+          <ActivityBar activePanel={uiState.activePanel} />
+
+          <Sidebar
+            isSidebarOpen={uiState.isSidebarOpen}
+            history={chatState.history}
+            activeSessionId={chatState.activeSessionId}
+            messages={chatState.messages}
+            style={sidebarStyle}
+            isResizing={isResizingLeft}
+          />
+          {uiState.isSidebarOpen && (
+            <div
+              className={`resize-handle ${isResizingLeft ? "active" : ""}`}
+              onMouseDown={handleLeftMouseDown}
+            />
+          )}
+
+          <div className="main-viewport">
+            <Suspense fallback={null}>
+              {uiState.isSettingsOpen ? (
+                <SettingsPanel
+                  isOpen={uiState.isSettingsOpen}
+                  onClose={() => mediate({ type: "navigate", panel: "chat" })}
+                />
+              ) : uiState.isConnectionOpen ? (
+                <ConnectionSettingsPanel
+                  onClose={() => mediate({ type: "navigate", panel: "chat" })}
+                  onConnectionsChanged={fetchHosts}
+                />
+              ) : uiState.isScheduledTasksOpen ? (
+                <ScheduledTasksPanel onClose={() => mediate({ type: "navigate", panel: "chat" })} />
+              ) : uiState.isTaskAuditOpen ? (
+                <TaskAuditPanel
+                  onClose={() => mediate({ type: "navigate", panel: "chat" })}
+                  onResume={resumeTask}
+                />
+              ) : (
+                <div className="chat-workspace-container">
+                  <main className="main-chat">
+                    <ChatHeader
+                      isSidebarOpen={uiState.isSidebarOpen}
+                      isConfigDiffOpen={uiState.isConfigDiffOpen}
+                      isEditing={uiState.isEditingHeader}
+                      draftTitle={uiState.headerTitle}
+                      sessionTitle={activeSession?.title || "mikomai"}
+                      hostLabel={hostLabel}
+                    />
+
+                    <ChatPanel
+                      ref={messagesEndRef}
+                      messages={chatState.messages}
+                      formatMessageTime={formatMessageTime}
+                      sendMessage={handleSend}
+                      isResizing={isResizingLeft || isResizingRight}
+                    />
+
+                    <div
+                      className="input-area-wrapper"
+                      style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+                    >
+                      {chatState.messages.some((m) => m.status === "Running") && (
+                        <div className="global-loading-indicator"></div>
+                      )}
+                      <QuestionPanel
+                        questionQueue={questionQueue}
+                        totalQuestionsCount={totalQuestionsCount}
+                      />
+                      <ChatInput
+                        ref={textareaRef}
+                        modelStatus={modelState.modelStatus}
+                        modelPath={modelPath}
+                        input={chatState.input}
+                        setInput={setInput}
+                        showSuggestions={showSuggestions}
+                        setShowSuggestions={setShowSuggestions}
+                        filteredSuggestions={filteredSuggestions}
+                        suggestionIndex={suggestionIndex}
+                        setSuggestionIndex={setSuggestionIndex}
+                        handleSelectSuggestion={handleSelectSuggestion}
+                        handleSend={handleSend}
+                        handleStop={handleStop}
+                        isGenerating={isCurrentlyGenerating}
+                        handleLoadModel={handleLoadModel}
+                        onOpenSettings={() => mediate({ type: "navigate", panel: "settings" })}
+                        cursorPos={cursorPos}
+                        setCursorPos={setCursorPos}
+                        availableHosts={availableHosts}
+                        recentIPs={recentIPs}
+                        setFilteredSuggestions={setFilteredSuggestions}
+                      />
+                    </div>
+                  </main>
+                  {uiState.isConfigDiffOpen && (
+                    <div
+                      className={`resize-handle ${isResizingRight ? "active" : ""}`}
+                      onMouseDown={handleRightMouseDown}
+                    />
+                  )}
+                  {uiState.isConfigDiffOpen && (
+                    <ConfigDiffPanel
+                      id={diffCommitId}
+                      isOpen={uiState.isConfigDiffOpen}
+                      style={diffPanelStyle}
+                      isResizing={isResizingRight}
+                      onClose={handleCloseConfigDiff}
+                    />
+                  )}
+                </div>
+              )}
+            </Suspense>
+          </div>
+        </div>
+        <StatusBar
+          modelStatus={modelState.modelStatus}
+          modelPath={modelPath}
+          loadedModelPath={modelState.loadedModelPath}
+        />
+        {chatState.modalConfig && <CustomModal {...chatState.modalConfig} />}
+        <WatchNotificationToast />
+        <KeyringAccessModal />
+      </div>
+    </GuiEventScope>
+  );
+}
+
+export function RootMediator() {
+  const viewModel = useRootMediator();
+  return <AppLayoutView {...viewModel} />;
 }

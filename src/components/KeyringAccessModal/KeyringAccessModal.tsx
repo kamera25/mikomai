@@ -7,7 +7,7 @@ export interface KeyringAccessModalProps {
   forceOpen?: boolean;
 }
 
-export const KeyringAccessModal: React.FC<KeyringAccessModalProps> = ({ forceOpen }) => {
+function useKeyringAccessPresenter({ forceOpen }: KeyringAccessModalProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
@@ -49,9 +49,11 @@ export const KeyringAccessModal: React.FC<KeyringAccessModalProps> = ({ forceOpe
 
   const showModal = forceOpen !== undefined ? forceOpen : isOpen;
 
-  if (!showModal) {
-    return null;
-  }
+  return { showModal, t };
+}
+
+function KeyringAccessView({ showModal, t }: ReturnType<typeof useKeyringAccessPresenter>) {
+  if (!showModal) return null;
 
   return (
     <div
@@ -175,4 +177,8 @@ export const KeyringAccessModal: React.FC<KeyringAccessModalProps> = ({ forceOpe
       </div>
     </div>
   );
+}
+
+export const KeyringAccessModal: React.FC<KeyringAccessModalProps> = (props) => {
+  return <KeyringAccessView {...useKeyringAccessPresenter(props)} />;
 };

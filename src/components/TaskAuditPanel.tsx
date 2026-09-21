@@ -54,10 +54,12 @@ const eventLabel = (event: AuditEvent) => {
 const eventDetail = (event: AuditEvent) =>
   event.goal ?? event.reason ?? event.observation?.raw ?? [event.target, event.tool].filter(Boolean).join(" / ");
 
-export const TaskAuditPanel: React.FC<{
+interface TaskAuditPanelProps {
   onClose: () => void;
   onResume: (task: TaskSummary) => Promise<void>;
-}> = ({ onClose, onResume }) => {
+}
+
+function useTaskAuditPresenter({ onClose, onResume }: TaskAuditPanelProps) {
   const { state: modelState, handleLoadModel } = useModelContext();
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [selected, setSelected] = useState<TaskAudit | null>(null);
@@ -104,6 +106,12 @@ export const TaskAuditPanel: React.FC<{
     }
   };
 
+  return { onClose, modelStatus: modelState.modelStatus, tasks, selected, loading, resuming,
+    error, loadTasks, selectTask, handleResume };
+}
+
+function TaskAuditView({ onClose, modelStatus, tasks, selected, loading, resuming,
+  error, loadTasks, selectTask, handleResume }: ReturnType<typeof useTaskAuditPresenter>) {
   return (
     <div className="task-audit-overlay">
       <section className="task-audit-panel" aria-label="エージェント実行履歴">
@@ -171,9 +179,9 @@ export const TaskAuditPanel: React.FC<{
                   <button
                     className="task-resume-button"
                     onClick={() => void handleResume(selected.summary)}
-                    disabled={resuming || modelState.modelStatus === "Loading"}
+                    disabled={resuming || modelStatus === "Loading"}
                   >
-                    {resuming || modelState.modelStatus === "Loading" ? "モデル読み込み中..." : "この調査を再開"}
+                    {resuming || modelStatus === "Loading" ? "モデル読み込み中..." : "この調査を再開"}
                   </button>
                 </div>
 
@@ -209,4 +217,9 @@ export const TaskAuditPanel: React.FC<{
       </section>
     </div>
   );
+}
+
+export const TaskAuditPanel: React.FC<TaskAuditPanelProps> = (props) => {
+  const viewModel = useTaskAuditPresenter(props);
+  return <TaskAuditView {...viewModel} />;
 };

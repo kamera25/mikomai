@@ -86,7 +86,7 @@ interface ConnectionFormProps {
   onDeleteCurrent: () => void;
 }
 
-export const ConnectionForm: React.FC<ConnectionFormProps> = ({
+function useConnectionFormPresenter({
   editingId,
   connections,
   deviceTypes,
@@ -94,7 +94,7 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
   onClose,
   onSave,
   onDeleteCurrent,
-}) => {
+}: ConnectionFormProps) {
   const { t } = useTranslation();
 
   const editingConnection = editingId
@@ -159,6 +159,18 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
     onSave(data, isPasswordDirty, isEnablePasswordDirty, isPassphraseDirty);
   };
 
+  return {
+    editingId, t, onClose, onDeleteCurrent, handleSubmit, onSubmit,
+    register, control, deviceTypeOptions, editingConnection, connectionType,
+    errors, setValue, authMethod, handleSelectKeyFile,
+  };
+}
+
+function ConnectionFormView({
+    editingId, t, onClose, onDeleteCurrent, handleSubmit, onSubmit,
+    register, control, deviceTypeOptions, editingConnection, connectionType,
+    errors, setValue, authMethod, handleSelectKeyFile,
+}: ReturnType<typeof useConnectionFormPresenter>) {
   return (
     <div className="connection-form-modal-overlay">
       <form className="connection-form-card" onSubmit={handleSubmit(onSubmit)}>
@@ -430,4 +442,9 @@ export const ConnectionForm: React.FC<ConnectionFormProps> = ({
       </form>
     </div>
   );
+}
+
+export const ConnectionForm: React.FC<ConnectionFormProps> = (props) => {
+  const viewModel = useConnectionFormPresenter(props);
+  return <ConnectionFormView {...viewModel} />;
 };

@@ -36,7 +36,7 @@ describe("ChatInput Component", () => {
     handleStop: vi.fn(),
     isGenerating: false,
     handleLoadModel: vi.fn(),
-    setIsSettingsOpen: vi.fn(),
+    onOpenSettings: vi.fn(),
     cursorPos: 0,
     setCursorPos: vi.fn(),
     availableHosts: [],
@@ -59,7 +59,9 @@ describe("ChatInput Component", () => {
   it("calls handleSend and clears input when send button is clicked", () => {
     const handleSend = vi.fn();
     const setInput = vi.fn();
-    render(<ChatInput {...defaultProps} input="hello" handleSend={handleSend} setInput={setInput} />);
+    render(
+      <ChatInput {...defaultProps} input="hello" handleSend={handleSend} setInput={setInput} />
+    );
     const button = screen.getByTitle("送信");
     fireEvent.click(button);
     expect(handleSend).toHaveBeenCalledWith("hello", []);
@@ -68,7 +70,9 @@ describe("ChatInput Component", () => {
 
   it("allows sending a message even when the model is not loaded", () => {
     const handleSend = vi.fn();
-    render(<ChatInput {...defaultProps} modelStatus="NotLoaded" input="hello" handleSend={handleSend} />);
+    render(
+      <ChatInput {...defaultProps} modelStatus="NotLoaded" input="hello" handleSend={handleSend} />
+    );
     const button = screen.getByTitle("送信");
     expect(button).not.toBeDisabled();
     fireEvent.click(button);
@@ -98,7 +102,7 @@ describe("ChatInput Component", () => {
     );
 
     expect(setFilteredSuggestions).toHaveBeenCalledWith([
-      { hostname: "localhost", ip: "このコンピュータ" }
+      { hostname: "localhost", ip: "このコンピュータ" },
     ]);
 
     setFilteredSuggestions.mockClear();
@@ -116,7 +120,7 @@ describe("ChatInput Component", () => {
 
     expect(setFilteredSuggestions).toHaveBeenCalledWith([
       { hostname: "localhost", ip: "このコンピュータ" },
-      { hostname: "router-new", ip: "10.0.0.5" }
+      { hostname: "router-new", ip: "10.0.0.5" },
     ]);
   });
 
@@ -135,9 +139,7 @@ describe("ChatInput Component", () => {
       />
     );
 
-    expect(setFilteredSuggestions).toHaveBeenCalledWith([
-      { hostname: "router-1", ip: "10.0.0.1" }
-    ]);
+    expect(setFilteredSuggestions).toHaveBeenCalledWith([{ hostname: "router-1", ip: "10.0.0.1" }]);
     expect(setShowSuggestions).not.toHaveBeenCalled();
 
     setFilteredSuggestions.mockClear();

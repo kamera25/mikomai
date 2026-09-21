@@ -8,7 +8,7 @@ export interface InterfaceChoicePanelProps {
   onCancel: (id: string) => void;
 }
 
-export function InterfaceChoicePanel({
+function useInterfaceChoicePresenter({
   choice,
   progressPrefix,
   onSelect,
@@ -24,6 +24,18 @@ export function InterfaceChoicePanel({
   const isYamaha = vendor.toLowerCase().includes("yamaha");
   const isArista = vendor.toLowerCase().includes("arista");
 
+  return {
+    choice, progressPrefix, onSelect, onCancel, ciscoType, setCiscoType,
+    ciscoNum, setCiscoNum, customInterface, setCustomInterface,
+    vendor, isCisco, isYamaha, isArista,
+  };
+}
+
+function InterfaceChoiceView({
+    choice, progressPrefix, onSelect, onCancel, ciscoType, setCiscoType,
+    ciscoNum, setCiscoNum, customInterface, setCustomInterface,
+    vendor, isCisco, isYamaha, isArista,
+}: ReturnType<typeof useInterfaceChoicePresenter>) {
   return (
     <div
       className="input-choice-panel"
@@ -310,4 +322,9 @@ export function InterfaceChoicePanel({
       )}
     </div>
   );
+}
+
+export function InterfaceChoicePanel(props: InterfaceChoicePanelProps) {
+  const viewModel = useInterfaceChoicePresenter(props);
+  return <InterfaceChoiceView {...viewModel} />;
 }

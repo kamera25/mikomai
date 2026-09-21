@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { HistoryItem, Message } from "../../types";
 import { dedupeTimelineMessages } from "../../features/chat/chatReducer";
+import { useGuiEvent } from "../../gui/events";
 import { UserIcon, BookIcon, TerminalIcon, MessageIcon, ChevronIcon, FolderIcon, MenuDotsIcon, PlusIcon } from "../Icons";
 import "./Sidebar.css";
 
@@ -10,14 +11,6 @@ interface SidebarProps {
   history: HistoryItem[];
   activeSessionId: string;
   messages: Message[];
-  createNewFolder: () => void;
-  createNewSession: () => void;
-  toggleFolder: (folderId: string) => void;
-  switchSession: (sessionId: string) => void;
-  onTimelineItemClick?: (taskId: string) => void;
-  formatDate?: (dateString: string) => string;
-  renameSession: (sessionId: string, newTitle: string) => void;
-  deleteSession: (sessionId: string) => void;
   style?: React.CSSProperties;
   isResizing?: boolean;
 }
@@ -27,16 +20,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   history,
   activeSessionId,
   messages,
-  createNewSession,
-  toggleFolder,
-  switchSession,
-  onTimelineItemClick,
-  renameSession,
-  deleteSession,
   style,
   isResizing,
 }) => {
   const { t } = useTranslation();
+  const emit = useGuiEvent();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState<string>("");
@@ -44,7 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
   const handleSaveRename = (sessionId: string) => {
     if (editingTitle.trim()) {
-      renameSession(sessionId, editingTitle.trim());
+      emit({ type: "session.rename", id: sessionId, title: editingTitle.trim() });
     }
     setEditingSessionId(null);
   };
@@ -62,8 +50,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               className={`sidebar-timeline-item ${m.role} ${m.status?.toLowerCase() || ""} ${m.event_type?.toLowerCase() || ""}`}
               onClick={(e) => {
                 e.stopPropagation();
-                if (m.task_id && onTimelineItemClick) {
-                  onTimelineItemClick(m.task_id);
+                if (m.task_id) {
+                  emit({ type: "timeline.scroll", taskId: m.task_id });
                 }
               }}
               role="button"
@@ -71,8 +59,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  if (m.task_id && onTimelineItemClick) {
-                    onTimelineItemClick(m.task_id);
+                  if (m.task_id) {
+                    emit({ type: "timeline.scroll", taskId: m.task_id });
                   }
                 }
               }}
@@ -124,13 +112,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             <div
               className="folder-item"
               style={{ paddingLeft: `${level * 12 + 12}px` }}
-              onClick={() => toggleFolder(item.id)}
+              onClick={() => emit({ type: "session.folder.toggle", id: item.id })}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  toggleFolder(item.id);
+                  emit({ type: "session.folder.toggle", id: item.id });
                 }
               }}
             >
@@ -154,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               style={{ paddingLeft: `${level * 12 + 28}px` }}
               onClick={() => {
                 if (!isEditing) {
-                  switchSession(item.id);
+                  emit({ type: "session.select", id: item.id });
                 }
               }}
               onDoubleClick={(e) => {
@@ -170,7 +158,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
                   if (!isEditing) {
-                    switchSession(item.id);
+                    emit({ type: "session.select", id: item.id });
                   }
                 }
               }}
@@ -238,7 +226,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                           <button
                             className="session-menu-item delete"
                             onClick={() => {
-                              deleteSession(item.id);
+                              emit({ type: "session.delete", id: item.id });
                               setOpenMenuId(null);
                             }}
                           >
@@ -266,7 +254,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       <div className="sidebar-header">
         <h2>{t("sidebar.history_title")}</h2>
         <div className="header-actions">
-          <button className="icon-button" title={t("sidebar.btn_new_chat")} onClick={createNewSession}>
+          <button className="icon-button" title={t("sidebar.btn_new_chat")} onClick={() => emit({ type: "session.create" })}>
             <PlusIcon size={14} />
           </button>
         </div>

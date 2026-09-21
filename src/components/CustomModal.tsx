@@ -17,7 +17,7 @@ interface CustomModalProps {
   onCancel: () => void;
 }
 
-export const CustomModal: React.FC<CustomModalProps> = ({
+function useCustomModalPresenter({
   isOpen,
   type,
   title,
@@ -29,7 +29,7 @@ export const CustomModal: React.FC<CustomModalProps> = ({
   options = [],
   onConfirm,
   onCancel,
-}) => {
+}: CustomModalProps) {
   const { t } = useTranslation();
   const [inputValue, setInputValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -59,13 +59,25 @@ export const CustomModal: React.FC<CustomModalProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onCancel]);
 
-  if (!isOpen) return null;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (type === "prompt" && !inputValue.trim()) return;
     onConfirm(type === "prompt" ? inputValue : undefined);
   };
+
+  return {
+    isOpen, type, title, message, placeholder, options, onConfirm, onCancel,
+    inputValue, setInputValue, inputRef, displayConfirmLabel, displayCancelLabel,
+    isDanger, handleSubmit,
+  };
+}
+
+function CustomModalView({
+    isOpen, type, title, message, placeholder, options, onConfirm, onCancel,
+    inputValue, setInputValue, inputRef, displayConfirmLabel, displayCancelLabel,
+    isDanger, handleSubmit,
+}: ReturnType<typeof useCustomModalPresenter>) {
+  if (!isOpen) return null;
 
   const renderModalIcon = () => {
     if (type === "confirm") {
@@ -157,4 +169,9 @@ export const CustomModal: React.FC<CustomModalProps> = ({
       </div>
     </div>
   );
+}
+
+export const CustomModal: React.FC<CustomModalProps> = (props) => {
+  const viewModel = useCustomModalPresenter(props);
+  return <CustomModalView {...viewModel} />;
 };

@@ -8,7 +8,7 @@ interface WatchNotification {
   emittedAt: string;
 }
 
-export function WatchNotificationToast() {
+function useWatchNotificationPresenter() {
   const [notification, setNotification] = useState<WatchNotification | null>(null);
 
   useEffect(() => {
@@ -24,14 +24,22 @@ export function WatchNotificationToast() {
     };
   }, []);
 
+  return { notification, dismiss: () => setNotification(null) };
+}
+
+function WatchNotificationView({ notification, dismiss }: ReturnType<typeof useWatchNotificationPresenter>) {
   if (!notification) return null;
   return (
     <aside className="watch-notification" role="status">
       <strong>Watch alert</strong>
       <span>{notification.message}</span>
-      <button type="button" aria-label="Dismiss watch alert" onClick={() => setNotification(null)}>
+      <button type="button" aria-label="Dismiss watch alert" onClick={dismiss}>
         ×
       </button>
     </aside>
   );
+}
+
+export function WatchNotificationToast() {
+  return <WatchNotificationView {...useWatchNotificationPresenter()} />;
 }

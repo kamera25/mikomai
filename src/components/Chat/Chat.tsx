@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState, memo, useCallback } from "react";
+import { type ForwardedRef, forwardRef, useEffect, useRef, useState, memo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronIcon } from "../Icons";
 import { Message } from "../../types";
@@ -13,8 +13,7 @@ interface ChatProps {
   isResizing?: boolean;
 }
 
-export const Chat = memo(
-  forwardRef<HTMLDivElement, ChatProps>(({ messages, formatMessageTime, sendMessage }, ref) => {
+function useChatPresenter({ messages, formatMessageTime, sendMessage }: ChatProps, ref: ForwardedRef<HTMLDivElement>) {
     const { t } = useTranslation();
     const prevMessagesLength = useRef(messages.length);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -87,7 +86,17 @@ export const Chat = memo(
       }, 800);
     };
 
-    return (
+  return {
+    t, messages, formatMessageTime, sendMessage, containerRef, handleScroll,
+    ref, showScrollButton, scrollToBottom,
+  };
+}
+
+function ChatView({
+    t, messages, formatMessageTime, sendMessage, containerRef, handleScroll,
+    ref, showScrollButton, scrollToBottom,
+}: ReturnType<typeof useChatPresenter>) {
+  return (
       <div className="chat-container">
         <div className="chat-history" ref={containerRef} onScroll={handleScroll}>
           {messages.length === 0 ? (
@@ -120,7 +129,13 @@ export const Chat = memo(
           </button>
         )}
       </div>
-    );
+  );
+}
+
+export const Chat = memo(
+  forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
+    const viewModel = useChatPresenter(props, ref);
+    return <ChatView {...viewModel} />;
   }),
   (prevProps, nextProps) => {
     // If currently resizing or starting to resize, prevent re-rendering of Chat component

@@ -8,7 +8,7 @@ interface ImageModalProps {
   onClose: () => void;
 }
 
-export const ImageModal: React.FC<ImageModalProps> = ({ src, alt, onClose }) => {
+function useImageModalPresenter({ src, alt, onClose }: ImageModalProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -19,6 +19,10 @@ export const ImageModal: React.FC<ImageModalProps> = ({ src, alt, onClose }) => 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
+  return { src, alt, onClose };
+}
+
+function ImageModalView({ src, alt, onClose }: ReturnType<typeof useImageModalPresenter>) {
   return (
     <div className="image-modal-overlay" onClick={onClose} data-testid="image-modal-overlay">
       <div className="image-modal-container" onClick={(e) => e.stopPropagation()}>
@@ -39,4 +43,8 @@ export const ImageModal: React.FC<ImageModalProps> = ({ src, alt, onClose }) => 
       </div>
     </div>
   );
+}
+
+export const ImageModal: React.FC<ImageModalProps> = (props) => {
+  return <ImageModalView {...useImageModalPresenter(props)} />;
 };

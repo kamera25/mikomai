@@ -3,22 +3,21 @@ import "./App.css";
 import { UIProvider } from "./contexts/UIContext";
 import { ModelProvider } from "./contexts/ModelContext";
 import { ChatProvider } from "./contexts/ChatContext";
-import { AppLayout } from "./components/AppLayout/AppLayout";
-import { WatchNotificationToast } from "./components/WatchNotificationToast";
-import { KeyringAccessModal } from "./components/KeyringAccessModal";
+import { RootMediator } from "./components/AppLayout/AppLayout";
+import { SettingsProvider } from "./contexts/SettingsContext";
 
-function App() {
+export function Root() {
   return (
-    <UIProvider>
-      <ModelProvider>
-        <ChatProvider>
-          <AppLayout />
-          <WatchNotificationToast />
-          <KeyringAccessModal />
-        </ChatProvider>
-      </ModelProvider>
-    </UIProvider>
+    <SettingsProvider>
+      <UIProvider>
+        <ModelProvider>
+          <ChatProvider>
+            <RootMediator />
+          </ChatProvider>
+        </ModelProvider>
+      </UIProvider>
+    </SettingsProvider>
   );
 }
 
-export default App;
+export default Root;

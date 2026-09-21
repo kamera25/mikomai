@@ -20,7 +20,7 @@ interface TimelineEventProps {
   sendMessage?: (text?: string) => Promise<void>;
 }
 
-export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }: TimelineEventProps) => {
+function useTimelinePresenter({ msg, formatMessageTime, sendMessage }: TimelineEventProps) {
   const { t } = useTranslation();
   const isNwDb = isNetworkDatabaseTool(msg.tool_id);
   const isChoice = isChoiceTool(msg.tool_id);
@@ -89,9 +89,22 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
   };
 
 
-  if (msg.isHidden) return null;
-
   const getContainerClass = () => messageContainerClass(msg);
+  return {
+    msg, formatMessageTime, t, isNwDb, isChoice, isExpanded, setIsExpanded,
+    copied, pathCopied, selectedImage, setSelectedImage, fileFetched,
+    openFileManagerLabel, handleDeviceRetrievalClick, handleCopy, handleCopyPath,
+    handleOpenPathInFileManager, handleFetchFileClick, getContainerClass,
+  };
+}
+
+function TimelineEventView({
+    msg, formatMessageTime, t, isNwDb, isChoice, isExpanded, setIsExpanded,
+    copied, pathCopied, selectedImage, setSelectedImage, fileFetched,
+    openFileManagerLabel, handleDeviceRetrievalClick, handleCopy, handleCopyPath,
+    handleOpenPathInFileManager, handleFetchFileClick, getContainerClass,
+}: ReturnType<typeof useTimelinePresenter>) {
+  if (msg.isHidden) return null;
 
   if (msg.event_type === "ToolExecution" && msg.tool_id === "validate_cisco_config") {
     return <CiscoValidationEvent msg={msg} />;
@@ -557,6 +570,11 @@ export const TimelineEvent = React.memo(({ msg, formatMessageTime, sendMessage }
       )}
     </div>
   );
+}
+
+export const TimelineEvent = React.memo((props: TimelineEventProps) => {
+  const viewModel = useTimelinePresenter(props);
+  return <TimelineEventView {...viewModel} />;
 });
 
 TimelineEvent.displayName = "TimelineEvent";

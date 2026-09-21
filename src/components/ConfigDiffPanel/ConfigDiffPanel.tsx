@@ -12,13 +12,27 @@ interface ConfigDiffPanelProps {
   isResizing?: boolean;
 }
 
-export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = React.memo(({ id, isOpen, onClose, style, isResizing }) => {
+function useConfigDiffPresenter({ id, isOpen, onClose, style, isResizing }: ConfigDiffPanelProps) {
   const { state: uiState } = useUIContext();
   const proposedDiffData = uiState.configDiffData;
 
   const { phase, statusMessage, commitLogs, verifiedDiffData, activeTab, setActiveTab, forceCommitReq, operationPlan, logsEndRef, steps, collapsedSteps, currentTime, toggleStepCollapse, handleCommit, handleForceCommitChoice } = useConfigDiffExecution({ id, isOpen, proposedDiffData });
   const diffData = verifiedDiffData || proposedDiffData;
 
+  return {
+    isOpen, onClose, style, isResizing, phase, statusMessage, commitLogs,
+    verifiedDiffData, activeTab, setActiveTab, forceCommitReq, operationPlan,
+    logsEndRef, steps, collapsedSteps, currentTime, toggleStepCollapse,
+    handleCommit, handleForceCommitChoice, diffData,
+  };
+}
+
+function ConfigDiffView({
+    isOpen, onClose, style, isResizing, phase, statusMessage, commitLogs,
+    verifiedDiffData, activeTab, setActiveTab, forceCommitReq, operationPlan,
+    logsEndRef, steps, collapsedSteps, currentTime, toggleStepCollapse,
+    handleCommit, handleForceCommitChoice, diffData,
+}: ReturnType<typeof useConfigDiffPresenter>) {
   if (!diffData && phase === "idle") {
     return (
       <div className={`config-diff-panel ${isOpen ? "open" : "collapsed"}`}>
@@ -343,6 +357,11 @@ export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = React.memo(({ id,
       </div>
     </div>
   );
+}
+
+export const ConfigDiffPanel: React.FC<ConfigDiffPanelProps> = React.memo((props) => {
+  const viewModel = useConfigDiffPresenter(props);
+  return <ConfigDiffView {...viewModel} />;
 });
 
 ConfigDiffPanel.displayName = "ConfigDiffPanel";

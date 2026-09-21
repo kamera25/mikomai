@@ -112,7 +112,7 @@ export function validateIpAndSubnet(
   return { isValid: true };
 }
 
-export function IpAddressChoicePanel({
+function useIpAddressPresenter({
   choice,
   progressPrefix,
   onSelect,
@@ -170,6 +170,16 @@ export function IpAddressChoicePanel({
 
   const isSubnetCidr = choice.subnet && choice.subnet.includes("/");
 
+  return {
+    choice, progressPrefix, onCancel, ipAddress, setIpAddress, subnetMask,
+    setSubnetMask, validationError, handleSubmit, isSubnetCidr,
+  };
+}
+
+function IpAddressChoiceView({
+    choice, progressPrefix, onCancel, ipAddress, setIpAddress, subnetMask,
+    setSubnetMask, validationError, handleSubmit, isSubnetCidr,
+}: ReturnType<typeof useIpAddressPresenter>) {
   return (
     <div
       className="input-choice-panel"
@@ -361,4 +371,9 @@ export function IpAddressChoicePanel({
       </button>
     </div>
   );
+}
+
+export function IpAddressChoicePanel(props: IpAddressChoicePanelProps) {
+  const viewModel = useIpAddressPresenter(props);
+  return <IpAddressChoiceView {...viewModel} />;
 }

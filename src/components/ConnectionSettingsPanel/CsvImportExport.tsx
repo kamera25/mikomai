@@ -9,10 +9,10 @@ interface CsvImportExportProps {
   onConnectionsChanged?: () => void;
 }
 
-export const CsvImportExport: React.FC<CsvImportExportProps> = ({
+function useCsvPresenter({
   setConnections,
   onConnectionsChanged,
-}) => {
+}: CsvImportExportProps) {
   const { t } = useTranslation();
   const handleImportCsv = async () => {
     const selected = await open({ multiple: false, filters: [{ name: "CSV", extensions: ["csv"] }] });
@@ -28,6 +28,10 @@ export const CsvImportExport: React.FC<CsvImportExportProps> = ({
     if (path) await ipc.command(COMMANDS.exportConnections, { path });
   };
 
+  return { t, handleImportCsv, handleExportCsv };
+}
+
+function CsvImportExportView({ t, handleImportCsv, handleExportCsv }: ReturnType<typeof useCsvPresenter>) {
   return (
     <div className="csv-actions">
       <button className="toolbar-btn csv-btn" onClick={() => void handleImportCsv()}>
@@ -66,4 +70,9 @@ export const CsvImportExport: React.FC<CsvImportExportProps> = ({
       </button>
     </div>
   );
+}
+
+export const CsvImportExport: React.FC<CsvImportExportProps> = (props) => {
+  const viewModel = useCsvPresenter(props);
+  return <CsvImportExportView {...viewModel} />;
 };

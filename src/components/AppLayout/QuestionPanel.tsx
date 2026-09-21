@@ -2,28 +2,15 @@ import { QuestionItem } from "../../hooks/useQuestionQueue";
 import { ChoicePanel } from "./ChoicePanel";
 import { InterfaceChoicePanel } from "./InterfaceChoicePanel";
 import { IpAddressChoicePanel } from "./IpAddressChoicePanel";
+import { useGuiEvent } from "../../gui/events";
 
 interface QuestionPanelProps {
   questionQueue: QuestionItem[];
   totalQuestionsCount: number;
-  handleSelectChoice: (id: string, option: string) => void;
-  handleCancelChoice: (id: string) => void;
-  handleSelectInterface: (id: string, option: string) => void;
-  handleCancelInterface: (id: string) => void;
-  handleSelectIpAddress: (id: string, option: string) => void;
-  handleCancelIpAddress: (id: string) => void;
 }
 
-export function QuestionPanel({
-  questionQueue,
-  totalQuestionsCount,
-  handleSelectChoice,
-  handleCancelChoice,
-  handleSelectInterface,
-  handleCancelInterface,
-  handleSelectIpAddress,
-  handleCancelIpAddress,
-}: QuestionPanelProps) {
+export function QuestionPanel({ questionQueue, totalQuestionsCount }: QuestionPanelProps) {
+  const emit = useGuiEvent();
   if (questionQueue.length === 0) return null;
 
   const currentQuestion = questionQueue[0];
@@ -36,8 +23,8 @@ export function QuestionPanel({
         key={currentQuestion.data.id}
         choice={currentQuestion.data}
         progressPrefix={progressPrefix}
-        onSelect={handleSelectChoice}
-        onCancel={handleCancelChoice}
+        onSelect={(id, value) => emit({ type: "question.answer", kind: "choice", id, value })}
+        onCancel={(id) => emit({ type: "question.cancel", kind: "choice", id })}
       />
     );
   }
@@ -48,8 +35,8 @@ export function QuestionPanel({
         key={currentQuestion.data.id}
         choice={currentQuestion.data}
         progressPrefix={progressPrefix}
-        onSelect={handleSelectIpAddress}
-        onCancel={handleCancelIpAddress}
+        onSelect={(id, value) => emit({ type: "question.answer", kind: "ipaddress", id, value })}
+        onCancel={(id) => emit({ type: "question.cancel", kind: "ipaddress", id })}
       />
     );
   }
@@ -59,8 +46,8 @@ export function QuestionPanel({
       key={currentQuestion.data.id}
       choice={currentQuestion.data}
       progressPrefix={progressPrefix}
-      onSelect={handleSelectInterface}
-      onCancel={handleCancelInterface}
+      onSelect={(id, value) => emit({ type: "question.answer", kind: "interface", id, value })}
+      onCancel={(id) => emit({ type: "question.cancel", kind: "interface", id })}
     />
   );
 }
