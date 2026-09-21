@@ -101,7 +101,7 @@ export function chatReducer(state: ChatReducerState, action: ChatAction): ChatRe
     case "mcpInitialFinished": {
       if (!id) return state;
       const content = text((event.payload as { content?: unknown }).content);
-      return next({ messages: updateTask(state.messages, id, (message) => ({ ...message, content, isToolLoading: false })), activeInitialTaskId: state.activeInitialTaskId === id ? null : state.activeInitialTaskId });
+      return next({ messages: updateTask(state.messages, id, (message) => message.event_type === "AgentResponse" ? { ...message, content, isHidden: content === "", isToolLoading: false } : message), activeInitialTaskId: state.activeInitialTaskId === id ? null : state.activeInitialTaskId });
     }
     case "mcpSummarySaved": {
       if (!id) return state;

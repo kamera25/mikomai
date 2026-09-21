@@ -242,6 +242,18 @@ async fn run_worker_request(
             log::info!(
                 "[run_worker_request] LLM router identified Route::Agent; handing off to AgentLoop"
             );
+            // The router's progress card belongs to this task ID. Close it
+            // before AgentLoop starts its own task, or it remains in Planning
+            // after the agent's final answer has arrived.
+            let _ = window.emit(
+                "chat-event",
+                crate::mcp::protocol::ChatEvent::McpInitialFinished(
+                    crate::mcp::protocol::InitialFinishedPayload {
+                        task_id,
+                        content: String::new(),
+                    },
+                ),
+            );
             let mut agent_loop = crate::harness::agent_loop::AgentLoop::new(app, window, 10);
             return agent_loop.run(user_message, llama_state).await;
         }

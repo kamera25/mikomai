@@ -42,6 +42,16 @@ describe("chatReducer", () => {
     expect(state.messages[0].isToolLoading).toBe(false);
   });
 
+  it("hides router progress when the request is handed to AgentLoop", () => {
+    let state = chatReducer(initialChatReducerState, { type: "event", event: event("mcpInitialStarted", "router", { taskId: "router" }) });
+    state = chatReducer(state, { type: "event", event: event("llmChunk", "router", "```agent-step\nphase: planning\nstep: 1\n```") });
+    state = chatReducer(state, { type: "event", event: event("mcpInitialFinished", "router", { taskId: "router", content: "" }) });
+    state = chatReducer(state, { type: "event", event: event("mcpInitialStarted", "agent", { taskId: "agent" }) });
+    state = chatReducer(state, { type: "event", event: event("mcpInitialFinished", "agent", { taskId: "agent", content: "MACアドレスは ea:f1:92:50:7b:c3 です。" }) });
+    expect(state.messages[0]).toMatchObject({ content: "", isHidden: true, isToolLoading: false });
+    expect(state.messages[1]).toMatchObject({ content: "MACアドレスは ea:f1:92:50:7b:c3 です。", isHidden: false, isToolLoading: false });
+  });
+
   it("keeps at most twenty summaries", () => {
     let state = initialChatReducerState;
     for (let i = 0; i < 21; i++) state = chatReducer(state, { type: "event", event: event("mcpSummarySaved", `task-${i}`, { taskId: `task-${i}`, summary: { timestamp: String(i), content: String(i) }, content: String(i) }) });
