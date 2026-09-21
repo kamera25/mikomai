@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatReducer, initialChatReducerState } from "./chatReducer";
+import { chatReducer, dedupeTimelineMessages, initialChatReducerState } from "./chatReducer";
 import type { ChatEvent } from "../../platform";
 
 const event = (type: ChatEvent["type"], taskId: string, payload: ChatEvent["payload"], sequence?: number): ChatEvent => ({ type, taskId, payload, sequence } as ChatEvent);
@@ -11,6 +11,26 @@ describe("chatReducer", () => {
     const older = chatReducer(started, { type: "event", event: event("mcpInitialFinished", "task-1", { taskId: "task-1", content: "old" }, 1) });
     expect(duplicate).toEqual(started);
     expect(older).toEqual(started);
+  });
+
+  it("does not append a second initial progress message for a duplicate event", () => {
+    const started = chatReducer(initialChatReducerState, {
+      type: "event",
+      event: event("mcpInitialStarted", "task-1", { taskId: "task-1" }),
+    });
+    const duplicate = chatReducer(started, {
+      type: "event",
+      event: event("mcpInitialStarted", "task-1", { taskId: "task-1" }),
+    });
+    expect(duplicate.messages).toHaveLength(1);
+  });
+
+  it("hides replayed initial progress cards with the same task id", () => {
+    const started = chatReducer(initialChatReducerState, {
+      type: "event",
+      event: event("mcpInitialStarted", "task-1", { taskId: "task-1" }),
+    });
+    expect(dedupeTimelineMessages([...started.messages, ...started.messages])).toHaveLength(1);
   });
 
   it("preserves event order for streaming content and finishes the task", () => {

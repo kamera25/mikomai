@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { HistoryItem, Message } from "../../types";
+import { dedupeTimelineMessages } from "../../features/chat/chatReducer";
 import { UserIcon, BookIcon, TerminalIcon, MessageIcon, ChevronIcon, FolderIcon, MenuDotsIcon, PlusIcon } from "../Icons";
 import "./Sidebar.css";
 
@@ -49,7 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   };
 
   const renderSessionTimeline = () => {
-    const timelineEvents = messages.filter((m) => !m.isHidden);
+    const timelineEvents = dedupeTimelineMessages(messages).filter((m) => !m.isHidden);
     if (timelineEvents.length === 0) return null;
 
     return (

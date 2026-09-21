@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronIcon } from "../Icons";
 import { Message } from "../../types";
 import { TimelineEvent } from "../../features/chat/TimelineEvent";
+import { dedupeTimelineMessages } from "../../features/chat/chatReducer";
 import "./Chat.css";
 
 interface ChatProps {
@@ -99,7 +100,7 @@ export const Chat = memo(
               <p>{t("chat.welcome_message_2")}</p>
             </div>
           ) : (
-            messages.map((msg, idx) => (
+            dedupeTimelineMessages(messages).map((msg, idx) => (
               <TimelineEvent
                 // A task can produce several timeline messages while the
                 // worker streams progress; task_id alone is not unique.

@@ -13,6 +13,23 @@ export const initialChatReducerState: ChatReducerState = {
   messages: [], summaries: [], activeInitialTaskId: null, activeAnalysisTaskId: null, lastSequenceByTask: {},
 };
 
+/** Remove duplicate progress cards from replayed or duplicated IPC events. */
+export function dedupeTimelineMessages(messages: Message[]): Message[] {
+  const seenInitialProgress = new Set<string>();
+  return messages.filter((message) => {
+    if (
+      message.event_type === "AgentResponse" &&
+      message.isToolLoading &&
+      message.task_id &&
+      message.content.startsWith("考えています")
+    ) {
+      if (seenInitialProgress.has(message.task_id)) return false;
+      seenInitialProgress.add(message.task_id);
+    }
+    return true;
+  });
+}
+
 type ChatAction =
   | { type: "event"; event: EventEnvelope }
   | { type: "setMessages"; messages: Message[] }
@@ -56,6 +73,9 @@ export function chatReducer(state: ChatReducerState, action: ChatAction): ChatRe
     }
     case "mcpInitialStarted": {
       if (!id) return state;
+      if (state.messages.some((message) =>
+        message.task_id === id && message.event_type === "AgentResponse" && message.isToolLoading
+      )) return state;
       const payload = event.payload as { hasImage?: boolean };
       const message: Message = { role: "ai", content: payload.hasImage ? "画像を読み込んでいます..." : "考えています...", timestamp: new Date().toISOString(), isToolLoading: true, task_id: id, event_type: "AgentResponse" };
       return next({ messages: [...state.messages, message], activeInitialTaskId: id });

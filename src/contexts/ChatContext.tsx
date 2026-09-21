@@ -3,6 +3,7 @@ import { ipc, COMMANDS } from "../platform";
 import { Message, ChatSession, HistoryItem, SummaryItem, HistoryMutation, HistorySnapshot } from "../types";
 import { useSettingsContext } from "./SettingsContext";
 import i18n from "../i18n";
+import { dedupeTimelineMessages } from "../features/chat/chatReducer";
 
 export interface ModalConfig {
   isOpen: boolean;
@@ -96,7 +97,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         history: action.payload.history,
         activeSessionId: action.payload.sessionId,
-        messages: action.payload.messages,
+        messages: dedupeTimelineMessages(action.payload.messages),
         isLoaded: true,
       };
     case "SET_HISTORY":
@@ -104,9 +105,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case "SET_ACTIVE_SESSION_ID":
       return { ...state, activeSessionId: action.payload };
     case "SET_MESSAGES": {
-      const nextMessages = typeof action.payload === "function"
+      const nextMessages = dedupeTimelineMessages(typeof action.payload === "function"
         ? (action.payload as (prev: Message[]) => Message[])(state.messages)
-        : action.payload;
+        : action.payload);
 
       return {
         ...state,

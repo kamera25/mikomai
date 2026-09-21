@@ -9,8 +9,17 @@ export function useChatEvents(consume: ChatEventConsumer, enabled = true) {
     if (!enabled) return;
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    void ipc.subscribeChat((event) => { if (!cancelled) consume(event as EventEnvelope); }).then((cleanup) => {
-      if (cancelled) cleanup(); else unlisten = cleanup;
+    // React StrictMode runs setup/cleanup once during development. Deferring
+    // registration lets the provisional setup observe its cancellation before
+    // it creates a native Tauri listener, preventing duplicate event streams.
+    void Promise.resolve().then(() => {
+      if (cancelled) return undefined;
+      return ipc.subscribeChat((event) => {
+        if (!cancelled) consume(event as EventEnvelope);
+      });
+    }).then((cleanup) => {
+      if (!cleanup) return;
+      if (cancelled) void cleanup(); else unlisten = cleanup;
     }).catch((error: unknown) => {
       if (!cancelled) console.error("Failed to subscribe to chat events:", error);
     });
