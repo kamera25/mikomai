@@ -1,5 +1,15 @@
 # Mikomai 開発・検証スキルガイド
 
+## 一斉Regression test
+
+ユーザーが回帰試験・全件試験・一斉試験を指示した場合は、プロジェクト内スキル [mikomai-regression](skills/mikomai-regression/SKILL.md) を使い、次を実行します。
+
+```bash
+bash .agents/skills/mikomai-regression/scripts/run_regression.sh
+```
+
+このスキルは Rust ワークスペース、フロントエンド単体テスト、優先度付き10ケース、現在の CLI 基準応答をまとめて検証します。基準応答は明示的な合意なしに更新しません。GUI 側 LLM、SurrealDB、実機 MCP、実機疎通は自動試験の対象外として未検証で報告します。
+
 ## 必須ルールと検証範囲
 
 コード修正、新機能実装、リファクタリング、設定変更の完了前には、最終変更後の `mikomai-cli chat` を必ず実行してください。CLI の基本動作確認に加え、変更した機能の受け入れ条件を検証します。
