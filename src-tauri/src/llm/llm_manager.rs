@@ -296,7 +296,13 @@ pub fn run_inference_with_grammar(
     let mut n_cur = current_pos;
 
     let mut samplers = Vec::new();
-    samplers.push(LlamaSampler::penalties(64, repetition_penalty, 0.0, 0.0));
+    samplers.push(LlamaSampler::penalties(
+        agent_ctx.model.n_vocab(),
+        64,
+        repetition_penalty,
+        0.0,
+        0.0,
+    ));
     if let Some(g_sampler) = grammar_sampler {
         samplers.push(g_sampler);
     }

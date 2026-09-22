@@ -20,6 +20,16 @@ pub fn build_planner_schema(registered_devices: &[String]) -> String {
         r#"{ "type": ["string", "null"] }"#.to_string()
     };
 
+    let mut tool_enum: Vec<serde_json::Value> = crate::mcp::executor::registry::get_tool_registry()
+        .keys()
+        .cloned()
+        .map(serde_json::Value::String)
+        .collect();
+    tool_enum.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
+    tool_enum.push(serde_json::Value::Null);
+    let tool_enum_json =
+        serde_json::to_string(&tool_enum).expect("planner tool enum is serializable");
+
     format!(
         r#"{{
   "type": "object",
@@ -29,7 +39,7 @@ pub fn build_planner_schema(registered_devices: &[String]) -> String {
       "enum": ["OBSERVE", "VERIFY", "CONFIGURE", "ROLLBACK", "ASK_HUMAN", "FINISH"]
     }},
     "objective": {{ "type": "string" }},
-    "tool": {{ "type": ["string", "null"] }},
+    "tool": {{ "enum": {tool_enum_json} }},
     "target": {target_schema},
     "parameters": {{
       "type": "object",
@@ -170,5 +180,20 @@ mod tests {
         assert!(dynamic_schema.contains(r#""enum": ["NakaokuGW","192.168.50.1","rt01"]"#));
         let res = llama_cpp_2::json_schema_to_grammar(&dynamic_schema);
         assert!(res.is_ok(), "Schema conversion failed: {:?}", res);
+    }
+
+    #[test]
+    fn planner_tool_enum_contains_only_registered_tools_and_null() {
+        let schema: serde_json::Value =
+            serde_json::from_str(&build_planner_schema(&[])).expect("valid planner schema");
+        let tools = schema["properties"]["tool"]["enum"]
+            .as_array()
+            .expect("tool enum");
+
+        assert!(tools.iter().any(|value| value == "query_nw_db"));
+        assert!(tools.iter().any(serde_json::Value::is_null));
+        assert!(!tools.iter().any(|value| {
+            value == "query_nw_db_db_search_tool_name_placeholder_for_clarity_if_needed"
+        }));
     }
 }

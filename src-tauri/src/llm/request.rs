@@ -570,6 +570,7 @@ fn handle_internal(
     let mut n_cur = batch.n_tokens();
 
     let mut samplers = vec![LlamaSampler::penalties(
+        shared_model.model.n_vocab(),
         64,
         settings.repetition_penalty,
         0.0,
