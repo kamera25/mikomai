@@ -53,6 +53,16 @@ pub fn shutdown_desktop(app: &tauri::AppHandle) {
     let status = state.status.blocking_lock();
     if let crate::llm::ModelState::Loading = *status {
         log::info!("Exiting while model is loading; using fast exit to prevent crash.");
+        // SAFETY: When terminating the application while llama.cpp is actively loading a large GGUF
+        // model in native background C++ threads, standard Rust runtime exit (`std::process::exit`)
+        // triggers userspace atexit handlers, TLS destructors, and static C++ destructors.
+        // Because llama.cpp C++ loader threads are mid-execution and memory structures are half-initialized,
+        // running those destructors causes segmentation faults (SIGSEGV) or heap-corruption crashes.
+        // Invoking `_exit(0)` on Unix or `ExitProcess(0)` on Windows bypasses userspace destructors and
+        // hands termination directly to the OS kernel, which cleanly reclaims all process memory and handles.
+        // This is safe because:
+        // 1. All necessary persistent state (such as chat history) has already been flushed in `cleanup_running_history_on_exit` above.
+        // 2. The OS kernel unconditionally reclaims all mapped memory, file descriptors, and worker threads.
         #[cfg(unix)]
         unsafe {
             extern "C" {

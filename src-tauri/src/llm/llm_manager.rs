@@ -42,11 +42,7 @@ impl std::ops::Deref for SharedModel {
 }
 
 pub struct AgentContext {
-    // IMPORTANT: Field ordering matters for drop safety.
-    // `ctx` MUST be declared before `_backend` and `model` so that it is dropped first.
-    // This guarantees the LlamaContext (which borrows from model/backend) is destroyed
-    // before the Arc references that keep the underlying data alive.
-    pub ctx: LlamaContext<'static>,
+    pub ctx: std::mem::ManuallyDrop<LlamaContext<'static>>,
     pub model: Arc<LlamaModel>,
     _backend: Arc<LlamaBackend>,
     pub base_n_past: u32,
@@ -55,9 +51,32 @@ pub struct AgentContext {
     pub response_prefix: Option<String>,
 }
 
-// SAFETY: AgentContext is only accessed through std::sync::Mutex in SharedWorkers,
-// ensuring exclusive access. LlamaContext itself is not Send/Sync, but our usage
-// pattern (single-threaded inference worker with Mutex protection) makes this safe.
+// Explicit drop implementation guarantees that `ctx` (which borrows backend and model)
+// is destroyed before `_backend` and `model` Arc pointers are dropped, eliminating reliance
+// on implicit struct field ordering.
+impl Drop for AgentContext {
+    fn drop(&mut self) {
+        // SAFETY: `ctx` holds raw pointers borrowed from `self.model` and `self._backend`.
+        // By calling ManuallyDrop::drop(&mut self.ctx) here, `ctx` is destroyed before the
+        // remaining fields (`model` and `_backend`) are dropped by Rust, preventing any
+        // use-after-free or dangling reference.
+        unsafe {
+            std::mem::ManuallyDrop::drop(&mut self.ctx);
+        }
+    }
+}
+
+// SAFETY:
+// 1. Send: AgentContext is sent across threads into `SharedWorkers` and wrapped in `std::sync::Mutex`.
+//    Although `llama_cpp_2::context::LlamaContext` does not implement `Send` by default because it wraps
+//    a raw C pointer (`*mut llama_context`), the underlying llama.cpp C API context is safe to transfer
+//    between threads as long as it is not concurrently accessed from multiple threads.
+// 2. Sync: AgentContext is only ever accessed while holding the exclusive `std::sync::Mutex` lock in
+//    `SharedWorkers`, preventing any concurrent access from multiple threads. No raw pointers are exposed
+//    or shared across threads without synchronization.
+// 3. Lifetime: The underlying model and backend are kept alive by `Arc<LlamaModel>` and `Arc<LlamaBackend>`
+//    stored alongside `ctx` within `AgentContext`. `AgentContext::drop` explicitly destroys `ctx` before
+//    the `Arc` references are decremented, preventing dangling pointers.
 unsafe impl Send for AgentContext {}
 unsafe impl Sync for AgentContext {}
 
@@ -88,11 +107,15 @@ impl AgentContext {
         ctx_params = ctx_params.with_type_v(llama_cpp_2::context::params::KvCacheType::Q4_0);
         ctx_params = ctx_params.with_flash_attention_policy(1);
 
-        // SAFETY: We obtain a &'static reference from the Arc pointer. This is safe because:
-        // 1. The Arc<LlamaBackend> is stored in `self._backend`, keeping the data alive.
-        // 2. The `ctx` field is declared before `_backend` in the struct, so Rust's drop order
-        //    guarantees the LlamaContext is dropped before the Arc<LlamaBackend>.
-        // 3. Therefore, the backend reference remains valid for the entire lifetime of `ctx`.
+        // SAFETY: We cast Arc pointers to &'static references for LlamaContext initialization.
+        // This is safe because:
+        // 1. `Arc<LlamaBackend>` and `Arc<LlamaModel>` are cloned and stored within `self._backend`
+        //    and `self.model`, ensuring the referenced backend and model remain allocated in heap memory
+        //    for the entire lifespan of `AgentContext`.
+        // 2. `AgentContext` implements `Drop` using `ManuallyDrop::drop(&mut self.ctx)` to explicitly
+        //    destroy the `LlamaContext` before `self.model` and `self._backend` can be dropped.
+        // 3. `SharedModel` also implements `Drop` to clear workers before releasing model/backend.
+        // Therefore, the static references never outlive the underlying heap-allocated objects.
         let backend_ref: &'static LlamaBackend = unsafe { &*Arc::as_ptr(&backend) };
         let model_ref: &'static LlamaModel = unsafe { &*Arc::as_ptr(&model) };
 
@@ -111,7 +134,7 @@ impl AgentContext {
         let base_n_past = tokens_len as u32;
 
         Ok(Self {
-            ctx,
+            ctx: std::mem::ManuallyDrop::new(ctx),
             model,
             _backend: backend,
             base_n_past,
@@ -277,7 +300,7 @@ pub fn run_inference_with_grammar(
     }
 
     let mut guard = KVCacheGuard {
-        ctx: &mut agent_ctx.ctx,
+        ctx: &mut *agent_ctx.ctx,
         base_n_past: agent_ctx.base_n_past,
     };
 
