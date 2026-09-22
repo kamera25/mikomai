@@ -51,6 +51,23 @@ fn builder_handoff_outcome(output: &str) -> WorkerOutcome {
     }
 }
 
+fn repeats_last_graph_query(decision: &Decision, state: &NetworkState) -> bool {
+    if !matches!(decision.action_type, ActionType::Observe | ActionType::Verify)
+        || decision.tool.as_deref() != Some("query_network_graph")
+    {
+        return false;
+    }
+    state.observed.observations.last().is_some_and(|last| {
+        last.source.tool_name.as_deref() == Some("query_network_graph")
+            && last.source.device == decision.target
+            && decision.parameters.as_object().is_some_and(|proposed| {
+                last.source.parameters.as_ref().is_some_and(|executed| {
+                    proposed.iter().all(|(key, value)| executed.get(key) == Some(value))
+                })
+            })
+    })
+}
+
 impl AgentLoop {
     pub fn new(app: AppHandle, window: Window, max_steps: usize) -> Self {
         Self {
@@ -267,6 +284,19 @@ impl AgentLoop {
             // user-facing wording through the Coordinator below.
             if decision.action_type == ActionType::Finish {
                 decision.reason.clear();
+            }
+
+            if repeats_last_graph_query(&decision, &self.network_state) {
+                decision.action_type = ActionType::Finish;
+                decision.tool = None;
+                decision.target = None;
+                decision.parameters = serde_json::Value::Null;
+                decision.reason.clear();
+                decision.expected_observation.clear();
+                decision.final_answer = Some(
+                    "同じGraph照会が連続して提案されたため停止。新しい観測がなく、応答の有無は判定できない。"
+                        .to_string(),
+                );
             }
 
             log::info!(
@@ -619,9 +649,44 @@ impl AgentLoop {
 
 #[cfg(test)]
 mod tests {
-    use super::builder_handoff_outcome;
+    use super::{builder_handoff_outcome, repeats_last_graph_query};
     use crate::harness::coordinator::WorkerOutcome;
     use crate::harness::intent::is_configuration_change_request;
+    use crate::planner::decision::parse_decision_from_json;
+    use crate::state::events::{Observation, ObservationSource, Provenance, ProvenanceOrigin};
+    use crate::state::network_state::NetworkState;
+
+    #[test]
+    fn stops_consecutive_identical_graph_queries_but_allows_a_changed_query() {
+        let mut state = NetworkState::new();
+        state.apply_observation(Observation {
+            id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            raw: "Graph query failed".to_string(),
+            parsed: None,
+            source: ObservationSource {
+                device: None,
+                command: None,
+                tool_name: Some("query_network_graph".to_string()),
+                tool_kind: None,
+                parameters: Some(serde_json::json!({"query":"R1の経路","objective":"調査"})),
+            },
+            provenance: Provenance {
+                origin: ProvenanceOrigin::Tool,
+                confidence: Some(1.0),
+            },
+        });
+        let same = parse_decision_from_json(
+            r#"{"action_type":"OBSERVE","objective":"調査","tool":"query_network_graph","parameters":{"query":"R1の経路"}}"#,
+        )
+        .unwrap();
+        assert!(repeats_last_graph_query(&same, &state));
+        let changed = parse_decision_from_json(
+            r#"{"action_type":"OBSERVE","objective":"調査","tool":"query_network_graph","parameters":{"query":"R2の経路"}}"#,
+        )
+        .unwrap();
+        assert!(!repeats_last_graph_query(&changed, &state));
+    }
 
     #[test]
     fn only_change_requests_handoff_rag_to_builder_coworker() {

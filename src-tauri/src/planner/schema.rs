@@ -203,4 +203,30 @@ mod tests {
             value == "query_nw_db_db_search_tool_name_placeholder_for_clarity_if_needed"
         }));
     }
+
+    #[test]
+    fn short_mac_reachability_schema_excludes_free_text_graph_queries() {
+        let schema: serde_json::Value = serde_json::from_str(&build_goal_planner_schema(
+            &[],
+            "0:2b:f5:3c:cc:7cから応答があるかチェック",
+        ))
+        .unwrap();
+        let tools = &schema["properties"]["tool"]["anyOf"][0]["enum"];
+        assert!(tools
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("find_ip_by_mac")));
+        assert!(tools
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("self_network_ping")));
+        assert!(!tools
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("query_network_graph")));
+        assert_eq!(
+            schema["properties"]["parameters"]["properties"]["mac"]["enum"][0],
+            "00:2b:f5:3c:cc:7c"
+        );
+    }
 }

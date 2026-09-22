@@ -2,11 +2,42 @@ use crate::planner::fallback::finish_with_evidence_answer;
 use crate::state::events::Decision;
 use crate::state::network_state::NetworkState;
 
-pub fn mac_lookup_target(goal: &str) -> Option<&str> {
-    let pattern =
-        regex::Regex::new(r"(?i)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}|(?:[0-9a-f]{4}\.){2}[0-9a-f]{4}")
-            .expect("valid MAC pattern");
-    let mac = pattern.find(goal)?.as_str();
+fn mac_in_goal(goal: &str) -> Option<String> {
+    let pattern = regex::Regex::new(
+        r"(?i)(?:[0-9a-f]{1,2}[:-]){5}[0-9a-f]{1,2}|(?:[0-9a-f]{4}\.){2}[0-9a-f]{4}",
+    )
+    .expect("valid MAC pattern");
+    let normalized = pattern.find_iter(goal).find_map(|found| {
+        let before = goal[..found.start()].chars().last();
+        let after = goal[found.end()..].chars().next();
+        if before.is_some_and(|c| c.is_ascii_hexdigit() || matches!(c, ':' | '-' | '.'))
+            || after.is_some_and(|c| c.is_ascii_hexdigit() || matches!(c, ':' | '-' | '.'))
+        {
+            return None;
+        }
+        let value = found.as_str();
+        if value.contains('.') {
+            let digits = value.replace('.', "").to_ascii_lowercase();
+            return Some(
+                (0..6)
+                    .map(|i| &digits[i * 2..i * 2 + 2])
+                    .collect::<Vec<_>>()
+                    .join(":"),
+            );
+        }
+        Some(
+            value
+                .split([':', '-'])
+                .map(|octet| format!("{octet:0>2}").to_ascii_lowercase())
+                .collect::<Vec<_>>()
+                .join(":"),
+        )
+    });
+    normalized
+}
+
+pub fn mac_lookup_target(goal: &str) -> Option<String> {
+    let mac = mac_in_goal(goal)?;
     let lower = goal.to_ascii_lowercase();
     (lower.contains("ip")
         || goal.contains("ホスト")
@@ -20,7 +51,7 @@ pub fn requires_ping(goal: &str) -> bool {
     goal.contains("応答") || goal.contains("疎通") || goal.to_ascii_lowercase().contains("ping")
 }
 
-pub fn local_arp_mac_target(goal: &str) -> Option<&str> {
+pub fn local_arp_mac_target(goal: &str) -> Option<String> {
     let lower = goal.to_ascii_lowercase();
     let is_local = [
         "localhost",
@@ -36,24 +67,18 @@ pub fn local_arp_mac_target(goal: &str) -> Option<&str> {
     if !is_local || !lower.contains("arp") {
         return None;
     }
-    regex::Regex::new(r"(?i)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}")
-        .expect("valid MAC pattern")
-        .find(goal)
-        .map(|found| found.as_str())
+    mac_in_goal(goal)
 }
 
 /// Returns the MAC address from an ARP-table lookup request.  Unlike
 /// `local_arp_mac_target`, this also covers registered network devices (for
 /// example, "NakaokuGW のARPテーブル").
-pub fn arp_mac_target(goal: &str) -> Option<&str> {
+pub fn arp_mac_target(goal: &str) -> Option<String> {
     let lower = goal.to_ascii_lowercase();
     if !lower.contains("arp") {
         return None;
     }
-    regex::Regex::new(r"(?i)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}")
-        .expect("valid MAC pattern")
-        .find(goal)
-        .map(|found| found.as_str())
+    mac_in_goal(goal)
 }
 
 /// Build the first `get_state` action for an ARP MAC lookup on a registered
@@ -223,7 +248,7 @@ pub fn recover_mac_to_ip_lookup(
 
     let observations = &network_state.observed.observations;
     if observations.is_empty() {
-        set_mac_graph_lookup(decision, mac, "既存のGraph観測をMACで照合する");
+        set_mac_graph_lookup(decision, &mac, "既存のGraph観測をMACで照合する");
         return;
     }
     let latest_find = observations
@@ -306,7 +331,7 @@ pub fn recover_mac_to_ip_lookup(
     let needs_find = latest_arp
         .is_some_and(|(index, _)| latest_find.is_none_or(|(find_index, _)| index > find_index));
     if needs_find {
-        set_mac_graph_lookup(decision, mac, "最新のARP観測をGraphで照合する");
+        set_mac_graph_lookup(decision, &mac, "最新のARP観測をGraphで照合する");
         return;
     }
 
@@ -363,7 +388,11 @@ pub fn recover_mac_to_ip_lookup(
             decision.final_answer = None;
         }
     } else if latest_find.is_none() {
-        set_mac_graph_lookup(decision, mac, "登録機器がないため既存のGraph観測を確認する");
+        set_mac_graph_lookup(
+            decision,
+            &mac,
+            "登録機器がないため既存のGraph観測を確認する",
+        );
     } else {
         decision.action_type = crate::state::events::ActionType::AskHuman;
         decision.objective = format!(
@@ -510,6 +539,37 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("応答あり"));
+    }
+
+    #[test]
+    fn short_mac_octet_uses_endpoint_lookup_and_then_ping() {
+        let goal = "0:2b:f5:3c:cc:7cから応答があるかチェック";
+        let mac = "00:2b:f5:3c:cc:7c";
+        assert_eq!(mac_lookup_target(goal).as_deref(), Some(mac));
+        let mut state = NetworkState::with_goal(goal.to_string());
+        let mut decision = parse_decision_from_json(
+            r#"{"action_type":"OBSERVE","objective":"Graphを検索","tool":"query_network_graph","parameters":{"query":"0:2b:f5:3c:cc:7c"}}"#,
+        )
+        .unwrap();
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &[]);
+        assert_eq!(decision.tool.as_deref(), Some("find_ip_by_mac"));
+        assert_eq!(decision.parameters["mac"], mac);
+
+        add_tool_result(
+            &mut state,
+            "find_ip_by_mac",
+            None,
+            r#"{"found":true,"matches":[{"ip_address":"192.0.2.7"}]}"#,
+        );
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &[]);
+        assert_eq!(decision.tool.as_deref(), Some("self_network_ping"));
+        assert_eq!(decision.parameters["host"], "192.0.2.7");
+    }
+
+    #[test]
+    fn short_mac_octet_does_not_match_part_of_a_longer_address() {
+        assert!(mac_in_goal("000:2b:f5:3c:cc:7cから応答があるか").is_none());
+        assert!(mac_in_goal("0:2b:f5:3c:cc:7c:eeから応答があるか").is_none());
     }
 
     #[test]
