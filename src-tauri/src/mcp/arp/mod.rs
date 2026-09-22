@@ -28,7 +28,14 @@ pub(crate) fn collect_local_arp() -> Result<String, String> {
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    let raw = String::from_utf8_lossy(&output.stdout).into_owned();
+    if raw.trim().is_empty() {
+        return Err(
+            "arp -a returned no data; local ARP access may be unavailable to this app process"
+                .to_string(),
+        );
+    }
+    Ok(raw)
 }
 
 #[cfg(test)]

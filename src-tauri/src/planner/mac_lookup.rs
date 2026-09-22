@@ -156,15 +156,15 @@ pub fn recover_mac_to_ip_lookup(
                             .rev()
                             .find(|(index, entry)| {
                                 *index > latest_find.expect("find observation exists").0
-                                     && entry.source.tool_name.as_deref()
-                                         == Some("self_network_ping")
-                                     && entry
-                                         .source
-                                         .parameters
-                                         .as_ref()
-                                         .and_then(|parameters| parameters.get("host"))
-                                         .and_then(serde_json::Value::as_str)
-                                         == Some(ip)
+                                    && entry.source.tool_name.as_deref()
+                                        == Some("self_network_ping")
+                                    && entry
+                                        .source
+                                        .parameters
+                                        .as_ref()
+                                        .and_then(|parameters| parameters.get("host"))
+                                        .and_then(serde_json::Value::as_str)
+                                        == Some(ip)
                             });
                         if let Some((_, ping)) = ping {
                             finish_with_evidence_answer(

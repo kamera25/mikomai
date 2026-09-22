@@ -21,6 +21,29 @@ pub struct DecisionDto {
     pub final_answer: Option<String>,
 }
 
+fn normalize_tool_name(action_type: ActionType, tool: Option<String>) -> Option<String> {
+    let Some(tool_name) = tool else {
+        return None;
+    };
+
+    if crate::mcp::executor::registry::get_tool_registry().contains_key(&tool_name) {
+        return Some(tool_name);
+    }
+
+    // Older/local models occasionally copy the planner's explanatory text
+    // into the tool field. Recover only the read-only RAG family; every other
+    // unknown tool remains invalid and is rejected by SchemaValidator.
+    if matches!(action_type, ActionType::Observe | ActionType::Verify)
+        && ["query_nw_db", "network_query_nw_db", "query_rag"]
+            .iter()
+            .any(|name| tool_name.contains(name))
+    {
+        return Some("query_nw_db".to_string());
+    }
+
+    Some(tool_name)
+}
+
 pub fn parse_decision_from_json(raw_json: &str) -> Result<Decision, String> {
     let clean = crate::mcp::executor::extract_json_blocks(raw_json);
     let target_str = clean.first().map(|s| s.as_str()).unwrap_or(raw_json);
@@ -59,6 +82,7 @@ pub fn parse_decision_from_json(raw_json: &str) -> Result<Decision, String> {
     } else {
         parsed.reason
     };
+    let tool = normalize_tool_name(action_type, parsed.tool);
 
     Ok(Decision {
         id: uuid::Uuid::new_v4(),
@@ -69,7 +93,7 @@ pub fn parse_decision_from_json(raw_json: &str) -> Result<Decision, String> {
         } else {
             parsed.objective
         },
-        tool: parsed.tool,
+        tool,
         target: parsed.target,
         parameters: parsed.parameters,
         reason,
@@ -140,5 +164,20 @@ mod tests {
 
         let res = llama_cpp_2::json_schema_to_grammar(schema);
         assert!(res.is_ok(), "Schema conversion failed: {:?}", res);
+    }
+
+    #[test]
+    fn recovers_rag_tool_when_model_copies_explanatory_text() {
+        let decision = parse_decision_from_json(
+            r#"{
+                "action_type": "OBSERVE",
+                "objective": "NakaokuGWのVLAN設定を調査する",
+                "tool": "query_nw_db_db_search_tool_name_placeholder_use_query_nw_db",
+                "parameters": {"query": "[Context: NakaokuGW] VLAN 設定"}
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(decision.tool.as_deref(), Some("query_nw_db"));
     }
 }

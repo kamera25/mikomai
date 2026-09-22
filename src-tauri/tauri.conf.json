@@ -33,6 +33,7 @@
     ],
     "externalBin": ["binaries/netmiko_wrapper"],
     "macOS": {
+      "signingIdentity": "-",
       "infoPlist": "Info.plist",
       "entitlements": "Entitlements.plist"
     }
