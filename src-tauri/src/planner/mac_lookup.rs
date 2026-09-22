@@ -42,6 +42,97 @@ pub fn local_arp_mac_target(goal: &str) -> Option<&str> {
         .map(|found| found.as_str())
 }
 
+/// Returns the MAC address from an ARP-table lookup request.  Unlike
+/// `local_arp_mac_target`, this also covers registered network devices (for
+/// example, "NakaokuGW のARPテーブル").
+pub fn arp_mac_target(goal: &str) -> Option<&str> {
+    let lower = goal.to_ascii_lowercase();
+    if !lower.contains("arp") {
+        return None;
+    }
+    regex::Regex::new(r"(?i)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}")
+        .expect("valid MAC pattern")
+        .find(goal)
+        .map(|found| found.as_str())
+}
+
+/// Build the first `get_state` action for an ARP MAC lookup on a registered
+/// device, and finish from that observation on the next planner turn.
+pub fn plan_device_arp_mac_lookup(
+    network_state: &NetworkState,
+    goal: &str,
+    registered_devices: &[String],
+) -> Option<Decision> {
+    let mac = arp_mac_target(goal)?;
+    let lower_goal = goal.to_ascii_lowercase();
+    let device = registered_devices
+        .iter()
+        .find(|candidate| {
+            let name = candidate.trim();
+            !name.is_empty() && lower_goal.contains(&name.to_ascii_lowercase())
+        })
+        .or_else(|| registered_devices.first())?;
+
+    let mut decision = Decision {
+        id: uuid::Uuid::new_v4(),
+        timestamp: chrono::Utc::now(),
+        action_type: crate::state::events::ActionType::Observe,
+        objective: format!("{device} のARPテーブルで MAC {mac} を確認する"),
+        tool: Some("get_state".to_string()),
+        target: Some(device.clone()),
+        parameters: serde_json::json!({"device": device, "resource": "arp", "mac": mac}),
+        reason: vec!["指定機器のARPテーブルでMACアドレスを確認する".to_string()],
+        expected_observation: vec![format!("{device} の最新のARPエントリ")],
+        final_answer: None,
+    };
+
+    let observation = network_state
+        .observed
+        .observations
+        .iter()
+        .rev()
+        .find(|observation| {
+            observation.source.tool_name.as_deref() == Some("get_state")
+                && observation
+                    .source
+                    .parameters
+                    .as_ref()
+                    .is_some_and(|parameters| {
+                        parameters
+                            .get("device")
+                            .and_then(serde_json::Value::as_str)
+                            .is_some_and(|observed| observed.eq_ignore_ascii_case(device))
+                            && parameters
+                                .get("resource")
+                                .and_then(serde_json::Value::as_str)
+                                == Some("arp")
+                    })
+        });
+    if let Some(observation) = observation {
+        let normalized_mac = mac.replace('-', ":").to_ascii_lowercase();
+        let answer = serde_json::from_str::<serde_json::Value>(&observation.raw)
+            .ok()
+            .and_then(|value| value.get("arp_table").and_then(serde_json::Value::as_array).cloned())
+            .map(|entries| {
+                let matches: Vec<_> = entries.iter().filter(|entry| {
+                    entry.get("mac_address").and_then(serde_json::Value::as_str)
+                        .is_some_and(|observed| observed.eq_ignore_ascii_case(&normalized_mac))
+                }).collect();
+                if matches.is_empty() {
+                    format!("{device} のARPテーブルに MAC {normalized_mac} は存在しません。")
+                } else {
+                    let ips: Vec<_> = matches.iter().filter_map(|entry| {
+                        entry.get("ip_address").and_then(serde_json::Value::as_str)
+                    }).collect();
+                    format!("{device} のARPテーブルに MAC {normalized_mac} は存在します。対応IP: {}。", ips.join(", "))
+                }
+            })
+            .unwrap_or_else(|| format!("{device} のARPテーブルを取得または解析できず、MAC {normalized_mac} の有無は判定できません。観測結果: {}", observation.raw));
+        finish_with_evidence_answer(&mut decision, goal, answer);
+    }
+    Some(decision)
+}
+
 pub fn plan_local_arp_mac_lookup(network_state: &NetworkState, goal: &str) -> Option<Decision> {
     let mac = local_arp_mac_target(goal)?;
     let mut decision = Decision {
@@ -320,6 +411,28 @@ mod tests {
         state.observed.observations.last_mut().unwrap().raw = r#"{"arp_table":[]}"#.to_string();
         let absent = plan_local_arp_mac_lookup(&state, goal).unwrap();
         assert!(absent.final_answer.unwrap().contains("存在しません"));
+    }
+
+    #[test]
+    fn registered_device_arp_mac_lookup_always_supplies_get_state_arguments() {
+        let goal = "NakaokuGW のARPテーブルにea:f1:92:50:7b:c3は存在する？";
+        let state = NetworkState::with_goal(goal.to_string());
+        let decision = plan_device_arp_mac_lookup(
+            &state,
+            goal,
+            &["NakaokuGW".to_string(), "F220".to_string()],
+        )
+        .unwrap();
+        assert_eq!(decision.tool.as_deref(), Some("get_state"));
+        assert_eq!(decision.target.as_deref(), Some("NakaokuGW"));
+        assert_eq!(
+            decision.parameters,
+            serde_json::json!({
+                "device": "NakaokuGW",
+                "resource": "arp",
+                "mac": "ea:f1:92:50:7b:c3"
+            })
+        );
     }
 
     #[test]

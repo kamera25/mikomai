@@ -95,6 +95,11 @@ impl LlmPlanner {
         if let Some(decision) = plan_local_arp_mac_lookup(network_state, initial_goal) {
             return Ok(decision);
         }
+        if let Some(decision) =
+            plan_device_arp_mac_lookup(network_state, initial_goal, &registered_devices)
+        {
+            return Ok(decision);
+        }
 
         let dynamic_schema = build_goal_planner_schema(&registered_devices, initial_goal);
 
