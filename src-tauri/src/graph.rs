@@ -8,6 +8,7 @@ use crate::graph_identity::{content_hash as fnv1a, record_key};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::path::Path;
 use surrealdb::engine::local::{Db, RocksDb};
 use surrealdb::Surreal;
@@ -15,6 +16,51 @@ use tauri::Manager;
 use validator::Validate;
 
 pub const GRAPH_TTL_MINUTES: i64 = 20;
+
+#[derive(Clone, Copy)]
+pub enum EndpointLookup {
+    IpByMac,
+    MacByIp,
+    InterfaceByMac,
+}
+
+fn normalize_mac(value: &str) -> Option<String> {
+    let digits: String = value.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+    if digits.len() != 12
+        || !value
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || matches!(c, ':' | '-' | '.'))
+    {
+        return None;
+    }
+    let digits = digits.to_ascii_lowercase();
+    Some(
+        (0..6)
+            .map(|i| &digits[i * 2..i * 2 + 2])
+            .collect::<Vec<_>>()
+            .join(":"),
+    )
+}
+
+fn find_mac_table_ports(raw: &str, mac: &str) -> Vec<String> {
+    let mut ports = Vec::new();
+    for line in raw.lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 2
+            || !fields
+                .iter()
+                .any(|field| normalize_mac(field).as_deref() == Some(mac))
+        {
+            continue;
+        }
+        if let Some(port) = fields.last() {
+            if normalize_mac(port).is_none() && !ports.iter().any(|known| known == port) {
+                ports.push((*port).to_string());
+            }
+        }
+    }
+    ports
+}
 
 #[derive(Clone)]
 pub struct SurrealDbState {
@@ -82,6 +128,8 @@ pub struct GraphQueryResult {
     pub citations: Vec<Value>,
     /// Canonical documents restored directly from normalized observations.
     pub canonical: Vec<Value>,
+    /// Devices whose observed interface subnets contain the requested IP.
+    pub candidate_devices: Vec<Value>,
 }
 
 impl SurrealDbState {
@@ -452,6 +500,11 @@ DEFINE INDEX rag_chunk_embedding ON TABLE rag_chunk FIELDS embedding HNSW DIMENS
                     .cloned()
             })
             .collect();
+        let candidate_devices = if let Some(ip) = query.ip_address.as_deref() {
+            self.devices_for_ip(ip).await?
+        } else {
+            Vec::new()
+        };
         Ok(GraphQueryResult {
             fresh,
             requires_refresh: !fresh && device.is_some(),
@@ -459,7 +512,162 @@ DEFINE INDEX rag_chunk_embedding ON TABLE rag_chunk FIELDS embedding HNSW DIMENS
             relationships,
             citations,
             canonical,
+            candidate_devices,
         })
+    }
+
+    async fn devices_for_ip(&self, ip: &str) -> Result<Vec<Value>, String> {
+        let target: std::net::Ipv4Addr = match ip.parse() {
+            Ok(value) => value,
+            Err(_) => return Ok(Vec::new()),
+        };
+        let mut response = self.db.query(
+            "SELECT device_name, canonical, collected_at FROM observation WHERE kind = 'interfaces' ORDER BY collected_at DESC LIMIT 200;"
+        ).await.map_err(|e| format!("Failed to read interface observations: {e}"))?;
+        let records: Vec<Value> = response
+            .take(0)
+            .map_err(|e| format!("Failed to decode interface observations: {e}"))?;
+        let mut seen = HashSet::new();
+        let mut candidates = Vec::new();
+        for record in records {
+            let Some(device) = record.get("device_name").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(interfaces) = record
+                .get("canonical")
+                .and_then(|c| c.get("interfaces"))
+                .and_then(Value::as_array)
+            else {
+                continue;
+            };
+            if !seen.insert(device.to_string()) {
+                continue;
+            }
+            for interface in interfaces {
+                let prefix = interface.get("prefix_len").and_then(Value::as_u64);
+                for address in array(interface, "ipv4_addresses") {
+                    let Some(text) = address.as_str() else {
+                        continue;
+                    };
+                    let (base, inline_prefix) = text
+                        .split_once('/')
+                        .map_or((text, None), |(ip, bits)| (ip, Some(bits)));
+                    let Some(bits) = inline_prefix
+                        .and_then(|v| v.parse::<u32>().ok())
+                        .or(prefix.map(|v| v as u32))
+                        .filter(|v| *v <= 32)
+                    else {
+                        continue;
+                    };
+                    let Ok(base_ip) = base.parse::<std::net::Ipv4Addr>() else {
+                        continue;
+                    };
+                    let mask = if bits == 0 {
+                        0
+                    } else {
+                        u32::MAX << (32 - bits)
+                    };
+                    if u32::from(target) & mask == u32::from(base_ip) & mask {
+                        candidates.push(json!({"device_name":device,"interface":interface.get("name"),
+                            "subnet":format!("{base}/{bits}"),"collected_at":record.get("collected_at")}));
+                    }
+                }
+            }
+        }
+        Ok(candidates)
+    }
+
+    /// Resolve endpoint identities only from committed, recent graph observations.
+    pub async fn find_endpoint(
+        &self,
+        lookup: EndpointLookup,
+        value: &str,
+        device_name: Option<&str>,
+    ) -> Result<Value, String> {
+        let needle = match lookup {
+            EndpointLookup::MacByIp => value
+                .parse::<std::net::IpAddr>()
+                .map_err(|_| "A valid IP address is required".to_string())?
+                .to_string(),
+            _ => normalize_mac(value).ok_or("A valid MAC address is required")?,
+        };
+        let kind = if matches!(lookup, EndpointLookup::InterfaceByMac) {
+            "mac_table"
+        } else {
+            "arp"
+        };
+        let mut response = self.db.query(
+            "SELECT device_name, kind, canonical, raw, collected_at, source_id FROM observation WHERE kind = $kind ORDER BY collected_at DESC LIMIT 200;"
+        ).bind(("kind", kind)).await.map_err(|e| format!("Failed to read graph observations: {e}"))?;
+        let observations: Vec<Value> = response
+            .take(0)
+            .map_err(|e| format!("Failed to decode graph observations: {e}"))?;
+        let mut seen = HashSet::new();
+        let mut matches = Vec::new();
+        for observation in observations {
+            let Some(device) = observation.get("device_name").and_then(Value::as_str) else {
+                continue;
+            };
+            if device_name.is_some_and(|name| !name.eq_ignore_ascii_case(device)) {
+                continue;
+            }
+            if !matches!(lookup, EndpointLookup::InterfaceByMac)
+                && observation
+                    .get("canonical")
+                    .and_then(|v| v.get("arp_table"))
+                    .is_none()
+            {
+                continue;
+            }
+            if !seen.insert(device.to_string()) {
+                continue;
+            }
+            let Some(collected_at) = observation.get("collected_at").and_then(Value::as_str) else {
+                continue;
+            };
+            let Ok(timestamp) = DateTime::parse_from_rfc3339(collected_at) else {
+                continue;
+            };
+            if Utc::now() - timestamp.with_timezone(&Utc) > Duration::minutes(GRAPH_TTL_MINUTES) {
+                continue;
+            }
+            if matches!(lookup, EndpointLookup::InterfaceByMac) {
+                if let Some(raw) = observation.get("raw").and_then(Value::as_str) {
+                    matches.extend(find_mac_table_ports(raw, &needle).into_iter().map(|interface| json!({
+                        "device_name": device, "mac_address": needle, "interface": interface,
+                        "collected_at": collected_at, "source_id": observation.get("source_id")
+                    })));
+                }
+            } else if let Some(entries) = observation
+                .get("canonical")
+                .and_then(|v| v.get("arp_table"))
+                .and_then(Value::as_array)
+            {
+                for entry in entries {
+                    let ip = entry.get("ip_address").and_then(Value::as_str);
+                    let mac = entry
+                        .get("mac_address")
+                        .and_then(Value::as_str)
+                        .and_then(normalize_mac);
+                    let found = match lookup {
+                        EndpointLookup::MacByIp => ip == Some(needle.as_str()) && mac.is_some(),
+                        EndpointLookup::IpByMac => mac.as_deref() == Some(needle.as_str()),
+                        EndpointLookup::InterfaceByMac => false,
+                    };
+                    if found {
+                        matches.push(
+                            json!({"device_name":device,"ip_address":ip,"mac_address":mac,
+                            "interface":entry.get("interface"),"collected_at":collected_at,
+                            "source_id":observation.get("source_id")}),
+                        );
+                    }
+                }
+            }
+        }
+        Ok(
+            json!({"query":value,"matches":matches,"found":!matches.is_empty(),
+            "resource":kind,"requires_refresh":matches.is_empty()}),
+        )
     }
 
     /// Returns the most recent raw-only observation for read-through
@@ -870,5 +1078,84 @@ mod tests {
         )
         .unwrap();
         assert_eq!(array(&value, "ip_addresses")[0]["address"], "192.0.2.1");
+    }
+
+    #[test]
+    fn normalizes_mac_and_finds_switch_port() {
+        assert_eq!(
+            normalize_mac("AABB.CCDD.EEFF").as_deref(),
+            Some("aa:bb:cc:dd:ee:ff")
+        );
+        assert_eq!(
+            find_mac_table_ports("10 aabb.ccdd.eeff DYNAMIC Gi1/0/2", "aa:bb:cc:dd:ee:ff"),
+            vec!["Gi1/0/2"]
+        );
+        assert!(normalize_mac("not-a-mac").is_none());
+    }
+
+    #[tokio::test]
+    async fn graph_resolves_endpoint_after_observation() {
+        let path =
+            std::env::temp_dir().join(format!("mikomai-endpoint-test-{}", uuid::Uuid::new_v4()));
+        let state = SurrealDbState::initialize_at(&path).await.unwrap();
+        state.ingest(GraphIngestInput {
+            source_id: "test".into(), collected_at: Utc::now(), device_name: "gw01".into(),
+            kind: GraphDataKind::Interfaces, raw: "".into(), normalized: None,
+            canonical: Some(json!({"version":"1.0","metadata":{"generated_at":"2026-09-22T00:00:00Z","source_device":"gw01","os_type":"test"},"interfaces":[{"name":"vlan10","status":"up","ipv4_addresses":["10.0.0.1"],"prefix_len":24}]})),
+            evidence: None, normalizer_version: "test".into(),
+        }).await.unwrap();
+        let graph = state
+            .query_network(GraphQuery {
+                query: "10.0.0.10のMAC".into(),
+                device_name: None,
+                ip_address: Some("10.0.0.10".into()),
+                vlan: None,
+                acl: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(graph.candidate_devices[0]["device_name"], "gw01");
+        state.ingest(GraphIngestInput {
+            source_id: "test".into(), collected_at: Utc::now(), device_name: "gw01".into(),
+            kind: GraphDataKind::Arp, raw: "".into(), normalized: None,
+            canonical: Some(json!({"arp_table":[{"ip_address":"10.0.0.10","mac_address":"aa:bb:cc:dd:ee:ff","interface":"vlan10"}]})),
+            evidence: None, normalizer_version: "test".into(),
+        }).await.unwrap();
+        let by_ip = state
+            .find_endpoint(EndpointLookup::MacByIp, "10.0.0.10", Some("gw01"))
+            .await
+            .unwrap();
+        assert_eq!(by_ip["matches"][0]["mac_address"], "aa:bb:cc:dd:ee:ff");
+        let by_mac = state
+            .find_endpoint(EndpointLookup::IpByMac, "AA-BB-CC-DD-EE-FF", None)
+            .await
+            .unwrap();
+        assert_eq!(by_mac["matches"][0]["ip_address"], "10.0.0.10");
+        state
+            .ingest(GraphIngestInput {
+                source_id: "test".into(),
+                collected_at: Utc::now(),
+                device_name: "sw01".into(),
+                kind: GraphDataKind::MacTable,
+                raw: "10 aabb.ccdd.eeff DYNAMIC Gi1/0/2".into(),
+                normalized: None,
+                canonical: None,
+                evidence: None,
+                normalizer_version: "test".into(),
+            })
+            .await
+            .unwrap();
+        let by_port = state
+            .find_endpoint(EndpointLookup::InterfaceByMac, "aa:bb:cc:dd:ee:ff", None)
+            .await
+            .unwrap();
+        assert_eq!(by_port["matches"][0]["interface"], "Gi1/0/2");
+        assert_eq!(
+            state
+                .find_endpoint(EndpointLookup::MacByIp, "10.0.0.11", None)
+                .await
+                .unwrap()["found"],
+            false
+        );
     }
 }

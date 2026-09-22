@@ -15,6 +15,9 @@ pub fn register_read_tools(registry: &mut HashMap<String, Box<dyn McpTool>>) {
     add(registry, super::tools::GetStateTool);
     add(registry, super::tools::QueryNwDbTool);
     add(registry, super::tools::QueryNetworkGraphTool);
+    add(registry, super::tools::FindIpByMacTool);
+    add(registry, super::tools::FindMacByIpTool);
+    add(registry, super::tools::FindInterfaceByMacTool);
     add(registry, super::tools::SelfNetworkArpTool);
     add(registry, super::tools::SelfNetworkRouteTool);
     add(registry, super::tools::RequireHostRegisteredTool);

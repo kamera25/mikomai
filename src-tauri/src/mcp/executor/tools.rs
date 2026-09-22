@@ -211,6 +211,45 @@ define_tool!(QueryNetworkGraphTool, "query_network_graph", |app, args| {
     })
 });
 
+async fn find_endpoint_tool(
+    app: tauri::AppHandle,
+    args: serde_json::Value,
+    lookup: crate::graph::EndpointLookup,
+) -> Result<CommandResult, String> {
+    let key = if matches!(lookup, crate::graph::EndpointLookup::MacByIp) {
+        "ip"
+    } else {
+        "mac"
+    };
+    let value = get_str_arg(&args, &[key]).ok_or_else(|| format!("{key} is required"))?;
+    let device = get_str_arg(&args, &["device", "device_name", "deviceName"]);
+    let graph = app.state::<crate::graph::SurrealDbState>();
+    let result = graph
+        .find_endpoint(lookup, &value, device.as_deref())
+        .await?;
+    Ok(CommandResult {
+        success: true,
+        output: serde_json::to_string_pretty(&result).map_err(|e| e.to_string())?,
+        saved_path: None,
+        is_cached: Some(true),
+        cache_time: None,
+    })
+}
+
+define_tool!(FindIpByMacTool, "find_ip_by_mac", |app, args| {
+    find_endpoint_tool(app, args, crate::graph::EndpointLookup::IpByMac).await
+});
+define_tool!(FindMacByIpTool, "find_mac_by_ip", |app, args| {
+    find_endpoint_tool(app, args, crate::graph::EndpointLookup::MacByIp).await
+});
+define_tool!(
+    FindInterfaceByMacTool,
+    "find_interface_by_mac",
+    |app, args| {
+        find_endpoint_tool(app, args, crate::graph::EndpointLookup::InterfaceByMac).await
+    }
+);
+
 define_tool!(SelfNetworkArpTool, "self_network_arp", |app, _args| {
     crate::mcp::arp::self_network_arp(app).await.map(Into::into)
 });

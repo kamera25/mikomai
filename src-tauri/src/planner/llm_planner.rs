@@ -11,6 +11,7 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
 1. 「登録機器情報」および「これまでに実行したツールとその結果」を必ず確認してください。
    - 対象機器（例: NakaokuGW）が登録されている場合、そのベンダー名（例: yamaha）を把握し、その機種に応じた適切なコマンドや検索を行ってください。
 2. 既にツールを実行し結果が得られている場合：
+   - IP/MAC/接続ポートの照会では、get_state の結果に値が含まれていても、必ず対応する find_* ツールでGraphを検索してから FINISH してください。
    - 【成功時】その結果をもってユーザーの目標（質問や調査）に回答できる場合は、直ちに action_type: "FINISH" を選択し、final_answer には完了した事実・根拠・制約だけを短く記述してください。ユーザー向けの自然な最終回答はCoordinator経由のFast Agentが担当するため、挨拶・提案・ツール呼び出しは書かないでください。
    - 【コマンドエラー／失敗時】実行したコマンドが「無効なコマンド」「構文エラー」「エラー: コマンドが見つかりません」「% Invalid input」「unknown command」等で失敗した、または機器のOSやメーカー（Yamaha, Cisco, Juniper, Fortinet等）でコマンドが異なる疑いがある場合：
      * **絶対に同じ誤ったコマンドを再実行しないでください。**
@@ -34,7 +35,13 @@ const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness の中
 5. 主な利用可能ツールと引数例:
    - get_state: {"device": "NakaokuGW", "resource": "arp"} (登録機器の構造化State取得。resourceは "arp", "routes", "interfaces", "lldp", "mac_table", "bgp", "ospf" のいずれか)
    - fetch_config: {"device": "NakaokuGW"} (機器の設定情報(Running Config)の取得)
-   - query_network_graph: {"query": "NakaokuGWのNTP同期先", "device_name": "NakaokuGW"}（登録済み機器、IP、VLAN、ACL、経路、NTPの現況は最優先でこのグラフ検索を使う。期限超過時は関連fetchを実行してから再照会する）
+   - query_network_graph: {"query": "NakaokuGWのNTP同期先", "device_name": "NakaokuGW"}（登録済み機器、IP、VLAN、ACL、経路、NTPの現況を検索。MACアドレスによる検索には使わない）
+   - find_mac_by_ip: {"ip": "10.0.0.10", "device": "gw01"}（Graph内の新しいARP観測からIPに対応するMACを検索）
+   - find_ip_by_mac: {"mac": "aa:bb:cc:dd:ee:ff", "device": "gw01"}（Graph内の新しいARP観測からMACに対応するIPを検索）
+   - find_interface_by_mac: {"mac": "aa:bb:cc:dd:ee:ff", "device": "sw01"}（Graph内の新しいMACテーブル観測から接続ポートを検索）
+   - IPからMACを調べる場合は query_network_graph に ip_address を指定して candidate_devices を確認し、候補機器で get_state(device, "arp") を実行後、find_mac_by_ip を呼ぶ。
+   - MACからIPを調べる場合、最初に find_ip_by_mac({"mac":"対象MAC"}) で既存Graphを検索する。MACを query_network_graph の query や mac 引数に渡してもMAC検索にはならない。一致がなければ登録済みゲートウェイ・ルーターから get_state(device, "arp") を実行し、find_ip_by_mac を再実行する。候補が空という理由だけで ASK_HUMAN にしない。
+   - MACから接続ポートを調べる場合はスイッチで get_state(device, "mac_table") を実行し、find_interface_by_mac を呼ぶ。find_* が空なら推測で値を回答しない。
    - query_nw_db: {"query": "[Context: Yamaha] 設定 表示"} (ドキュメント検索。必ず日本語キーワード、判明時は[Context: メーカー名]を先頭に付与)
    - network_show: {"command": "show ip route"} (targetに対象機器名を指定。生CLI実行用)
    - self_network_ping: {"host": "192.168.1.1"}
@@ -106,6 +113,8 @@ pub fn build_planner_schema(registered_devices: &[String]) -> String {
           "enum": ["arp", "routes", "interfaces", "lldp", "mac_table", "bgp", "ospf"]
         }},
         "query": {{ "type": "string" }},
+        "ip": {{ "type": "string" }},
+        "mac": {{ "type": "string" }},
         "command": {{ "type": "string" }},
         "host": {{ "type": "string" }},
         "id": {{ "type": "string" }},
@@ -153,6 +162,8 @@ pub const DECISION_JSON_SCHEMA: &str = r#"{
           "enum": ["arp", "routes", "interfaces", "lldp", "mac_table", "bgp", "ospf"]
         },
         "query": { "type": "string" },
+        "ip": { "type": "string" },
+        "mac": { "type": "string" },
         "command": { "type": "string" },
         "host": { "type": "string" },
         "id": { "type": "string" },
@@ -180,6 +191,153 @@ pub const DECISION_JSON_SCHEMA: &str = r#"{
 }"#;
 
 pub struct LlmPlanner;
+
+fn set_mac_graph_lookup(decision: &mut Decision, mac: &str, reason: &str) {
+    decision.action_type = crate::state::events::ActionType::Observe;
+    decision.objective = format!("GraphからMAC {mac} に対応するIPを検索する");
+    decision.tool = Some("find_ip_by_mac".to_string());
+    decision.target = None;
+    decision.parameters = serde_json::json!({"mac": mac});
+    decision.reason = vec![reason.to_string()];
+    decision.expected_observation = vec!["IPアドレスと観測機器".to_string()];
+    decision.final_answer = None;
+}
+
+/// Keep MAC-to-IP investigation moving when a graph-only query has no device
+/// candidate. A MAC address does not identify an IP subnet, so registered
+/// devices must be inspected before asking the user for topology details.
+fn recover_mac_to_ip_lookup(
+    decision: &mut Decision,
+    network_state: &NetworkState,
+    goal: &str,
+    registered_devices: &[String],
+) {
+    let mac_pattern =
+        regex::Regex::new(r"(?i)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}|(?:[0-9a-f]{4}\.){2}[0-9a-f]{4}")
+            .expect("valid MAC pattern");
+    let Some(mac) = mac_pattern.find(goal).map(|found| found.as_str()) else {
+        return;
+    };
+    if !goal.to_ascii_lowercase().contains("ip")
+        || crate::harness::intent::is_configuration_change_request(goal)
+    {
+        return;
+    }
+
+    let observations = &network_state.observed.observations;
+    if observations.is_empty() {
+        set_mac_graph_lookup(decision, mac, "既存のGraph観測をMACで照合する");
+        return;
+    }
+    let latest_find = observations
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, observation)| observation.source.tool_name.as_deref() == Some("find_ip_by_mac"));
+    if let Some((_, observation)) = latest_find {
+        if let Ok(result) = serde_json::from_str::<serde_json::Value>(&observation.raw) {
+            if result.get("found").and_then(serde_json::Value::as_bool) == Some(true) {
+                decision.action_type = crate::state::events::ActionType::Finish;
+                decision.objective = format!("MAC {mac} に対応するIPを報告する");
+                decision.tool = None;
+                decision.target = None;
+                decision.parameters = serde_json::Value::Null;
+                decision.reason.clear();
+                decision.expected_observation.clear();
+                decision.final_answer = Some(result["matches"].to_string());
+                return;
+            }
+        }
+    }
+
+    let latest_arp = observations
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, observation)| {
+            observation.source.tool_name.as_deref() == Some("get_state")
+                && observation
+                    .source
+                    .parameters
+                    .as_ref()
+                    .and_then(|parameters| parameters.get("resource"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some("arp")
+        });
+    let needs_find = latest_arp
+        .is_some_and(|(index, _)| latest_find.is_none_or(|(find_index, _)| index > find_index));
+    if needs_find {
+        set_mac_graph_lookup(decision, mac, "最新のARP観測をGraphで照合する");
+        return;
+    }
+
+    let observed_devices: Vec<&str> = observations
+        .iter()
+        .filter(|observation| observation.source.tool_name.as_deref() == Some("get_state"))
+        .filter_map(|observation| {
+            let parameters = observation.source.parameters.as_ref()?;
+            (parameters.get("resource")?.as_str()? == "arp")
+                .then(|| parameters.get("device").and_then(serde_json::Value::as_str))
+                .flatten()
+        })
+        .collect();
+    if let Some(device) = registered_devices.iter().find(|device| {
+        !observed_devices
+            .iter()
+            .any(|observed| observed.eq_ignore_ascii_case(device))
+    }) {
+        decision.action_type = crate::state::events::ActionType::Observe;
+        decision.objective = format!("{device} のARPを取得してMAC {mac} を調べる");
+        decision.tool = Some("get_state".to_string());
+        decision.target = Some(device.clone());
+        decision.parameters = serde_json::json!({"device": device, "resource": "arp"});
+        decision.reason = vec!["Graphに対応するIPがないため登録機器のARPを確認する".to_string()];
+        decision.expected_observation = vec!["更新されたARP観測".to_string()];
+        decision.final_answer = None;
+    } else if !observed_devices.is_empty() {
+        let has_arp_data = observations.iter().any(|observation| {
+            observation.source.tool_name.as_deref() == Some("get_state")
+                && serde_json::from_str::<serde_json::Value>(&observation.raw)
+                    .ok()
+                    .and_then(|value| value.get("arp_table").cloned())
+                    .and_then(|value| value.as_array().cloned())
+                    .is_some()
+        });
+        if has_arp_data {
+            finish_with_evidence_answer(
+                decision,
+                goal,
+                format!(
+                    "MAC {mac} に対応するIPは、確認した登録機器のARP観測には見つからなかった。"
+                ),
+            );
+        } else {
+            decision.action_type = crate::state::events::ActionType::AskHuman;
+            decision.objective =
+                "登録機器からARPを取得できませんでした。機器の接続状態を確認してください。"
+                    .to_string();
+            decision.tool = None;
+            decision.target = None;
+            decision.parameters = serde_json::Value::Null;
+            decision.reason = vec!["登録機器のARP取得が失敗した".to_string()];
+            decision.expected_observation.clear();
+            decision.final_answer = None;
+        }
+    } else if latest_find.is_none() {
+        set_mac_graph_lookup(decision, mac, "登録機器がないため既存のGraph観測を確認する");
+    } else {
+        decision.action_type = crate::state::events::ActionType::AskHuman;
+        decision.objective = format!(
+            "MAC {mac} に対応するIPを確認できませんでした。ARPを取得できる機器を登録してください。"
+        );
+        decision.tool = None;
+        decision.target = None;
+        decision.parameters = serde_json::Value::Null;
+        decision.reason = vec!["Graphに一致がなく、登録機器もない".to_string()];
+        decision.expected_observation.clear();
+        decision.final_answer = None;
+    }
+}
 
 /// Convert command-specification questions into a vendor-scoped RAG lookup.
 /// This is a deterministic backstop for cases where the model ignores the
@@ -399,6 +557,27 @@ impl LlmPlanner {
             });
         if !has_builder_handoff {
             fallback_to_rag_for_known_vendor(&mut decision, &device_vendors, initial_goal);
+            let mut endpoint_devices: Vec<String> = connections
+                .iter()
+                .map(|connection| connection.hostname.trim().to_string())
+                .filter(|hostname| !hostname.is_empty())
+                .collect();
+            endpoint_devices.sort_by_key(|hostname| {
+                let name = hostname.to_ascii_lowercase();
+                if name.contains("gw") || name.contains("gateway") {
+                    0
+                } else if name.starts_with("rt") || name.contains("router") {
+                    1
+                } else {
+                    2
+                }
+            });
+            recover_mac_to_ip_lookup(
+                &mut decision,
+                network_state,
+                initial_goal,
+                &endpoint_devices,
+            );
         }
         if let Some(evidence) = explanatory_rag_evidence(&decision, network_state, initial_goal) {
             let answer_prompt = format!(
@@ -422,6 +601,99 @@ impl LlmPlanner {
 mod tests {
     use super::*;
     use crate::planner::decision::parse_decision_from_json;
+
+    fn add_tool_result(state: &mut NetworkState, tool: &str, device: Option<&str>, raw: &str) {
+        state.apply_observation(crate::state::events::Observation {
+            id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            raw: raw.to_string(),
+            parsed: None,
+            source: crate::state::events::ObservationSource {
+                device: device.map(str::to_string),
+                command: None,
+                tool_name: Some(tool.to_string()),
+                tool_kind: None,
+                parameters: device.map(|name| serde_json::json!({"device":name,"resource":"arp"})),
+            },
+            provenance: crate::state::events::Provenance {
+                origin: crate::state::events::ProvenanceOrigin::Tool,
+                confidence: Some(1.0),
+            },
+        });
+    }
+
+    #[test]
+    fn mac_goal_uses_structured_lookup_instead_of_text_query() {
+        let goal = "ea:f1:92:50:7b:c3のIPアドレスは？";
+        let state = NetworkState::with_goal(goal.to_string());
+        let mut decision = parse_decision_from_json(
+            r#"{"action_type":"OBSERVE","objective":"MACを探す","tool":"query_network_graph","parameters":{"mac":"ea:f1:92:50:7b:c3","query":"ea:f1:92:50:7b:c3のIPアドレス"}}"#,
+        ).unwrap();
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &["NakaokuGW".to_string()]);
+        assert_eq!(decision.tool.as_deref(), Some("find_ip_by_mac"));
+        assert_eq!(
+            decision.parameters,
+            serde_json::json!({"mac":"ea:f1:92:50:7b:c3"})
+        );
+    }
+
+    #[test]
+    fn empty_mac_graph_result_fetches_registered_arp_before_asking_human() {
+        let goal = "ea:f1:92:50:7b:c3 のIPアドレスは？";
+        let mut state = NetworkState::with_goal(goal.to_string());
+        add_tool_result(
+            &mut state,
+            "query_network_graph",
+            None,
+            r#"{"candidate_devices":[]}"#,
+        );
+        let mut decision = parse_decision_from_json(
+            r#"{"action_type":"ASK_HUMAN","objective":"対象機器を教えてください"}"#,
+        )
+        .unwrap();
+        let devices = vec!["NakaokuGW".to_string(), "F220".to_string()];
+
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &devices);
+        assert_eq!(decision.tool.as_deref(), Some("get_state"));
+        assert_eq!(decision.parameters["device"], "NakaokuGW");
+
+        add_tool_result(
+            &mut state,
+            "get_state",
+            Some("NakaokuGW"),
+            "ARP observation",
+        );
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &devices);
+        assert_eq!(decision.tool.as_deref(), Some("find_ip_by_mac"));
+        add_tool_result(
+            &mut state,
+            "find_ip_by_mac",
+            None,
+            r#"{"found":false,"matches":[]}"#,
+        );
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &devices);
+        assert_eq!(decision.tool.as_deref(), Some("get_state"));
+        assert_eq!(decision.parameters["device"], "F220");
+        add_tool_result(&mut state, "get_state", Some("F220"), "ARP observation");
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &devices);
+        assert_eq!(decision.tool.as_deref(), Some("find_ip_by_mac"));
+        add_tool_result(
+            &mut state,
+            "find_ip_by_mac",
+            None,
+            r#"{"found":true,"matches":[{"device_name":"NakaokuGW","ip_address":"10.0.0.10","mac_address":"ea:f1:92:50:7b:c3"}]}"#,
+        );
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &devices);
+        assert_eq!(
+            decision.action_type,
+            crate::state::events::ActionType::Finish
+        );
+        assert!(decision
+            .final_answer
+            .as_deref()
+            .unwrap()
+            .contains("10.0.0.10"));
+    }
 
     #[test]
     fn known_vendor_command_question_falls_back_to_rag() {
