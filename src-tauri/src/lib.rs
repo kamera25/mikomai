@@ -119,7 +119,6 @@ pub(crate) fn build_app() -> tauri::Result<tauri::App> {
             settings::load_settings,
             settings::save_settings,
             network::dns::resolve_ip,
-            mcp::arp::self_network_arp,
             mcp::route::self_network_route,
             mcp::executor::execute_mcp_tool,
             mcp::executor::handle_mcp_message,

@@ -37,6 +37,21 @@ impl RoutingPipeline {
             }
         }
 
+        if !has_image_attachment
+            && crate::planner::llm_planner::local_arp_mac_target(original_query).is_some()
+        {
+            return Ok(RoutingDecision {
+                action: RouteAction::WorkerRoute {
+                    route: Route::Agent,
+                    subsequent_route: None,
+                    subsequent_task: None,
+                },
+                confidence: 1.0,
+                device_contexts: Vec::new(),
+                source: RoutingSource::Shortcut,
+            });
+        }
+
         // 2. Phase 2: LLM Router with context enrichment
         let device_contexts = resolve_device_contexts(app, original_query);
         let enriched_query = if !device_contexts.is_empty() {

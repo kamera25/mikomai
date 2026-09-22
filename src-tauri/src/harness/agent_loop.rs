@@ -353,6 +353,10 @@ impl AgentLoop {
                         self.state_machine.step_count(),
                         err_msg
                     );
+                    if err_msg.starts_with("Unknown tool:") {
+                        break "利用できないツール名が提案されたため、ツールを実行せずに停止しました。"
+                            .to_string();
+                    }
                     continue;
                 }
             };

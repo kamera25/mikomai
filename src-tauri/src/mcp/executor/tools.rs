@@ -158,6 +158,7 @@ define_tool!(GetStateTool, "get_state", |app, args| {
         &["resource", "resourceType", "resource_type", "type"],
     );
     let user_msg = get_str_arg(&args, &["userMessage", "user_message"]);
+    let mac = get_str_arg(&args, &["mac"]);
     crate::mcp::fetch::get_state::get_state(
         app,
         device.clone(),
@@ -170,6 +171,7 @@ define_tool!(GetStateTool, "get_state", |app, args| {
         resource,
         user_msg.clone(),
         user_msg,
+        mac,
     )
     .await
 });
@@ -249,10 +251,6 @@ define_tool!(
         find_endpoint_tool(app, args, crate::graph::EndpointLookup::InterfaceByMac).await
     }
 );
-
-define_tool!(SelfNetworkArpTool, "self_network_arp", |app, _args| {
-    crate::mcp::arp::self_network_arp(app).await.map(Into::into)
-});
 
 define_tool!(SelfNetworkRouteTool, "self_network_route", |app, _args| {
     crate::mcp::route::self_network_route(app)

@@ -12,6 +12,12 @@ impl SchemaValidator {
             return Err("Decision parameters must be a JSON object or null".to_string());
         }
 
+        if let Some(tool) = decision.tool.as_deref() {
+            if !crate::mcp::executor::registry::get_tool_registry().contains_key(tool) {
+                return Err(format!("Unknown tool: {tool}"));
+            }
+        }
+
         match decision.action_type {
             ActionType::Observe | ActionType::Verify => {
                 if decision.tool.is_none() && decision.target.is_none() {
@@ -88,5 +94,14 @@ mod tests {
             serde_json::Value::Null
         ))
         .is_ok());
+    }
+
+    #[test]
+    fn rejects_hallucinated_tool_name() {
+        let mut decision = decision(ActionType::Observe, serde_json::Value::Null);
+        decision.tool = Some("get_state_arp_check_placeholder_for_localhost".to_string());
+        assert!(SchemaValidator::validate_decision(&decision)
+            .unwrap_err()
+            .contains("Unknown tool"));
     }
 }

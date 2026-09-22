@@ -194,27 +194,73 @@ async fn fetch_and_ingest_state<F: McpCommandFetcher>(
     Ok(result)
 }
 
+fn local_arp_needs_refresh(
+    canonical: Option<&serde_json::Value>,
+    lookup_mac: Option<&str>,
+) -> bool {
+    let Some(entries) = canonical
+        .and_then(|value| value.get("arp_table"))
+        .and_then(serde_json::Value::as_array)
+    else {
+        return true;
+    };
+    if entries.is_empty() {
+        return true;
+    }
+    let Some(mac) = lookup_mac else {
+        return false;
+    };
+    let mac = mac.replace('-', ":");
+    !entries.iter().any(|entry| {
+        entry
+            .get("mac_address")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|observed| observed.eq_ignore_ascii_case(&mac))
+    })
+}
+
+fn local_arp_result(canonical: serde_json::Value, cached: bool) -> CommandResult {
+    CommandResult {
+        success: true,
+        output: serde_json::to_string_pretty(&canonical).unwrap_or_else(|_| canonical.to_string()),
+        saved_path: None,
+        is_cached: Some(cached),
+        cache_time: None,
+    }
+}
+
 pub async fn dispatch_get_state(
     app: &tauri::AppHandle,
     device_name: &str,
     resource: StateResource,
     user_msg: Option<String>,
+    lookup_mac: Option<&str>,
 ) -> Result<CommandResult, String> {
     match resource {
         StateResource::Arp => {
             if crate::mcp::arp::is_localhost_target(device_name) {
-                let local_result = crate::mcp::arp::self_network_arp(app.clone()).await?;
-                if !local_result.success {
-                    return Ok(local_result.into());
-                }
                 let graph = app.state::<SurrealDbState>();
+                if let Some(canonical) = graph
+                    .fresh_canonical("localhost", GraphDataKind::Arp)
+                    .await?
+                {
+                    if !local_arp_needs_refresh(Some(&canonical), lookup_mac) {
+                        return Ok(local_arp_result(canonical, true));
+                    }
+                }
+
+                // A missing or non-matching Graph observation is refreshed from
+                // the local OS and read back only after it has been committed.
+                let raw = tokio::task::spawn_blocking(crate::mcp::arp::collect_local_arp)
+                    .await
+                    .map_err(|error| format!("Failed to collect local ARP: {error}"))??;
                 graph
                     .ingest(GraphIngestInput {
                         source_id: "mcp.get_state.local_arp".to_string(),
                         collected_at: chrono::Utc::now(),
                         device_name: "localhost".to_string(),
                         kind: GraphDataKind::Arp,
-                        raw: local_result.output,
+                        raw,
                         normalized: None,
                         canonical: None,
                         evidence: None,
@@ -229,14 +275,7 @@ pub async fn dispatch_get_state(
                         "local ARP canonicalization did not produce a canonical observation"
                             .to_string()
                     })?;
-                return Ok(CommandResult {
-                    success: true,
-                    output: serde_json::to_string_pretty(&canonical)
-                        .unwrap_or_else(|_| canonical.to_string()),
-                    saved_path: local_result.saved_path,
-                    is_cached: Some(false),
-                    cache_time: None,
-                });
+                return Ok(local_arp_result(canonical, false));
             }
             let llama_state = app.state::<crate::llm::llm::LlamaState>();
             crate::mcp::fetch::fetch_arp::fetch_arp(
@@ -386,6 +425,7 @@ pub async fn get_state(
     resource_type: Option<String>,
     userMessage: Option<String>,
     user_message: Option<String>,
+    mac: Option<String>,
 ) -> Result<CommandResult, String> {
     let resolved_device_arg = device.or(deviceName).or(device_name).or(host).or(target);
 
@@ -428,12 +468,37 @@ pub async fn get_state(
     let parsed_resource = StateResource::from_str(&raw_resource)?;
     let final_user_msg = user_message.or(userMessage);
 
-    dispatch_get_state(&app, &registered_name, parsed_resource, final_user_msg).await
+    dispatch_get_state(
+        &app,
+        &registered_name,
+        parsed_resource,
+        final_user_msg,
+        mac.as_deref(),
+    )
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_arp_cache_miss_refreshes_before_reporting_mac_absent() {
+        let empty = serde_json::json!({"arp_table": []});
+        let found = serde_json::json!({"arp_table": [
+            {"ip_address":"192.0.2.5","mac_address":"EA:F1:92:50:7B:C3"}
+        ]});
+        assert!(local_arp_needs_refresh(None, Some("ea:f1:92:50:7b:c3")));
+        assert!(local_arp_needs_refresh(
+            Some(&empty),
+            Some("ea:f1:92:50:7b:c3")
+        ));
+        assert!(!local_arp_needs_refresh(
+            Some(&found),
+            Some("ea:f1:92:50:7b:c3")
+        ));
+        assert!(local_arp_needs_refresh(Some(&empty), None));
+    }
 
     #[test]
     fn test_fetchers_commands() {

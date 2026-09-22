@@ -33,8 +33,9 @@ fastroute:
       - '(?i)(?:test-netconnection|tnc)'
 
   arp:
-    action: "self_network_arp"
+    action: "get_state"
     message: "ローカルのARPテーブルを取得します。"
+    params: { device: "localhost", resource: "arp" }
     patterns:
       - '(?i)arp.*(ローカル|自機|このpc|local)'
       - '(?i)(ローカル|自機|このpc|local).*arp'

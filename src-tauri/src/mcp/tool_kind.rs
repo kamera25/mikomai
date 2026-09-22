@@ -15,7 +15,6 @@ pub enum ToolKind {
     FindIpByMac,
     FindMacByIp,
     FindInterfaceByMac,
-    SelfNetworkArp,
     SelfNetworkRoute,
     NetworkGetIpInfo,
     NetworkListSerialPorts,
@@ -57,7 +56,6 @@ impl ToolKind {
             Self::FindIpByMac => "find_ip_by_mac",
             Self::FindMacByIp => "find_mac_by_ip",
             Self::FindInterfaceByMac => "find_interface_by_mac",
-            Self::SelfNetworkArp => "self_network_arp",
             Self::SelfNetworkRoute => "self_network_route",
             Self::NetworkGetIpInfo => "network_get_ip_info",
             Self::NetworkListSerialPorts => "network_list_serial_ports",
@@ -98,7 +96,6 @@ impl ToolKind {
             Self::FindIpByMac => "MACからIP検索",
             Self::FindMacByIp => "IPからMAC検索",
             Self::FindInterfaceByMac => "MACからポート検索",
-            Self::SelfNetworkArp => "ARP Table",
             Self::SelfNetworkRoute => "Route Table",
             Self::NetworkGetIpInfo => "IP Info",
             Self::NetworkListSerialPorts => "Serial Ports",
@@ -202,7 +199,6 @@ impl ToolKind {
                 | Self::FindIpByMac
                 | Self::FindMacByIp
                 | Self::FindInterfaceByMac
-                | Self::SelfNetworkArp
                 | Self::SelfNetworkRoute
                 | Self::NetworkGetIpInfo
                 | Self::NetworkListSerialPorts
@@ -241,7 +237,6 @@ impl std::str::FromStr for ToolKind {
             "find_ip_by_mac" => Ok(Self::FindIpByMac),
             "find_mac_by_ip" => Ok(Self::FindMacByIp),
             "find_interface_by_mac" => Ok(Self::FindInterfaceByMac),
-            "self_network_arp" => Ok(Self::SelfNetworkArp),
             "self_network_route" => Ok(Self::SelfNetworkRoute),
             "network_get_ip_info" => Ok(Self::NetworkGetIpInfo),
             "network_list_serial_ports" => Ok(Self::NetworkListSerialPorts),

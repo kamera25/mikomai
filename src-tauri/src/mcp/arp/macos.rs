@@ -100,6 +100,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parses_local_arp_a_mac_lookup_entry() {
+        let table =
+            parse_macos_arp("? (192.168.50.27) at ea:f1:92:50:7b:c3 on en0 ifscope [ethernet]")
+                .unwrap();
+        assert_eq!(table.arp_table[0].ip_address, "192.168.50.27");
+        assert_eq!(
+            table.arp_table[0].mac_address.as_deref(),
+            Some("ea:f1:92:50:7b:c3")
+        );
+    }
+
+    #[test]
     fn test_parse_macos_arp_success() {
         let sample_output = r#"
 ? (192.168.50.1) at ac:44:f2:91:fa:f8 on en0 ifscope [ethernet]

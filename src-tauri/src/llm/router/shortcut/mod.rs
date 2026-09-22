@@ -26,6 +26,8 @@ pub struct ShortcutRule {
     #[serde(default)]
     pub message: String,
     #[serde(default)]
+    pub params: Value,
+    #[serde(default)]
     pub patterns: Vec<String>,
 }
 
@@ -166,7 +168,11 @@ fn detect_simple_shortcut(
                 };
                 return Some((
                     rule.action.clone(),
-                    serde_json::json!({}),
+                    if rule.params.is_object() {
+                        rule.params.clone()
+                    } else {
+                        serde_json::json!({})
+                    },
                     rule.message.clone(),
                     confidence,
                 ));
@@ -368,8 +374,14 @@ mod tests {
         // Local ARP
         let res = detect_shortcut("自機のarpテーブル").unwrap();
         match res.action {
-            RouteAction::DirectToolCall { ref tool_name, .. } => {
-                assert_eq!(tool_name, "self_network_arp");
+            RouteAction::DirectToolCall {
+                ref tool_name,
+                ref params,
+                ..
+            } => {
+                assert_eq!(tool_name, "get_state");
+                assert_eq!(params["device"], "localhost");
+                assert_eq!(params["resource"], "arp");
             }
             _ => panic!("Expected DirectToolCall"),
         }

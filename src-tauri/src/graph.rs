@@ -1070,6 +1070,7 @@ fn array<'a>(value: &'a Value, name: &str) -> &'a [Value] {
 mod tests {
     use super::*;
 
+
     #[test]
     fn yaml_normalizer_maps_arp_to_ip_facts() {
         let value = normalize_yaml(

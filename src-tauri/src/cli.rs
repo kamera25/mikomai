@@ -303,7 +303,7 @@ fn run_from(cli: Cli) -> Result<(), String> {
             let resource = StateResource::from_str(&resource)?;
             let result =
                 tauri::async_runtime::block_on(crate::mcp::fetch::get_state::dispatch_get_state(
-                    &handle, &device, resource, message,
+                    &handle, &device, resource, message, None,
                 ))?;
             if cli.json {
                 print_json(&CliResult {

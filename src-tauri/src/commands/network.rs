@@ -1,4 +1,3 @@
-pub use crate::mcp::arp::self_network_arp;
 pub use crate::mcp::console::{network_list_serial_ports, network_send_console_message};
 pub use crate::mcp::fetch::fetch_arp::fetch_arp;
 pub use crate::mcp::fetch::fetch_config::fetch_config;

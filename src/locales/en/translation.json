@@ -278,7 +278,6 @@
     "network_query_nw_db": "NWDB Search",
     "query_nw_db": "NWDB Search",
     "query_rag": "NWDB Search",
-    "self_network_arp": "ARP Table",
     "self_network_route": "Route Table",
     "network_get_ip_info": "IP Info",
     "network_list_serial_ports": "Serial Ports",
