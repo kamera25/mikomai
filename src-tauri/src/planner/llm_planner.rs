@@ -192,6 +192,59 @@ pub const DECISION_JSON_SCHEMA: &str = r#"{
 
 pub struct LlmPlanner;
 
+fn mac_lookup_target(goal: &str) -> Option<&str> {
+    let pattern =
+        regex::Regex::new(r"(?i)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}|(?:[0-9a-f]{4}\.){2}[0-9a-f]{4}")
+            .expect("valid MAC pattern");
+    let mac = pattern.find(goal)?.as_str();
+    let lower = goal.to_ascii_lowercase();
+    (lower.contains("ip")
+        || goal.contains("ホスト")
+        || goal.contains("応答")
+        || goal.contains("疎通")
+        || lower.contains("ping"))
+    .then_some(mac)
+}
+
+fn requires_ping(goal: &str) -> bool {
+    goal.contains("応答") || goal.contains("疎通") || goal.to_ascii_lowercase().contains("ping")
+}
+
+/// Narrow constrained decoding to the tools and arguments valid for the
+/// current endpoint task. A free-text graph query cannot search by MAC.
+pub fn build_goal_planner_schema(registered_devices: &[String], goal: &str) -> String {
+    let mut schema: serde_json::Value =
+        serde_json::from_str(&build_planner_schema(registered_devices))
+            .expect("planner schema is valid JSON");
+    if let Some(mac) = mac_lookup_target(goal)
+        .filter(|_| !crate::harness::intent::is_configuration_change_request(goal))
+    {
+        let tools = if requires_ping(goal) {
+            vec!["find_ip_by_mac", "get_state", "self_network_ping"]
+        } else {
+            vec!["find_ip_by_mac", "get_state"]
+        };
+        schema["properties"]["tool"] = serde_json::json!({
+            "anyOf": [{"type":"string","enum":tools},{"type":"null"}]
+        });
+        let parameters = &mut schema["properties"]["parameters"];
+        if let Some(properties) = parameters["properties"].as_object_mut() {
+            properties
+                .retain(|key, _| ["device", "resource", "mac", "host"].contains(&key.as_str()));
+            properties.insert(
+                "mac".to_string(),
+                serde_json::json!({"type":"string","enum":[mac]}),
+            );
+            properties.insert(
+                "resource".to_string(),
+                serde_json::json!({"type":"string","enum":["arp"]}),
+            );
+        }
+        parameters["additionalProperties"] = serde_json::Value::Bool(false);
+    }
+    schema.to_string()
+}
+
 fn set_mac_graph_lookup(decision: &mut Decision, mac: &str, reason: &str) {
     decision.action_type = crate::state::events::ActionType::Observe;
     decision.objective = format!("GraphからMAC {mac} に対応するIPを検索する");
@@ -212,15 +265,10 @@ fn recover_mac_to_ip_lookup(
     goal: &str,
     registered_devices: &[String],
 ) {
-    let mac_pattern =
-        regex::Regex::new(r"(?i)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}|(?:[0-9a-f]{4}\.){2}[0-9a-f]{4}")
-            .expect("valid MAC pattern");
-    let Some(mac) = mac_pattern.find(goal).map(|found| found.as_str()) else {
+    let Some(mac) = mac_lookup_target(goal) else {
         return;
     };
-    if !goal.to_ascii_lowercase().contains("ip")
-        || crate::harness::intent::is_configuration_change_request(goal)
-    {
+    if crate::harness::intent::is_configuration_change_request(goal) {
         return;
     }
 
@@ -237,6 +285,48 @@ fn recover_mac_to_ip_lookup(
     if let Some((_, observation)) = latest_find {
         if let Ok(result) = serde_json::from_str::<serde_json::Value>(&observation.raw) {
             if result.get("found").and_then(serde_json::Value::as_bool) == Some(true) {
+                if requires_ping(goal) {
+                    if let Some(ip) = result["matches"]
+                        .as_array()
+                        .and_then(|matches| matches.first())
+                        .and_then(|entry| entry.get("ip_address"))
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        let ping = observations
+                            .iter()
+                            .enumerate()
+                            .rev()
+                            .find(|(index, entry)| {
+                                *index > latest_find.expect("find observation exists").0
+                                    && entry.source.tool_name.as_deref()
+                                        == Some("self_network_ping")
+                                    && entry
+                                        .source
+                                        .parameters
+                                        .as_ref()
+                                        .and_then(|parameters| parameters.get("host"))
+                                        .and_then(serde_json::Value::as_str)
+                                        == Some(ip)
+                            });
+                        if let Some((_, ping)) = ping {
+                            finish_with_evidence_answer(
+                                decision,
+                                goal,
+                                format!("MAC {mac} のIPは {ip}。応答確認の結果: {}", ping.raw),
+                            );
+                        } else {
+                            decision.action_type = crate::state::events::ActionType::Observe;
+                            decision.objective = format!("IP {ip} の応答を確認する");
+                            decision.tool = Some("self_network_ping".to_string());
+                            decision.target = None;
+                            decision.parameters = serde_json::json!({"host":ip});
+                            decision.reason = vec!["Graphで特定したIPにPingを送る".to_string()];
+                            decision.expected_observation = vec!["応答の有無".to_string()];
+                            decision.final_answer = None;
+                        }
+                        return;
+                    }
+                }
                 decision.action_type = crate::state::events::ActionType::Finish;
                 decision.objective = format!("MAC {mac} に対応するIPを報告する");
                 decision.tool = None;
@@ -533,7 +623,7 @@ impl LlmPlanner {
             }
         }
 
-        let dynamic_schema = build_planner_schema(&registered_devices);
+        let dynamic_schema = build_goal_planner_schema(&registered_devices, initial_goal);
 
         let response = crate::llm::llm::ask_llm_internal_with_schema(
             &full_prompt,
@@ -620,6 +710,61 @@ mod tests {
                 confidence: Some(1.0),
             },
         });
+    }
+
+    #[test]
+    fn host_reachability_goal_constrains_query_and_pings_resolved_ip() {
+        let goal = "ea:f1:92:50:7b:c3のホストを調べて応答があるか確認してください";
+        let schema = build_goal_planner_schema(&["NakaokuGW".to_string()], goal);
+        let parsed: serde_json::Value = serde_json::from_str(&schema).unwrap();
+        assert!(!schema.contains("query_network_graph"));
+        assert!(parsed["properties"]["parameters"]["properties"]
+            .get("query")
+            .is_none());
+        assert_eq!(
+            parsed["properties"]["parameters"]["properties"]["mac"]["enum"][0],
+            "ea:f1:92:50:7b:c3"
+        );
+        assert!(llama_cpp_2::json_schema_to_grammar(&schema).is_ok());
+
+        let mut state = NetworkState::with_goal(goal.to_string());
+        let mut decision = parse_decision_from_json(
+            r#"{"action_type":"OBSERVE","objective":"MACのホストを検索","tool":"query_network_graph","parameters":{"query":"ea:f1:92:50:7b:c3 のホスト情報とIPアドレス","mac":"ea:f1:92:50:7b:c3"}}"#,
+        ).unwrap();
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &["NakaokuGW".to_string()]);
+        assert_eq!(decision.tool.as_deref(), Some("find_ip_by_mac"));
+        add_tool_result(
+            &mut state,
+            "find_ip_by_mac",
+            None,
+            r#"{"found":true,"matches":[{"device_name":"NakaokuGW","ip_address":"10.0.0.10","mac_address":"ea:f1:92:50:7b:c3"}]}"#,
+        );
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &["NakaokuGW".to_string()]);
+        assert_eq!(decision.tool.as_deref(), Some("self_network_ping"));
+        assert_eq!(decision.parameters["host"], "10.0.0.10");
+        add_tool_result(
+            &mut state,
+            "self_network_ping",
+            None,
+            "10.0.0.10から応答あり",
+        );
+        state
+            .observed
+            .observations
+            .last_mut()
+            .unwrap()
+            .source
+            .parameters = Some(serde_json::json!({"host":"10.0.0.10"}));
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &["NakaokuGW".to_string()]);
+        assert_eq!(
+            decision.action_type,
+            crate::state::events::ActionType::Finish
+        );
+        assert!(decision
+            .final_answer
+            .as_deref()
+            .unwrap()
+            .contains("応答あり"));
     }
 
     #[test]
