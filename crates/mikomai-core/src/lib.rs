@@ -6,6 +6,10 @@ pub mod port;
 pub use application::{ApplicationError, ApplicationResult, TaskManager};
 pub use application::{ChangeService, ChatService, DiagnoseService};
 pub use dispatch::{select_dispatch_mode, DispatchMode};
+pub use domain::desired::{
+    DesiredStatePatch, EntityRef, EntityType, Mutation, PatchError, PropertyChange, StateEntity,
+    StateGraph,
+};
 pub use domain::{
     ActionType, Decision, Evidence, Observation, ObservationSource, OperationClass, OperationGate,
     OperationPlan, OperationStatus, Provenance, ProvenanceOrigin, Task, TaskSnapshot, TaskStatus,

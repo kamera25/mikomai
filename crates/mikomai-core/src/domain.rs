@@ -1,5 +1,6 @@
 //! Domain models and deterministic policies.
 pub mod coordinator;
+pub mod desired;
 pub mod evidence;
 pub mod harness;
 pub mod observation;
