@@ -573,6 +573,22 @@ mod tests {
     }
 
     #[test]
+    fn cisco_mac_format_uses_the_same_endpoint_lookup() {
+        let goal = "aaaa.cccc.ddddから応答があるかチェック";
+        let normalized = "aa:aa:cc:cc:dd:dd";
+        assert_eq!(mac_lookup_target(goal).as_deref(), Some(normalized));
+
+        let state = NetworkState::with_goal(goal.to_string());
+        let mut decision = parse_decision_from_json(
+            r#"{"action_type":"OBSERVE","objective":"Graphを検索","tool":"query_network_graph","parameters":{"query":"aaaa.cccc.dddd"}}"#,
+        )
+        .unwrap();
+        recover_mac_to_ip_lookup(&mut decision, &state, goal, &[]);
+        assert_eq!(decision.tool.as_deref(), Some("find_ip_by_mac"));
+        assert_eq!(decision.parameters["mac"], normalized);
+    }
+
+    #[test]
     fn mac_goal_uses_structured_lookup_instead_of_text_query() {
         let goal = "ea:f1:92:50:7b:c3のIPアドレスは？";
         let state = NetworkState::with_goal(goal.to_string());
