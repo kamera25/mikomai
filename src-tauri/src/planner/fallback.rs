@@ -1,6 +1,70 @@
 use crate::state::events::Decision;
 use crate::state::network_state::NetworkState;
 
+/// Fill an incomplete RAG action from the original goal and registered device.
+/// A missing query would otherwise become an unscoped search over all vendors.
+pub fn complete_rag_decision(
+    decision: &mut Decision,
+    goal: &str,
+    connections: &[crate::connections::Connection],
+) {
+    if !matches!(
+        decision.tool.as_deref(),
+        Some("query_nw_db" | "network_query_nw_db" | "query_rag")
+    ) || !matches!(
+        decision.action_type,
+        crate::state::events::ActionType::Observe | crate::state::events::ActionType::Verify
+    ) {
+        return;
+    }
+
+    let target_connection = decision
+        .target
+        .as_deref()
+        .and_then(|target| connections.iter().find(|conn| conn.matches_host_or_ip(target)))
+        .or_else(|| {
+            let lower_goal = goal.to_lowercase();
+            connections.iter().find(|conn| {
+                let hostname = conn.hostname.as_str().to_lowercase();
+                let ip = conn.ip_string();
+                (!hostname.is_empty() && lower_goal.contains(&hostname))
+                    || (!ip.is_empty() && lower_goal.contains(&ip.to_lowercase()))
+            })
+        });
+
+    if decision.target.is_none() {
+        if let Some(conn) = target_connection {
+            decision.target = Some(conn.hostname.to_string());
+        }
+    }
+
+    let query = decision
+        .parameters
+        .get("query")
+        .and_then(serde_json::Value::as_str)
+        .filter(|query| !query.trim().is_empty())
+        .unwrap_or(goal)
+        .trim();
+    let query = if let Some(conn) = target_connection {
+        if let Some(brand) = crate::mcp::rag::vendor::registered_connection_brand(conn) {
+            if query.contains("[Context:") {
+                query.to_string()
+            } else {
+                format!("[Context: {brand}] {query}")
+            }
+        } else {
+            query.to_string()
+        }
+    } else {
+        query.to_string()
+    };
+
+    if !decision.parameters.is_object() {
+        decision.parameters = serde_json::json!({});
+    }
+    decision.parameters["query"] = serde_json::Value::String(query);
+}
+
 pub fn is_explanatory_request(goal: &str) -> bool {
     [
         "教えて",
@@ -80,14 +144,20 @@ pub fn fallback_to_rag_for_known_vendor(
     decision.final_answer = None;
 }
 
-/// Returns source text when a documentation request was incorrectly routed
-/// into a parameter interview after RAG had already found relevant material.
+/// Returns source text when an explanatory RAG request has enough evidence,
+/// but the Planner asks for parameters or finishes without an answer brief.
 pub fn explanatory_rag_evidence<'a>(
     decision: &Decision,
     network_state: &'a NetworkState,
     goal: &str,
 ) -> Option<&'a str> {
-    if decision.action_type != crate::state::events::ActionType::AskHuman
+    let needs_answer = decision.action_type == crate::state::events::ActionType::AskHuman
+        || (decision.action_type == crate::state::events::ActionType::Finish
+            && decision
+                .final_answer
+                .as_deref()
+                .is_none_or(|answer| answer.trim().is_empty()));
+    if !needs_answer
         || crate::harness::intent::is_configuration_change_request(goal)
         || !is_explanatory_request(goal)
     {
@@ -119,6 +189,56 @@ pub fn explanatory_rag_evidence<'a>(
 mod tests {
     use super::*;
     use crate::planner::decision::parse_decision_from_json;
+
+    #[test]
+    fn rag_decision_recovers_f220_target_and_vendor_query() {
+        let connections = vec![serde_json::from_value(serde_json::json!({
+            "id": "1",
+            "status": "offline",
+            "hostname": "F220",
+            "ip": null,
+            "type": "Console",
+            "lastConnected": "Never",
+            "deviceType": "furukawa_fitelnet",
+            "vendorType": null
+        }))
+        .unwrap()];
+        let mut decision = parse_decision_from_json(
+            r#"{"action_type":"OBSERVE","objective":"F220のVLAN設定に関するドキュメントやコマンド仕様を調査する","tool":"query_nw_db","target":null,"parameters":null}"#,
+        )
+        .unwrap();
+
+        complete_rag_decision(
+            &mut decision,
+            "F220のVLAN設定方法を教えて",
+            &connections,
+        );
+
+        assert_eq!(decision.target.as_deref(), Some("F220"));
+        assert_eq!(
+            decision.parameters["query"],
+            "[Context: furukawa_fitelnet] F220のVLAN設定方法を教えて"
+        );
+        let action = crate::validator::schema::SchemaValidator::validate_decision(&decision)
+            .unwrap();
+        let args = crate::harness::execution::prepare_tool_arguments(
+            &action,
+            Some("F220のVLAN設定方法を教えて"),
+        );
+        assert_eq!(args["query"], decision.parameters["query"]);
+        assert_eq!(args["target"], "F220");
+    }
+
+    #[test]
+    fn rag_decision_preserves_specific_query_without_registered_target() {
+        let mut decision = parse_decision_from_json(
+            r#"{"action_type":"OBSERVE","objective":"VLANを調べる","tool":"query_nw_db","parameters":{"query":"[Context: Yamaha] VLAN 設定"}}"#,
+        )
+        .unwrap();
+        complete_rag_decision(&mut decision, "VLANについて", &[]);
+        assert_eq!(decision.target, None);
+        assert_eq!(decision.parameters["query"], "[Context: Yamaha] VLAN 設定");
+    }
 
     #[test]
     fn known_vendor_command_question_falls_back_to_rag() {
@@ -183,7 +303,7 @@ mod tests {
         state.apply_observation(crate::state::events::Observation {
             id: uuid::Uuid::new_v4(),
             timestamp: chrono::Utc::now(),
-            raw: "=== 選択資料: Trunk VLAN ===\ninterface <INTERFACE>\nswitchport trunk allowed vlan <VLAN_ID>".to_string(),
+            raw: "=== 選択資料: F220 Trunk VLAN ===\ninterface GigaEthernet <INTERFACE>.<VLAN_ID>\n vlan-id <VLAN_ID>\n exit".to_string(),
             parsed: None,
             source: crate::state::events::ObservationSource {
                 device: Some("F220".to_string()),
@@ -204,6 +324,25 @@ mod tests {
 
         let evidence =
             explanatory_rag_evidence(&decision, &state, "F220のTrunk VLANの設定を教えて").unwrap();
+        let mut missing_brief = parse_decision_from_json(
+            r#"{"action_type":"FINISH","objective":"F220のVLAN設定を回答する","tool":null}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            explanatory_rag_evidence(&missing_brief, &state, "F220のTrunk VLANの設定を教えて"),
+            Some(evidence)
+        );
+        finish_with_evidence_answer(
+            &mut missing_brief,
+            "F220のTrunk VLANの設定を教えて",
+            "資料から作成した完了メモ".to_string(),
+        );
+        assert!(explanatory_rag_evidence(
+            &missing_brief,
+            &state,
+            "F220のTrunk VLANの設定を教えて"
+        )
+        .is_none());
         finish_with_evidence_answer(
             &mut decision,
             "F220のTrunk VLANの設定を教えて",

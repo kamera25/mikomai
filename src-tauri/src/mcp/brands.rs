@@ -45,7 +45,13 @@ static BRAND_MAP: LazyLock<HashMap<String, &'static str>> = LazyLock::new(|| {
 
 pub fn get_brand(input: &str) -> Option<&'static str> {
     let trimmed = input.trim().to_lowercase();
-    BRAND_MAP.get(&trimmed).copied()
+    BRAND_MAP
+        .get(&trimmed)
+        .or_else(|| {
+            let normalized = trimmed.replace([' ', '-', '/'], "_");
+            BRAND_MAP.get(&normalized)
+        })
+        .copied()
 }
 
 static BRAND_ALIASES: LazyLock<Vec<(String, &'static str)>> = LazyLock::new(|| {
@@ -75,6 +81,7 @@ mod tests {
         assert_eq!(get_brand("furukawa"), Some("furukawa_fitelnet"));
         assert_eq!(get_brand("Furukawa"), Some("furukawa_fitelnet"));
         assert_eq!(get_brand("fitelnet"), Some("furukawa_fitelnet"));
+        assert_eq!(get_brand("Furukawa Fitelnet"), Some("furukawa_fitelnet"));
         assert_eq!(get_brand("cisco"), Some("cisco_ios"));
         assert_eq!(get_brand("juniper"), Some("juniper_junos"));
         assert_eq!(get_brand("unknown_vendor"), None);

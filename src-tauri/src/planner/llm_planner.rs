@@ -22,9 +22,8 @@ impl LlmPlanner {
         let device_vendors: Vec<(String, String)> = connections
             .iter()
             .filter_map(|conn| {
-                conn.vendor_type
-                    .as_ref()
-                    .map(|vendor| (conn.hostname.to_string(), vendor.to_string()))
+                crate::mcp::rag::vendor::registered_connection_brand(conn)
+                    .map(|vendor| (conn.hostname.to_string(), vendor))
             })
             .collect();
         let mut devices_context = String::new();
@@ -116,6 +115,7 @@ impl LlmPlanner {
         log::info!("================ [LLM Planner JSON Output] ================\n{}\n===========================================================", response);
 
         let mut decision = parse_decision_from_json(&response)?;
+        complete_rag_decision(&mut decision, initial_goal, &connections);
         let has_builder_handoff = network_state
             .observed
             .observations

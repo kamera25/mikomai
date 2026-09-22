@@ -1,4 +1,5 @@
 use crate::connections::load_connections_raw;
+use crate::mcp::brands;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -28,7 +29,16 @@ pub fn resolve_device_contexts<R: tauri::Runtime>(
                 let vendor = conn
                     .vendor_type
                     .as_ref()
-                    .map(|v| v.as_str().to_string())
+                    .map(|v| {
+                        brands::get_brand(v.as_str())
+                            .unwrap_or(v.as_str())
+                            .to_string()
+                    })
+                    .or_else(|| {
+                        conn.device_type.as_ref().and_then(|device_type| {
+                            brands::get_brand(device_type.as_str()).map(str::to_owned)
+                        })
+                    })
                     .unwrap_or_else(|| "Unknown".to_string());
                 let device_type = conn
                     .device_type

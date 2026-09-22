@@ -41,11 +41,9 @@ pub fn parse_vendor_context_with_connections(
             // 1-b. Check if candidate matches registered device hostname/ip
             else if let Some(conns) = connections {
                 if let Some(conn) = conns.iter().find(|c| c.matches_host_or_ip(candidate)) {
-                    if let Some(ref v_type) = conn.vendor_type {
-                        let v_str = v_type.as_str();
-                        let matched_brand = brands::get_brand(v_str).unwrap_or(v_str);
-                        brand_filter = Some(matched_brand.to_string());
-                        detected_vendor = Some(matched_brand.to_string());
+                    if let Some(matched_brand) = registered_connection_brand(conn) {
+                        brand_filter = Some(matched_brand.clone());
+                        detected_vendor = Some(matched_brand);
                     }
                     processed_query = context_re
                         .replace_all(query, "")
@@ -59,14 +57,17 @@ pub fn parse_vendor_context_with_connections(
         // 2. If no brand filter from [Context: ...], check registered devices mentioned in the raw query text
         if brand_filter.is_none() {
             if let Some(conns) = connections {
+                let query_lower = query.to_lowercase();
                 for conn in conns {
                     let host_lower = conn.hostname.to_lowercase();
-                    if !host_lower.is_empty() && query.to_lowercase().contains(&host_lower) {
-                        if let Some(ref v_type) = conn.vendor_type {
-                            let v_str = v_type.as_str();
-                            let matched_brand = brands::get_brand(v_str).unwrap_or(v_str);
-                            brand_filter = Some(matched_brand.to_string());
-                            detected_vendor = Some(matched_brand.to_string());
+                    let ip_lower = conn.ip_string().to_lowercase();
+                    let mentions_connection = (!host_lower.is_empty()
+                        && query_lower.contains(&host_lower))
+                        || (!ip_lower.is_empty() && query_lower.contains(&ip_lower));
+                    if mentions_connection {
+                        if let Some(matched_brand) = registered_connection_brand(conn) {
+                            brand_filter = Some(matched_brand.clone());
+                            detected_vendor = Some(matched_brand);
                             break;
                         }
                     }
@@ -104,6 +105,22 @@ pub fn parse_vendor_context_with_connections(
     }
 }
 
+/// Resolve a registered connection's vendor consistently with the device
+/// adapters. Older connection records often store the vendor in `deviceType`
+/// and leave the newer `vendorType` field empty.
+pub(crate) fn registered_connection_brand(connection: &Connection) -> Option<String> {
+    if let Some(vendor) = connection.vendor_type.as_ref() {
+        let value = vendor.as_str();
+        return Some(brands::get_brand(value).unwrap_or(value).to_string());
+    }
+
+    connection
+        .device_type
+        .as_ref()
+        .and_then(|device_type| brands::get_brand(device_type.as_str()))
+        .map(str::to_owned)
+}
+
 pub fn get_vector_search_instruction() -> &'static str {
     "ネットワーク機器の操作マニュアルから、関連する設定コマンドや手順を検索します。"
 }
@@ -112,8 +129,8 @@ pub fn get_vector_search_instruction() -> &'static str {
 mod tests {
     use super::*;
     use crate::connections::{
-        Connection, ConnectionId, ConnectionStatus, ConnectionType, Hostname, IpAddress,
-        LastConnected, VendorType,
+        Connection, ConnectionId, ConnectionStatus, ConnectionType, DeviceType, Hostname,
+        IpAddress, LastConnected, VendorType,
     };
 
     #[test]
@@ -152,5 +169,50 @@ mod tests {
         // AND検索用にクエリにも yamaha が付加されていること
         assert!(processed.query.contains("yamaha"));
         assert!(processed.query.contains("NTP 設定 確認"));
+    }
+
+    #[test]
+    fn test_parse_vendor_context_uses_legacy_device_type_for_vlan_queries() {
+        let connections = vec![Connection {
+            id: ConnectionId::try_from("2").unwrap(),
+            status: ConnectionStatus::try_from("active").unwrap(),
+            hostname: Hostname::try_from("F220").unwrap(),
+            ip: None,
+            port: None,
+            conn_type: ConnectionType::try_from("console").unwrap(),
+            last_connected: LastConnected::try_from("2026-08-20 00:00:00").unwrap(),
+            username: None,
+            password: None,
+            enable_password: None,
+            device_type: Some(DeviceType::try_from("furukawa_fitelnet").unwrap()),
+            vendor_type: None,
+            auth_method: None,
+            private_key_path: None,
+            passphrase: None,
+            agent_forwarding: None,
+            remember_password: None,
+            has_password: None,
+            has_enable_password: None,
+            has_passphrase: None,
+            password_changed: None,
+            enable_password_changed: None,
+            passphrase_changed: None,
+        }];
+
+        let processed = parse_vendor_context_with_connections(
+            "[Context: F220] VLAN トランク 設定",
+            Some(&connections),
+        );
+
+        assert_eq!(processed.brand_filter.as_deref(), Some("furukawa_fitelnet"));
+        assert!(processed.query.contains("furukawa_fitelnet"));
+        assert!(processed.query.contains("VLAN トランク 設定"));
+
+        let processed_without_context =
+            parse_vendor_context_with_connections("F220 VLAN トランク 設定", Some(&connections));
+        assert_eq!(
+            processed_without_context.brand_filter.as_deref(),
+            Some("furukawa_fitelnet")
+        );
     }
 }

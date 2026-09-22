@@ -178,6 +178,9 @@ define_tool!(GetStateTool, "get_state", |app, args| {
 
 define_tool!(QueryNwDbTool, "query_nw_db", |app, args| {
     let query = get_str_arg(&args, &["query", "userMessage", "user_message"]).unwrap_or_default();
+    if query.trim().is_empty() {
+        return Err("NW-DB search query is required".to_string());
+    }
     let filter = get_str_arg(&args, &["filter"]);
     let rag_state = app.state::<crate::mcp::rag::RagState>();
     crate::mcp::rag::query_nw_db(query, filter, rag_state, app.clone())

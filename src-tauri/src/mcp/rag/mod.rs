@@ -111,6 +111,9 @@ pub async fn query_nw_db(
     state: tauri::State<'_, RagState>,
     app: tauri::AppHandle,
 ) -> Result<RagResult, String> {
+    if query.trim().is_empty() {
+        return Err("NW-DB search query is required".to_string());
+    }
     // Check registered device info first
     if let Some(info) = vendor::check_registered_device(&query, &app) {
         return Ok(RagResult {
@@ -121,12 +124,17 @@ pub async fn query_nw_db(
 
     // Parse vendor-specific context & brand filters (resolving registered devices to vendor)
     let vendor_context = vendor::parse_vendor_context_with_app(&query, &app);
-    // Raw query fragments are intentionally unsupported; vendor context is the
-    // parameter-bound metadata filter.
-    if filter.is_some_and(|value| !value.trim().is_empty()) {
+    // Accept a legacy vendor filter, but never interpolate raw query fragments
+    // into SurrealQL. Context-derived vendor information takes precedence.
+    let explicit_brand = filter
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .and_then(crate::mcp::brands::get_brand)
+        .map(str::to_owned);
+    if filter.is_some_and(|value| !value.trim().is_empty()) && explicit_brand.is_none() {
         return Err("Raw RAG filters are no longer supported; use a vendor context".to_string());
     }
-    let brand = vendor_context.brand_filter;
+    let brand = vendor_context.brand_filter.or(explicit_brand);
 
     let model = state.get_model()?;
     let instructional_query = format!(
@@ -708,9 +716,11 @@ mod tests {
         embedding[0] = 1.0;
         graph.db.query("CREATE rag_chunk:test CONTENT { path: 'manual.md', title: '経路確認', summary: 'show ip route の手順', text: 'show ip route', brand: 'cisco_ios', chunk_index: 0, embedding: $embedding };")
             .bind(("embedding", embedding.clone())).await.unwrap();
+        graph.db.query("CREATE rag_chunk:fitelnet_vlan CONTENT { path: 'fitelnet-vlan.md', title: 'F220 VLAN 設定', summary: 'F220 VLAN 設定の手順', text: 'F220 VLAN 設定 vlan-id', brand: 'furukawa_fitelnet', chunk_index: 0, embedding: $embedding };")
+            .bind(("embedding", embedding.clone())).await.unwrap();
         let results = search_chunks(
             &graph,
-            embedding,
+            embedding.clone(),
             Some("cisco_ios".to_string()),
             "show ip route",
         )
@@ -718,6 +728,16 @@ mod tests {
         .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].path, "manual.md");
+        let fitelnet_results = search_chunks(
+            &graph,
+            embedding,
+            Some("furukawa_fitelnet".to_string()),
+            "F220 VLAN 設定",
+        )
+        .await
+        .unwrap();
+        assert_eq!(fitelnet_results.len(), 1);
+        assert_eq!(fitelnet_results[0].path, "fitelnet-vlan.md");
         let previews = previews_for_search_result(
             "--- 根拠 [1] (ソース: manual.md, 類似度スコア: 0.90) ---",
             &graph,
