@@ -521,12 +521,19 @@ impl AgentLoop {
                         self.state_machine.step_count()
                     ))));
 
-                    let co_worker_result = executor
+                    let co_worker_result = match executor
                         .execute_rag_co_worker(goal.clone(), cmd_result.output.clone())
                         .await
-                        .unwrap_or_else(|error| {
-                            format!("RAG Co-Workerの資料選定に失敗しました: {error}")
-                        });
+                    {
+                        Ok(result) if !result.trim().is_empty() => result,
+                        result => {
+                            log::warn!(
+                                "[AgentLoop] RAG co-worker returned no evidence ({:?}); retaining retrieved source text",
+                                result.as_ref().err()
+                            );
+                            cmd_result.output.clone()
+                        }
+                    };
 
                     log::info!(
                         "[AgentLoop] Step {}: RAG co-worker returned {} chars of selected document text",

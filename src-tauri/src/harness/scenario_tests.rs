@@ -40,6 +40,76 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn rag_evidence_reaches_next_planning_turn_even_when_selection_fails() {
+        let raw = "--- 根拠 [1] (ソース: vlan.md, 類似度スコア: 0.90) ---\ninterface GigaEthernet {{interface_num}}\n vlan-id {{vlan_id}}";
+        let expanded = "=== 選択資料: VLAN (vlan.md) ===\ninterface GigaEthernet {{interface_num}}\n vlan-id {{vlan_id}}\n exit";
+        for (worker_result, expected) in [
+            (
+                Err("RAG document selector returned invalid JSON".into()),
+                raw,
+            ),
+            (Err("Failed to expand RAG document".into()), raw),
+            (Ok(" \n".into()), raw),
+            (Ok(expanded.to_string()), expanded),
+        ] {
+            let planner = FakePlanner::with_handler(move |state| {
+                if state.observed.observations.is_empty() {
+                    Ok(make_decision(
+                        ActionType::Observe,
+                        "VLANの設定方法を検索する",
+                        Some("query_nw_db"),
+                        None,
+                        serde_json::json!({"query": "F220 VLAN 設定"}),
+                        vec![],
+                        None,
+                    ))
+                } else {
+                    let observation = state.observed.observations.last().unwrap();
+                    assert_eq!(
+                        observation.source.tool_name.as_deref(),
+                        Some("rag_co_worker")
+                    );
+                    assert_eq!(observation.raw, expected);
+                    Ok(make_decision(
+                        ActionType::Finish,
+                        "取得したコマンドを回答する",
+                        None,
+                        None,
+                        serde_json::Value::Null,
+                        vec![],
+                        Some(expected),
+                    ))
+                }
+            });
+            let executor = FakeToolExecutor::new();
+            executor.set_tool_result(
+                "query_nw_db",
+                Ok(CommandResult {
+                    success: true,
+                    output: raw.to_string(),
+                    saved_path: None,
+                    is_cached: None,
+                    cache_time: None,
+                }),
+            );
+            executor.set_rag_co_worker_result(worker_result);
+            let reporter = RecordingReporter::new();
+            let mut agent = AgentLoop::new_headless(4);
+            let answer = agent
+                .run_with(
+                    "F220のVLAN設定方法を教えて".into(),
+                    &planner,
+                    &executor,
+                    &reporter,
+                )
+                .await
+                .unwrap();
+            assert!(answer.contains("vlan-id"));
+            assert_eq!(executor.executed_tools().len(), 1);
+        }
+    }
+
     /// 1. シナリオテスト: 調査成功 (Investigation Success)
     /// 計画 -> ツール実行(show ip route) -> 観測記録 -> 最終回答生成 で正常完了する。
     #[tokio::test]

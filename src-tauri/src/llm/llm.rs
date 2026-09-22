@@ -490,7 +490,10 @@ pub async fn ask_rag_co_worker(
             settings.temperature,
             settings.repetition_penalty,
         )
-        .map_err(LlmError::Worker)?
+        .unwrap_or_else(|error| {
+            log::warn!("[RAG co-worker] {error}; using highest-ranked documents");
+            Vec::new()
+        })
     };
 
     let selected_paths = if selected_paths.is_empty() {
