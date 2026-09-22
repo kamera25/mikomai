@@ -12,6 +12,7 @@ pub enum ToolKind {
     QueryNwDb,
     QueryRag,
     QueryNetworkGraph,
+    GetSubgraph,
     FindIpByMac,
     FindMacByIp,
     FindInterfaceByMac,
@@ -53,6 +54,7 @@ impl ToolKind {
             Self::QueryNwDb => "query_nw_db",
             Self::QueryRag => "query_rag",
             Self::QueryNetworkGraph => "query_network_graph",
+            Self::GetSubgraph => "get_subgraph",
             Self::FindIpByMac => "find_ip_by_mac",
             Self::FindMacByIp => "find_mac_by_ip",
             Self::FindInterfaceByMac => "find_interface_by_mac",
@@ -93,6 +95,7 @@ impl ToolKind {
             }
             Self::NetworkQueryNwDb | Self::QueryNwDb | Self::QueryRag => "NWDB検索",
             Self::QueryNetworkGraph => "ネットワークグラフ検索",
+            Self::GetSubgraph => "部分グラフ取得",
             Self::FindIpByMac => "MACからIP検索",
             Self::FindMacByIp => "IPからMAC検索",
             Self::FindInterfaceByMac => "MACからポート検索",
@@ -196,6 +199,7 @@ impl ToolKind {
                 | Self::QueryNwDb
                 | Self::QueryRag
                 | Self::QueryNetworkGraph
+                | Self::GetSubgraph
                 | Self::FindIpByMac
                 | Self::FindMacByIp
                 | Self::FindInterfaceByMac
@@ -234,6 +238,7 @@ impl std::str::FromStr for ToolKind {
             "query_nw_db" => Ok(Self::QueryNwDb),
             "query_rag" => Ok(Self::QueryRag),
             "query_network_graph" => Ok(Self::QueryNetworkGraph),
+            "get_subgraph" => Ok(Self::GetSubgraph),
             "find_ip_by_mac" => Ok(Self::FindIpByMac),
             "find_mac_by_ip" => Ok(Self::FindMacByIp),
             "find_interface_by_mac" => Ok(Self::FindInterfaceByMac),

@@ -213,6 +213,20 @@ define_tool!(QueryNetworkGraphTool, "query_network_graph", |app, args| {
     })
 });
 
+define_tool!(GetSubgraphTool, "get_subgraph", |app, args| {
+    let request = serde_json::from_value::<crate::graph::subgraph::SubgraphRequest>(args)
+        .map_err(|error| format!("Invalid get_subgraph arguments: {error}"))?;
+    let state = app.state::<crate::graph::SurrealDbState>();
+    let result = state.get_subgraph(request).await?;
+    Ok(CommandResult {
+        success: true,
+        output: serde_json::to_string(&result).map_err(|error| error.to_string())?,
+        saved_path: None,
+        is_cached: None,
+        cache_time: None,
+    })
+});
+
 async fn find_endpoint_tool(
     app: tauri::AppHandle,
     args: serde_json::Value,

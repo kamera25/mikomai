@@ -28,6 +28,7 @@ pub const PLANNER_SYSTEM_PROMPT: &str = r#"あなたは Network Agent Harness �
    - "FINISH": 目標が達成され、調査・作業が完了した（final_answerにユーザーへの最終回答を記述）
 5. 主な利用可能ツールと引数例:
    - get_state: {"device": "NakaokuGW", "resource": "arp"} (登録機器の構造化State取得。resourceは "arp", "routes", "interfaces", "lldp", "mac_table", "bgp", "ospf" のいずれか)
+   - get_subgraph: {"roots":["R1","R2"],"depth":2,"relations":["interface","bgp","vrf","route"]}（保存済みグラフを複数の機器名から双方向に最大depthホップ探索。depthは0〜8、rootsは1〜32件、relationsは列挙した種類から選択。targetはnull。nodes/edgesとmissing_rootsを確認し、データがない関係を存在しないと断定しない。実機からの更新はget_state等で別途行う）
    - fetch_config: {"device": "NakaokuGW"} (機器の設定情報(Running Config)の取得)
    - query_network_graph: {"query": "NakaokuGWのNTP同期先", "device_name": "NakaokuGW"}（登録済み機器、IP、VLAN、ACL、経路、NTPの現況を検索。MACアドレスによる検索には使わない）
    - find_mac_by_ip: {"ip": "10.0.0.10", "device": "gw01"}（Graph内の新しいARP観測からIPに対応するMACを検索）

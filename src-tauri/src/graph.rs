@@ -15,6 +15,8 @@ use surrealdb::Surreal;
 use tauri::Manager;
 use validator::Validate;
 
+pub mod subgraph;
+
 pub const GRAPH_TTL_MINUTES: i64 = 20;
 
 #[derive(Clone, Copy)]
@@ -170,6 +172,8 @@ DEFINE TABLE ip_address SCHEMALESS;
 DEFINE TABLE subnet SCHEMALESS;
 DEFINE TABLE vlan SCHEMALESS;
 DEFINE TABLE route SCHEMALESS;
+DEFINE TABLE bgp SCHEMALESS;
+DEFINE TABLE vrf SCHEMALESS;
 DEFINE TABLE acl SCHEMALESS;
 DEFINE TABLE ntp_server SCHEMALESS;
 DEFINE TABLE ntp_status SCHEMALESS;

@@ -66,3 +66,28 @@ Event-sourced NetworkState <- Tool executor port -> MCP / device
 4. ~~フェイクポートを用いた「調査成功」「ポリシー拒否」「承認待ち」「ツール失敗」のシナリオテストを追加する。~~ `src-tauri/src/harness/scenario_tests.rs` に実装・検証完了。
 
 この順序なら、既存の Tauri/MCP 境界を壊さずに、複数エージェントや長時間タスクへ拡張できる。
+
+
+### Planner の部分グラフ取得
+
+Planner は `OBSERVE` で次のツールを実行できます。
+
+```json
+{
+  "action_type": "OBSERVE",
+  "objective": "R1とR2周辺の関係を調べる",
+  "tool": "get_subgraph",
+  "target": null,
+  "parameters": {
+    "roots": ["R1", "R2"],
+    "depth": 2,
+    "relations": ["interface", "bgp", "vrf", "route"]
+  }
+}
+```
+
+`roots` は保存済み機器名（1〜32件）、`depth` は0〜8、`relations` は上記の種類から1つ以上指定します。選択した関係だけを双方向に幅優先探索し、起点から指定ホップ数以内の `nodes` と探索した `edges`、未登録の `missing_roots` を返します。深さ0では起点ノードのみを返し、重複する起点・ノード・辺はまとめます。ノードの `node_id` が辺の `from` / `to` に対応します。
+
+既存の `has_interface`、`device_has_route` はそれぞれ `interface`、`route` として扱います。BGP・VRFは保存済みの `bgp` / `device_has_bgp`、`vrf` / `device_has_vrf` の辺を対象にします。BGP・VRFの新しい収集・正規化処理はこのツールには含みません。保存されていない関係は返らないため、空の結果はネットワーク上の関係が存在しない証拠にはなりません。
+
+実機への問い合わせや自動更新は行いません。保存済みレコードの観測時刻と出典を保持するので、鮮度が必要な場合は `get_state` 等で別途収集してください。1000ノードまたは2000辺を超える探索はエラーとして返します。

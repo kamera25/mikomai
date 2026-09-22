@@ -49,6 +49,9 @@ pub fn build_planner_schema(registered_devices: &[String]) -> String {
           "type": "string",
           "enum": ["arp", "routes", "interfaces", "lldp", "mac_table", "bgp", "ospf"]
         }},
+        "roots": {{ "type": "array", "items": {{ "type": "string", "minLength": 1 }}, "minItems": 1, "maxItems": 32 }},
+        "depth": {{ "type": "integer", "minimum": 0, "maximum": 8 }},
+        "relations": {{ "type": "array", "items": {{ "type": "string", "enum": ["interface", "bgp", "vrf", "route"] }}, "minItems": 1 }},
         "query": {{ "type": "string" }},
         "ip": {{ "type": "string" }},
         "mac": {{ "type": "string" }},
@@ -98,6 +101,9 @@ pub const DECISION_JSON_SCHEMA: &str = r#"{
           "type": "string",
           "enum": ["arp", "routes", "interfaces", "lldp", "mac_table", "bgp", "ospf"]
         },
+        "roots": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "maxItems": 32 },
+        "depth": { "type": "integer", "minimum": 0, "maximum": 8 },
+        "relations": { "type": "array", "items": { "type": "string", "enum": ["interface", "bgp", "vrf", "route"] }, "minItems": 1 },
         "query": { "type": "string" },
         "ip": { "type": "string" },
         "mac": { "type": "string" },
@@ -191,6 +197,7 @@ mod tests {
             .expect("tool enum");
 
         assert!(tools.iter().any(|value| value == "query_nw_db"));
+        assert!(tools.iter().any(|value| value == "get_subgraph"));
         assert!(tools.iter().any(serde_json::Value::is_null));
         assert!(!tools.iter().any(|value| {
             value == "query_nw_db_db_search_tool_name_placeholder_for_clarity_if_needed"
