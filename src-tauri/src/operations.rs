@@ -161,7 +161,7 @@ impl OperationStore {
             .map_err(|error| format!("Failed to save operation plans: {error}"))
     }
 
-    fn insert(&self, plan: OperationPlan) -> Result<OperationPlan, String> {
+    pub(crate) fn insert(&self, plan: OperationPlan) -> Result<OperationPlan, String> {
         let mut plans = self
             .plans
             .lock()

@@ -188,7 +188,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
       setStatusMessage("変更計画を作成して承認中...");
       setCommitLogs(["[SYSTEM] 変更計画を作成しました。内容はこの差分と同一です。"]);
       setActiveTab("logs");
-      const plan = await operationService.createPlan<OperationPlan>({
+      const plan = diffData?.operationPlan ?? await operationService.createPlan<OperationPlan>({
         deviceName,
         commands,
         rationale: `画面に表示した ${commands.length} 行の設定差分を ${deviceName} に適用する`,
@@ -206,7 +206,7 @@ export function useConfigDiffExecution({ id, isOpen, proposedDiffData }: ConfigD
       setStatusMessage(result.success ? "承認済みの変更計画を適用しました。" : "変更計画の実行に失敗しました。");
       // Wake the conversion worker without granting it permission to perform
       // a second, legacy configuration write.
-      if (id) await ipc.submitChoice(id, "operation_submitted");
+      if (id && !diffData?.operationPlan) await ipc.submitChoice(id, "operation_submitted");
     } catch (e) {
       console.error("Failed to execute approved operation plan:", e);
       setPhase("failed");

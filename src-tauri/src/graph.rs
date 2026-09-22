@@ -135,6 +135,36 @@ pub struct GraphQueryResult {
 }
 
 impl SurrealDbState {
+    /// Freshness is checked on the latest interface observation itself, not on
+    /// unrelated ARP/routing observations. Do not fall back to older snapshots.
+    pub async fn current_interfaces_for_change(
+        &self,
+        device: &str,
+    ) -> Result<Option<Value>, String> {
+        let mut result = self.db.query("SELECT canonical, collected_at FROM observation WHERE device_name = $device AND kind = 'interfaces' ORDER BY collected_at DESC LIMIT 1;")
+            .bind(("device", device.to_string())).await.map_err(|e| e.to_string())?;
+        let rows: Vec<Value> = result.take(0).map_err(|e| e.to_string())?;
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let fresh = row
+            .get("collected_at")
+            .and_then(Value::as_str)
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|time| {
+                let age = Utc::now() - time.with_timezone(&Utc);
+                age >= Duration::zero() && age <= Duration::minutes(GRAPH_TTL_MINUTES)
+            })
+            .unwrap_or(false);
+        Ok(if fresh {
+            row.get("canonical")
+                .filter(|v| v.get("interfaces").is_some())
+                .cloned()
+        } else {
+            None
+        })
+    }
+
     pub async fn initialize(app: &tauri::AppHandle) -> Result<Self, String> {
         // RAG, graph, and history deliberately share one managed local-first database.
         let dir = app
@@ -1073,6 +1103,88 @@ fn array<'a>(value: &'a Value, name: &str) -> &'a [Value] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn desired_change_uses_fresh_interface_observation_and_creates_pending_plan() {
+        use mikomai_core::desired_change::{graph_from_interfaces, prepare_change, PatchProposal};
+        let path =
+            std::env::temp_dir().join(format!("mikomai-desired-test-{}", uuid::Uuid::new_v4()));
+        let state = SurrealDbState::initialize_at(&path).await.unwrap();
+        let canonical = json!({"version":"1.0","metadata":{"generated_at":"2026-09-22T00:00:00Z","source_device":"gw","os_type":"cisco_ios"},"interfaces":[{"name":"GigabitEthernet1/0/1","status":"down","ipv4_addresses":[],"prefix_len":null}]});
+        let now = Utc::now();
+        for (source, kind, time, value) in [
+            (
+                "old-interfaces",
+                GraphDataKind::Interfaces,
+                now - Duration::minutes(30),
+                Some(canonical.clone()),
+            ),
+            ("new-arp", GraphDataKind::Arp, now, None),
+        ] {
+            state
+                .ingest(GraphIngestInput {
+                    source_id: source.into(),
+                    collected_at: time,
+                    device_name: "gw".into(),
+                    kind,
+                    raw: source.into(),
+                    normalized: None,
+                    canonical: value,
+                    evidence: None,
+                    normalizer_version: "test".into(),
+                })
+                .await
+                .unwrap();
+        }
+        assert!(state
+            .current_interfaces_for_change("gw")
+            .await
+            .unwrap()
+            .is_none());
+        state
+            .ingest(GraphIngestInput {
+                source_id: "fresh-interfaces".into(),
+                collected_at: now,
+                device_name: "gw".into(),
+                kind: GraphDataKind::Interfaces,
+                raw: "new".into(),
+                normalized: None,
+                canonical: Some(canonical),
+                evidence: None,
+                normalizer_version: "test".into(),
+            })
+            .await
+            .unwrap();
+        let observed = state
+            .current_interfaces_for_change("gw")
+            .await
+            .unwrap()
+            .unwrap();
+        let current = graph_from_interfaces("gw", &observed, vec![]).unwrap();
+        let proposal: PatchProposal = serde_json::from_value(json!({"clarification":null,"patch":{"mutations":[{"op":"set_property","target":{"entity_type":"interface","device":"gw","id":"GigabitEthernet1/0/1"},"property":"admin_state","value":"up"}]}})).unwrap();
+        let prepared = prepare_change(&current, &proposal.patch.unwrap(), "cisco_ios").unwrap();
+        let plan = crate::operations::ChangePlanner::create(
+            "network_config".into(),
+            Some("gw".into()),
+            json!({"deviceName":"gw","commands":prepared.commands}),
+            "enable interface".into(),
+        )
+        .unwrap();
+        let store = crate::operations::OperationStore::new();
+        let plan = store.insert(plan).unwrap();
+        assert!(store.take_approved(plan.id, &plan.plan_hash).is_err());
+        assert!(store.approve(plan.id, "wrong-hash").is_err());
+        store.approve(plan.id, &plan.plan_hash).unwrap();
+        let approved = store.take_approved(plan.id, &plan.plan_hash).unwrap();
+        assert_eq!(
+            approved.args["commands"],
+            json!(["interface GigabitEthernet1/0/1", "no shutdown", "exit"])
+        );
+        assert!(store.take_approved(plan.id, &plan.plan_hash).is_err());
+        assert!(!current.entities[0].properties.contains_key("admin_state"));
+        drop(state);
+        std::fs::remove_dir_all(path).unwrap();
+    }
 
     #[test]
     fn yaml_normalizer_maps_arp_to_ip_facts() {

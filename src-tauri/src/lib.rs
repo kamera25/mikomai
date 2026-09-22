@@ -5,6 +5,7 @@ pub mod cli;
 pub mod commands;
 pub(crate) mod connections;
 pub mod crypto;
+pub(crate) mod desired_change;
 pub(crate) mod error;
 pub(crate) mod graph;
 pub(crate) mod graph_identity;

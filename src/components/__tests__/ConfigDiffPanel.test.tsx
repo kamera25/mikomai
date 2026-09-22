@@ -21,11 +21,11 @@ const mockDiffData = {
   diffLines: [{ type: "insert" as const, oldLine: null, newLine: 1, content: "hostname Router" }],
 };
 
-const TestWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const TestWrapper: React.FC<{ children: React.ReactNode; data?: typeof mockDiffData & { operationPlan?: import("../ConfigDiffPanel/configDiffModel").OperationPlan } }> = ({ children, data = mockDiffData }) => {
   const { dispatch } = useUIContext();
   useEffect(() => {
-    dispatch({ type: "SET_CONFIG_DIFF_DATA", payload: mockDiffData });
-  }, [dispatch]);
+    dispatch({ type: "SET_CONFIG_DIFF_DATA", payload: data });
+  }, [dispatch, data]);
   return <>{children}</>;
 };
 
@@ -100,5 +100,24 @@ describe("ConfigDiffPanel", () => {
         planHash: "hash-1",
       });
     });
+  });
+
+  it("approves the persisted desired-state plan only after a user click without reconstructing commands", async () => {
+    const operationPlan = { id: "desired-1", planHash: "desired-hash", approvalStatus: "pending" as const };
+    vi.mocked(invoke)
+      .mockResolvedValueOnce({ ...operationPlan, approvalStatus: "approved" })
+      .mockResolvedValueOnce({ success: true, output: "applied" })
+      .mockResolvedValueOnce(undefined);
+    render(<UIProvider><TestWrapper data={{ ...mockDiffData, operationPlan }}>
+      <ConfigDiffPanel {...defaultProps} />
+    </TestWrapper></UIProvider>);
+    expect(invoke).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("承認して実行"));
+    await waitFor(() => {
+      expect(invoke).toHaveBeenNthCalledWith(1, "approve_operation_plan", { id: "desired-1", planHash: "desired-hash" });
+      expect(invoke).toHaveBeenNthCalledWith(2, "execute_approved_operation_plan", { id: "desired-1", planHash: "desired-hash" });
+    });
+    expect(vi.mocked(invoke).mock.calls.some(([command]) => command === "create_network_config_operation_plan")).toBe(false);
+    expect(invoke).toHaveBeenCalledTimes(2);
   });
 });

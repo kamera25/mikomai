@@ -94,6 +94,13 @@ pub async fn handle_chat_request(
             .any(|item| matches!(item.mime_type, crate::history::AttachmentType::Image))
     });
 
+    // Desired interface changes use a typed, deterministic pipeline before any
+    // legacy shortcut or builder can turn the request into free-form commands.
+    if crate::desired_change::handles(&user_message) {
+        crate::llm::loader::ensure_model_loaded(&app, llama_state).await?;
+        return crate::desired_change::prepare(&app, llama_state, &user_message).await;
+    }
+
     // 1. FastRouter (Shortcut) routing: Execute without loading the LLM model
     if !has_image_attachment {
         if let Some(decision) = crate::llm::router::shortcut::detect_shortcut(&user_message) {

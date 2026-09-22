@@ -15,6 +15,7 @@ export interface ConfigDiffData {
   diffLines: DiffLine[];
   hostname?: string;
   ip?: string;
+  operationPlan?: import("../components/ConfigDiffPanel/configDiffModel").OperationPlan;
 }
 
 export interface UIState {

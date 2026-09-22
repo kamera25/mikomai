@@ -48,7 +48,7 @@ export function useConfigDiffEvents() {
 
   // Listen to request-diff-commit from Rust
   useEffect(() => {
-    const unlisten = ipc.subscribe<any>(EVENTS.diffRequested, ({ id, config, fileName, hostname, ip }) => {
+    const unlisten = ipc.subscribe<any>(EVENTS.diffRequested, ({ id, config, fileName, hostname, ip, operationPlan }) => {
       if (id) {
         setDiffCommitId(id);
       }
@@ -70,6 +70,7 @@ export function useConfigDiffEvents() {
             diffLines,
             hostname,
             ip,
+            operationPlan,
           },
         });
         uiDispatch({ type: "SET_CONFIG_DIFF_OPEN", payload: true });
