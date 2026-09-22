@@ -135,10 +135,13 @@ fn get_settings_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
     path.join("settings.json")
 }
 
+static SETTINGS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[tauri::command]
 pub fn load_settings<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<AppSettings, TauriError> {
+    let _lock = SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = get_settings_path(&app);
     let settings = if !path.exists() {
         AppSettings::default()
@@ -155,12 +158,19 @@ pub fn save_settings<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     settings: AppSettings,
 ) -> Result<(), TauriError> {
+    let _lock = SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
     settings
         .validate()
         .map_err(|e| TauriError(crate::error::MikomaiError::Validation(e.to_string())))?;
     let path = get_settings_path(&app);
     let data = serde_json::to_string_pretty(&settings)?;
-    fs::write(path, data)?;
+
+    // Atomic write: write to temporary file first, then rename to target path to prevent TOCTOU corruption
+    let tmp_path = path.with_extension("tmp");
+    fs::write(&tmp_path, data)?;
+    fs::rename(&tmp_path, &path)?;
+
     Ok(())
 }
 

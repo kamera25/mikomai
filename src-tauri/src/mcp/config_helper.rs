@@ -59,6 +59,7 @@ struct ConvertPayload {
 #[derive(Deserialize)]
 struct ConvertResponse {
     success: bool,
+    #[serde(default)]
     converted_config: String,
     error: Option<String>,
 }

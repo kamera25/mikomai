@@ -30,6 +30,8 @@ pub enum CryptoError {
     Decryption(String),
     #[error("Encrypted data is too short")]
     TooShort,
+    #[error("Failed to get app data directory: {0}")]
+    AppDataDir(String),
     #[error("Invalid UTF-8 data: {0}")]
     Utf8(#[from] std::string::FromUtf8Error),
 }
@@ -103,7 +105,7 @@ fn get_or_create_key_internal<R: tauri::Runtime>(
 ) -> Result<Key<Aes256Gcm>, CryptoError> {
     let path = tauri::Manager::path(app)
         .app_data_dir()
-        .expect("Failed to get app data dir");
+        .map_err(|e| CryptoError::AppDataDir(e.to_string()))?;
     if !path.exists() {
         let _ = std::fs::create_dir_all(&path);
     }
@@ -165,7 +167,15 @@ fn get_or_create_key_internal<R: tauri::Runtime>(
 pub fn get_or_create_key<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<Key<Aes256Gcm>, CryptoError> {
-    let mut lock = IN_MEMORY_KEY.lock().unwrap_or_else(|e| e.into_inner());
+    let mut lock = match IN_MEMORY_KEY.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            log::warn!("IN_MEMORY_KEY Mutex was poisoned! Clearing corrupted cache and recovering.");
+            let mut guard = poisoned.into_inner();
+            *guard = None;
+            guard
+        }
+    };
     if let Some(key) = *lock {
         return Ok(key);
     }
@@ -179,7 +189,13 @@ pub fn get_or_create_key<R: tauri::Runtime>(
 #[cfg(test)]
 #[allow(dead_code)]
 pub fn clear_key_cache_for_testing() {
-    let mut lock = IN_MEMORY_KEY.lock().unwrap_or_else(|e| e.into_inner());
+    let mut lock = match IN_MEMORY_KEY.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            log::warn!("IN_MEMORY_KEY Mutex was poisoned during test cleanup; clearing.");
+            poisoned.into_inner()
+        }
+    };
     *lock = None;
 }
 
@@ -188,10 +204,6 @@ pub fn generate_key() -> Key<Aes256Gcm> {
 }
 
 pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, CryptoError> {
-    if data.is_empty() {
-        return Ok("".to_string());
-    }
-
     let cipher = Aes256Gcm::new(key);
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
 
@@ -205,6 +217,7 @@ pub fn encrypt_with_key(key: &Key<Aes256Gcm>, data: &str) -> Result<String, Cryp
 }
 
 pub fn decrypt_with_key(key: &Key<Aes256Gcm>, encrypted_data: &str) -> Result<String, CryptoError> {
+    // Backward-compatibility: if legacy unencrypted empty string was stored
     if encrypted_data.is_empty() {
         return Ok("".to_string());
     }
@@ -231,10 +244,6 @@ pub fn encrypt<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     data: &str,
 ) -> Result<String, CryptoError> {
-    if data.is_empty() {
-        return Ok("".to_string());
-    }
-
     let key = get_or_create_key(app)?;
     encrypt_with_key(&key, data)
 }
@@ -246,7 +255,6 @@ pub fn decrypt<R: tauri::Runtime>(
     if encrypted_data.is_empty() {
         return Ok("".to_string());
     }
-
     let key = get_or_create_key(app)?;
     decrypt_with_key(&key, encrypted_data)
 }
@@ -277,6 +285,15 @@ mod tests {
         let key = get_test_key();
         let result = decrypt_with_key(&key, "");
         assert_eq!(result.unwrap(), "".to_string());
+    }
+
+    #[test]
+    fn test_encrypt_empty_string() {
+        let key = get_test_key();
+        let encrypted = encrypt_with_key(&key, "").unwrap();
+        assert!(!encrypted.is_empty(), "Empty string should produce valid AES-GCM ciphertext");
+        let decrypted = decrypt_with_key(&key, &encrypted).unwrap();
+        assert_eq!(decrypted, "");
     }
 
     #[test]

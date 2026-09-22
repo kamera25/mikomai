@@ -340,7 +340,31 @@ pub fn save_connections(
     }
 
     let data = serde_json::to_string_pretty(&connections)?;
-    fs::write(path, data)?;
+    fs::write(&path, data)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = fs::metadata(&path) {
+            let mut perms = metadata.permissions();
+            perms.set_mode(0o600);
+            let _ = fs::set_permissions(&path, perms);
+        }
+    }
+    Ok(())
+}
+
+fn validate_csv_text(field: &str, value: &str, max_len: usize) -> Result<(), String> {
+    if value.len() > max_len {
+        return Err(format!("{field} exceeds max length of {max_len}"));
+    }
+    if value.contains('\0') {
+        return Err(format!("{field} contains forbidden null byte"));
+    }
+    for c in value.chars() {
+        if c.is_control() {
+            return Err(format!("{field} contains forbidden control character"));
+        }
+    }
     Ok(())
 }
 
@@ -355,17 +379,56 @@ fn csv_connection(
     if hostname.is_empty() || ip.is_empty() {
         return Err("hostname と ip は必須です".to_string());
     }
+
+    // Validation to prevent field injection
+    validate_csv_text("hostname", hostname, 255)?;
+    if !hostname.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_') {
+        return Err("hostname に不正な文字が含まれています".to_string());
+    }
+
+    validate_csv_text("ip", ip, 255)?;
+    if ip.parse::<std::net::IpAddr>().is_err()
+        && !ip.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_')
+    {
+        return Err("ip の形式が不正です".to_string());
+    }
+
+    let raw_type = value("type");
+    let conn_type_str = if raw_type.is_empty() {
+        "SSH"
+    } else {
+        if ConnectionType::from_str(raw_type).is_none() {
+            return Err(format!("未対応の接続タイプです: '{raw_type}'"));
+        }
+        raw_type
+    };
+
+    let username_val = value("username");
+    if !username_val.is_empty() {
+        validate_csv_text("username", username_val, 128)?;
+    }
+
+    let dev_type_val = value("deviceType");
+    if !dev_type_val.is_empty() {
+        validate_csv_text("deviceType", dev_type_val, 128)?;
+    }
+
+    let vendor_type_val = value("vendorType");
+    if !vendor_type_val.is_empty() {
+        validate_csv_text("vendorType", vendor_type_val, 128)?;
+    }
+
     let connection = serde_json::json!({
         "id": if value("id").is_empty() { uuid::Uuid::new_v4().to_string() } else { value("id").to_string() },
         "status": if matches!(value("status"), "online" | "offline") { value("status") } else { "offline" },
         "hostname": hostname,
         "ip": ip,
         "port": if value("port").is_empty() { serde_json::Value::Null } else { serde_json::json!(value("port").parse::<u16>().map_err(|_| "port が不正です")?) },
-        "type": if value("type").is_empty() { "SSH" } else { value("type") },
+        "type": conn_type_str,
         "lastConnected": if value("lastConnected").is_empty() { "Never" } else { value("lastConnected") },
-        "username": if value("username").is_empty() { serde_json::Value::Null } else { serde_json::Value::String(value("username").to_string()) },
-        "deviceType": if value("deviceType").is_empty() { serde_json::Value::Null } else { serde_json::Value::String(value("deviceType").to_string()) },
-        "vendorType": if value("vendorType").is_empty() { serde_json::Value::Null } else { serde_json::Value::String(value("vendorType").to_string()) },
+        "username": if username_val.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(username_val.to_string()) },
+        "deviceType": if dev_type_val.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(dev_type_val.to_string()) },
+        "vendorType": if vendor_type_val.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(vendor_type_val.to_string()) },
     });
     serde_json::from_value(connection).map_err(|error| error.to_string())
 }
@@ -784,5 +847,26 @@ mod tests {
         let headers = csv::StringRecord::from(vec!["hostname", "ip"]);
         let row = csv::StringRecord::from(vec!["router-1", ""]);
         assert!(csv_connection(&row, &headers).is_err());
+    }
+
+    #[test]
+    fn csv_connection_rejects_injection_and_invalid_chars() {
+        let headers = csv::StringRecord::from(vec!["hostname", "ip", "type", "username"]);
+
+        // Hostname with shell metachars or HTML injection
+        let row_bad_host = csv::StringRecord::from(vec!["router<script>", "192.168.1.1", "SSH", "admin"]);
+        assert!(csv_connection(&row_bad_host, &headers).is_err());
+
+        // Control characters in username
+        let row_bad_user = csv::StringRecord::from(vec!["router-1", "192.168.1.1", "SSH", "admin\r\nevil"]);
+        assert!(csv_connection(&row_bad_user, &headers).is_err());
+
+        // Invalid IP format
+        let row_bad_ip = csv::StringRecord::from(vec!["router-1", "999.999.999.999; rm -rf", "SSH", "admin"]);
+        assert!(csv_connection(&row_bad_ip, &headers).is_err());
+
+        // Unsupported connection type
+        let row_bad_type = csv::StringRecord::from(vec!["router-1", "192.168.1.1", "FTP", "admin"]);
+        assert!(csv_connection(&row_bad_type, &headers).is_err());
     }
 }

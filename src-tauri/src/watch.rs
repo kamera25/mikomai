@@ -319,14 +319,18 @@ async fn install_enabled_jobs(
 }
 async fn rebuild_scheduler(app: &AppHandle, state: &WatchState) {
     let watches = state.watches.lock().await.clone();
-    let scheduler = JobScheduler::new()
-        .await
-        .expect("watch scheduler can be created");
+    let scheduler = match JobScheduler::new().await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Failed to create watch scheduler: {e}");
+            return;
+        }
+    };
     install_enabled_jobs(app, &scheduler, &watches).await;
-    scheduler
-        .start()
-        .await
-        .expect("watch scheduler can be started");
+    if let Err(e) = scheduler.start().await {
+        log::error!("Failed to start watch scheduler: {e}");
+        return;
+    }
     *state.scheduler.lock().await = scheduler;
 }
 pub async fn init_watch_scheduler(app: &AppHandle) -> WatchState {
