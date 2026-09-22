@@ -68,8 +68,8 @@ export function chatReducer(state: ChatReducerState, action: ChatAction): ChatRe
     }
     case "mcpToolFinished": {
       if (!id) return state;
-      const payload = event.payload as { success: boolean; output?: string; savedPath?: string; isCached?: boolean; cacheTime?: string };
-      return next({ messages: updateTask(state.messages, id, (message) => message.event_type === "ToolExecution" ? { ...message, isToolLoading: false, status: payload.success ? "Success" : "Failed", raw_data: payload.output ?? "No output provided", saved_path: payload.savedPath, is_cached: payload.isCached, cache_time: payload.cacheTime } : message) });
+      const payload = event.payload as { success: boolean; error?: import("../../types").ObservationErrorCode; output?: string; savedPath?: string; isCached?: boolean; cacheTime?: string };
+      return next({ messages: updateTask(state.messages, id, (message) => message.event_type === "ToolExecution" ? { ...message, isToolLoading: false, status: payload.error ? "Failed" : "Success", error: payload.error, summary_text: payload.error ? `ツール実行に失敗しました (${payload.error})` : message.summary_text, raw_data: payload.output ?? "No output provided", saved_path: payload.savedPath, is_cached: payload.isCached, cache_time: payload.cacheTime } : message) });
     }
     case "mcpInitialStarted": {
       if (!id) return state;

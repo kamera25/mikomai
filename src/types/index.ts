@@ -55,8 +55,17 @@ export interface ToolExecutionMessage extends BaseMessage {
   saved_path?: string;
   is_cached?: boolean;
   cache_time?: string;
+  error?: ObservationErrorCode;
   waitingForApproval?: boolean;
 }
+
+export type ObservationErrorCode =
+  | "CapabilityNotFound"
+  | "ConnectionFailed"
+  | "CommandFailed"
+  | "ParseFailed"
+  | "ValidationFailed"
+  | "PersistenceFailed";
 
 export interface AgentResponseMessage extends BaseMessage {
   role: "ai";

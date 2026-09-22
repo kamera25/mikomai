@@ -1,4 +1,5 @@
 use crate::history::SummaryItem;
+use crate::state::events::ObservationError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -43,7 +44,11 @@ pub struct ToolStartedPayload {
 #[serde(rename_all = "camelCase")]
 pub struct ToolFinishedPayload {
     pub task_id: uuid::Uuid,
+    /// Retained for compatibility with the live tool timeline. Consumers that
+    /// need a reason for failure should use `error`.
     pub success: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ObservationError>,
     pub output: String,
     pub saved_path: Option<std::path::PathBuf>,
     pub is_cached: Option<bool>,

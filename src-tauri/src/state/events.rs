@@ -111,16 +111,88 @@ impl Action {
     }
 }
 
-/// Category of failure for executed actions
+/// Stable error categories exposed by observation results.
+///
+/// These values intentionally use PascalCase because they are part of the
+/// persisted audit/event contract and are also consumed by the UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ActionFailureKind {
-    Timeout,
-    PolicyViolation,
-    ConnectionError,
-    AuthenticationError,
-    CommandError,
-    Other,
+pub enum ObservationError {
+    #[serde(rename = "CapabilityNotFound")]
+    CapabilityNotFound,
+    #[serde(rename = "ConnectionFailed")]
+    ConnectionFailed,
+    #[serde(rename = "CommandFailed")]
+    CommandFailed,
+    #[serde(rename = "ParseFailed")]
+    ParseFailed,
+    #[serde(rename = "ValidationFailed")]
+    ValidationFailed,
+    #[serde(rename = "PersistenceFailed")]
+    PersistenceFailed,
+}
+
+impl ObservationError {
+    /// Classify a failed tool result at the observation boundary.
+    ///
+    /// Tool adapters currently return human-readable strings, so classification
+    /// lives here until every adapter has a typed error source of its own.
+    pub fn classify(tool_name: Option<&str>, output: &str) -> Self {
+        let tool = tool_name.unwrap_or_default().to_ascii_lowercase();
+        let message = output.to_ascii_lowercase();
+
+        if message.contains("unknown tool")
+            || message.contains("tool not found")
+            || message.contains("alias target tool not found")
+            || message.contains("no command template")
+            || message.contains("no command defined")
+            || message.contains("unsupported")
+        {
+            return Self::CapabilityNotFound;
+        }
+
+        if message.contains("save")
+            || message.contains("persist")
+            || message.contains("write temporary")
+            || message.contains("atomically rename")
+            || message.contains("artifact")
+        {
+            return Self::PersistenceFailed;
+        }
+
+        if message.contains("parse")
+            || message.contains("parsing")
+            || message.contains("deserialize")
+            || message.contains("canonicalization")
+        {
+            return Self::ParseFailed;
+        }
+
+        if message.contains("validation")
+            || message.contains("invalid")
+            || message.contains("schema")
+            || message.contains("policy")
+            || message.contains("dry-run")
+        {
+            return Self::ValidationFailed;
+        }
+
+        if message.contains("connection")
+            || message.contains("connect")
+            || message.contains("timed out")
+            || message.contains("timeout")
+            || message.contains("unreachable")
+            || message.contains("resolve host")
+            || message.contains("ssh")
+            || message.contains("icmp")
+            || tool.contains("ping")
+            || tool.contains("traceroute")
+            || tool.contains("connection")
+        {
+            return Self::ConnectionFailed;
+        }
+
+        Self::CommandFailed
+    }
 }
 
 /// Result returned after executing an action
@@ -129,14 +201,75 @@ pub struct ActionResult {
     pub id: Uuid,
     pub action_id: Uuid,
     pub timestamp: DateTime<Utc>,
-    pub success: bool,
     pub observation: Observation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub failure_kind: Option<ActionFailureKind>,
+    pub error: Option<ObservationError>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idempotency_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attempt_count: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ObservationError;
+
+    #[test]
+    fn serializes_error_codes_with_the_public_names() {
+        let values = [
+            ObservationError::CapabilityNotFound,
+            ObservationError::ConnectionFailed,
+            ObservationError::CommandFailed,
+            ObservationError::ParseFailed,
+            ObservationError::ValidationFailed,
+            ObservationError::PersistenceFailed,
+        ];
+
+        let serialized = values
+            .iter()
+            .map(|value| serde_json::to_string(value).unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            serialized,
+            vec![
+                "\"CapabilityNotFound\"",
+                "\"ConnectionFailed\"",
+                "\"CommandFailed\"",
+                "\"ParseFailed\"",
+                "\"ValidationFailed\"",
+                "\"PersistenceFailed\"",
+            ]
+        );
+    }
+
+    #[test]
+    fn classifies_common_observation_failures() {
+        assert_eq!(
+            ObservationError::classify(Some("network_show"), "Connection timed out"),
+            ObservationError::ConnectionFailed
+        );
+        assert_eq!(
+            ObservationError::classify(Some("unknown"), "Execution failed: Unknown tool ID"),
+            ObservationError::CapabilityNotFound
+        );
+        assert_eq!(
+            ObservationError::classify(Some("fetch_routing"), "canonicalization failed"),
+            ObservationError::ParseFailed
+        );
+        assert_eq!(
+            ObservationError::classify(Some("apply_config"), "validation failed"),
+            ObservationError::ValidationFailed
+        );
+        assert_eq!(
+            ObservationError::classify(Some("save_yaml"), "Failed to save artifact"),
+            ObservationError::PersistenceFailed
+        );
+        assert_eq!(
+            ObservationError::classify(Some("network_show"), "command exited with code 1"),
+            ObservationError::CommandFailed
+        );
+    }
 }
 
 /// Unified Event Model for reconstructing NetworkState

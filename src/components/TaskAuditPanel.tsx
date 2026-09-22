@@ -22,6 +22,7 @@ interface AuditEvent {
   tool?: string;
   target?: string;
   success?: boolean;
+  error?: "CapabilityNotFound" | "ConnectionFailed" | "CommandFailed" | "ParseFailed" | "ValidationFailed" | "PersistenceFailed";
   observation?: { raw?: string; source?: { tool_name?: string; device?: string } };
 }
 
@@ -43,7 +44,7 @@ const eventLabel = (event: AuditEvent) => {
     case "action":
       return `実行: ${event.tool ?? ""}`;
     case "result":
-      return `${event.success ? "成功" : "失敗"}: ${event.observation?.source?.tool_name ?? "ツール"}`;
+      return `${event.error ? `失敗 (${event.error})` : event.success === false ? "失敗" : "成功"}: ${event.observation?.source?.tool_name ?? "ツール"}`;
     case "finished":
       return "完了";
     default:

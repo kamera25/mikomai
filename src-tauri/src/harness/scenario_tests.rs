@@ -538,9 +538,8 @@ mod tests {
             id: uuid::Uuid::new_v4(),
             action_id: mutating_action.id,
             timestamp: chrono::Utc::now(),
-            success: true,
             observation,
-            failure_kind: None,
+            error: None,
             idempotency_key: Some(idempotency_key),
             attempt_count: Some(1),
         }));

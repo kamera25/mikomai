@@ -349,6 +349,12 @@ impl LlmWorker for BuilderWorker {
                     crate::mcp::protocol::ToolFinishedPayload {
                         task_id: val_task_id,
                         success: val_success,
+                        error: (!val_success).then(|| {
+                            crate::state::events::ObservationError::classify(
+                                Some("validate_cisco_config"),
+                                &val_output,
+                            )
+                        }),
                         output: val_output.clone(),
                         saved_path: None,
                         is_cached: None,
@@ -437,6 +443,12 @@ impl LlmWorker for BuilderWorker {
                             crate::mcp::protocol::ToolFinishedPayload {
                                 task_id: conv_task_id,
                                 success: conv_success,
+                                error: (!conv_success).then(|| {
+                                    crate::state::events::ObservationError::classify(
+                                        Some("convert_cisco_config"),
+                                        &conv_output,
+                                    )
+                                }),
                                 output: conv_output,
                                 saved_path: None,
                                 is_cached: None,

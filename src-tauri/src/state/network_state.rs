@@ -1,6 +1,6 @@
 use crate::state::desired::DesiredState;
 use crate::state::event_log::EventLog;
-use crate::state::events::{Action, ActionResult, HarnessEvent, Observation};
+use crate::state::events::{Action, ActionResult, HarnessEvent, Observation, ObservationError};
 use crate::state::hypothesis::Hypothesis;
 use crate::state::observed::ObservedState;
 use serde::{Deserialize, Serialize};
@@ -59,8 +59,8 @@ impl NetworkState {
     pub fn record_action_result(
         &mut self,
         action: Action,
-        success: bool,
         observation: Observation,
+        error: Option<ObservationError>,
     ) {
         let idempotency_key = Some(action.compute_idempotency_key());
         self.incorporate_observation(&observation);
@@ -68,13 +68,8 @@ impl NetworkState {
             id: uuid::Uuid::new_v4(),
             action_id: action.id,
             timestamp: chrono::Utc::now(),
-            success,
             observation,
-            failure_kind: if success {
-                None
-            } else {
-                Some(crate::state::events::ActionFailureKind::CommandError)
-            },
+            error,
             idempotency_key,
             attempt_count: Some(1),
         }));
@@ -260,7 +255,7 @@ mod tests {
             target: Some("R1".to_string()),
             parameters: serde_json::json!({"command": "show version"}),
         };
-        state.record_action_result(action, true, observation("IOS XE"));
+        state.record_action_result(action, observation("IOS XE"), None);
 
         assert_eq!(state.observed.observations.len(), 1);
         assert!(matches!(

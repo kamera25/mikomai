@@ -270,17 +270,18 @@ export function useMcpListeners({
           }
 
           case "mcpToolFinished": {
-            const { taskId, success, output, savedPath, isCached, cacheTime } = chatEvent.payload;
+            const { taskId, success, error, output, savedPath, isCached, cacheTime } = chatEvent.payload;
             setMessagesRef.current((prev) =>
               prev.map((msg) =>
                 msg.task_id === taskId
                   ? ({
                       ...msg,
                       isToolLoading: false,
-                      status: success ? "Success" : "Failed",
-                      summary_text: success
+                      status: error ? "Failed" : success ? "Success" : "Failed",
+                      error,
+                      summary_text: !error && success
                         ? i18n.t("chat.tool_success", { toolLabel: msg.action_name })
-                        : i18n.t("chat.tool_failed", { toolLabel: msg.action_name }),
+                        : `${i18n.t("chat.tool_failed", { toolLabel: msg.action_name })}${error ? ` (${error})` : ""}`,
                       raw_data: output || "No output provided",
                       saved_path: savedPath,
                       is_cached: isCached,

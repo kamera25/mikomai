@@ -9,8 +9,8 @@ use crate::llm::llm::LlamaState;
 use crate::mcp::protocol::{ChatEvent, InitialFinishedPayload, InitialStartedPayload};
 use crate::mcp::ToolKind;
 use crate::state::events::{
-    Action, ActionType, Decision, HarnessEvent, Observation, ObservationSource, Provenance,
-    ProvenanceOrigin,
+    Action, ActionType, Decision, HarnessEvent, Observation, ObservationError, ObservationSource,
+    Provenance, ProvenanceOrigin,
 };
 use crate::state::network_state::NetworkState;
 use crate::validator::policy::PolicyValidator;
@@ -547,8 +547,13 @@ impl AgentLoop {
             );
 
             // 5. State Update & Evaluation Phase
-            self.network_state
-                .record_action_result(action, cmd_result.success, observation);
+            self.network_state.record_action_result(
+                action,
+                observation,
+                (!cmd_result.success).then(|| {
+                    ObservationError::classify(Some(tool_name.as_str()), &cmd_result.output)
+                }),
+            );
             self.persist_event_log(task_id);
             self.state_machine.transition(HarnessState::Evaluating)?;
         };

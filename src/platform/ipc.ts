@@ -1,14 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { COMMANDS, EVENTS, type CommandName, type EventName } from "./commands";
-import type { SummaryItem } from "../types";
+import type { ObservationErrorCode, SummaryItem } from "../types";
 import type { TaskSnapshot } from "./dto";
 
 export type { TaskSnapshot, TaskStatus } from "./dto";
+export type { ObservationErrorCode } from "../types";
 // Wire payload is validated by feature reducers; keep transport generic here.
 export type ChatEvent =
   | { type: "mcpToolStarted"; taskId?: string; payload: { taskId: string; toolId: string; args?: Record<string, unknown>; resolvedHost?: string }; sequence?: number; version?: number }
-  | { type: "mcpToolFinished"; taskId?: string; payload: { taskId: string; success: boolean; output?: string; savedPath?: string; isCached?: boolean; cacheTime?: string }; sequence?: number; version?: number }
+  | { type: "mcpToolFinished"; taskId?: string; payload: { taskId: string; success: boolean; error?: ObservationErrorCode; output?: string; savedPath?: string; isCached?: boolean; cacheTime?: string }; sequence?: number; version?: number }
   | { type: "mcpInitialStarted"; taskId?: string; payload: { taskId: string; hasImage?: boolean }; sequence?: number; version?: number }
   | { type: "mcpAnalysisStarted"; taskId?: string; payload: { taskId: string; analysisTaskId: string }; sequence?: number; version?: number }
   | { type: "mcpInitialFinished"; taskId?: string; payload: { taskId: string; content: string }; sequence?: number; version?: number }

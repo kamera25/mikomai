@@ -200,6 +200,9 @@ pub async fn execute_mcp_tool_raw(
     let finished_payload = ToolFinishedPayload {
         task_id: task_id.clone(),
         success: result.success,
+        error: (!result.success).then(|| {
+            crate::state::events::ObservationError::classify(Some(tool_id.as_str()), &result.output)
+        }),
         output: result.output.clone(),
         saved_path: result.saved_path.clone(),
         is_cached: result.is_cached,
