@@ -36,15 +36,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore]
-    fn inspect_collector_diagnostic() {
-        let output = Command::new("/usr/sbin/arp").arg("-a").output().unwrap();
-        eprintln!("ARP_PROCESS status={} stderr={:?}", output.status, String::from_utf8_lossy(&output.stderr));
-        let raw = collect_local_arp().unwrap();
-        eprintln!("ARP_COLLECTOR len={} has_mac={}", raw.len(), raw.contains("ea:f1:92:50:7b:c3"));
-    }
-
-    #[test]
     fn recognizes_localhost_aliases() {
         assert!(is_localhost_target("localhost"));
         assert!(is_localhost_target(" 127.0.0.1 "));
