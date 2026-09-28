@@ -7,11 +7,15 @@ pub trait DeviceTransport: Send + Sync {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceSummary {
+    #[serde(default)]
+    pub id: Option<String>,
     pub hostname: String,
     #[serde(default)]
     pub ip: Option<String>,
     #[serde(rename = "type", alias = "connectionType", default)]
     pub connection_type: Option<String>,
+    #[serde(default)]
+    pub port: Option<String>,
     #[serde(default)]
     pub device_type: Option<String>,
 }

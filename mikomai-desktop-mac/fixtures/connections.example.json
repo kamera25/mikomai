@@ -1,0 +1,30 @@
+[
+  {
+    "id": "fixture-router-01",
+    "status": "offline",
+    "hostname": "fixture-router-01",
+    "ip": "192.0.2.10",
+    "port": "2222",
+    "type": "SSH",
+    "lastConnected": "Never",
+    "username": "fixture-user",
+    "password": "not-a-real-password",
+    "enablePassword": "not-a-real-enable-password",
+    "passphrase": "not-a-real-passphrase",
+    "deviceType": "F220",
+    "vendorType": "Fitelnet"
+  },
+  {
+    "id": "fixture-switch-01",
+    "status": "offline",
+    "hostname": "fixture-switch-01",
+    "ip": "192.0.2.20",
+    "port": "22",
+    "type": "SSH",
+    "lastConnected": "Never",
+    "username": "fixture-user",
+    "password": "not-a-real-password",
+    "deviceType": "Cisco IOS",
+    "vendorType": "Cisco"
+  }
+]

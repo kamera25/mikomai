@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Darwin
 import MikomaiFFI
+import UniformTypeIdentifiers
 
 @main
 struct MikomaiDesktopMac: App {
@@ -34,6 +35,31 @@ private struct ChatMessage: Identifiable, Codable {
     var id = UUID()
     var role: Role
     var text: String
+    var attachments: [String] = []
+
+    private enum CodingKeys: String, CodingKey { case id, role, text, attachments }
+
+    init(id: UUID = UUID(), role: Role, text: String, attachments: [String] = []) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.attachments = attachments
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        role = try values.decode(Role.self, forKey: .role)
+        text = try values.decode(String.self, forKey: .text)
+        attachments = try values.decodeIfPresent([String].self, forKey: .attachments) ?? []
+    }
+}
+
+private struct PendingAttachment: Identifiable {
+    let id = UUID()
+    let name: String
+    let text: String
+    var byteCount: Int { text.utf8.count }
 }
 
 private struct ChatSession: Identifiable, Codable {
@@ -45,6 +71,7 @@ private struct ChatSession: Identifiable, Codable {
 
 private struct SavedConnection: Identifiable, Codable {
     var id = UUID()
+    var sourceID: String? = nil
     var name: String
     var host: String
     var port = "22"
@@ -78,17 +105,37 @@ private struct SavedConnection: Identifiable, Codable {
     }
 }
 
+private struct TauriDeviceSummary: Decodable {
+    var id: String?
+    var hostname: String
+    var ip: String?
+    var port: String?
+    var connectionType: String?
+    var deviceType: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, hostname, ip, port, deviceType
+        case connectionType = "type"
+    }
+}
+
 @MainActor
 private final class DesktopModel: ObservableObject {
     @Published var workspace: Workspace = .chat
     @Published var sessions: [ChatSession] = [] { didSet { persistSessions() } }
     @Published var activeSessionID: UUID? { didSet { persistActiveSession() } }
     @Published var draft = ""
+    @Published var pendingAttachments: [PendingAttachment] = []
+    @Published var attachmentError = ""
     @Published var isWorking = false
     @Published var connections: [SavedConnection] = [] { didSet { persistConnections() } }
     @Published var editingConnection: SavedConnection?
     @Published var documentsDirectory: String { didSet { defaults.set(documentsDirectory, forKey: "mikomai.desktop.mac.documentsDirectory") } }
     @Published var knowledgeDirectory: String { didSet { defaults.set(knowledgeDirectory, forKey: "mikomai.desktop.mac.knowledgeDirectory") } }
+    @Published var modelPath: String { didSet { defaults.set(modelPath, forKey: "mikomai.desktop.mac.modelPath") } }
+    @Published var modelStatus = "モデル未ロード"
+    @Published var isLoadingModel = false
+    @Published var isCancelling = false
 
     private let defaults = UserDefaults.standard
     private let sessionsKey = "mikomai.desktop.mac.sessions.v1"
@@ -105,6 +152,7 @@ private final class DesktopModel: ObservableObject {
             ?? ProcessInfo.processInfo.environment["MIKOMAI_DOCS_DIR"] ?? defaultDocuments
         knowledgeDirectory = defaults.string(forKey: "mikomai.desktop.mac.knowledgeDirectory")
             ?? ProcessInfo.processInfo.environment["MIKOMAI_KNOWLEDGE_DIR"] ?? defaultKnowledge
+        modelPath = defaults.string(forKey: "mikomai.desktop.mac.modelPath") ?? ""
         if let data = defaults.data(forKey: sessionsKey),
            let decoded = try? JSONDecoder().decode([ChatSession].self, from: data) {
             sessions = decoded
@@ -119,6 +167,7 @@ private final class DesktopModel: ObservableObject {
             connections = decoded
         }
         if sessions.isEmpty { createSession() }
+        refreshModelStatus()
     }
 
     var activeSession: ChatSession? { sessions.first(where: { $0.id == activeSessionID }) }
@@ -145,24 +194,118 @@ private final class DesktopModel: ObservableObject {
 
     func send() {
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty, !isWorking, let id = activeSessionID,
+        guard (!prompt.isEmpty || !pendingAttachments.isEmpty), !isWorking, let id = activeSessionID,
               let index = sessions.firstIndex(where: { $0.id == id }) else { return }
-        sessions[index].messages.append(ChatMessage(role: .user, text: prompt))
-        if sessions[index].messages.count == 1 { sessions[index].title = String(prompt.prefix(36)) }
+        let history = sessions[index].messages.suffix(12).map { message in
+            "\(message.role == .user ? "ユーザー" : "MIKOMAI"): \(message.text)"
+        }.joined(separator: "\n")
+        let attachedNames = pendingAttachments.map(\.name)
+        let userText = prompt.isEmpty ? "添付ファイルを確認してください。" : prompt
+        let attachmentText = pendingAttachments.enumerated().map { offset, attachment in
+            "[添付ファイル \(offset + 1): \(attachment.name)]\n\(attachment.text)"
+        }.joined(separator: "\n\n")
+        sessions[index].messages.append(ChatMessage(role: .user, text: userText, attachments: attachedNames))
+        if sessions[index].messages.count == 1 { sessions[index].title = String(userText.prefix(36)) }
         sessions[index].updatedAt = Date()
         let documents = documentsDirectory
         let knowledge = knowledgeDirectory
+        pendingAttachments = []
+        attachmentError = ""
         draft = ""
         isWorking = true
         Task.detached(priority: .userInitiated) {
-            let answer = Self.askRust(prompt, documents: documents, knowledge: knowledge)
+            let answer = Self.askRust(userText, history: history, documents: documents, knowledge: knowledge, attachments: attachmentText)
             await MainActor.run {
                 guard let index = self.sessions.firstIndex(where: { $0.id == id }) else { self.isWorking = false; return }
                 self.sessions[index].messages.append(ChatMessage(role: .assistant, text: answer))
                 self.sessions[index].updatedAt = Date()
                 self.isWorking = false
+                self.isCancelling = false
             }
         }
+    }
+
+    func selectAttachments() {
+        guard !isWorking else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [
+            .plainText, .commaSeparatedText, .json, .yaml, .xml,
+            UTType(filenameExtension: "md") ?? .plainText,
+            UTType(filenameExtension: "log") ?? .plainText
+        ]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
+
+        let maxFileBytes = 64 * 1024
+        let maxTotalBytes = 128 * 1024
+        var loaded = pendingAttachments
+        var totalBytes = loaded.reduce(0) { $0 + $1.byteCount }
+        for url in panel.urls {
+            guard !loaded.contains(where: { $0.name == url.lastPathComponent }) else { continue }
+            let hasScope = url.startAccessingSecurityScopedResource()
+            defer { if hasScope { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let handle = try FileHandle(forReadingFrom: url)
+                defer { try? handle.close() }
+                let data = try handle.read(upToCount: maxFileBytes + 1) ?? Data()
+                guard data.count <= maxFileBytes else { throw AttachmentReadError.tooLarge }
+                guard totalBytes + data.count <= maxTotalBytes else { throw AttachmentReadError.totalTooLarge }
+                guard let text = String(data: data, encoding: .utf8) else { throw AttachmentReadError.invalidEncoding }
+                guard !text.unicodeScalars.contains(where: { $0.value == 0 }) else { throw AttachmentReadError.containsNull }
+                loaded.append(PendingAttachment(name: url.lastPathComponent, text: text))
+                totalBytes += data.count
+            } catch {
+                attachmentError = "\(url.lastPathComponent): \(error.localizedDescription)"
+                pendingAttachments = loaded
+                return
+            }
+        }
+        pendingAttachments = loaded
+        attachmentError = ""
+    }
+
+    func removeAttachment(_ id: UUID) { pendingAttachments.removeAll { $0.id == id } }
+
+    func stop() {
+        guard isWorking, !isCancelling else { return }
+        isCancelling = true
+        _ = Self.callRust { mikomai_model_cancel() }
+    }
+
+    func selectModel() {
+        let panel = NSOpenPanel()
+        if let gguf = UTType(filenameExtension: "gguf") { panel.allowedContentTypes = [gguf] }
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url { modelPath = url.path }
+    }
+
+    func loadModel() {
+        guard !modelPath.isEmpty, !isLoadingModel else { return }
+        let path = modelPath
+        isLoadingModel = true
+        modelStatus = "モデルを読み込み中…"
+        Task.detached(priority: .userInitiated) {
+            let status = Self.callRust { path.withCString { mikomai_model_load($0) } }
+            let loadedPath = Self.callRust { mikomai_model_status() }
+            await MainActor.run {
+                if status.hasPrefix("エラー") {
+                    let current = loadedPath.isEmpty ? "" : " (現在: \(URL(fileURLWithPath: loadedPath).lastPathComponent))"
+                    self.modelStatus = "\(status)\(current)"
+                } else {
+                    self.modelStatus = "読み込み済み: \(URL(fileURLWithPath: loadedPath).lastPathComponent)"
+                }
+                self.isLoadingModel = false
+            }
+        }
+    }
+
+    private func refreshModelStatus() {
+        let status = Self.callRust { mikomai_model_status() }
+        if !status.isEmpty { modelStatus = "読み込み済み: \(URL(fileURLWithPath: status).lastPathComponent)" }
     }
 
     func saveConnection(_ connection: SavedConnection) {
@@ -170,6 +313,30 @@ private final class DesktopModel: ObservableObject {
         if let index = connections.firstIndex(where: { $0.id == connection.id }) { connections[index] = connection }
         else { connections.append(connection) }
         editingConnection = nil
+    }
+
+    func importTauriDevices(_ devices: [TauriDeviceSummary]) -> (imported: Int, skipped: Int) {
+        var imported = 0
+        var skipped = 0
+        for device in devices {
+            if let sourceID = device.id, connections.contains(where: { $0.sourceID == sourceID }) {
+                skipped += 1
+                continue
+            }
+            let hostname = device.hostname.trimmingCharacters(in: .whitespacesAndNewlines)
+            let host = device.ip.flatMap { $0.isEmpty ? nil : $0 } ?? hostname
+            let connection = SavedConnection(
+                sourceID: device.id,
+                name: hostname,
+                host: host,
+                port: device.port ?? "22",
+                deviceType: device.deviceType ?? device.connectionType ?? "不明"
+            )
+            guard connection.validationError == nil else { skipped += 1; continue }
+            connections.append(connection)
+            imported += 1
+        }
+        return (imported, skipped)
     }
 
     private func persistSessions() {
@@ -183,16 +350,46 @@ private final class DesktopModel: ObservableObject {
         defaults.set(data, forKey: connectionsKey)
     }
 
-    private nonisolated static func askRust(_ prompt: String, documents: String, knowledge: String) -> String {
+    private nonisolated static func askRust(_ prompt: String, history: String, documents: String, knowledge: String, attachments: String) -> String {
         let response = prompt.withCString { message in
-            documents.withCString { documentsPath in
-                knowledge.withCString { knowledgePath in mikomai_chat_with_paths(message, documentsPath, knowledgePath) }
+            history.withCString { historyText in
+                documents.withCString { documentsPath in
+                    knowledge.withCString { knowledgePath in
+                        attachments.withCString { attachmentText in
+                            mikomai_assistant_chat_with_attachments(message, historyText, documentsPath, knowledgePath, attachmentText)
+                        }
+                    }
+                }
             }
         }
         defer { mikomai_result_free(response) }
         guard let message = response.message else { return "Rust 側から応答がありませんでした。" }
         let text = String(cString: message)
         return response.status == 0 ? text : "エラー: \(text)"
+    }
+
+    private nonisolated static func callRust(_ call: () -> MikomaiResult) -> String {
+        let response = call()
+        defer { mikomai_result_free(response) }
+        guard let message = response.message else { return "応答がありませんでした。" }
+        let text = String(cString: message)
+        return response.status == 0 ? text : "エラー: \(text)"
+    }
+}
+
+private enum AttachmentReadError: LocalizedError {
+    case tooLarge
+    case totalTooLarge
+    case invalidEncoding
+    case containsNull
+
+    var errorDescription: String? {
+        switch self {
+        case .tooLarge: "ファイルは64 KiB以下にしてください。"
+        case .totalTooLarge: "添付ファイルの合計は128 KiB以下にしてください。"
+        case .invalidEncoding: "UTF-8テキストではありません。"
+        case .containsNull: "NUL文字を含むファイルは添付できません。"
+        }
     }
 }
 
@@ -306,7 +503,7 @@ private struct DesktopWindow: View {
                             ForEach(session.messages) { message in MessageRow(message: message).id(message.id) }
                         }
                         if model.isWorking {
-                            HStack(spacing: 8) { ProgressView().controlSize(.small); Text("資料を検索しています…").font(.system(size: 12)).foregroundStyle(.secondary) }
+                            HStack(spacing: 8) { ProgressView().controlSize(.small); Text(model.isCancelling ? "生成を停止しています…" : "資料を検索して回答を生成しています…").font(.system(size: 12)).foregroundStyle(.secondary) }
                                 .padding(.leading, 42)
                         }
                     }
@@ -337,12 +534,43 @@ private struct DesktopWindow: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField("質問を入力…", text: $model.draft, axis: .vertical)
-                .textFieldStyle(.plain).lineLimit(1...5).onSubmit(model.send).disabled(model.isWorking)
-            Button(action: model.send) { Image(systemName: "arrow.up").font(.system(size: 12, weight: .semibold)).frame(width: 28, height: 28) }
-                .buttonStyle(.borderedProminent).controlSize(.small).keyboardShortcut(.return, modifiers: [.command])
-                .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isWorking).help("送信")
+        VStack(alignment: .leading, spacing: 6) {
+            if !model.pendingAttachments.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 6) {
+                        ForEach(model.pendingAttachments) { attachment in
+                            HStack(spacing: 5) {
+                                Image(systemName: "doc.text")
+                                Text(attachment.name).lineLimit(1)
+                                Button { model.removeAttachment(attachment.id) } label: {
+                                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                                }.buttonStyle(.plain).help("添付を削除")
+                            }
+                            .font(.system(size: 11)).padding(.horizontal, 8).padding(.vertical, 5)
+                            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
+                        }
+                    }
+                }.scrollIndicators(.hidden)
+            }
+            if !model.attachmentError.isEmpty {
+                Text(model.attachmentError).font(.system(size: 11)).foregroundStyle(.red)
+            }
+            HStack(alignment: .bottom, spacing: 10) {
+                Button(action: model.selectAttachments) {
+                    Image(systemName: "paperclip").font(.system(size: 13)).frame(width: 28, height: 28)
+                }
+                .buttonStyle(.bordered).controlSize(.small).disabled(model.isWorking).help("テキストファイルを添付")
+                TextField("質問を入力…", text: $model.draft, axis: .vertical)
+                    .textFieldStyle(.plain).lineLimit(1...5).onSubmit(model.send).disabled(model.isWorking)
+                if model.isWorking {
+                    Button(action: model.stop) { Image(systemName: "stop.fill").font(.system(size: 10, weight: .semibold)).frame(width: 28, height: 28) }
+                        .buttonStyle(.bordered).controlSize(.small).disabled(model.isCancelling).help("生成を停止")
+                } else {
+                    Button(action: model.send) { Image(systemName: "arrow.up").font(.system(size: 12, weight: .semibold)).frame(width: 28, height: 28) }
+                        .buttonStyle(.borderedProminent).controlSize(.small).keyboardShortcut(.return, modifiers: [.command])
+                        .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && model.pendingAttachments.isEmpty).help("送信")
+                }
+            }
         }
         .padding(10).background(Color(nsColor: .textBackgroundColor)).clipShape(RoundedRectangle(cornerRadius: 7))
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
@@ -392,7 +620,14 @@ private struct MessageRow: View {
                 if message.role == .assistant {
                     MarkdownMessage(text: message.text)
                 } else {
-                    Text(message.text).font(.system(size: 13)).textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(message.text).font(.system(size: 13)).textSelection(.enabled)
+                        if !message.attachments.isEmpty {
+                            ForEach(message.attachments, id: \.self) { name in
+                                Label(name, systemImage: "doc.text").font(.system(size: 11)).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
@@ -518,6 +753,8 @@ private struct ConnectionsWorkspace: View {
             HStack {
                 Text("機器情報").font(.system(size: 13, weight: .semibold))
                 Spacer()
+                Button("Tauri から取り込む") { importTauriRegistry() }
+                    .buttonStyle(.bordered).controlSize(.small)
                 Button { model.editingConnection = SavedConnection(name: "", host: "") } label: { Label("機器を追加", systemImage: "plus") }
                     .buttonStyle(.borderedProminent).controlSize(.small)
             }.padding(16)
@@ -530,8 +767,12 @@ private struct ConnectionsWorkspace: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Table(model.connections) {
-                    TableColumn("名前", value: \.name)
-                    TableColumn("ホスト", value: \.host)
+                TableColumn("名前", value: \.name)
+                TableColumn("登録元") { connection in
+                    Text(connection.sourceID == nil ? "Mac 内" : "Tauri")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }.width(62)
+                TableColumn("ホスト", value: \.host)
                     TableColumn("ポート", value: \.port)
                     TableColumn("ユーザー", value: \.username)
                     TableColumn("機器タイプ", value: \.deviceType)
@@ -545,14 +786,45 @@ private struct ConnectionsWorkspace: View {
             }
             Spacer(minLength: 0)
             HStack {
-                Text("機器情報は Swift 版専用で保存されます。認証情報と実機への接続は未対応です。")
+                Text("Tauri 機器はメタデータのみ複製します。認証情報・接続・同期には対応していません。")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer()
                 Button("CSV を読み込む") { importCSV() }
                 Button("CSV を書き出す") { exportCSV() }.disabled(model.connections.isEmpty)
             }.padding(12).background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         }
-        .alert("CSV", isPresented: $showsCSVAlert) { Button("OK", role: .cancel) {} } message: { Text(csvAlert) }
+        .alert("機器情報", isPresented: $showsCSVAlert) { Button("OK", role: .cancel) {} } message: { Text(csvAlert) }
+    }
+
+    private func importTauriRegistry() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let json = url.path.withCString { path in
+            let response = mikomai_device_registry_read(path)
+            defer { mikomai_result_free(response) }
+            guard let message = response.message else { return "エラー: 機器情報を読み込めませんでした。" }
+            let text = String(cString: message)
+            return response.status == 0 ? text : "エラー: \(text)"
+        }
+        guard !json.hasPrefix("エラー:") else {
+            presentCSVMessage(json)
+            return
+        }
+        guard let devices = try? JSONDecoder().decode([TauriDeviceSummary].self, from: Data(json.utf8)) else {
+            presentCSVMessage("Tauri の機器情報 JSON を読み取れませんでした。元ファイルは変更していません。")
+            return
+        }
+        let result = model.importTauriDevices(devices)
+        let missingIDs = devices.filter { $0.id == nil }.count
+        var note = "\(result.imported) 件を追加し、\(result.skipped) 件をスキップしました。元ファイルは変更していません。"
+        if missingIDs > 0 { note += " IDのない行は重複判定せず追加しました。" }
+        presentCSVMessage(note)
     }
 
     private func exportCSV() {
@@ -674,6 +946,15 @@ private struct SettingsWorkspace: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                Text("モデル").font(.system(size: 13, weight: .semibold)).padding(.bottom, 12)
+                HStack(spacing: 8) {
+                    TextField("GGUF モデルファイル", text: $model.modelPath).textFieldStyle(.roundedBorder)
+                    Button("選択…") { model.selectModel() }
+                    Button(model.isLoadingModel ? "読み込み中…" : "読み込む") { model.loadModel() }
+                        .disabled(model.modelPath.isEmpty || model.isLoadingModel)
+                }
+                Text(model.modelStatus).font(.system(size: 11)).foregroundStyle(model.modelStatus.hasPrefix("エラー") ? .red : .secondary).padding(.top, 6)
+                Divider().padding(.vertical, 14)
                 Text("ナレッジ").font(.system(size: 13, weight: .semibold)).padding(.bottom, 12)
                 FolderPickerRow(title: "資料フォルダ", path: $model.documentsDirectory)
                 Divider().padding(.vertical, 12)
