@@ -33,6 +33,38 @@ pub unsafe extern "C" fn mikomai_chat(message: *const c_char) -> MikomaiResult {
     }
 }
 
+/// Runs local knowledge chat using explicitly selected document and index directories.
+/// The two directory arguments must be valid, NUL-terminated UTF-8 strings.
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_chat_with_paths(
+    message: *const c_char,
+    documents_dir: *const c_char,
+    knowledge_dir: *const c_char,
+) -> MikomaiResult {
+    if message.is_null() || documents_dir.is_null() || knowledge_dir.is_null() {
+        return error_result("chat message and directories must not be null".into());
+    }
+
+    let caught = std::panic::catch_unwind(|| {
+        let goal = CStr::from_ptr(message)
+            .to_str()
+            .map_err(|error| error.to_string())?;
+        let documents = CStr::from_ptr(documents_dir)
+            .to_str()
+            .map_err(|error| error.to_string())?;
+        let knowledge = CStr::from_ptr(knowledge_dir)
+            .to_str()
+            .map_err(|error| error.to_string())?;
+        chat_with_paths(goal, PathBuf::from(documents), PathBuf::from(knowledge))
+    });
+
+    match caught {
+        Ok(Ok(answer)) => result(0, answer),
+        Ok(Err(error)) => error_result(error),
+        Err(_) => error_result("mikomai chat failed unexpectedly".into()),
+    }
+}
+
 /// Releases the message returned in `MikomaiResult`.
 #[no_mangle]
 pub unsafe extern "C" fn mikomai_result_free(result: MikomaiResult) {
@@ -42,20 +74,32 @@ pub unsafe extern "C" fn mikomai_result_free(result: MikomaiResult) {
 }
 
 fn chat(goal: &str) -> Result<String, String> {
+    let knowledge_root = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("mikomai-knowledge"));
+    let documents = std::env::var_os("MIKOMAI_DOCS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("nw-docs"));
+    chat_with_paths(goal, documents, knowledge_root)
+}
+
+fn chat_with_paths(
+    goal: &str,
+    documents: PathBuf,
+    knowledge_root: PathBuf,
+) -> Result<String, String> {
     if goal.trim().is_empty() {
         return Err("chat message is required".into());
     }
 
-    let knowledge_root = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("mikomai-knowledge"));
-    let store = KnowledgeStore::at(knowledge_root);
-    let documents = std::env::var_os("MIKOMAI_DOCS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("nw-docs"));
-    if documents.exists() {
-        store.ingest(documents)?;
+    if !documents.is_dir() {
+        return Err(format!(
+            "documents directory is missing or is not a directory: {}",
+            documents.display()
+        ));
     }
+    let store = KnowledgeStore::at(knowledge_root);
+    store.ingest(documents)?;
 
     let manager = TaskManager::new(JsonTaskRepository::default());
     let planner = KnowledgePlanner::new(&store);
@@ -81,7 +125,7 @@ fn result(status: i32, message: String) -> MikomaiResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{mikomai_chat, mikomai_result_free};
+    use super::{mikomai_chat, mikomai_chat_with_paths, mikomai_result_free};
     use std::ffi::{CStr, CString};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -130,6 +174,43 @@ mod tests {
                 .to_string_lossy()
                 .contains("NATIVE-FFI-ANSWER-7319"));
             mikomai_result_free(answer);
+
+            let empty_docs = root.join("empty-docs");
+            let empty_index = root.join("empty-index");
+            fs::create_dir_all(&empty_docs).expect("create unrelated docs directory");
+            std::env::set_var("MIKOMAI_DOCS_DIR", &empty_docs);
+            std::env::set_var("MIKOMAI_KNOWLEDGE_DIR", &empty_index);
+            let configured = mikomai_chat_with_paths(
+                question.as_ptr(),
+                CString::new(docs.to_string_lossy().as_bytes())
+                    .unwrap()
+                    .as_ptr(),
+                CString::new(index.to_string_lossy().as_bytes())
+                    .unwrap()
+                    .as_ptr(),
+            );
+            assert_eq!(configured.status, 0);
+            assert!(CStr::from_ptr(configured.message)
+                .to_string_lossy()
+                .contains("NATIVE-FFI-ANSWER-7319"));
+            mikomai_result_free(configured);
+            std::env::set_var("MIKOMAI_DOCS_DIR", &docs);
+            std::env::set_var("MIKOMAI_KNOWLEDGE_DIR", &index);
+
+            let missing_docs =
+                CString::new(root.join("missing-docs").to_string_lossy().as_bytes()).unwrap();
+            let configured_missing = mikomai_chat_with_paths(
+                question.as_ptr(),
+                missing_docs.as_ptr(),
+                CString::new(index.to_string_lossy().as_bytes())
+                    .unwrap()
+                    .as_ptr(),
+            );
+            assert_eq!(configured_missing.status, 1);
+            assert!(CStr::from_ptr(configured_missing.message)
+                .to_string_lossy()
+                .contains("documents directory is missing"));
+            mikomai_result_free(configured_missing);
         }
 
         restore_env("MIKOMAI_DOCS_DIR", old_docs);

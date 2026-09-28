@@ -9,6 +9,7 @@ typedef struct {
 } MikomaiResult;
 
 MikomaiResult mikomai_chat(const char *message);
+MikomaiResult mikomai_chat_with_paths(const char *message, const char *documents_dir, const char *knowledge_dir);
 void mikomai_result_free(MikomaiResult result);
 
 #endif

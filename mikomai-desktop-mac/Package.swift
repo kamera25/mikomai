@@ -21,6 +21,7 @@ let package = Package(
             publicHeadersPath: "include",
             linkerSettings: [
                 .unsafeFlags(["-L\(rustLibraryDirectory)"]),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
                 .linkedLibrary("mikomai_ffi")
             ]
         ),
