@@ -12,7 +12,7 @@ struct MikomaiDesktopMac: App {
     var body: some Scene {
         WindowGroup {
             DesktopWindow(model: model)
-                .frame(minWidth: 980, minHeight: 650)
+                .frame(minWidth: 1020, minHeight: 680)
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -85,6 +85,193 @@ private enum ToolTab: String, CaseIterable, Identifiable {
         }
     }
 }
+
+// MARK: - Tauri Settings Model (Port of Tauri AppSettings)
+
+private struct TauriSettings: Codable {
+    var historyLimit: Int = 5
+    var temperature: Double = 0.0
+    var repetitionPenalty: Double = 1.1
+    var modelPath: String? = nil
+    var recentIps: [String] = []
+    var mcpTimeout: Int? = 30
+    var ipVersion: String? = "auto"
+    var consolePort: String? = nil
+    var consoleBaudRate: Int? = 9600
+    var preloadKnowledge: Bool = false
+    var preloadAnalysis: Bool = false
+    var preloadRag: Bool = false
+    var preloadPlotter: Bool = false
+    var preloadBuilder: Bool = false
+    var preloadSummarization: Bool = false
+    var cacheExpiryMinutes: Int? = 10
+    var nCtx: Int = 8192
+    var maxGen: Int = 2048
+    var promptKeepTokens: Int = 500
+    var visionEnabled: Bool = false
+    var autoDryRun: Bool = false
+    var mmprojPath: String? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case historyLimit
+        case temperature
+        case repetitionPenalty
+        case modelPath
+        case recentIps
+        case mcpTimeout
+        case ipVersion
+        case consolePort
+        case consoleBaudRate
+        case preloadKnowledge
+        case preloadAnalysis
+        case preloadRag
+        case preloadPlotter
+        case preloadBuilder
+        case preloadSummarization
+        case cacheExpiryMinutes
+        case nCtx
+        case maxGen
+        case promptKeepTokens
+        case visionEnabled
+        case autoDryRun
+        case mmprojPath
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        historyLimit = try c.decodeIfPresent(Int.self, forKey: .historyLimit) ?? 5
+        temperature = try c.decodeIfPresent(Double.self, forKey: .temperature) ?? 0.0
+        repetitionPenalty = try c.decodeIfPresent(Double.self, forKey: .repetitionPenalty) ?? 1.1
+        modelPath = try c.decodeIfPresent(String.self, forKey: .modelPath)
+        recentIps = try c.decodeIfPresent([String].self, forKey: .recentIps) ?? []
+        mcpTimeout = try c.decodeIfPresent(Int.self, forKey: .mcpTimeout) ?? 30
+        ipVersion = try c.decodeIfPresent(String.self, forKey: .ipVersion) ?? "auto"
+        consolePort = try c.decodeIfPresent(String.self, forKey: .consolePort)
+        consoleBaudRate = try c.decodeIfPresent(Int.self, forKey: .consoleBaudRate) ?? 9600
+        preloadKnowledge = try c.decodeIfPresent(Bool.self, forKey: .preloadKnowledge) ?? false
+        preloadAnalysis = try c.decodeIfPresent(Bool.self, forKey: .preloadAnalysis) ?? false
+        preloadRag = try c.decodeIfPresent(Bool.self, forKey: .preloadRag) ?? false
+        preloadPlotter = try c.decodeIfPresent(Bool.self, forKey: .preloadPlotter) ?? false
+        preloadBuilder = try c.decodeIfPresent(Bool.self, forKey: .preloadBuilder) ?? false
+        preloadSummarization = try c.decodeIfPresent(Bool.self, forKey: .preloadSummarization) ?? false
+        cacheExpiryMinutes = try c.decodeIfPresent(Int.self, forKey: .cacheExpiryMinutes) ?? 10
+        nCtx = try c.decodeIfPresent(Int.self, forKey: .nCtx) ?? 8192
+        maxGen = try c.decodeIfPresent(Int.self, forKey: .maxGen) ?? 2048
+        promptKeepTokens = try c.decodeIfPresent(Int.self, forKey: .promptKeepTokens) ?? 500
+        visionEnabled = try c.decodeIfPresent(Bool.self, forKey: .visionEnabled) ?? false
+        autoDryRun = try c.decodeIfPresent(Bool.self, forKey: .autoDryRun) ?? false
+        mmprojPath = try c.decodeIfPresent(String.self, forKey: .mmprojPath)
+    }
+}
+
+// MARK: - Model Presets
+
+private struct ModelPreset: Identifiable {
+    let id: String
+    let name: String
+    let repo: String
+    let filename: String
+    let mmprojFilename: String?
+}
+
+private let PRESET_MODELS: [ModelPreset] = [
+    ModelPreset(id: "gemma-4-e4b-ud", name: "Gemma 4 E4B (軽量・標準推奨)", repo: "unsloth/gemma-4-E4B-it-GGUF", filename: "gemma-4-E4B-it-UD-Q4_K_XL.gguf", mmprojFilename: "mmproj-F16.gguf"),
+    ModelPreset(id: "gemma-4-12b-ud", name: "Gemma 4 12B (高精度)", repo: "unsloth/gemma-4-12b-it-GGUF", filename: "gemma-4-12b-it-UD-Q4_K_XL.gguf", mmprojFilename: "mmproj-F16.gguf"),
+    ModelPreset(id: "gemma-4-e2b-ud", name: "Gemma 4 E2B (超軽量)", repo: "unsloth/gemma-4-E2B-it-GGUF", filename: "gemma-4-E2B-it-UD-Q4_K_XL.gguf", mmprojFilename: "mmproj-F16.gguf"),
+]
+
+// MARK: - Hugging Face Hub Helper
+
+private enum HuggingFaceHub {
+    static var cacheDirectory: URL {
+        if let env = ProcessInfo.processInfo.environment["HF_HUB_CACHE"], !env.isEmpty {
+            return URL(fileURLWithPath: env)
+        }
+        if let envHome = ProcessInfo.processInfo.environment["HF_HOME"], !envHome.isEmpty {
+            return URL(fileURLWithPath: envHome).appendingPathComponent("hub")
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/huggingface/hub")
+    }
+
+    static func modelURL(repo: String, filename: String) -> URL {
+        cacheDirectory.appendingPathComponent(repo).appendingPathComponent(filename)
+    }
+
+    static func modelExists(repo: String, filename: String) -> Bool {
+        let url = modelURL(repo: repo, filename: filename)
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+}
+
+// MARK: - Serial Port Helper
+
+private enum SerialPortDetector {
+    static func listPorts() -> [String] {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(atPath: "/dev") else { return [] }
+        return files
+            .filter { $0.hasPrefix("cu.") || $0.hasPrefix("tty.") }
+            .map { "/dev/\($0)" }
+            .sorted()
+    }
+}
+
+// MARK: - Settings Manager (Tauri Config Auto-loader & Sync)
+
+private enum SettingsManager {
+    static var tauriSettingsURL: URL {
+        if let env = ProcessInfo.processInfo.environment["MIKOMAI_SETTINGS_PATH"], !env.isEmpty {
+            return URL(fileURLWithPath: env)
+        }
+        let fm = FileManager.default
+        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let candidates = [
+            appSupport?.appendingPathComponent("com.mikomai.agent/settings.json"),
+            appSupport?.appendingPathComponent("mikomai/settings.json"),
+            fm.homeDirectoryForCurrentUser.appendingPathComponent(".config/mikomai/settings.json")
+        ].compactMap { $0 }
+
+        for url in candidates {
+            if fm.fileExists(atPath: url.path) {
+                return url
+            }
+        }
+        return appSupport?.appendingPathComponent("com.mikomai.agent/settings.json")
+            ?? fm.homeDirectoryForCurrentUser.appendingPathComponent(".config/mikomai/settings.json")
+    }
+
+    static func loadFromTauri() -> (settings: TauriSettings, url: URL, isLoaded: Bool) {
+        let url = tauriSettingsURL
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode(TauriSettings.self, from: data) else {
+            return (TauriSettings(), url, false)
+        }
+        return (decoded, url, true)
+    }
+
+    static func saveToTauri(_ settings: TauriSettings) throws {
+        let url = tauriSettingsURL
+        let dir = url.deletingLastPathComponent()
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(settings)
+        let tempURL = url.appendingPathExtension("tmp")
+        try data.write(to: tempURL, options: .atomic)
+        if FileManager.default.fileExists(atPath: url.path) {
+            _ = try? FileManager.default.removeItem(at: url)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: url)
+    }
+}
+
+// MARK: - Chat & Saved Connections Models
 
 private struct ChatMessage: Identifiable, Codable {
     enum Role: String, Codable { case user, assistant }
@@ -274,12 +461,29 @@ private final class DesktopModel: ObservableObject {
     @Published var connections: [SavedConnection] = [] { didSet { persistConnections() } }
     @Published var editingConnection: SavedConnection?
     @Published var connectionStatuses: [UUID: ConnectionTestStatus] = [:]
+
+    // Knowledge dirs
     @Published var documentsDirectory: String { didSet { defaults.set(documentsDirectory, forKey: "mikomai.desktop.mac.documentsDirectory") } }
     @Published var knowledgeDirectory: String { didSet { defaults.set(knowledgeDirectory, forKey: "mikomai.desktop.mac.knowledgeDirectory") } }
-    @Published var modelPath: String { didSet { defaults.set(modelPath, forKey: "mikomai.desktop.mac.modelPath") } }
+
+    // Model path & status
+    @Published var modelPath: String = "" { didSet { defaults.set(modelPath, forKey: "mikomai.desktop.mac.modelPath") } }
     @Published var modelStatus = "モデル未ロード"
     @Published var isLoadingModel = false
     @Published var isCancelling = false
+
+    // Tauri Settings
+    @Published var settings: TauriSettings = TauriSettings()
+    @Published var tauriConfigURL: URL = SettingsManager.tauriSettingsURL
+    @Published var isTauriConfigLoaded: Bool = false
+    @Published var tauriSyncMessage: String = ""
+
+    // Model Presets & HuggingFace
+    @Published var selectedPresetId: String = "gemma-4-e4b-ud"
+    @Published var repoPath: String = "unsloth/gemma-4-E4B-it-GGUF"
+    @Published var modelFilename: String = "gemma-4-E4B-it-UD-Q4_K_XL.gguf"
+    @Published var isDownloadingModel: Bool = false
+    @Published var downloadProgressText: String = ""
 
     // Tools state
     @Published var tcpTestHost = ""
@@ -305,7 +509,7 @@ private final class DesktopModel: ObservableObject {
             ?? ProcessInfo.processInfo.environment["MIKOMAI_DOCS_DIR"] ?? defaultDocuments
         knowledgeDirectory = defaults.string(forKey: "mikomai.desktop.mac.knowledgeDirectory")
             ?? ProcessInfo.processInfo.environment["MIKOMAI_KNOWLEDGE_DIR"] ?? defaultKnowledge
-        modelPath = defaults.string(forKey: "mikomai.desktop.mac.modelPath") ?? ""
+
         if let data = defaults.data(forKey: sessionsKey),
            let decoded = try? JSONDecoder().decode([ChatSession].self, from: data) {
             sessions = decoded
@@ -320,6 +524,10 @@ private final class DesktopModel: ObservableObject {
             connections = decoded
         }
         if sessions.isEmpty { createSession() }
+
+        // Automatically load Tauri settings
+        loadTauriConfig()
+
         refreshModelStatus()
     }
 
@@ -345,15 +553,94 @@ private final class DesktopModel: ObservableObject {
         sessions[index].title = title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - Tauri Settings Management
+
+    func loadTauriConfig() {
+        let (loadedSettings, url, isLoaded) = SettingsManager.loadFromTauri()
+        self.settings = loadedSettings
+        self.tauriConfigURL = url
+        self.isTauriConfigLoaded = isLoaded
+
+        if isLoaded {
+            self.tauriSyncMessage = "Tauri 版設定を自動読み込みしました: \(url.path)"
+            if let path = loadedSettings.modelPath, !path.isEmpty {
+                self.modelPath = path
+                // Check if matching preset
+                let fname = URL(fileURLWithPath: path).lastPathComponent
+                if let match = PRESET_MODELS.first(where: { $0.filename == fname }) {
+                    self.selectedPresetId = match.id
+                    self.repoPath = match.repo
+                    self.modelFilename = match.filename
+                } else {
+                    self.selectedPresetId = "custom"
+                    self.modelFilename = fname
+                }
+            }
+        } else {
+            self.modelPath = defaults.string(forKey: "mikomai.desktop.mac.modelPath") ?? ""
+            self.tauriSyncMessage = "Tauri 版設定ファイルが見つかりません。デフォルト値を使用しています: \(url.path)"
+        }
+
+        applyInferenceParams()
+    }
+
+    func saveTauriConfig() {
+        var toSave = settings
+        if !modelPath.isEmpty {
+            toSave.modelPath = modelPath
+        }
+        do {
+            try SettingsManager.saveToTauri(toSave)
+            self.isTauriConfigLoaded = true
+            self.tauriSyncMessage = "Tauri 版設定ファイルに保存しました: \(tauriConfigURL.path)"
+            applyInferenceParams()
+        } catch {
+            self.tauriSyncMessage = "設定の保存に失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    func resetSettingsToDefault() {
+        self.settings = TauriSettings()
+        saveTauriConfig()
+        applyInferenceParams()
+        self.tauriSyncMessage = "設定をデフォルト値にリセットしました。"
+    }
+
+    func applyInferenceParams() {
+        let temp = Float(settings.temperature)
+        let rep = Float(settings.repetitionPenalty)
+        let nCtx = UInt32(settings.nCtx)
+        let maxGen = UInt32(settings.maxGen)
+        _ = Self.callRust {
+            mikomai_set_inference_params(temp, rep, nCtx, maxGen)
+        }
+    }
+
+    func selectPreset(_ presetId: String) {
+        selectedPresetId = presetId
+        if presetId != "custom", let preset = PRESET_MODELS.first(where: { $0.id == presetId }) {
+            repoPath = preset.repo
+            modelFilename = preset.filename
+            let cachedURL = HuggingFaceHub.modelURL(repo: preset.repo, filename: preset.filename)
+            if FileManager.default.fileExists(atPath: cachedURL.path) {
+                modelPath = cachedURL.path
+            }
+        }
+    }
+
     // MARK: - Streaming Chat
 
     func send() {
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!prompt.isEmpty || !pendingAttachments.isEmpty), !isWorking, let id = activeSessionID,
               let index = sessions.firstIndex(where: { $0.id == id }) else { return }
-        let history = sessions[index].messages.suffix(12).map { message in
+
+        // Context limit derived from settings.historyLimit
+        let maxHistoryTurns = max(2, settings.historyLimit * 2)
+        let history = sessions[index].messages.suffix(maxHistoryTurns).map { message in
             "\(message.role == .user ? "ユーザー" : "MIKOMAI"): \(message.text)"
         }.joined(separator: "\n")
+
         let attachedNames = pendingAttachments.map(\.name)
         let userText = prompt.isEmpty ? "添付ファイルを確認してください。" : prompt
         let attachmentText = pendingAttachments.enumerated().map { offset, attachment in
@@ -464,7 +751,11 @@ private final class DesktopModel: ObservableObject {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url { modelPath = url.path }
+        if panel.runModal() == .OK, let url = panel.url {
+            modelPath = url.path
+            settings.modelPath = url.path
+            saveTauriConfig()
+        }
     }
 
     func loadModel() {
@@ -472,6 +763,7 @@ private final class DesktopModel: ObservableObject {
         let path = modelPath
         isLoadingModel = true
         modelStatus = "モデルを読み込み中…"
+        applyInferenceParams()
         Task.detached(priority: .userInitiated) {
             let status = Self.callRust { path.withCString { mikomai_model_load($0) } }
             let loadedPath = Self.callRust { mikomai_model_status() }
@@ -490,6 +782,16 @@ private final class DesktopModel: ObservableObject {
     private func refreshModelStatus() {
         let status = Self.callRust { mikomai_model_status() }
         if !status.isEmpty { modelStatus = "読み込み済み: \(URL(fileURLWithPath: status).lastPathComponent)" }
+    }
+
+    func openModelDirectory() {
+        let dir = HuggingFaceHub.cacheDirectory
+        NSWorkspace.shared.open(dir)
+    }
+
+    func openTauriConfigDirectory() {
+        let dir = tauriConfigURL.deletingLastPathComponent()
+        NSWorkspace.shared.open(dir)
     }
 
     // MARK: - Connections & Keychain
@@ -926,6 +1228,17 @@ private struct DesktopWindow: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
+            if model.isTauriConfigLoaded {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 9))
+                    Text("Tauri 設定同期中")
+                        .font(.system(size: 10))
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Color.green.opacity(0.12), in: Capsule())
+                .foregroundStyle(.green)
+            }
             if model.workspace == .chat {
                 Circle().fill(.green).frame(width: 7, height: 7)
                 Text("ローカルナレッジ").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -1928,32 +2241,509 @@ private struct NetworkToolsWorkspace: View {
     }
 }
 
-// MARK: - Settings Workspace
+// MARK: - Full Settings Workspace (Complete Port of Tauri AppSettings)
 
 private struct SettingsWorkspace: View {
     @ObservedObject var model: DesktopModel
+    @State private var selectedCategory = 0
+    @State private var availablePorts: [String] = []
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("モデル").font(.system(size: 13, weight: .semibold)).padding(.bottom, 12)
+        VStack(spacing: 0) {
+            // Category Segmented Control
+            Picker("", selection: $selectedCategory) {
+                Text("チャット・通信").tag(0)
+                Text("LLM モデル").tag(1)
+                Text("Vision (画像)").tag(2)
+                Text("ナレッジ RAG").tag(3)
+                Text("Tauri 同期").tag(4)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 20).padding(.vertical, 10)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    switch selectedCategory {
+                    case 0:
+                        chatAndNetworkSection
+                    case 1:
+                        llmModelSection
+                    case 2:
+                        visionSection
+                    case 3:
+                        knowledgeSection
+                    case 4:
+                        tauriSyncSection
+                    default:
+                        EmptyView()
+                    }
+                }
+                .padding(24)
+                .frame(maxWidth: 820, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+        }
+        .onAppear {
+            availablePorts = SerialPortDetector.listPorts()
+        }
+    }
+
+    // MARK: Category 0: Chat & Network Settings
+
+    private var chatAndNetworkSection: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("チャット・通信設定").font(.system(size: 15, weight: .semibold))
+
+            // History Limit
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("会話履歴の上限 (ターン数)")
+                    Spacer()
+                    Text("\(model.settings.historyLimit)").font(.system(size: 12, design: .monospaced)).bold()
+                }
+                Slider(value: Binding(
+                    get: { Double(model.settings.historyLimit) },
+                    set: { model.settings.historyLimit = Int($0); model.saveTauriConfig() }
+                ), in: 0...20, step: 1)
+                Text("モデルに送信する直近の会話履歴の最大往復数です (0〜20)。").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            // Temperature
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("サンプリング温度 (Temperature)")
+                    Spacer()
+                    Text(String(format: "%.1f", model.settings.temperature)).font(.system(size: 12, design: .monospaced)).bold()
+                }
+                Slider(value: Binding(
+                    get: { model.settings.temperature },
+                    set: { model.settings.temperature = $0; model.saveTauriConfig() }
+                ), in: 0.0...2.0, step: 0.1)
+                Text("生成される回答のランダム性を調整します。ネットワーク設定には 0.0〜0.2 の決定的な値が推奨されます。").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            // Repetition Penalty
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("繰り返しペナルティ (Repetition Penalty)")
+                    Spacer()
+                    Text(String(format: "%.2f", model.settings.repetitionPenalty)).font(.system(size: 12, design: .monospaced)).bold()
+                }
+                Slider(value: Binding(
+                    get: { model.settings.repetitionPenalty },
+                    set: { model.settings.repetitionPenalty = $0; model.saveTauriConfig() }
+                ), in: 1.0...2.0, step: 0.05)
+                Text("同じ単語や句の重複を抑えるペナルティ係数です (1.0〜2.0、デフォルト: 1.10)。").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            // MCP Timeout
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("MCP / ツール実行タイムアウト (秒)")
+                    Spacer()
+                    Text("\(model.settings.mcpTimeout ?? 30) 秒").font(.system(size: 12, design: .monospaced)).bold()
+                }
+                Slider(value: Binding(
+                    get: { Double(model.settings.mcpTimeout ?? 30) },
+                    set: { model.settings.mcpTimeout = Int($0); model.saveTauriConfig() }
+                ), in: 5...120, step: 5)
+                Text("ネットワークツールやコマンド実行の待機タイムアウト時間です。").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            // Cache Expiry
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("事実グラフ・キャッシュ有効期限 (分)")
+                    Spacer()
+                    Text("\(model.settings.cacheExpiryMinutes ?? 10) 分").font(.system(size: 12, design: .monospaced)).bold()
+                }
+                Slider(value: Binding(
+                    get: { Double(model.settings.cacheExpiryMinutes ?? 10) },
+                    set: { model.settings.cacheExpiryMinutes = Int($0); model.saveTauriConfig() }
+                ), in: 0...60, step: 1)
+                Text("ネットワークトポロジ事実キャッシュの保持時間です (0 = キャッシュ無効)。").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            // IP Version
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("優先 IP バージョン").font(.system(size: 13, weight: .medium))
+                    Text("Ping や接続テスト時に優先する IP プロトコルを指定します。").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { model.settings.ipVersion ?? "auto" },
+                    set: { model.settings.ipVersion = $0; model.saveTauriConfig() }
+                )) {
+                    Text("自動判定 (Auto)").tag("auto")
+                    Text("IPv4").tag("ipv4")
+                    Text("IPv6").tag("ipv6")
+                }
+                .frame(width: 140)
+            }
+
+            Divider()
+
+            // Auto Dry-Run
+            Toggle(isOn: Binding(
+                get: { model.settings.autoDryRun },
+                set: { model.settings.autoDryRun = $0; model.saveTauriConfig() }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("自動 Dry-Run 検証").font(.system(size: 13, weight: .medium))
+                    Text("設定投入前に自動的にドライラン構文チェックを行います。").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+
+            // Console Port & Baud Rate
+            VStack(alignment: .leading, spacing: 10) {
+                Text("シリアルコンソール設定").font(.system(size: 13, weight: .medium))
+                HStack(spacing: 12) {
+                    Picker("ポート", selection: Binding(
+                        get: { model.settings.consolePort ?? "" },
+                        set: { model.settings.consolePort = $0.isEmpty ? nil : $0; model.saveTauriConfig() }
+                    )) {
+                        Text("未設定 (None)").tag("")
+                        ForEach(availablePorts, id: \.self) { port in
+                            Text(port).tag(port)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Picker("ボーレート", selection: Binding(
+                        get: { model.settings.consoleBaudRate ?? 9600 },
+                        set: { model.settings.consoleBaudRate = $0; model.saveTauriConfig() }
+                    )) {
+                        Text("9600 bps").tag(9600)
+                        Text("19200 bps").tag(19200)
+                        Text("38400 bps").tag(38400)
+                        Text("57600 bps").tag(57600)
+                        Text("115200 bps").tag(115200)
+                    }
+                    .frame(width: 140)
+                }
+            }
+        }
+    }
+
+    // MARK: Category 1: LLM Model Settings
+
+    private var llmModelSection: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("ローカル LLM モデル設定").font(.system(size: 15, weight: .semibold))
+
+            // Presets
+            VStack(alignment: .leading, spacing: 6) {
+                Text("モデルプリセット").font(.system(size: 12, weight: .medium))
+                Picker("", selection: Binding(
+                    get: { model.selectedPresetId },
+                    set: { model.selectPreset($0) }
+                )) {
+                    ForEach(PRESET_MODELS) { preset in
+                        let exists = HuggingFaceHub.modelExists(repo: preset.repo, filename: preset.filename)
+                        Text("\(preset.name) \(exists ? "(✓ DL済)" : "(未DL)")").tag(preset.id)
+                    }
+                    Text("カスタムモデル (任意の GGUF)").tag("custom")
+                }
+                .pickerStyle(.radioGroup)
+            }
+
+            // Hugging Face Repo & Filename
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    TextField("GGUF モデルファイル", text: $model.modelPath).textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Hugging Face リポジトリ").font(.system(size: 11, weight: .medium))
+                        TextField("unsloth/gemma-4-E4B-it-GGUF", text: $model.repoPath)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(model.selectedPresetId != "custom")
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("GGUF ファイル名").font(.system(size: 11, weight: .medium))
+                        TextField("gemma-4-E4B-it-UD-Q4_K_XL.gguf", text: $model.modelFilename)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(model.selectedPresetId != "custom")
+                    }
+                }
+
+                // Presence check
+                let exists = HuggingFaceHub.modelExists(repo: model.repoPath, filename: model.modelFilename)
+                HStack(spacing: 6) {
+                    Circle().fill(exists ? Color.green : Color.secondary).frame(width: 8, height: 8)
+                    Text(exists ? "HuggingFace キャッシュに配置済みです" : "HuggingFace キャッシュに未ダウンロードです")
+                        .font(.system(size: 11))
+                        .foregroundStyle(exists ? Color.green : Color.secondary)
+                    Spacer()
+                    if exists {
+                        Button("このモデルを適用") {
+                            let url = HuggingFaceHub.modelURL(repo: model.repoPath, filename: model.modelFilename)
+                            model.modelPath = url.path
+                            model.loadModel()
+                            model.saveTauriConfig()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    Button("キャッシュフォルダを開く") {
+                        model.openModelDirectory()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+
+            Divider()
+
+            // Direct local GGUF file path
+            VStack(alignment: .leading, spacing: 6) {
+                Text("現在ロード対象の GGUF ファイルパス").font(.system(size: 12, weight: .medium))
+                HStack(spacing: 8) {
+                    TextField("ローカル GGUF パス", text: $model.modelPath)
+                        .textFieldStyle(.roundedBorder)
                     Button("選択…") { model.selectModel() }
                     Button(model.isLoadingModel ? "読み込み中…" : "読み込む") { model.loadModel() }
                         .disabled(model.modelPath.isEmpty || model.isLoadingModel)
                 }
-                Text(model.modelStatus).font(.system(size: 11)).foregroundStyle(model.modelStatus.hasPrefix("エラー") ? .red : .secondary).padding(.top, 6)
-                Divider().padding(.vertical, 14)
-                Text("ナレッジ").font(.system(size: 13, weight: .semibold)).padding(.bottom, 12)
-                FolderPickerRow(title: "資料フォルダ", path: $model.documentsDirectory)
-                Divider().padding(.vertical, 12)
-                FolderPickerRow(title: "検索インデックス", path: $model.knowledgeDirectory)
-                Text("変更した保存先は次の質問から Rust のナレッジ検索に使われます。既存の Tauri 版設定とは別に保存されます。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).padding(.top, 8)
+                Text(model.modelStatus)
+                    .font(.system(size: 11))
+                    .foregroundStyle(model.modelStatus.hasPrefix("エラー") ? .red : .secondary)
             }
-            .frame(maxWidth: 720, alignment: .leading).padding(22)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            Divider()
+
+            // Advanced context & generation parameters
+            VStack(alignment: .leading, spacing: 12) {
+                Text("詳細コンテキスト & 生成パラメータ").font(.system(size: 13, weight: .medium))
+
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("コンテキスト長 (n_ctx)").font(.system(size: 11))
+                        TextField("8192", value: Binding(
+                            get: { model.settings.nCtx },
+                            set: { model.settings.nCtx = $0; model.saveTauriConfig() }
+                        ), formatter: NumberFormatter())
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 100)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("最大生成トークン (max_gen)").font(.system(size: 11))
+                        TextField("2048", value: Binding(
+                            get: { model.settings.maxGen },
+                            set: { model.settings.maxGen = $0; model.saveTauriConfig() }
+                        ), formatter: NumberFormatter())
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 100)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("保持トークン数 (prompt_keep)").font(.system(size: 11))
+                        TextField("500", value: Binding(
+                            get: { model.settings.promptKeepTokens },
+                            set: { model.settings.promptKeepTokens = $0; model.saveTauriConfig() }
+                        ), formatter: NumberFormatter())
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 100)
+                    }
+                }
+            }
+
+            Divider()
+
+            // KV Cache Preload options
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ワーカー別 KV キャッシュ・プリロード").font(.system(size: 13, weight: .medium))
+                Text("モデルロード時に各専門ワーカーのシステムプロンプトを KV キャッシュに事前展開します。").font(.system(size: 11)).foregroundStyle(.secondary)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    Toggle("ナレッジワーカー", isOn: Binding(
+                        get: { model.settings.preloadKnowledge },
+                        set: { model.settings.preloadKnowledge = $0; model.saveTauriConfig() }
+                    ))
+                    Toggle("アナリストワーカー", isOn: Binding(
+                        get: { model.settings.preloadAnalysis },
+                        set: { model.settings.preloadAnalysis = $0; model.saveTauriConfig() }
+                    ))
+                    Toggle("RAG ワーカー", isOn: Binding(
+                        get: { model.settings.preloadRag },
+                        set: { model.settings.preloadRag = $0; model.saveTauriConfig() }
+                    ))
+                    Toggle("ビルダーワーカー", isOn: Binding(
+                        get: { model.settings.preloadBuilder },
+                        set: { model.settings.preloadBuilder = $0; model.saveTauriConfig() }
+                    ))
+                    Toggle("プロッターワーカー", isOn: Binding(
+                        get: { model.settings.preloadPlotter },
+                        set: { model.settings.preloadPlotter = $0; model.saveTauriConfig() }
+                    ))
+                    Toggle("要約ワーカー", isOn: Binding(
+                        get: { model.settings.preloadSummarization },
+                        set: { model.settings.preloadSummarization = $0; model.saveTauriConfig() }
+                    ))
+                }
+            }
+        }
+    }
+
+    // MARK: Category 2: Vision Settings
+
+    private var visionSection: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Vision (画像・マルチモーダル) 設定").font(.system(size: 15, weight: .semibold))
+
+            Toggle(isOn: Binding(
+                get: { model.settings.visionEnabled },
+                set: { model.settings.visionEnabled = $0; model.saveTauriConfig() }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Vision 機能を有効化").font(.system(size: 13, weight: .medium))
+                    Text("トポロジ図や機器外観の画像を読み取って分析するマルチモーダル機能を有効化します。").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("マルチモーダルプロジェクター (mmproj)").font(.system(size: 12, weight: .medium))
+                Text("GGUF マルチモーダルプロジェクターファイル (例: mmproj-F16.gguf) のパスを指定します。").font(.system(size: 11)).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    TextField("mmproj ファイルパス", text: Binding(
+                        get: { model.settings.mmprojPath ?? "" },
+                        set: { model.settings.mmprojPath = $0.isEmpty ? nil : $0; model.saveTauriConfig() }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+
+                    Button("選択…") {
+                        let panel = NSOpenPanel()
+                        if let gguf = UTType(filenameExtension: "gguf") { panel.allowedContentTypes = [gguf] }
+                        panel.canChooseFiles = true
+                        panel.canChooseDirectories = false
+                        panel.allowsMultipleSelection = false
+                        if panel.runModal() == .OK, let url = panel.url {
+                            model.settings.mmprojPath = url.path
+                            model.saveTauriConfig()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Category 3: Knowledge Base RAG
+
+    private var knowledgeSection: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("ナレッジベース (RAG) 設定").font(.system(size: 15, weight: .semibold))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("埋め込みモデル").font(.system(size: 12, weight: .medium))
+                HStack {
+                    Text("MultilingualE5Large (多言語対応ベクトル埋め込み)")
+                        .font(.system(size: 12, design: .monospaced))
+                    Spacer()
+                    Text("固定").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                .padding(10)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            }
+
+            Divider()
+
+            FolderPickerRow(title: "技術資料フォルダ (Markdown コーパス)", path: $model.documentsDirectory)
+            Text("Cisco、Yamaha、Fitelnet などの Markdown ドキュメントが配置されたディレクトリです。").font(.system(size: 11)).foregroundStyle(.secondary)
+
+            Divider()
+
+            FolderPickerRow(title: "検索インデックス保存先", path: $model.knowledgeDirectory)
+            Text("ベクトルインデックスやメタデータキャッシュが保存されるローカルディレクトリです。").font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Category 4: Tauri Config Synchronization
+
+    private var tauriSyncSection: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Tauri 版設定との自動同期").font(.system(size: 15, weight: .semibold))
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Circle().fill(model.isTauriConfigLoaded ? Color.green : Color.orange).frame(width: 10, height: 10)
+                    Text(model.isTauriConfigLoaded ? "Tauri 版設定と同期中" : "デフォルト設定を使用中 (Tauri設定未検出)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(model.isTauriConfigLoaded ? Color.green : Color.orange)
+                    Spacer()
+                }
+
+                Text(model.tauriSyncMessage)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+
+                HStack(spacing: 10) {
+                    Button("Tauri 設定を再読込") {
+                        model.loadTauriConfig()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Tauri 設定へ保存") {
+                        model.saveTauriConfig()
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button("設定フォルダを Finder で開く") {
+                        model.openTauriConfigDirectory()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+
+                    Button(role: .destructive, action: model.resetSettingsToDefault) {
+                        Text("デフォルトにリセット")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.red)
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("同期される項目一覧").font(.system(size: 13, weight: .medium))
+                Text("以下の全項目が Tauri 版 (`settings.json`) と本ネイティブアプリ間で相互に共有されます:")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("• 会話履歴数 (`historyLimit`), サンプリング温度 (`temperature`), 繰り返しペナルティ (`repetitionPenalty`)")
+                    Text("• モデルパス (`modelPath`), リポジトリ名, GGUFファイル名")
+                    Text("• コンテキスト長 (`nCtx`), 最大生成数 (`maxGen`), プロンプト保持数 (`promptKeepTokens`)")
+                    Text("• MCP タイムアウト (`mcpTimeout`), キャッシュ保持時間 (`cacheExpiryMinutes`), IP設定 (`ipVersion`)")
+                    Text("• 自動 Dry-Run (`autoDryRun`), シリアルポート (`consolePort`), ボーレート (`consoleBaudRate`)")
+                    Text("• 6種のワーカー別 KV プリロード (`preloadKnowledge`, `preloadAnalysis` など)")
+                    Text("• Vision 有効化 (`visionEnabled`) およびプロジェクターパス (`mmprojPath`)")
+                }
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(12)
+                .background(Color(nsColor: .controlBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
+            }
         }
     }
 }

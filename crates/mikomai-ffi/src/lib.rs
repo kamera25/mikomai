@@ -25,6 +25,58 @@ struct LoadedModel {
 static MODEL: OnceLock<Mutex<Option<LoadedModel>>> = OnceLock::new();
 static CANCEL_INFERENCE: AtomicBool = AtomicBool::new(false);
 
+struct InferenceConfig {
+    temperature: f32,
+    repetition_penalty: f32,
+    n_ctx: u32,
+    max_new_tokens: u32,
+}
+
+static INFERENCE_CONFIG: OnceLock<Mutex<InferenceConfig>> = OnceLock::new();
+
+fn inference_config_slot() -> &'static Mutex<InferenceConfig> {
+    INFERENCE_CONFIG.get_or_init(|| {
+        Mutex::new(InferenceConfig {
+            temperature: 0.2,
+            repetition_penalty: 1.1,
+            n_ctx: 8192,
+            max_new_tokens: 2048,
+        })
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_set_inference_params(
+    temperature: f32,
+    repetition_penalty: f32,
+    n_ctx: u32,
+    max_new_tokens: u32,
+) -> MikomaiResult {
+    let caught = std::panic::catch_unwind(|| {
+        let mut config = inference_config_slot()
+            .lock()
+            .map_err(|_| "inference config state unavailable".to_string())?;
+        if (0.0..=2.0).contains(&temperature) {
+            config.temperature = temperature;
+        }
+        if (0.5..=2.0).contains(&repetition_penalty) {
+            config.repetition_penalty = repetition_penalty;
+        }
+        if (512..=32768).contains(&n_ctx) {
+            config.n_ctx = n_ctx;
+        }
+        if (1..=8192).contains(&max_new_tokens) {
+            config.max_new_tokens = max_new_tokens;
+        }
+        Ok("推論パラメータを更新しました".to_string())
+    });
+    match caught {
+        Ok(Ok(val)) => result(0, val),
+        Ok(Err(err)) => error_result(err),
+        Err(_) => error_result("failed to set inference params".into()),
+    }
+}
+
 fn model_slot() -> &'static Mutex<Option<LoadedModel>> {
     MODEL.get_or_init(|| Mutex::new(None))
 }
@@ -244,8 +296,13 @@ fn infer_streaming<F: FnMut(&str, bool)>(prompt: &str, mut on_token: F) -> Resul
     let loaded = guard.as_ref().ok_or_else(|| {
         "モデルが未ロードです。設定から GGUF モデルを読み込んでください。".to_string()
     })?;
-    const N_CTX: u32 = 8192;
-    const MAX_NEW: usize = 1024;
+    let (temperature, repetition_penalty, n_ctx, max_new) = {
+        let config = inference_config_slot()
+            .lock()
+            .map(|g| (g.temperature, g.repetition_penalty, g.n_ctx, g.max_new_tokens as usize))
+            .unwrap_or((0.2, 1.1, 8192, 2048));
+        config
+    };
     let system =
         include_str!("../../../mikomai-desktop/src-tauri/src/llm/prompts/system_prompt.txt");
     let formatted = format!("<|turn>system\n{system}<turn|>\n");
@@ -260,7 +317,7 @@ fn infer_streaming<F: FnMut(&str, bool)>(prompt: &str, mut on_token: F) -> Resul
             AddBos::Never,
         )
         .map_err(|e| format!("chat prompt tokenization failed: {e}"))?;
-    if tokens.len() + user_tokens.len() + MAX_NEW >= N_CTX as usize {
+    if tokens.len() + user_tokens.len() + max_new >= n_ctx as usize {
         return Err(
             "会話がモデルのコンテキスト上限を超えています。履歴を短くしてください。".into(),
         );
@@ -268,7 +325,7 @@ fn infer_streaming<F: FnMut(&str, bool)>(prompt: &str, mut on_token: F) -> Resul
     tokens.extend(user_tokens);
     let mut params = LlamaContextParams::default();
     params = params
-        .with_n_ctx(std::num::NonZeroU32::new(N_CTX))
+        .with_n_ctx(std::num::NonZeroU32::new(n_ctx))
         .with_n_batch(512)
         .with_n_ubatch(256)
         .with_flash_attention_policy(1)
@@ -296,8 +353,8 @@ fn infer_streaming<F: FnMut(&str, bool)>(prompt: &str, mut on_token: F) -> Resul
             .map_err(|e| format!("prompt evaluation failed: {e}"))?;
     }
     let mut sampler = LlamaSampler::chain_simple(vec![
-        LlamaSampler::penalties(model.n_vocab(), 64, 1.1, 0.0, 0.0),
-        LlamaSampler::temp(0.2),
+        LlamaSampler::penalties(model.n_vocab(), 64, repetition_penalty, 0.0, 0.0),
+        LlamaSampler::temp(temperature),
         LlamaSampler::dist(42),
     ]);
     let end = model
@@ -307,7 +364,7 @@ fn infer_streaming<F: FnMut(&str, bool)>(prompt: &str, mut on_token: F) -> Resul
     let mut out = String::new();
     let mut pending_utf8 = Vec::new();
     let mut pos = tokens.len() as i32;
-    for _ in 0..MAX_NEW {
+    for _ in 0..max_new {
         if CANCEL_INFERENCE.load(Ordering::Relaxed) {
             if out.trim().is_empty() {
                 let msg = "生成を停止しました。";
@@ -801,6 +858,15 @@ mod tests {
             )
         };
         assert_eq!(res.status, 1);
+        unsafe { super::mikomai_result_free(res) };
+    }
+
+    #[test]
+    fn test_set_inference_params() {
+        use super::mikomai_set_inference_params;
+
+        let res = unsafe { mikomai_set_inference_params(0.7, 1.2, 4096, 1024) };
+        assert_eq!(res.status, 0);
         unsafe { super::mikomai_result_free(res) };
     }
 

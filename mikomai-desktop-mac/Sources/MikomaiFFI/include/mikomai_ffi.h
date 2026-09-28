@@ -20,6 +20,7 @@ MikomaiResult mikomai_assistant_chat(const char *message, const char *history, c
 MikomaiResult mikomai_assistant_chat_with_attachments(const char *message, const char *history, const char *documents_dir, const char *knowledge_dir, const char *attachments);
 MikomaiResult mikomai_assistant_chat_streaming(const char *message, const char *history, const char *documents_dir, const char *knowledge_dir, const char *attachments, MikomaiStreamCallback callback, void *context);
 MikomaiResult mikomai_test_tcp_connection(const char *host, uint16_t port, uint32_t timeout_ms);
+MikomaiResult mikomai_set_inference_params(float temperature, float repetition_penalty, uint32_t n_ctx, uint32_t max_new_tokens);
 void mikomai_result_free(MikomaiResult result);
 
 #endif
