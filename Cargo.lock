@@ -4706,6 +4706,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mikomai-ffi"
+version = "0.1.0"
+dependencies = [
+ "futures-lite",
+ "mikomai-adapters",
+ "mikomai-core",
+]
+
+[[package]]
 name = "mimalloc"
 version = "0.1.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"

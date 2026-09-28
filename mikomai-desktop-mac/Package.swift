@@ -1,0 +1,32 @@
+// swift-tools-version: 6.0
+import PackageDescription
+import Foundation
+
+let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+let rustLibraryDirectory = packageRoot
+    .appendingPathComponent("../target/debug")
+    .standardizedFileURL
+    .path
+
+let package = Package(
+    name: "MikomaiDesktopMac",
+    platforms: [.macOS(.v13)],
+    products: [
+        .executable(name: "MikomaiDesktopMac", targets: ["MikomaiDesktopMac"])
+    ],
+    targets: [
+        .target(
+            name: "MikomaiFFI",
+            path: "Sources/MikomaiFFI",
+            publicHeadersPath: "include",
+            linkerSettings: [
+                .unsafeFlags(["-L\(rustLibraryDirectory)"]),
+                .linkedLibrary("mikomai_ffi")
+            ]
+        ),
+        .executableTarget(
+            name: "MikomaiDesktopMac",
+            dependencies: ["MikomaiFFI"]
+        )
+    ]
+)
