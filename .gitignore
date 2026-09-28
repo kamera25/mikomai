@@ -26,8 +26,9 @@ dist-ssr
 venv/
 
 # nw-docs
-src-tauri/.fastembed_cache
+mikomai-desktop/src-tauri/.fastembed_cache
 
 coverage/
+mikomai-desktop/coverage/
 build/
 .fastembed_cache

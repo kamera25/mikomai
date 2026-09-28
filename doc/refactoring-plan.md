@@ -46,8 +46,8 @@ Rustテスト、ブラウザE2E、製品ビルド、実機接続、LLM推論、R
 | 集計対象 | ファイル数 | 行数 |
 | --- | ---: | ---: |
 | `src/` 内の `.ts`・`.tsx` | 76 | 12,770 |
-| `src-tauri/src/` 内の `.rs` | 143 | 29,810 |
-| `src-tauri/python/` 内の `.py` | 5 | 770 |
+| `mikomai-desktop/src-tauri/src/` 内の `.rs` | 143 | 29,810 |
+| `mikomai-desktop/src-tauri/python/` 内の `.py` | 5 | 770 |
 | `nw-docs/` 内の `.md` | 40 | 979 |
 
 行数は調査時点の物理行数で、コメント・空行・同居するテストを含む。CSS、JSON、YAML、バイナリ、Rustの別ディレクトリの結合テスト、評価スクリプトは上表のコード集計に含めていない。行数だけで分割の必要性を判断しない。
@@ -57,12 +57,12 @@ Rustテスト、ブラウザE2E、製品ビルド、実機接続、LLM推論、R
 | 管理対象 | 主な場所 | 維持・整理の方針 |
 | --- | --- | --- |
 | UI・状態管理 | `src/components/`、`src/contexts/`、`src/hooks/` | 画面、通信、状態遷移、描画演出を分ける |
-| UIとRustの通信契約 | `src/types/index.ts`、`src-tauri/src/mcp/protocol.rs`、`src-tauri/src/lib.rs` | コマンド名・引数・イベント・エラーを一覧化する |
-| エージェント | `src-tauri/src/harness/`、`planner/`、`state/` | 既存ポートと状態機械を活用し、保存と承認の境界を整える |
+| UIとRustの通信契約 | `src/types/index.ts`、`mikomai-desktop/src-tauri/src/mcp/protocol.rs`、`mikomai-desktop/src-tauri/src/lib.rs` | コマンド名・引数・イベント・エラーを一覧化する |
+| エージェント | `mikomai-desktop/src-tauri/src/harness/`、`planner/`、`state/` | 既存ポートと状態機械を活用し、保存と承認の境界を整える |
 | 機器操作・承認 | `operations.rs`、`validator/`、`mcp/executor/`、`mcp/fetch/` | 読み取りと変更操作の区別、承認内容との一致を維持する |
 | 推論・RAG | `llm/`、`mcp/rag/` | モデル寿命、キャンセル、検索・引用の検証を分離する |
 | 履歴・ネットワーク保存 | `history.rs`、`history_store.rs`、`graph.rs` | 保存先を変える前に責任範囲と互換性を明確化する |
-| 外部プロセス・配布物 | `src-tauri/python/`、各 `binaries/`、`scripts/netmiko_wrapper.spec` | 再生成手順、配置、対象OS・CPUを明示する |
+| 外部プロセス・配布物 | `mikomai-desktop/src-tauri/python/`、各 `binaries/`、`scripts/netmiko_wrapper.spec` | 再生成手順、配置、対象OS・CPUを明示する |
 | ナレッジ・評価 | `nw-docs/`、`eval/`、`scripts/*_eval.py` | 失敗事例を追加し、検索と回答の評価を区別する |
 | 運用手順 | `README.md`、`doc/`、`clean.sh`、`ingest.sh` | 実装・配布・復旧手順と同期する |
 
@@ -117,8 +117,8 @@ lint警告の対象は `AppLayout.tsx`、`ConfigDiffPanel.tsx`、`ConnectionForm
 | R05 | P1 | `mcp/config_helper.rs::run_config_helper` は作業ディレクトリから `venv/bin/python` とソース内の `.py` を探し、同期的に終了待機する | 配布アプリ・Windows・別作業ディレクトリでの可搬性が要検証。パス解決、依存配布、時間制限、異常終了処理を共通化する |
 | R06 | P2 | `history_store.rs::initialize` はDBレスポンスの `check()` 結果を破棄する | クエリ内のエラーを呼び出し側へ返せない経路がある。初期化失敗時の伝播を実装・試験する |
 | R07 | P2 | UIの5件のlint警告と、成功テスト内の `act(...)` 警告を実測 | UI分割前に非同期処理の完了待ち、購読解除、依存関係を整理する |
-| R08 | P2 | `src-tauri/src/cli.rs::run_chat` は `build_app()` と非表示ウィンドウに依存。ポートの本番アダプターもAppHandle・Windowを持つ | CLIは現時点では完全なヘッドレス構成ではない。共通サービスとUIアダプターを段階的に分離する |
-| R09 | P2 | CIはフロント型チェック・単体テストとRust `--lib` テストを実行。lint・E2E・製品ビルド・評価は含まれない | 軽量CIと環境依存の検証を分けて追加する。`src-tauri/tests/integration_tests.rs` の暗号roundtripという名前のテストは文字列の等値確認のみで、暗号処理を検証していない |
+| R08 | P2 | `mikomai-desktop/src-tauri/src/cli.rs::run_chat` は `build_app()` と非表示ウィンドウに依存。ポートの本番アダプターもAppHandle・Windowを持つ | CLIは現時点では完全なヘッドレス構成ではない。共通サービスとUIアダプターを段階的に分離する |
+| R09 | P2 | CIはフロント型チェック・単体テストとRust `--lib` テストを実行。lint・E2E・製品ビルド・評価は含まれない | 軽量CIと環境依存の検証を分けて追加する。`mikomai-desktop/src-tauri/tests/integration_tests.rs` の暗号roundtripという名前のテストは文字列の等値確認のみで、暗号処理を検証していない |
 | R10 | P2 | GitがPythonの `__pycache__/*.pyc` を追跡。複数の `binaries/` に配布物がある。Python依存マニフェストはGit追跡対象から見つからない | キャッシュを追跡対象外にし、バイナリの参照先・生成方法・必要な配置を確定する。重複配置だけを理由に削除しない |
 | R11 | P2 | `doc/agent-architecture.md` は監査・再開UIを次段階と記載するが、`TaskAuditPanel` と `AppLayout` の再開呼び出しが存在する | 実装済み・未検証・未実装を分けて文書を更新する。UIがあることとクラッシュ復旧の保証は区別する |
 | R12 | P2 | RAG評価ケースは5件、LLM評価ケースは3件 | 現在の評価資産を残し、メーカー・機種・無回答・曖昧な依頼・引用の整合性を追加する。件数のみで品質を評価しない |
@@ -132,11 +132,11 @@ R02について、E2Eの模擬イベントは `event: "McpInitialStarted"`・`ta
 
 | 対象 | 行数 | 現状・分割案 |
 | --- | ---: | --- |
-| `src-tauri/src/mcp/config_helper.rs` | 1,140 | 差分計算、Python呼出、設定検証・変換、3種類のユーザー選択を分ける |
-| `src-tauri/src/history.rs` | 1,115 | 型・履歴変更・起動時整備・要約保存・添付ファイル処理を分ける。既存 `history_store.rs` を保存処理の境界として維持する |
+| `mikomai-desktop/src-tauri/src/mcp/config_helper.rs` | 1,140 | 差分計算、Python呼出、設定検証・変換、3種類のユーザー選択を分ける |
+| `mikomai-desktop/src-tauri/src/history.rs` | 1,115 | 型・履歴変更・起動時整備・要約保存・添付ファイル処理を分ける。既存 `history_store.rs` を保存処理の境界として維持する |
 | `src/components/SettingsPanel.tsx` | 836 | 設定カテゴリごとの画面と取得・保存処理を分ける |
-| `src-tauri/src/graph.rs` | 842 | DB初期化、取り込み、問い合わせ、読み込み時の正規化を分ける |
-| `src-tauri/src/mcp/executor/tools.rs` | 768 | ツール群ごとの実行処理と共通の承認・結果変換を整理する |
+| `mikomai-desktop/src-tauri/src/graph.rs` | 842 | DB初期化、取り込み、問い合わせ、読み込み時の正規化を分ける |
+| `mikomai-desktop/src-tauri/src/mcp/executor/tools.rs` | 768 | ツール群ごとの実行処理と共通の承認・結果変換を整理する |
 | `src/components/Chat/TimelineEvent.tsx` | 669 | イベント種別ごとの表示と共通表示部品を分ける |
 | `src/components/ChatInput/ChatInput.tsx` | 621 | 入力、添付、候補表示、送信制御を整理する |
 | `src/components/AppLayout/AppLayout.tsx` | 611 | レイアウトから送信キュー・停止・再開・承認連携を抽出する |
@@ -211,7 +211,7 @@ npm test -- --reporter=dot
 npm run build
 
 # Rust変更（必要な対象から開始）
-cargo test --manifest-path src-tauri/Cargo.toml --lib
+cargo test --manifest-path mikomai-desktop/src-tauri/Cargo.toml --lib
 
 # E2Eの設定とモックを整備した後
 npm run test:e2e
@@ -223,7 +223,7 @@ npm run cli -- chat "F220のVLAN設定方法を教えて"
 python scripts/rag_eval.py --cases eval/rag_cases.json --report eval/rag-report.json
 ```
 
-CLIは終了コード0だけでなく、質問に対応した完結した最終回答が出ることを確認する。必要に応じて `--debug` で内部経路を調べる。GUI初期化、モデル、保存先が必要な現在の制約を記録する。`cargo test --lib` は `src-tauri/tests/` の結合テストを含まないため、実効的な結合テストを整備した際はCIの実行対象にも追加する。
+CLIは終了コード0だけでなく、質問に対応した完結した最終回答が出ることを確認する。必要に応じて `--debug` で内部経路を調べる。GUI初期化、モデル、保存先が必要な現在の制約を記録する。`cargo test --lib` は `mikomai-desktop/src-tauri/tests/` の結合テストを含まないため、実効的な結合テストを整備した際はCIの実行対象にも追加する。
 
 ### 8.3 成果の測り方
 
@@ -264,7 +264,7 @@ CLIは終了コード0だけでなく、質問に対応した完結した最終�
 - [CLIマニュアル](mikomai-cli.md) / [CLI chat仕様](mikomai-cli-chat.md)
 - [RAG評価契約](rag-evaluation.md)
 - [JavaScript依存関係・実行コマンド](../package.json)
-- [Rust依存関係](../src-tauri/Cargo.toml)
+- [Rust依存関係](../mikomai-desktop/src-tauri/Cargo.toml)
 - [CI定義](../.github/workflows/quality.yml)
 
 本書の課題一覧は初期調査の結果である。作業開始後は各IDに担当・状態・関連変更・検証結果を追記し、実装の進行に合わせて更新する。
@@ -318,13 +318,13 @@ Scheduler ───────────────────────�
 新規構築時の配置案は次のとおり。最初から全アダプターを別crateにはしない。
 
 ```text
-crates/mikomai-core/       # domain、application、port。GUI依存なし
+mikomai-core/       # domain、application、port。GUI依存なし
 crates/mikomai-adapters/   # 推論、保存、機器接続、Python
 crates/mikomai-cli/        # 引数・入出力・サービスの組立て
-src-tauri/                # デスクトップの組立てとIPC変換
-src/features/             # chat、operations、connections、settings
-src/platform/             # 型付きIPCクライアント、イベント購読
-src/shared/               # 機能に依存しない表示部品
+mikomai-desktop/src-tauri/                # デスクトップの組立てとIPC変換
+mikomai-desktop/src/features/  # chat、operations、connections、settings
+mikomai-desktop/src/platform/  # 型付きIPCクライアント、イベント購読
+mikomai-desktop/src/shared/    # 機能に依存しない表示部品
 ```
 
 現行への移行ではまずモジュール境界を作り、Tauri依存を外せた部分からcrate化する。分散サービス、汎用プラグイン基盤、新しいフロント状態管理ライブラリは必須にしない。追加の運用・抽象化コストを正当化する要件が出た時点で判断する。
@@ -392,7 +392,7 @@ SurrealDBを維持するかは、必要なトランザクション、検索、�
 3. **TypeScript DTO自動生成**:
    - Rust型から `ts-rs` によるTypeScript DTO自動生成は、Phase 4（フロントエンド再構築）の段階で導入する。
 4. **既存crateスケルトンの置換**:
-   - `crates/mikomai-core` のスケルトン型は、`src-tauri/src/` の実績ある実装（`OperationPlan`, `AgentLoop` 等）をcoreへ移植して置換・実体化する。
+   - `mikomai-core` のスケルトン型は、`mikomai-desktop/src-tauri/src/` の実績ある実装（`OperationPlan`, `AgentLoop` 等）をcoreへ移植して置換・実体化する。
 5. **段階的実行ロードマップ**:
    - Phase 0（ベースライン固定・棚卸し: 2〜3人日）→ Phase 1（コアcrate実体化: 5〜8人日）→ Phase 2（アダプター・ヘッドレスCLI: 5〜7人日）を第一段階（計12〜18人日）として最優先で遂行する。
 
@@ -400,11 +400,11 @@ SurrealDBを維持するかは、必要なトランザクション、検索、�
 
 - **Phase 0: ベースライン固定・棚卸し**
   - E2Eポート不一致（R02）修正、ESLint警告分類、全80+ invokeハンドラ・イベント・保存パスのインベントリ一覧作成。
-- **Phase 1: コアcrate実体化 (`crates/mikomai-core`)**
+- **Phase 1: コアcrate実体化 (`mikomai-core`)**
   - Tauri非依存のドメインモデル移植、ポート定義、Application Services（Chat/Diagnose/Operations）の構築、完全インメモリ・フェイクアダプターでのテスト確立。
 - **Phase 2: アダプター実装とヘッドレスCLI (`crates/mikomai-adapters`, `crates/mikomai-cli`)**
   - SurrealDB/ファイル保存アダプター、LLM推論アダプター、MCPツールアダプター、Python設定変換のRust移植着手、GUI不要の真のヘッドレスCLI (`mikomai-cli`) 実装。
-- **Phase 3: デスクトップ薄層化 (`src-tauri`)**
+- **Phase 3: デスクトップ薄層化 (`mikomai-desktop/src-tauri`)**
   - 80+ invokeハンドラを5ドメインサービスへ集約、Tauriを薄いIPC変換層へ純化。
 - **Phase 4: フロントエンド再構築 (`src/`)**
   - 型付きIPCクライアント、`chatReducer` による状態純粋関数化、責務分離（`useMcpListeners` 解体、UI部品リファクタリング）。

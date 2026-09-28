@@ -2,7 +2,7 @@ use crate::mcp::safe_cmd::resolve_safe_command_path;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 
-pub mod canonical;
+pub use mikomai_core::network::route as canonical;
 pub mod llm;
 pub mod macos;
 pub mod windows;

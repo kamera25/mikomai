@@ -49,7 +49,7 @@ Fast Router は既存の決定論的な入口振り分けである。LLM に依�
 
 ## 共通 Worker 契約
 
-`src-tauri/src/harness/coordinator.rs` に次の戻り値を定義する。
+`mikomai-desktop/src-tauri/src/harness/coordinator.rs` に次の戻り値を定義する。
 
 | `WorkerOutcome` | 意味 | Coordinator の遷移 |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ Builder 完了後に AgentLoop がネットワーク操作、RAG、Builder を�
 
 ## Packet Safety Worker への適用
 
-Packet Safety Worker は `src-tauri/src/harness/packet_safety.rs` に実装され、`network_packet_safety` MCPツールとして Agent と Fast Router から呼び出せる。LLM に送信パラメータや再試行を決定させず、許可された intent だけを受け付ける。
+Packet Safety Worker は `mikomai-desktop/src-tauri/src/harness/packet_safety.rs` に実装され、`network_packet_safety` MCPツールとして Agent と Fast Router から呼び出せる。LLM に送信パラメータや再試行を決定させず、許可された intent だけを受け付ける。
 
 | 状況 | 戻り値 |
 | --- | --- |
@@ -111,8 +111,8 @@ Packet Safety Worker は `src-tauri/src/harness/packet_safety.rs` に実装さ�
 
 ## 関連実装
 
-- `src-tauri/src/harness/coordinator.rs`
-- `src-tauri/src/harness/agent_loop.rs`
-- `src-tauri/src/harness/ports.rs`
-- `src-tauri/src/llm/fast_agent.rs`
-- `src-tauri/src/planner/llm_planner.rs`
+- `mikomai-desktop/src-tauri/src/harness/coordinator.rs`
+- `mikomai-desktop/src-tauri/src/harness/agent_loop.rs`
+- `mikomai-desktop/src-tauri/src/harness/ports.rs`
+- `mikomai-desktop/src-tauri/src/llm/fast_agent.rs`
+- `mikomai-desktop/src-tauri/src/planner/llm_planner.rs`

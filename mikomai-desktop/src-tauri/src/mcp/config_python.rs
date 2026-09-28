@@ -17,6 +17,14 @@ fn find_python_binary(base: &Path) -> Option<PathBuf> {
 }
 
 fn find_script(base: &Path) -> Option<PathBuf> {
+    let desktop_script = base
+        .join("mikomai-desktop")
+        .join("src-tauri")
+        .join("python")
+        .join("config_helper.py");
+    if desktop_script.is_file() {
+        return Some(desktop_script);
+    }
     let script1 = base.join("src-tauri").join("python").join("config_helper.py");
     if script1.is_file() {
         return Some(script1);
@@ -28,6 +36,18 @@ fn find_script(base: &Path) -> Option<PathBuf> {
     None
 }
 
+fn push_ancestors(candidates: &mut Vec<PathBuf>, start: &Path) {
+    let mut path = start.to_path_buf();
+    for _ in 0..4 {
+        if !candidates.contains(&path) {
+            candidates.push(path.clone());
+        }
+        if !path.pop() {
+            break;
+        }
+    }
+}
+
 fn get_candidate_dirs() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Ok(curr) = std::env::current_dir() {
@@ -35,18 +55,12 @@ fn get_candidate_dirs() -> Vec<PathBuf> {
         if c.ends_with("src-tauri") {
             c.pop();
         }
-        candidates.push(c.clone());
-        candidates.push(curr);
+        push_ancestors(&mut candidates, &c);
+        push_ancestors(&mut candidates, &curr);
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            candidates.push(exe_dir.to_path_buf());
-            if let Some(parent) = exe_dir.parent() {
-                candidates.push(parent.to_path_buf());
-                if let Some(grandparent) = parent.parent() {
-                    candidates.push(grandparent.to_path_buf());
-                }
-            }
+            push_ancestors(&mut candidates, exe_dir);
         }
     }
     candidates

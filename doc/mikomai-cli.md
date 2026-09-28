@@ -28,16 +28,16 @@ npm run cli -- rag-search "VLAN 設定"
 
 ```bash
 # プロジェクトルートから直接 cargo run
-cargo run --manifest-path src-tauri/Cargo.toml --bin mikomai-cli -- <サブコマンド> [オプション]
+cargo run --manifest-path mikomai-desktop/src-tauri/Cargo.toml --bin mikomai-cli -- <サブコマンド> [オプション]
 
 # 例:
-cargo run --manifest-path src-tauri/Cargo.toml --bin mikomai-cli -- devices
+cargo run --manifest-path mikomai-desktop/src-tauri/Cargo.toml --bin mikomai-cli -- devices
 ```
 
-### 方法 C: Cargo 経由（`src-tauri` ディレクトリから）
+### 方法 C: Cargo 経由（`mikomai-desktop/src-tauri` ディレクトリから）
 
 ```bash
-cd src-tauri
+cd mikomai-desktop/src-tauri
 cargo run --bin mikomai-cli -- <サブコマンド> [オプション]
 ```
 
@@ -47,12 +47,12 @@ cargo run --bin mikomai-cli -- <サブコマンド> [オプション]
 
 ```bash
 # デバッグビルド
-cargo build --manifest-path src-tauri/Cargo.toml --bin mikomai-cli
-./src-tauri/target/debug/mikomai-cli --help
+cargo build --manifest-path mikomai-desktop/src-tauri/Cargo.toml --bin mikomai-cli
+./target/debug/mikomai-cli --help
 
 # リリースビルド（最適化済み）
-cargo build --release --manifest-path src-tauri/Cargo.toml --bin mikomai-cli
-./src-tauri/target/release/mikomai-cli --help
+cargo build --release --manifest-path mikomai-desktop/src-tauri/Cargo.toml --bin mikomai-cli
+./target/release/mikomai-cli --help
 ```
 
 ---

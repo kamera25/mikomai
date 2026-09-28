@@ -1,4 +1,4 @@
-<p align="center"><img src="src-tauri/icons/icon.png" width="128"></p>
+<p align="center"><img src="mikomai-desktop/src-tauri/icons/icon.png" width="128"></p>
 
 # mikomai - ネットワークAIアシスタントツール
 
@@ -17,10 +17,12 @@
 
 ## 技術構成
 
-- **Core**: Tauri / Rust
-- **Frontend**: React / TypeScript
+- **Core**: Rust domain and application services in `mikomai-core/`
+- **Desktop**: React / TypeScript and the Tauri shell in `mikomai-desktop/`
 - **Inference**: Llama.cpp
 - **Storage**: SurrealDB (network graph, history, and RAG vector store)
+
+Rust workspace の中心にある `mikomai-core/` は Tauri に依存せず、共有ドメイン・アプリケーションサービス・ポートを提供します。デスクトップの React UI と Tauri 統合は `mikomai-desktop/` にまとめています。Tauri 側には既存の GUI 固有サービスも残っており、共通コアへの移行は段階的に進めます。
 
 ## セットアップ
 
@@ -55,7 +57,7 @@ npm run cli -- rag-search "VLAN"
 npm run cli -- chat "NakaokuGWのインターフェース状態を診断して"
 
 # cargo経由
-cargo run --manifest-path src-tauri/Cargo.toml --bin mikomai-cli -- chat "VLAN設定のコマンド例"
+cargo run --manifest-path mikomai-desktop/src-tauri/Cargo.toml --bin mikomai-cli -- chat "VLAN設定のコマンド例"
 ```
 
 より詳細なコマンド一覧や使用例については、[CLI 実行マニュアル](doc/mikomai-cli.md) を参照してください。
@@ -68,7 +70,7 @@ cargo run --manifest-path src-tauri/Cargo.toml --bin mikomai-cli -- chat "VLAN�
 ./clean.sh
 ```
 
-- **通常クリーンアップ（デフォルト）**: `src-tauri/target`（Rustビルド成果物）、`dist`、`build`、Pythonキャッシュ（`__pycache__`、`*.pyc`）、`.pytest_cache`、OS一時ファイル（`.DS_Store`）などを安全に削除します。
+- **通常クリーンアップ（デフォルト）**: `target`（Rustビルド成果物）、`mikomai-desktop/dist`、`build`、Pythonキャッシュ（`__pycache__`、`*.pyc`）、`.pytest_cache`、OS一時ファイル（`.DS_Store`）などを安全に削除します。
 - **ディープクリーンアップ（`-d` / `--deep`）**: 通常のターゲットに加え、再構築に時間がかかる `node_modules`、`venv`、`.fastembed_cache`（ダウンロード済みの埋め込みモデル）も削除対象に含めます。
 - **ドライラン（`-n` / `--dry-run`）**: 実際の削除は行わず、どのファイルが削除され、どれだけの容量が解放されるかのシミュレーション結果を表示します。
 

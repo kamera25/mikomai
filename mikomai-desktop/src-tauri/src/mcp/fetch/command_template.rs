@@ -323,7 +323,7 @@ use std::sync::LazyLock;
 
 static SHOW_RUNNING_CONFIG_RULES: LazyLock<Option<ShowRunningConfigRules>> = LazyLock::new(|| {
     let yaml_content =
-        std::fs::read_to_string("src-tauri/src/mcp/config/show_running_config_commands.yaml")
+        std::fs::read_to_string("mikomai-desktop/src-tauri/src/mcp/config/show_running_config_commands.yaml")
             .or_else(|_| {
                 std::fs::read_to_string("src/mcp/config/show_running_config_commands.yaml")
             })
@@ -335,7 +335,7 @@ static SHOW_RUNNING_CONFIG_RULES: LazyLock<Option<ShowRunningConfigRules>> = Laz
 
 static APPLY_CONFIG_RULES: LazyLock<Option<ApplyConfigRules>> = LazyLock::new(|| {
     let yaml_content =
-        std::fs::read_to_string("src-tauri/src/mcp/config/apply_config_commands.yaml")
+        std::fs::read_to_string("mikomai-desktop/src-tauri/src/mcp/config/apply_config_commands.yaml")
             .or_else(|_| std::fs::read_to_string("src/mcp/config/apply_config_commands.yaml"))
             .unwrap_or_else(|_| include_str!("../config/apply_config_commands.yaml").to_string());
     serde_yaml::from_str(&yaml_content).ok()

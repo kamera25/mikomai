@@ -15,7 +15,7 @@ GUI を起動することなく、端末上から自然言語でネットワー�
 npm run cli -- chat "<メッセージ>" [OPTIONS]
 
 # Cargo 経由（プロジェクトルートから）
-cargo run --manifest-path src-tauri/Cargo.toml --bin mikomai-cli -- chat "<メッセージ>" [OPTIONS]
+cargo run --manifest-path mikomai-desktop/src-tauri/Cargo.toml --bin mikomai-cli -- chat "<メッセージ>" [OPTIONS]
 ```
 
 ### オプション

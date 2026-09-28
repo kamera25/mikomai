@@ -1,4 +1,4 @@
-use crate::mcp::canonicalization::{
+use crate::network::canonicalization::{
     ensure_unique, extract_candidates, CandidateVectors, EvidenceLine, ExtractedCandidates,
 };
 use crate::schema::arp::{ArpEntry, ArpEntryType, ArpMetadata, UniversalArpTable};
@@ -43,7 +43,7 @@ pub fn extract(raw: &str) -> ExtractedCandidates {
             || last.contains('.')
             || last.contains(':')
             || last.contains('-')
-            || crate::mcp::canonicalization::normalize_mac(last).len() == 17
+            || crate::network::canonicalization::normalize_mac(last).len() == 17
         {
             return None;
         }

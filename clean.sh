@@ -28,15 +28,15 @@ ASSUME_YES=false
 
 # Targets definition
 STANDARD_TARGETS=(
-    "src-tauri/target"
-    "dist"
+    "target"
+    "mikomai-desktop/dist"
     "build"
-    "coverage"
+    "mikomai-desktop/coverage"
     ".eslintcache"
 )
 
 DEEP_TARGETS=(
-    "src-tauri/.fastembed_cache"
+    "mikomai-desktop/src-tauri/.fastembed_cache"
     "node_modules"
     "venv"
 )

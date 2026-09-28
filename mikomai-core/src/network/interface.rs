@@ -1,6 +1,6 @@
 //! Constrained canonicalization for interface status/address output.
 
-use crate::mcp::canonicalization::{
+use crate::network::canonicalization::{
     ensure_unique, extract_candidates, CandidateVectors, EvidenceLine, ExtractedCandidates,
 };
 use crate::schema::interface::{

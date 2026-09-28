@@ -12,21 +12,16 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String> {
     }
 
     // Validate nwdiag DSL schema before invoking python wrapper
-    if let Err(err) = crate::mcp::nwdiag_validator::validate_nwdiag_schema(schema) {
+    if let Err(err) = mikomai_core::nwdiag::validate_nwdiag_schema(schema) {
         return Err(err.to_llm_feedback_string());
     }
 
-    let mut current_dir =
+    let current_dir =
         std::env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?;
-    if current_dir.ends_with("src-tauri") {
-        current_dir.pop();
-    }
-
-    let python_path = current_dir.join("venv").join("bin").join("python");
-    let wrapper_path = current_dir
-        .join("src-tauri")
-        .join("python")
-        .join("nwdiag_wrapper.py");
+    let tauri_dir = crate::project_paths::tauri_dir_from(&current_dir);
+    let workspace_root = crate::project_paths::workspace_root_from(&current_dir);
+    let python_path = workspace_root.join("venv").join("bin").join("python");
+    let wrapper_path = tauri_dir.join("python").join("nwdiag_wrapper.py");
 
     if !python_path.exists() {
         return Err(format!(
@@ -41,10 +36,7 @@ pub fn compile_nwdiag_to_svg(schema: &str) -> Result<Vec<u8>, String> {
         ));
     }
 
-    let temp_dir = current_dir
-        .join("src-tauri")
-        .join("target")
-        .join("tmp_nwdiag");
+    let temp_dir = tauri_dir.join("target").join("tmp_nwdiag");
     if !temp_dir.exists() {
         fs::create_dir_all(&temp_dir)
             .map_err(|e| format!("Failed to create temporary directory: {}", e))?;

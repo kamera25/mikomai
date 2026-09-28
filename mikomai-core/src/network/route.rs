@@ -3,7 +3,7 @@
 //! The model selects only values extracted from a single raw route line.  It
 //! cannot manufacture destinations, next hops, interface names, or flags.
 
-use crate::mcp::canonicalization::ensure_unique;
+use crate::network::canonicalization::ensure_unique;
 use crate::schema::route::{RouteEntry, RouteMetadata, UniversalRouteTable};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

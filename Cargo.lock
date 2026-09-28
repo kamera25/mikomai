@@ -4694,11 +4694,15 @@ dependencies = [
 name = "mikomai-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures-lite",
+ "regex",
  "serde",
  "serde_json",
+ "serde_yaml",
  "sha2",
  "uuid",
+ "validator",
 ]
 
 [[package]]

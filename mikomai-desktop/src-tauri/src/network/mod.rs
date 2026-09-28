@@ -187,16 +187,11 @@ impl SidecarNetmikoWrapper {
     async fn run_sidecar(&self, payload: serde_json::Value) -> Result<String, NetworkError> {
         let payload_str = serde_json::to_string(&payload)?;
 
-        let mut current_dir = std::env::current_dir().unwrap_or_default();
-        if current_dir.ends_with("src-tauri") {
-            current_dir.pop();
-        }
-
-        let wrapper_path = current_dir
-            .join("src-tauri")
-            .join("python")
-            .join("netmiko_wrapper.py");
-        let python_path = find_python_with_netmiko(&current_dir);
+        let current_dir = std::env::current_dir().unwrap_or_default();
+        let tauri_dir = crate::project_paths::tauri_dir_from(&current_dir);
+        let workspace_root = crate::project_paths::workspace_root_from(&current_dir);
+        let wrapper_path = tauri_dir.join("python").join("netmiko_wrapper.py");
+        let python_path = find_python_with_netmiko(&workspace_root);
 
         if let Some(py_bin) = python_path {
             if wrapper_path.exists() {

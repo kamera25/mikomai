@@ -13,7 +13,7 @@ from pathlib import Path
 def search(query, limit, filter_value=None):
     if filter_value:
         query = f"[Context: {filter_value}] {query}"
-    command = ["cargo", "run", "--quiet", "--manifest-path", "src-tauri/Cargo.toml", "--bin", "mikomai-cli", "--", "--json", "rag-search", query]
+    command = ["cargo", "run", "--quiet", "--manifest-path", "mikomai-desktop/src-tauri/Cargo.toml", "--bin", "mikomai-cli", "--", "--json", "rag-search", query]
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
     output = json.loads(completed.stdout).get("data", {}).get("output", "")
     return [{"path": path, "score": float(score)} for path, score in re.findall(r"ソース: ([^,]+), 類似度スコア: ([0-9.]+)", output)]

@@ -1,4 +1,4 @@
-pub mod canonical;
+pub use mikomai_core::network::arp as canonical;
 pub mod llm;
 pub mod macos;
 pub mod windows;

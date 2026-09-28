@@ -19,7 +19,7 @@ bash .agents/skills/mikomai-regression/scripts/run_regression.sh
 - `npm run cli` は `cargo run -p mikomai-cli --` を実行し、[独立 CLI](../crates/mikomai-cli/src/main.rs) を起動する。
 - `chat` は `KnowledgePlanner`、ローカル Markdown 用 `KnowledgeStore`、`EchoToolExecutor` を使用する。`nw-docs` が存在すれば取り込み、検索した資料を回答として返す。
 - これにより独立 CLI の取り込み・検索・回答出力経路を確認できるが、GUI 側の LLM 推論、SurrealDB、実機 MCP 呼び出し、AgentLoop、画面操作は検証できない。共有コアの利用だけで同一の E2E 経路と判断しない。
-- [Tauri 側 CLI](../src-tauri/src/cli.rs) は別の実行経路。こちらを使う場合も、現在の起動方法と対象機能まで到達した証拠を確認する。
+- [Tauri 側 CLI](../mikomai-desktop/src-tauri/src/cli.rs) は別の実行経路。こちらを使う場合も、現在の起動方法と対象機能まで到達した証拠を確認する。
 
 ## 1. 実行前に合格条件を決める
 
