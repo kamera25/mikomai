@@ -8,17 +8,19 @@ Device records use a separate Swift-only store. The app can import non-secret me
 
 | Tauri workflow | macOS native status | Notes |
 | --- | --- | --- |
-| Local knowledge chat | Available | Searches Markdown with the shared Rust knowledge service, then generates a response with the selected local GGUF through `llama-cpp-2`. Recent session turns and retrieved documents are included in the prompt. |
+| Local knowledge chat | Available (Streaming) | Searches Markdown with shared Rust knowledge service, then generates a streaming response with the selected local GGUF through `llama-cpp-2`. Recent session turns, attachments, and retrieved documents are included in prompt. |
 | Chat sessions | Available, separate storage | Swift `UserDefaults`; does not share Tauri/SurrealDB history or agent-task records. |
-| Knowledge settings | Available, separate storage | Document and index directories are saved by the native app and passed to Rust per request. |
-| Device connection editor | Inventory with read-only import | Local metadata CRUD and CSV exchange. A selected Tauri `connections.json` is read through the shared `JsonDeviceRegistry` adapter with a 2 MiB limit; secrets are ignored, source IDs are retained for repeat-import deduplication, and the source file is never modified. No keyring, credentials, connection test, or live device session. |
+| Knowledge settings | Available, separate storage | Document and index directories are saved by native app and passed to Rust per request. |
+| Device connection editor | Inventory with Keychain & Test | Local metadata CRUD, CSV exchange, and read-only Tauri JSON import. Passwords and enable passwords are encrypted and securely stored in macOS Keychain. Individual devices support instant TCP connection tests and Ping dispatch. |
+| Network diagnostics tools | Available | Dedicated workspace for TCP connection tests (with port presets & latency measurement), live streaming Ping & Traceroute, local ARP cache table inspection (with 1-click device registration), and routing table view. |
+| Status bar & Native menus | Available | macOS native CommandMenu shortcuts (`Cmd+N`, `Cmd+1..4`, network actions) and bottom status bar (model status, knowledge path, device count). |
 | Model selection/loading/inference | Available, separate runtime | Select and load a local `.gguf` in Settings. Uses Tauri's llama.cpp binding, system prompt, and Gemma turn framing, but does not share Tauri's loaded model/state. |
-| MCP tools, host suggestions, and user choices | Not available | No native MCP transport, event broker, or choice continuation yet. |
-| Operation plans, approvals, and config diff | Not available | Tauri safety and execution state remains bound to its app services. |
+| MCP tools, host suggestions, and user choices | In progress (Phase 3) | Basic diagnostics (Ping, Trace, ARP, Route, TCP Test) are available; full Netmiko multi-vendor CLI execution is planned for Phase 3. |
+| Operation plans, approvals, and config diff | Not available (Phase 3) | Tauri safety and execution state remains bound to its app services. |
 | Scheduled watches and notifications | Not available | Tauri scheduler depends on AppHandle, managed state, and emitted events. |
 | Agent task audit/history | Not available | Native chat sessions are not agent task snapshots or audit records. |
 | Attachments and images | Text files available | `.txt`, `.md`, `.csv`, `.json`, `.yaml`, `.xml`, and `.log` are read as UTF-8, limited to 64 KiB per file / 128 KiB total, and passed as untrusted reference material to the model. File contents are not saved in chat history; the filename is retained. Images, PDF extraction, and attachments shared with Tauri history are not supported. |
-| Stop generation | Available | Cancels token generation; prompt preparation and model loading are not interruptible. |
+| Stop generation | Available | Cancels token generation in real time; prompt preparation and model loading are not interruptible. |
 
 ## Requirements
 
