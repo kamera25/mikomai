@@ -1268,6 +1268,24 @@ private struct ChatBottomPreferenceKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
+private struct PaneResizeCursor: NSViewRepresentable {
+    final class CursorView: NSView {
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .resizeLeftRight)
+        }
+    }
+
+    func makeNSView(context: Context) -> CursorView { CursorView() }
+    func updateNSView(_ view: CursorView, context: Context) {
+        view.window?.invalidateCursorRects(for: view)
+    }
+}
+
+private struct ChatTopPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 private struct DesktopWindow: View {
     @ObservedObject var model: DesktopModel
     @State private var mentionPresentation = ChatMentionPresentation()
@@ -1280,36 +1298,57 @@ private struct DesktopWindow: View {
 
     @AppStorage("mikomai.desktop.mac.historyWidth") private var historyWidth = 248.0
     @State private var historyDragStart: CGFloat?
+    @State private var isHistoryOpen = true
+    @AppStorage("mikomai.desktop.mac.rightPaneWidth") private var rightPaneWidth = 330.0
+    @State private var rightPaneDragStart: CGFloat?
     @State private var isRightPaneOpen = false
     @State private var rightPaneTab = "diff"
     @State private var isAtChatBottom = true
+    @State private var followsChatOutput = true
+    @State private var lastChatTop: CGFloat?
     @State private var selectedConnectionID: UUID?
     @State private var operationAlert = ""
     @State private var isOperationRunning = false
     @State private var operationRationale = "選択した変更案を適用する"
 
     private func historyMaximumWidth(containerWidth: CGFloat) -> CGFloat {
-        max(180, min(420, containerWidth - 50 - 440 - (isRightPaneOpen ? 330 : 0) - 8))
+        max(180, min(420, containerWidth - 50 - 440 - (isRightPaneOpen ? CGFloat(rightPaneWidth) + 8 : 0) - 8))
     }
 
-    private var historyResizeDivider: some View {
+    private func rightPaneMaximumWidth(containerWidth: CGFloat) -> CGFloat {
+        let visibleHistoryWidth = isHistoryOpen ? min(CGFloat(historyWidth), historyMaximumWidth(containerWidth: containerWidth)) + 8 : 0
+        return max(180, min(600, containerWidth - 50 - 440 - visibleHistoryWidth - 8))
+    }
+
+    private func paneResizeDivider(isHistory: Bool, currentWidth: CGFloat, maximumWidth: CGFloat) -> some View {
         Rectangle()
             .fill(Color(nsColor: .separatorColor).opacity(0.65))
             .frame(width: 1)
             .frame(width: 8)
+            .background(PaneResizeCursor())
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
                 .onChanged { value in
-                    if historyDragStart == nil { historyDragStart = CGFloat(historyWidth) }
-                    let delta = value.location.x - value.startLocation.x
-                    historyWidth = Double(min(activeHistoryMaximumWidth, max(180, (historyDragStart ?? 248) + delta)))
+                    if isHistory {
+                        if historyDragStart == nil { historyDragStart = currentWidth }
+                        historyWidth = Double(min(maximumWidth, max(180, (historyDragStart ?? currentWidth) + value.translation.width)))
+                    } else {
+                        if rightPaneDragStart == nil { rightPaneDragStart = currentWidth }
+                        rightPaneWidth = Double(min(maximumWidth, max(180, (rightPaneDragStart ?? currentWidth) - value.translation.width)))
+                    }
                 }
-                .onEnded { _ in historyDragStart = nil })
-            .help("ドラッグして会話履歴の幅を調整")
-            .accessibilityLabel("会話履歴の幅を調整")
+                .onEnded { value in
+                    if isHistory {
+                        if (historyDragStart ?? currentWidth) + value.translation.width < 180 { isHistoryOpen = false }
+                        historyDragStart = nil
+                    } else {
+                        if (rightPaneDragStart ?? currentWidth) - value.translation.width < 180 { isRightPaneOpen = false }
+                        rightPaneDragStart = nil
+                    }
+                })
+            .help(isHistory ? "ドラッグして会話履歴の幅を調整・180pt未満で閉じる" : "ドラッグして右ペインの幅を調整・180pt未満で閉じる")
+            .accessibilityLabel(isHistory ? "会話履歴の幅を調整" : "右ペインの幅を調整")
     }
-
-    @State private var activeHistoryMaximumWidth: CGFloat = 420
 
     private var hostSuggestions: [HostSuggestion] {
         guard let context = mentionContext else { return [] }
@@ -1343,13 +1382,12 @@ private struct DesktopWindow: View {
         GeometryReader { geometry in
         HStack(spacing: 0) {
             activityBar
-            if model.workspace == .chat {
+            if model.workspace == .chat && isHistoryOpen {
                 historySidebar
                     .frame(width: min(CGFloat(historyWidth), historyMaximumWidth(containerWidth: geometry.size.width)))
-                historyResizeDivider
-                    .onAppear { activeHistoryMaximumWidth = historyMaximumWidth(containerWidth: geometry.size.width) }
-                    .onChange(of: geometry.size.width) { width in activeHistoryMaximumWidth = historyMaximumWidth(containerWidth: width) }
-                    .onChange(of: isRightPaneOpen) { _ in activeHistoryMaximumWidth = historyMaximumWidth(containerWidth: geometry.size.width) }
+                paneResizeDivider(isHistory: true,
+                    currentWidth: min(CGFloat(historyWidth), historyMaximumWidth(containerWidth: geometry.size.width)),
+                    maximumWidth: historyMaximumWidth(containerWidth: geometry.size.width))
             }
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
@@ -1366,8 +1404,11 @@ private struct DesktopWindow: View {
                 }
                 .background(Color(nsColor: .windowBackgroundColor))
                 if model.workspace == .chat && isRightPaneOpen {
+                    paneResizeDivider(isHistory: false,
+                        currentWidth: min(CGFloat(rightPaneWidth), rightPaneMaximumWidth(containerWidth: geometry.size.width)),
+                        maximumWidth: rightPaneMaximumWidth(containerWidth: geometry.size.width))
                     rightSidePane
-                        .frame(width: 330)
+                        .frame(width: min(CGFloat(rightPaneWidth), rightPaneMaximumWidth(containerWidth: geometry.size.width)))
                         .transition(.move(edge: .trailing))
                 }
             }
@@ -1395,7 +1436,10 @@ private struct DesktopWindow: View {
     }
 
     private func activityButton(_ item: Workspace) -> some View {
-        Button { model.workspace = item } label: {
+        Button {
+            model.workspace = item
+            if item == .chat { isHistoryOpen = true }
+        } label: {
             Image(systemName: item.icon).font(.system(size: 16, weight: .medium))
                 .foregroundStyle(model.workspace == item ? .primary : .secondary)
                 .frame(width: 34, height: 34)
@@ -1449,8 +1493,6 @@ private struct DesktopWindow: View {
             }
             Spacer()
             if model.workspace == .chat {
-                Circle().fill(.green).frame(width: 7, height: 7)
-                Text("ローカルナレッジ").font(.system(size: 11)).foregroundStyle(.secondary)
                 Button { withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen.toggle() } } label: {
                     Image(systemName: "sidebar.right")
                         .font(.system(size: 13, weight: .medium))
@@ -1811,7 +1853,7 @@ private struct DesktopWindow: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
-                        if let session = model.activeSession, session.messages.isEmpty { emptyState }
+                        if model.activeSession?.messages.isEmpty ?? true { emptyState }
                         if let session = model.activeSession {
                             ForEach(session.messages) { message in
                                 MessageRow(message: message, onSelectConfig: { config in
@@ -1835,43 +1877,56 @@ private struct DesktopWindow: View {
                                 Text(model.isCancelling ? "生成を停止しています…" : "資料を検索して回答を生成しています…")
                                     .font(.system(size: 12)).foregroundStyle(.secondary)
                             }
-                            .padding(.leading, 42)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         GeometryReader { bottomProxy in
                             Color.clear.preference(key: ChatBottomPreferenceKey.self,
                                                    value: bottomProxy.frame(in: .named("chatScroll")).maxY)
                         }
                         .frame(height: 1)
+                        .id("chatBottom")
                     }
+                    .background(GeometryReader { topProxy in
+                        Color.clear.preference(key: ChatTopPreferenceKey.self,
+                            value: topProxy.frame(in: .named("chatScroll")).minY)
+                    })
                     .frame(maxWidth: 760).frame(maxWidth: .infinity).padding(.horizontal, 24).padding(.vertical, 24)
                     }
                     .coordinateSpace(name: "chatScroll")
+                    .onPreferenceChange(ChatTopPreferenceKey.self) { topY in
+                        if let previous = lastChatTop, topY > previous + 1 {
+                            followsChatOutput = false
+                        }
+                        lastChatTop = topY
+                    }
                     .onPreferenceChange(ChatBottomPreferenceKey.self) { bottomY in
                         isAtChatBottom = bottomY <= viewport.size.height + 32
                     }
                     .onChange(of: model.activeSession?.messages.last?.text ?? "") { _ in
-                        if isAtChatBottom, let message = model.activeSession?.messages.last {
-                            proxy.scrollTo(message.id, anchor: .bottom)
-                        }
+                        if followsChatOutput { proxy.scrollTo("chatBottom", anchor: .bottom) }
                     }
                     .onChange(of: model.activeSession?.messages.count ?? 0) { _ in
-                        if let message = model.activeSession?.messages.last { proxy.scrollTo(message.id, anchor: .bottom) }
+                        if followsChatOutput { proxy.scrollTo("chatBottom", anchor: .bottom) }
                     }
                     .onChange(of: model.activeSessionID) { _ in
                         isAtChatBottom = true
-                        if let message = model.activeSession?.messages.last { proxy.scrollTo(message.id, anchor: .bottom) }
+                        followsChatOutput = true
+                        lastChatTop = nil
+                        proxy.scrollTo("chatBottom", anchor: .bottom)
                     }
-                    .overlay(alignment: .bottomTrailing) {
+                    .overlay(alignment: .bottom) {
                         if !isAtChatBottom {
                             Button {
-                                if let message = model.activeSession?.messages.last {
-                                    withAnimation { proxy.scrollTo(message.id, anchor: .bottom) }
-                                }
+                                followsChatOutput = true
+                                proxy.scrollTo("chatBottom", anchor: .bottom)
                             } label: {
-                                Label("最新へ", systemImage: "arrow.down")
-                                    .font(.system(size: 11, weight: .medium)).padding(.horizontal, 10).padding(.vertical, 7)
+                                Label("一番下に移動", systemImage: "arrow.down")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .padding(.horizontal, 14).padding(.vertical, 8)
+                                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
                             }
-                            .buttonStyle(.bordered).padding(.trailing, 22).padding(.bottom, 12)
+                            .buttonStyle(.plain).padding(.bottom, 8)
                         }
                     }
                 }
@@ -1881,19 +1936,66 @@ private struct DesktopWindow: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: "network").font(.system(size: 23)).foregroundStyle(Color.accentColor)
-            Text("ネットワークの資料を探す").font(.system(size: 21, weight: .semibold))
-            Text("機器の設定やトラブルシュートについて質問してください。ストリーミング応答とローカルRAGに対応しています。").font(.system(size: 13)).foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                suggestion("F220 の VLAN 設定")
-                suggestion("Cisco の MAC アドレス確認")
-            }.padding(.top, 4)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 64)
+        VStack(spacing: 24) {
+            if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+               let icon = NSImage(contentsOf: iconURL) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 72, height: 72)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: "network")
+                    .font(.system(size: 48))
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityHidden(true)
+            }
+            Text("インフラについて何を行いますか？")
+                .font(.system(size: 21, weight: .semibold))
+                .multilineTextAlignment(.center)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                suggestion("VLANの設定方法を調べる", icon: "network",
+                    prompt: "F220のVLAN設定方法を、設定例と確認コマンドを含めて教えてください。")
+                suggestion("MACアドレスを確認する", icon: "desktopcomputer",
+                    prompt: "CiscoスイッチでMACアドレステーブルを確認するコマンドと、結果の読み方を教えてください。")
+                suggestion("通信トラブルを調査する", icon: "antenna.radiowaves.left.and.right",
+                    prompt: "ネットワークの通信トラブルを切り分けるための、PingとTracerouteを使った調査手順を教えてください。")
+                suggestion("サブネットを設計する", icon: "square.grid.2x2",
+                    prompt: "192.168.10.0/24を4つの同じ大きさのサブネットに分割し、それぞれのネットワークアドレス、利用可能なIP範囲、ブロードキャストアドレスを示してください。")
+            }
+        }
+        .frame(maxWidth: 560)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 48)
+        .padding(.bottom, 24)
     }
 
-    private func suggestion(_ text: String) -> some View {
-        Button(text) { model.draft = text }.buttonStyle(.bordered).controlSize(.small)
+    private func suggestion(_ title: String, icon: String, prompt: String) -> some View {
+        Button {
+            guard !model.isWorking else { return }
+            mentionPresentation.dismiss()
+            model.draft = prompt
+            model.send()
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundStyle(Color.accentColor)
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+            .padding(16)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.65), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.7))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isWorking)
+        .help("クリックして実行")
     }
 
     private var composer: some View {
@@ -1961,9 +2063,13 @@ private struct DesktopWindow: View {
             }
             HStack(alignment: .bottom, spacing: 10) {
                 Button(action: model.selectAttachments) {
-                    Image(systemName: "paperclip").font(.system(size: 13)).frame(width: 28, height: 28)
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.bordered).controlSize(.small).disabled(model.isWorking).help("テキストファイルを添付")
+                .buttonStyle(.plain).disabled(model.isWorking).help("テキストファイルを添付")
 
                 ChatComposer(text: $model.draft, isFocused: $isChatInputFocused,
                              isEnabled: !model.isWorking, onSubmit: model.send,
@@ -2043,7 +2149,7 @@ private struct SessionRow: View {
                 Button("名前を変更") { title = session.title; isRenaming = true }
                 Button("削除", role: .destructive, action: onDelete)
             } label: { Image(systemName: "ellipsis").font(.system(size: 12)).frame(width: 20, height: 22) }
-                .menuStyle(.borderlessButton).frame(width: 20)
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 20)
         }
         .padding(.horizontal, 8).padding(.vertical, 6).background(isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
     }
@@ -2053,26 +2159,26 @@ private struct MessageRow: View {
     let message: ChatMessage
     var onSelectConfig: (String) -> Void = { _ in }
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: message.role == .user ? "person.fill" : "point.3.connected.trianglepath.dotted")
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(message.role == .user ? Color.secondary : Color.accentColor)
-                .frame(width: 27, height: 27).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-            Group {
-                if message.role == .assistant {
-                    MarkdownMessage(text: message.text, onSelectConfig: onSelectConfig)
-                } else {
+        Group {
+            if message.role == .user {
+                HStack {
+                    Spacer(minLength: 48)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(message.text).font(.system(size: 13)).textSelection(.enabled)
-                        if !message.attachments.isEmpty {
-                            ForEach(message.attachments, id: \.self) { name in
-                                Label(name, systemImage: "doc.text").font(.system(size: 11)).foregroundStyle(.secondary)
-                            }
+                        ForEach(message.attachments, id: \.self) { name in
+                            Label(name, systemImage: "doc.text").font(.system(size: 11))
                         }
                     }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
                 }
+            } else {
+                MarkdownMessage(text: message.text, onSelectConfig: onSelectConfig)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
-        }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
