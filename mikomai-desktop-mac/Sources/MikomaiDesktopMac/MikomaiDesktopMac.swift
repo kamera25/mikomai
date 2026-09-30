@@ -1304,20 +1304,29 @@ private struct DesktopWindow: View {
     @State private var isRightPaneOpen = false
     @State private var rightPaneTab = "diff"
     @State private var isAtChatBottom = true
-    @State private var followsChatOutput = true
-    @State private var lastChatTop: CGFloat?
+    @State private var chatScrollFollow = ChatScrollFollowState()
     @State private var selectedConnectionID: UUID?
     @State private var operationAlert = ""
     @State private var isOperationRunning = false
     @State private var operationRationale = "選択した変更案を適用する"
 
     private func historyMaximumWidth(containerWidth: CGFloat) -> CGFloat {
-        max(180, min(420, containerWidth - 50 - 440 - (isRightPaneOpen ? CGFloat(rightPaneWidth) + 8 : 0) - 8))
+        CGFloat(PaneResizePolicy.maximumWidth(
+            containerWidth: Double(containerWidth),
+            reservedWidth: 50 + 440 + (isRightPaneOpen ? rightPaneWidth + 8 : 0) + 8,
+            lowerBound: 180,
+            upperBound: 420
+        ))
     }
 
     private func rightPaneMaximumWidth(containerWidth: CGFloat) -> CGFloat {
         let visibleHistoryWidth = isHistoryOpen ? min(CGFloat(historyWidth), historyMaximumWidth(containerWidth: containerWidth)) + 8 : 0
-        return max(180, min(600, containerWidth - 50 - 440 - visibleHistoryWidth - 8))
+        return CGFloat(PaneResizePolicy.maximumWidth(
+            containerWidth: Double(containerWidth),
+            reservedWidth: 50 + 440 + Double(visibleHistoryWidth) + 8,
+            lowerBound: 180,
+            upperBound: 600
+        ))
     }
 
     private func paneResizeDivider(isHistory: Bool, currentWidth: CGFloat, maximumWidth: CGFloat) -> some View {
@@ -1331,18 +1340,32 @@ private struct DesktopWindow: View {
                 .onChanged { value in
                     if isHistory {
                         if historyDragStart == nil { historyDragStart = currentWidth }
-                        historyWidth = Double(min(maximumWidth, max(180, (historyDragStart ?? currentWidth) + value.translation.width)))
+                        historyWidth = PaneResizePolicy.clampedWidth(
+                            Double((historyDragStart ?? currentWidth) + value.translation.width),
+                            maximumWidth: Double(maximumWidth)
+                        )
                     } else {
                         if rightPaneDragStart == nil { rightPaneDragStart = currentWidth }
-                        rightPaneWidth = Double(min(maximumWidth, max(180, (rightPaneDragStart ?? currentWidth) - value.translation.width)))
+                        rightPaneWidth = PaneResizePolicy.clampedWidth(
+                            Double((rightPaneDragStart ?? currentWidth) - value.translation.width),
+                            maximumWidth: Double(maximumWidth)
+                        )
                     }
                 }
                 .onEnded { value in
                     if isHistory {
-                        if (historyDragStart ?? currentWidth) + value.translation.width < 180 { isHistoryOpen = false }
+                        if PaneResizePolicy.shouldClose(
+                            startWidth: Double(historyDragStart ?? currentWidth),
+                            translation: Double(value.translation.width),
+                            isHistoryPane: true
+                        ) { isHistoryOpen = false }
                         historyDragStart = nil
                     } else {
-                        if (rightPaneDragStart ?? currentWidth) - value.translation.width < 180 { isRightPaneOpen = false }
+                        if PaneResizePolicy.shouldClose(
+                            startWidth: Double(rightPaneDragStart ?? currentWidth),
+                            translation: Double(value.translation.width),
+                            isHistoryPane: false
+                        ) { isRightPaneOpen = false }
                         rightPaneDragStart = nil
                     }
                 })
@@ -1894,30 +1917,27 @@ private struct DesktopWindow: View {
                     }
                     .coordinateSpace(name: "chatScroll")
                     .onPreferenceChange(ChatTopPreferenceKey.self) { topY in
-                        if let previous = lastChatTop, topY > previous + 1 {
-                            followsChatOutput = false
-                        }
-                        lastChatTop = topY
+                        chatScrollFollow.observe(contentTop: Double(topY), isAtBottom: isAtChatBottom)
                     }
                     .onPreferenceChange(ChatBottomPreferenceKey.self) { bottomY in
                         isAtChatBottom = bottomY <= viewport.size.height + 32
+                        chatScrollFollow.updateViewport(isAtBottom: isAtChatBottom)
                     }
                     .onChange(of: model.activeSession?.messages.last?.text ?? "") { _ in
-                        if followsChatOutput { proxy.scrollTo("chatBottom", anchor: .bottom) }
+                        if chatScrollFollow.followsOutput { proxy.scrollTo("chatBottom", anchor: .bottom) }
                     }
                     .onChange(of: model.activeSession?.messages.count ?? 0) { _ in
-                        if followsChatOutput { proxy.scrollTo("chatBottom", anchor: .bottom) }
+                        if chatScrollFollow.followsOutput { proxy.scrollTo("chatBottom", anchor: .bottom) }
                     }
                     .onChange(of: model.activeSessionID) { _ in
                         isAtChatBottom = true
-                        followsChatOutput = true
-                        lastChatTop = nil
+                        chatScrollFollow.resetForSessionChange()
                         proxy.scrollTo("chatBottom", anchor: .bottom)
                     }
                     .overlay(alignment: .bottom) {
                         if !isAtChatBottom {
                             Button {
-                                followsChatOutput = true
+                                chatScrollFollow.resume()
                                 proxy.scrollTo("chatBottom", anchor: .bottom)
                             } label: {
                                 Label("一番下に移動", systemImage: "arrow.down")
@@ -2122,190 +2142,6 @@ private struct DesktopWindow: View {
 
 }
 
-
-// MARK: - Session & Message Rows
-
-private struct SessionRow: View {
-    let session: ChatSession
-    let isSelected: Bool
-    let onSelect: () -> Void
-    let onRename: (String) -> Void
-    let onDelete: () -> Void
-    @State private var isRenaming = false
-    @State private var title = ""
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: "bubble.left").font(.system(size: 11)).foregroundStyle(.secondary)
-            if isRenaming {
-                TextField("会話名", text: $title, onCommit: { onRename(title); isRenaming = false })
-                    .textFieldStyle(.plain).font(.system(size: 12))
-            } else {
-                Button(action: onSelect) {
-                    Text(session.title).font(.system(size: 12)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                }.buttonStyle(.plain)
-            }
-            Menu {
-                Button("名前を変更") { title = session.title; isRenaming = true }
-                Button("削除", role: .destructive, action: onDelete)
-            } label: { Image(systemName: "ellipsis").font(.system(size: 12)).frame(width: 20, height: 22) }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 20)
-        }
-        .padding(.horizontal, 8).padding(.vertical, 6).background(isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
-    }
-}
-
-private struct MessageRow: View {
-    let message: ChatMessage
-    var onSelectConfig: (String) -> Void = { _ in }
-    var body: some View {
-        Group {
-            if message.role == .user {
-                HStack {
-                    Spacer(minLength: 48)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(message.text).font(.system(size: 13)).textSelection(.enabled)
-                        ForEach(message.attachments, id: \.self) { name in
-                            Label(name, systemImage: "doc.text").font(.system(size: 11))
-                        }
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
-                }
-            } else {
-                MarkdownMessage(text: message.text, onSelectConfig: onSelectConfig)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-// MARK: - Markdown Message Parser & View
-
-private struct MarkdownBlock: Identifiable {
-    enum Kind {
-        case heading(Int, String)
-        case paragraph(String)
-        case code(String, String)
-        case bullet(String)
-        case quote(String)
-        case separator
-    }
-    let id = UUID()
-    let kind: Kind
-}
-
-private struct MarkdownMessage: View {
-    let text: String
-    var onSelectConfig: (String) -> Void = { _ in }
-    private var blocks: [MarkdownBlock] { Self.parse(text) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            ForEach(blocks) { block in
-                switch block.kind {
-                case let .heading(level, content):
-                    inline(content)
-                        .font(.system(size: level == 1 ? 21 : level == 2 ? 18 : 15, weight: .semibold))
-                        .padding(.top, level <= 2 ? 5 : 2)
-                case let .paragraph(content):
-                    inline(content).font(.system(size: 13)).lineSpacing(3)
-                case let .code(language, content):
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            if !language.isEmpty { Text(language).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary) }
-                            Spacer()
-                            Button("コピー") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(content, forType: .string)
-                            }
-                            .buttonStyle(.borderless)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                            Button("変更計画として確認") { onSelectConfig(content) }
-                                .buttonStyle(.borderless).font(.system(size: 10))
-                                .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        }
-                        Text(content).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(10).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                case let .bullet(content):
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("•").foregroundStyle(.secondary)
-                        inline(content).font(.system(size: 13)).lineSpacing(3)
-                    }.padding(.leading, 4)
-                case let .quote(content):
-                    inline(content).font(.system(size: 13)).foregroundStyle(.secondary)
-                        .padding(.leading, 10).overlay(alignment: .leading) { Rectangle().fill(Color.accentColor.opacity(0.45)).frame(width: 2) }
-                case .separator:
-                    Divider()
-                }
-            }
-        }
-        .textSelection(.enabled)
-    }
-
-    private func inline(_ source: String) -> Text {
-        if let attributed = try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-            return Text(attributed)
-        }
-        return Text(source)
-    }
-
-    private static func parse(_ source: String) -> [MarkdownBlock] {
-        let lines = source.components(separatedBy: .newlines)
-        var result: [MarkdownBlock] = []
-        var paragraph: [String] = []
-        var index = 0
-
-        func flushParagraph() {
-            guard !paragraph.isEmpty else { return }
-            result.append(MarkdownBlock(kind: .paragraph(paragraph.joined(separator: " "))))
-            paragraph.removeAll(keepingCapacity: true)
-        }
-
-        while index < lines.count {
-            let line = lines[index]
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { flushParagraph(); index += 1; continue }
-            if trimmed.hasPrefix("```") {
-                flushParagraph()
-                let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                index += 1
-                var code: [String] = []
-                while index < lines.count && !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-                    code.append(lines[index]); index += 1
-                }
-                if index < lines.count { index += 1 }
-                result.append(MarkdownBlock(kind: .code(language, code.joined(separator: "\n"))))
-                continue
-            }
-            if ["---", "***", "___"].contains(trimmed) {
-                flushParagraph(); result.append(MarkdownBlock(kind: .separator)); index += 1; continue
-            }
-            let hashCount = trimmed.prefix(while: { $0 == "#" }).count
-            if (1...6).contains(hashCount), trimmed.dropFirst(hashCount).first == " " {
-                flushParagraph()
-                result.append(MarkdownBlock(kind: .heading(hashCount, String(trimmed.dropFirst(hashCount)).trimmingCharacters(in: .whitespaces))))
-                index += 1
-                continue
-            }
-            if trimmed.hasPrefix("> ") {
-                flushParagraph(); result.append(MarkdownBlock(kind: .quote(String(trimmed.dropFirst(2))))); index += 1; continue
-            }
-            if ["- ", "* ", "+ "].contains(where: { trimmed.hasPrefix($0) }) {
-                flushParagraph(); result.append(MarkdownBlock(kind: .bullet(String(trimmed.dropFirst(2))))); index += 1; continue
-            }
-            paragraph.append(trimmed)
-            index += 1
-        }
-        flushParagraph()
-        return result
-    }
-}
 
 // MARK: - Connections Workspace
 
