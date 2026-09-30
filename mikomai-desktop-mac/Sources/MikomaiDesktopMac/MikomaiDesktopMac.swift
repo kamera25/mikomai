@@ -3,6 +3,7 @@ import AppKit
 import Darwin
 import Security
 import MikomaiFFI
+import MikomaiDesktopCore
 import UniformTypeIdentifiers
 
 @main
@@ -86,101 +87,13 @@ private enum ToolTab: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Tauri Settings Model (Port of Tauri AppSettings)
+// MARK: - Tauri Settings Model
 
-private struct TauriSettings: Codable {
-    var historyLimit: Int = 5
-    var temperature: Double = 0.0
-    var repetitionPenalty: Double = 1.1
-    var modelPath: String? = nil
-    var recentIps: [String] = []
-    var mcpTimeout: Int? = 30
-    var ipVersion: String? = "auto"
-    var consolePort: String? = nil
-    var consoleBaudRate: Int? = 9600
-    var preloadKnowledge: Bool = false
-    var preloadAnalysis: Bool = false
-    var preloadRag: Bool = false
-    var preloadPlotter: Bool = false
-    var preloadBuilder: Bool = false
-    var preloadSummarization: Bool = false
-    var cacheExpiryMinutes: Int? = 10
-    var nCtx: Int = 8192
-    var maxGen: Int = 2048
-    var promptKeepTokens: Int = 500
-    var visionEnabled: Bool = false
-    var autoDryRun: Bool = false
-    var mmprojPath: String? = nil
-
-    private enum CodingKeys: String, CodingKey {
-        case historyLimit
-        case temperature
-        case repetitionPenalty
-        case modelPath
-        case recentIps
-        case mcpTimeout
-        case ipVersion
-        case consolePort
-        case consoleBaudRate
-        case preloadKnowledge
-        case preloadAnalysis
-        case preloadRag
-        case preloadPlotter
-        case preloadBuilder
-        case preloadSummarization
-        case cacheExpiryMinutes
-        case nCtx
-        case maxGen
-        case promptKeepTokens
-        case visionEnabled
-        case autoDryRun
-        case mmprojPath
-    }
-
-    init() {}
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        historyLimit = try c.decodeIfPresent(Int.self, forKey: .historyLimit) ?? 5
-        temperature = try c.decodeIfPresent(Double.self, forKey: .temperature) ?? 0.0
-        repetitionPenalty = try c.decodeIfPresent(Double.self, forKey: .repetitionPenalty) ?? 1.1
-        modelPath = try c.decodeIfPresent(String.self, forKey: .modelPath)
-        recentIps = try c.decodeIfPresent([String].self, forKey: .recentIps) ?? []
-        mcpTimeout = try c.decodeIfPresent(Int.self, forKey: .mcpTimeout) ?? 30
-        ipVersion = try c.decodeIfPresent(String.self, forKey: .ipVersion) ?? "auto"
-        consolePort = try c.decodeIfPresent(String.self, forKey: .consolePort)
-        consoleBaudRate = try c.decodeIfPresent(Int.self, forKey: .consoleBaudRate) ?? 9600
-        preloadKnowledge = try c.decodeIfPresent(Bool.self, forKey: .preloadKnowledge) ?? false
-        preloadAnalysis = try c.decodeIfPresent(Bool.self, forKey: .preloadAnalysis) ?? false
-        preloadRag = try c.decodeIfPresent(Bool.self, forKey: .preloadRag) ?? false
-        preloadPlotter = try c.decodeIfPresent(Bool.self, forKey: .preloadPlotter) ?? false
-        preloadBuilder = try c.decodeIfPresent(Bool.self, forKey: .preloadBuilder) ?? false
-        preloadSummarization = try c.decodeIfPresent(Bool.self, forKey: .preloadSummarization) ?? false
-        cacheExpiryMinutes = try c.decodeIfPresent(Int.self, forKey: .cacheExpiryMinutes) ?? 10
-        nCtx = try c.decodeIfPresent(Int.self, forKey: .nCtx) ?? 8192
-        maxGen = try c.decodeIfPresent(Int.self, forKey: .maxGen) ?? 2048
-        promptKeepTokens = try c.decodeIfPresent(Int.self, forKey: .promptKeepTokens) ?? 500
-        visionEnabled = try c.decodeIfPresent(Bool.self, forKey: .visionEnabled) ?? false
-        autoDryRun = try c.decodeIfPresent(Bool.self, forKey: .autoDryRun) ?? false
-        mmprojPath = try c.decodeIfPresent(String.self, forKey: .mmprojPath)
-    }
-}
+private typealias TauriSettings = DesktopSettings
 
 // MARK: - Model Presets
 
-private struct ModelPreset: Identifiable {
-    let id: String
-    let name: String
-    let repo: String
-    let filename: String
-    let mmprojFilename: String?
-}
-
-private let PRESET_MODELS: [ModelPreset] = [
-    ModelPreset(id: "gemma-4-e4b-ud", name: "Gemma 4 E4B (軽量・標準推奨)", repo: "unsloth/gemma-4-E4B-it-GGUF", filename: "gemma-4-E4B-it-UD-Q4_K_XL.gguf", mmprojFilename: "mmproj-F16.gguf"),
-    ModelPreset(id: "gemma-4-12b-ud", name: "Gemma 4 12B (高精度)", repo: "unsloth/gemma-4-12b-it-GGUF", filename: "gemma-4-12b-it-UD-Q4_K_XL.gguf", mmprojFilename: "mmproj-F16.gguf"),
-    ModelPreset(id: "gemma-4-e2b-ud", name: "Gemma 4 E2B (超軽量)", repo: "unsloth/gemma-4-E2B-it-GGUF", filename: "gemma-4-E2B-it-UD-Q4_K_XL.gguf", mmprojFilename: "mmproj-F16.gguf"),
-]
+private let PRESET_MODELS = ModelPresetCatalog.presets
 
 // MARK: - Hugging Face Hub Helper
 
@@ -247,7 +160,7 @@ private enum SettingsManager {
         let url = tauriSettingsURL
         guard FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode(TauriSettings.self, from: data) else {
+              let decoded = try? DesktopSettingsCodec.decode(data) else {
             return (TauriSettings(), url, false)
         }
         return (decoded, url, true)
@@ -259,9 +172,7 @@ private enum SettingsManager {
         if !FileManager.default.fileExists(atPath: dir.path) {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(settings)
+        let data = try DesktopSettingsCodec.encode(settings)
         let tempURL = url.appendingPathExtension("tmp")
         try data.write(to: tempURL, options: .atomic)
         if FileManager.default.fileExists(atPath: url.path) {
@@ -272,83 +183,6 @@ private enum SettingsManager {
 }
 
 // MARK: - Chat & Saved Connections Models
-
-private struct ChatMessage: Identifiable, Codable {
-    enum Role: String, Codable { case user, assistant }
-    var id = UUID()
-    var role: Role
-    var text: String
-    var attachments: [String] = []
-
-    private enum CodingKeys: String, CodingKey { case id, role, text, attachments }
-
-    init(id: UUID = UUID(), role: Role, text: String, attachments: [String] = []) {
-        self.id = id
-        self.role = role
-        self.text = text
-        self.attachments = attachments
-    }
-
-    init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        id = try values.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        role = try values.decode(Role.self, forKey: .role)
-        text = try values.decode(String.self, forKey: .text)
-        attachments = try values.decodeIfPresent([String].self, forKey: .attachments) ?? []
-    }
-}
-
-private struct PendingAttachment: Identifiable {
-    let id = UUID()
-    let name: String
-    let text: String
-    var byteCount: Int { text.utf8.count }
-}
-
-private struct ChatSession: Identifiable, Codable {
-    var id = UUID()
-    var title: String
-    var messages: [ChatMessage] = []
-    var updatedAt = Date()
-}
-
-private struct SavedConnection: Identifiable, Codable {
-    var id = UUID()
-    var sourceID: String? = nil
-    var name: String
-    var host: String
-    var port = "22"
-    var username = ""
-    var deviceType = "Cisco IOS"
-    var hasPassword: Bool = false
-    var hasEnablePassword: Bool = false
-
-    var validationError: String? {
-        if !Self.isSafeHostname(name) { return "名前は文字・数字と . - _ で入力してください。" }
-        if !Self.isSafeHost(host) { return "ホストは IP アドレスまたは文字・数字と . - _ で入力してください。" }
-        if !port.isEmpty && (!(Int(port).map { (1...65535).contains($0) } ?? false)) { return "ポートは 1 から 65535 の数値で入力してください。" }
-        if username.count > 128 || Self.containsControl(username) { return "ユーザー名が長すぎるか、使用できない文字を含んでいます。" }
-        if deviceType.isEmpty || deviceType.count > 100 || Self.containsControl(deviceType) { return "機器タイプは 1 から 100 文字で入力してください。" }
-        return nil
-    }
-
-    private static func isSafeHostname(_ value: String) -> Bool {
-        !value.isEmpty && value.count <= 255 && value.allSatisfy { $0.isLetter || $0.isNumber || ".-_".contains($0) }
-    }
-
-    private static func isSafeHost(_ value: String) -> Bool {
-        if value.isEmpty || value.count > 255 || containsControl(value) { return false }
-        if value.contains(":") {
-            var address = in6_addr()
-            return value.withCString { inet_pton(AF_INET6, $0, &address) == 1 }
-        }
-        return value.allSatisfy { $0.isLetter || $0.isNumber || ".-_".contains($0) }
-    }
-
-    private static func containsControl(_ value: String) -> Bool {
-        value.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
-    }
-}
 
 private struct ConnectionTestStatus {
     let success: Bool
@@ -372,20 +206,6 @@ private struct RouteRecord: Identifiable {
     let gateway: String
     let flags: String
     let interface: String
-}
-
-private struct TauriDeviceSummary: Decodable {
-    var id: String?
-    var hostname: String
-    var ip: String?
-    var port: String?
-    var connectionType: String?
-    var deviceType: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case id, hostname, ip, port, deviceType
-        case connectionType = "type"
-    }
 }
 
 // MARK: - Keychain Helper
@@ -501,14 +321,24 @@ private final class DesktopModel: ObservableObject {
 
     init() {
         let bundledDocuments = Bundle.main.resourceURL?.appendingPathComponent("nw-docs", isDirectory: true).path
-        let defaultDocuments = bundledDocuments
-            ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("nw-docs").path
+        let repoRootDocuments = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("nw-docs").path
+        let defaultDocuments: String = {
+            if let bundled = bundledDocuments, FileManager.default.fileExists(atPath: bundled) {
+                return bundled
+            }
+            if FileManager.default.fileExists(atPath: repoRootDocuments) {
+                return repoRootDocuments
+            }
+            return bundledDocuments ?? repoRootDocuments
+        }()
         let defaultKnowledge = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("MikomaiDesktopMac/knowledge", isDirectory: true).path
-        documentsDirectory = defaults.string(forKey: "mikomai.desktop.mac.documentsDirectory")
+        let rawDocs = defaults.string(forKey: "mikomai.desktop.mac.documentsDirectory")
             ?? ProcessInfo.processInfo.environment["MIKOMAI_DOCS_DIR"] ?? defaultDocuments
-        knowledgeDirectory = defaults.string(forKey: "mikomai.desktop.mac.knowledgeDirectory")
+        let rawKnowledge = defaults.string(forKey: "mikomai.desktop.mac.knowledgeDirectory")
             ?? ProcessInfo.processInfo.environment["MIKOMAI_KNOWLEDGE_DIR"] ?? defaultKnowledge
+        documentsDirectory = (rawDocs as NSString).expandingTildeInPath
+        knowledgeDirectory = (rawKnowledge as NSString).expandingTildeInPath
 
         if let data = defaults.data(forKey: sessionsKey),
            let decoded = try? JSONDecoder().decode([ChatSession].self, from: data) {
@@ -534,23 +364,32 @@ private final class DesktopModel: ObservableObject {
     var activeSession: ChatSession? { sessions.first(where: { $0.id == activeSessionID }) }
 
     func createSession() {
-        let session = ChatSession(title: "新しい会話")
-        sessions.insert(session, at: 0)
-        activeSessionID = session.id
+        var state = ChatSessionState(sessions: sessions, activeSessionID: activeSessionID)
+        _ = state.create()
+        sessions = state.sessions
+        activeSessionID = state.activeSessionID
         workspace = .chat
     }
 
-    func select(_ id: UUID) { activeSessionID = id; workspace = .chat }
+    func select(_ id: UUID) {
+        var state = ChatSessionState(sessions: sessions, activeSessionID: activeSessionID)
+        state.select(id)
+        guard state.activeSessionID == id else { return }
+        activeSessionID = state.activeSessionID
+        workspace = .chat
+    }
 
     func deleteSession(_ id: UUID) {
-        sessions.removeAll { $0.id == id }
-        if activeSessionID == id { activeSessionID = sessions.first?.id }
-        if sessions.isEmpty { createSession() }
+        var state = ChatSessionState(sessions: sessions, activeSessionID: activeSessionID)
+        state.delete(id)
+        sessions = state.sessions
+        activeSessionID = state.activeSessionID
     }
 
     func renameSession(_ id: UUID, title: String) {
-        guard let index = sessions.firstIndex(where: { $0.id == id }), !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        sessions[index].title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        var state = ChatSessionState(sessions: sessions, activeSessionID: activeSessionID)
+        state.rename(id, to: title)
+        sessions = state.sessions
     }
 
     // MARK: - Tauri Settings Management
@@ -564,10 +403,11 @@ private final class DesktopModel: ObservableObject {
         if isLoaded {
             self.tauriSyncMessage = "Tauri 版設定を自動読み込みしました: \(url.path)"
             if let path = loadedSettings.modelPath, !path.isEmpty {
-                self.modelPath = path
+                let expanded = (path as NSString).expandingTildeInPath
+                self.modelPath = expanded
                 // Check if matching preset
-                let fname = URL(fileURLWithPath: path).lastPathComponent
-                if let match = PRESET_MODELS.first(where: { $0.filename == fname }) {
+                let fname = FilePathPolicy.defaultFilename(expanded)
+                if let match = ModelPresetCatalog.find(filename: fname) {
                     self.selectedPresetId = match.id
                     self.repoPath = match.repo
                     self.modelFilename = match.filename
@@ -575,10 +415,17 @@ private final class DesktopModel: ObservableObject {
                     self.selectedPresetId = "custom"
                     self.modelFilename = fname
                 }
+                if FileManager.default.fileExists(atPath: expanded) {
+                    loadModel()
+                }
             }
         } else {
-            self.modelPath = defaults.string(forKey: "mikomai.desktop.mac.modelPath") ?? ""
+            let savedPath = defaults.string(forKey: "mikomai.desktop.mac.modelPath") ?? ""
+            self.modelPath = (savedPath as NSString).expandingTildeInPath
             self.tauriSyncMessage = "Tauri 版設定ファイルが見つかりません。デフォルト値を使用しています: \(url.path)"
+            if !self.modelPath.isEmpty && FileManager.default.fileExists(atPath: self.modelPath) {
+                loadModel()
+            }
         }
 
         applyInferenceParams()
@@ -587,7 +434,9 @@ private final class DesktopModel: ObservableObject {
     func saveTauriConfig() {
         var toSave = settings
         if !modelPath.isEmpty {
-            toSave.modelPath = modelPath
+            var patch = DesktopSettingsPatch()
+            patch.modelPath = .set(modelPath)
+            toSave.merge(patch)
         }
         do {
             try SettingsManager.saveToTauri(toSave)
@@ -631,9 +480,24 @@ private final class DesktopModel: ObservableObject {
     // MARK: - Streaming Chat
 
     func send() {
-        let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (!prompt.isEmpty || !pendingAttachments.isEmpty), !isWorking, let id = activeSessionID,
-              let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let prompt = ChatSubmissionPolicy.normalizedPrompt(draft)
+        guard ChatSubmissionPolicy.shouldSubmit(
+            prompt: prompt,
+            attachmentCount: pendingAttachments.count,
+            isWorking: isWorking
+        ) else { return }
+        let recentHostCandidates = Self.recentHostCandidates(in: prompt)
+        if !recentHostCandidates.isEmpty {
+            let updated = HostSuggestionPolicy.updateRecentHosts(recentHostCandidates, current: settings.recentIps)
+            if updated != settings.recentIps {
+                settings.recentIps = updated
+                saveTauriConfig()
+            }
+        }
+        if activeSessionID == nil || !sessions.contains(where: { $0.id == activeSessionID }) {
+            createSession()
+        }
+        guard let id = activeSessionID, let index = sessions.firstIndex(where: { $0.id == id }) else { return }
 
         // Context limit derived from settings.historyLimit
         let maxHistoryTurns = max(2, settings.historyLimit * 2)
@@ -655,14 +519,24 @@ private final class DesktopModel: ObservableObject {
         sessions[index].messages.append(assistantMsg)
         sessions[index].updatedAt = Date()
 
-        let documents = documentsDirectory
-        let knowledge = knowledgeDirectory
+        let documents = (documentsDirectory as NSString).expandingTildeInPath
+        let knowledge = (knowledgeDirectory as NSString).expandingTildeInPath
+        let modelP = (modelPath as NSString).expandingTildeInPath
         pendingAttachments = []
         attachmentError = ""
         draft = ""
         isWorking = true
 
         Task.detached(priority: .userInitiated) {
+            // Auto-load model if configured but not yet loaded in Rust FFI
+            let currentLoaded = Self.callRust { mikomai_model_status() }
+            if currentLoaded.isEmpty && !modelP.isEmpty && FileManager.default.fileExists(atPath: modelP) {
+                _ = Self.callRust { modelP.withCString { mikomai_model_load($0) } }
+                await MainActor.run {
+                    self.refreshModelStatus()
+                }
+            }
+
             let finalAnswer = Self.askRustStreaming(
                 userText,
                 history: history,
@@ -683,7 +557,13 @@ private final class DesktopModel: ObservableObject {
                     self.isWorking = false
                     return
                 }
-                if self.sessions[sIdx].messages[mIdx].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if finalAnswer.hasPrefix("エラー:") {
+                    if self.sessions[sIdx].messages[mIdx].text.isEmpty {
+                        self.sessions[sIdx].messages[mIdx].text = finalAnswer
+                    } else {
+                        self.sessions[sIdx].messages[mIdx].text += "\n\n[\(finalAnswer)]"
+                    }
+                } else if self.sessions[sIdx].messages[mIdx].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     self.sessions[sIdx].messages[mIdx].text = finalAnswer
                 }
                 self.sessions[sIdx].updatedAt = Date()
@@ -691,6 +571,19 @@ private final class DesktopModel: ObservableObject {
                 self.isCancelling = false
                 self.persistSessions()
             }
+        }
+    }
+
+    private static func recentHostCandidates(in text: String) -> [String] {
+        let pattern = #"@([a-zA-Z0-9.-]+)|\b(?:\d{1,3}\.){3}\d{1,3}\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        var seen = Set<String>()
+        return regex.matches(in: text, range: range).compactMap { match in
+            let capture = match.range(at: 1).location == NSNotFound ? match.range : match.range(at: 1)
+            guard let swiftRange = Range(capture, in: text) else { return nil }
+            let value = String(text[swiftRange])
+            return seen.insert(value).inserted ? value : nil
         }
     }
 
@@ -707,8 +600,6 @@ private final class DesktopModel: ObservableObject {
         panel.allowsMultipleSelection = true
         guard panel.runModal() == .OK else { return }
 
-        let maxFileBytes = 64 * 1024
-        let maxTotalBytes = 128 * 1024
         var loaded = pendingAttachments
         var totalBytes = loaded.reduce(0) { $0 + $1.byteCount }
         for url in panel.urls {
@@ -718,13 +609,15 @@ private final class DesktopModel: ObservableObject {
             do {
                 let handle = try FileHandle(forReadingFrom: url)
                 defer { try? handle.close() }
-                let data = try handle.read(upToCount: maxFileBytes + 1) ?? Data()
-                guard data.count <= maxFileBytes else { throw AttachmentReadError.tooLarge }
-                guard totalBytes + data.count <= maxTotalBytes else { throw AttachmentReadError.totalTooLarge }
-                guard let text = String(data: data, encoding: .utf8) else { throw AttachmentReadError.invalidEncoding }
-                guard !text.unicodeScalars.contains(where: { $0.value == 0 }) else { throw AttachmentReadError.containsNull }
-                loaded.append(PendingAttachment(name: url.lastPathComponent, text: text))
-                totalBytes += data.count
+                let data = try handle.read(upToCount: TextAttachmentPolicy.maxFileBytes + 1) ?? Data()
+                let attachment = try TextAttachmentPolicy.prepare(
+                    name: url.lastPathComponent,
+                    data: data,
+                    existingNames: Set(loaded.map(\.name)),
+                    currentTotalBytes: totalBytes
+                )
+                loaded.append(attachment)
+                totalBytes += attachment.byteCount
             } catch {
                 attachmentError = "\(url.lastPathComponent): \(error.localizedDescription)"
                 pendingAttachments = loaded
@@ -759,8 +652,8 @@ private final class DesktopModel: ObservableObject {
     }
 
     func loadModel() {
-        guard !modelPath.isEmpty, !isLoadingModel else { return }
-        let path = modelPath
+        let path = (modelPath as NSString).expandingTildeInPath
+        guard !path.isEmpty, !isLoadingModel else { return }
         isLoadingModel = true
         modelStatus = "モデルを読み込み中…"
         applyInferenceParams()
@@ -801,30 +694,27 @@ private final class DesktopModel: ObservableObject {
         var updated = connection
         if let pwd = password, !pwd.isEmpty {
             KeychainHelper.save(key: "conn.\(connection.id.uuidString).password", value: pwd)
-            updated.hasPassword = true
         } else if password != nil {
             KeychainHelper.delete(key: "conn.\(connection.id.uuidString).password")
-            updated.hasPassword = false
         }
 
         if let enPwd = enablePassword, !enPwd.isEmpty {
             KeychainHelper.save(key: "conn.\(connection.id.uuidString).enable", value: enPwd)
-            updated.hasEnablePassword = true
         } else if enablePassword != nil {
             KeychainHelper.delete(key: "conn.\(connection.id.uuidString).enable")
-            updated.hasEnablePassword = false
         }
+        updated = ConnectionCredentialPolicy.applying(
+            password: password,
+            enablePassword: enablePassword,
+            to: updated
+        )
 
-        if let index = connections.firstIndex(where: { $0.id == connection.id }) {
-            connections[index] = updated
-        } else {
-            connections.append(updated)
-        }
+        connections = ConnectionInventoryPolicy.saving(updated, into: connections)
         editingConnection = nil
     }
 
     func deleteConnection(_ id: UUID) {
-        connections.removeAll { $0.id == id }
+        connections = ConnectionInventoryPolicy.removing(id, from: connections)
         connectionStatuses.removeValue(forKey: id)
         KeychainHelper.delete(key: "conn.\(id.uuidString).password")
         KeychainHelper.delete(key: "conn.\(id.uuidString).enable")
@@ -872,28 +762,10 @@ private final class DesktopModel: ObservableObject {
         }
     }
 
-    func importTauriDevices(_ devices: [TauriDeviceSummary]) -> (imported: Int, skipped: Int) {
-        var imported = 0
-        var skipped = 0
-        for device in devices {
-            if let sourceID = device.id, connections.contains(where: { $0.sourceID == sourceID }) {
-                skipped += 1
-                continue
-            }
-            let hostname = device.hostname.trimmingCharacters(in: .whitespacesAndNewlines)
-            let host = device.ip.flatMap { $0.isEmpty ? nil : $0 } ?? hostname
-            let connection = SavedConnection(
-                sourceID: device.id,
-                name: hostname,
-                host: host,
-                port: device.port ?? "22",
-                deviceType: device.deviceType ?? device.connectionType ?? "不明"
-            )
-            guard connection.validationError == nil else { skipped += 1; continue }
-            connections.append(connection)
-            imported += 1
-        }
-        return (imported, skipped)
+    func importTauriDevices(fromJSON data: Data) throws -> TauriConnectionImportResult {
+        let result = try TauriConnectionImporter.importJSON(data, existing: connections)
+        connections.append(contentsOf: result.imported)
+        return result
     }
 
     private func persistSessions() {
@@ -970,22 +842,6 @@ private final class DesktopModel: ObservableObject {
         guard let message = response.message else { return "応答がありませんでした。" }
         let text = String(cString: message)
         return response.status == 0 ? text : "エラー: \(text)"
-    }
-}
-
-private enum AttachmentReadError: LocalizedError {
-    case tooLarge
-    case totalTooLarge
-    case invalidEncoding
-    case containsNull
-
-    var errorDescription: String? {
-        switch self {
-        case .tooLarge: "ファイルは64 KiB以下にしてください。"
-        case .totalTooLarge: "添付ファイルの合計は128 KiB以下にしてください。"
-        case .invalidEncoding: "UTF-8テキストではありません。"
-        case .containsNull: "NUL文字を含むファイルは添付できません。"
-        }
     }
 }
 
@@ -1136,6 +992,31 @@ private enum NetworkInspector {
 
 private struct DesktopWindow: View {
     @ObservedObject var model: DesktopModel
+    @State private var suggestionVisibility = ChatSuggestionVisibilityState()
+
+    private var hostSuggestionContext: (query: String, atIndex: String.Index)? {
+        guard let atIndex = model.draft.lastIndex(of: "@") else { return nil }
+        let queryStart = model.draft.index(after: atIndex)
+        let query = String(model.draft[queryStart...])
+        guard !query.contains(where: \.isWhitespace) else { return nil }
+        return (query, atIndex)
+    }
+
+    private var hostSuggestions: [HostSuggestion] {
+        guard let context = hostSuggestionContext else { return [] }
+        let hosts = model.connections.map { HostSuggestion(hostname: $0.name, ip: $0.host) }
+        return HostSuggestionPolicy.find(
+            query: context.query,
+            availableHosts: hosts,
+            recentIPs: model.settings.recentIps,
+            labels: HostSuggestionLabels(localhost: "このコンピュータ", pastIps: "過去に投入したIPアドレス")
+        )
+    }
+
+    private func selectHostSuggestion(_ suggestion: HostSuggestion) {
+        guard let context = hostSuggestionContext else { return }
+        model.draft.replaceSubrange(context.atIndex..., with: "\(suggestion.hostname) ")
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1341,6 +1222,37 @@ private struct DesktopWindow: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if suggestionVisibility.isVisible && hostSuggestionContext != nil && !hostSuggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(hostSuggestions) { suggestion in
+                        let icon: String = {
+                            if suggestion.hostname == "localhost" { return "desktopcomputer" }
+                            if suggestion.ip == "過去に投入したIPアドレス",
+                               IPAddressPolicy.isGlobalIP(suggestion.hostname) {
+                                return "globe"
+                            }
+                            return "point.3.connected.trianglepath.dotted"
+                        }()
+                        Button {
+                            selectHostSuggestion(suggestion)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: icon).font(.system(size: 11)).foregroundStyle(.secondary)
+                                Text(suggestion.hostname).font(.system(size: 12, weight: .medium))
+                                Text(suggestion.ip).font(.system(size: 11)).foregroundStyle(.secondary)
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(Rectangle())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(4)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
+            }
             if !model.pendingAttachments.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: 6) {
@@ -1366,15 +1278,26 @@ private struct DesktopWindow: View {
                     Image(systemName: "paperclip").font(.system(size: 13)).frame(width: 28, height: 28)
                 }
                 .buttonStyle(.bordered).controlSize(.small).disabled(model.isWorking).help("テキストファイルを添付")
-                TextField("質問を入力…", text: $model.draft, axis: .vertical)
-                    .textFieldStyle(.plain).lineLimit(1...5).onSubmit(model.send).disabled(model.isWorking)
+
+                TextField("質問を入力… (⌘+Enter で送信)", text: $model.draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...6)
+                    .font(.system(size: 13))
+                    .disabled(model.isWorking)
+                    .onExitCommand { suggestionVisibility.dismissForEscape() }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 4)
+
                 if model.isWorking {
                     Button(action: model.stop) { Image(systemName: "stop.fill").font(.system(size: 10, weight: .semibold)).frame(width: 28, height: 28) }
-                        .buttonStyle(.bordered).controlSize(.small).disabled(model.isCancelling).help("生成を停止")
+                        .buttonStyle(.bordered).controlSize(.small)
+                        .disabled(!ChatSubmissionPolicy.canStop(isWorking: model.isWorking, isCancelling: model.isCancelling))
+                        .help("生成を停止")
                 } else {
                     Button(action: model.send) { Image(systemName: "arrow.up").font(.system(size: 12, weight: .semibold)).frame(width: 28, height: 28) }
                         .buttonStyle(.borderedProminent).controlSize(.small).keyboardShortcut(.return, modifiers: [.command])
-                        .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && model.pendingAttachments.isEmpty).help("送信")
+                        .disabled(!ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count))
+                        .help("送信 (⌘+Enter)")
                 }
             }
         }
@@ -1382,6 +1305,18 @@ private struct DesktopWindow: View {
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
         .frame(maxWidth: 760).padding(.horizontal, 22).padding(.top, 10).padding(.bottom, 14)
         .frame(maxWidth: .infinity).background(Color(nsColor: .windowBackgroundColor))
+        .onAppear { refreshSuggestionVisibilityForInput() }
+        .onChange(of: model.draft) { _ in refreshSuggestionVisibilityForInput() }
+        .onChange(of: hostSuggestions.map(\.hostname)) { _ in
+            suggestionVisibility.updateCandidates(count: hostSuggestions.count)
+        }
+    }
+
+    private func refreshSuggestionVisibilityForInput() {
+        suggestionVisibility.updateForInput(
+            hasMentionQuery: hostSuggestionContext != nil,
+            candidateCount: hostSuggestions.count
+        )
     }
 }
 
@@ -1600,12 +1535,16 @@ private struct ConnectionsWorkspace: View {
                     TableColumn("ユーザー", value: \.username)
                     TableColumn("機器タイプ", value: \.deviceType)
                     TableColumn("資格情報") { connection in
-                        if connection.hasPassword {
-                            Label("Key", systemImage: "key.fill").font(.system(size: 11)).foregroundStyle(.green)
+                        if connection.hasPassword || connection.hasEnablePassword {
+                            Label(
+                                connection.hasPassword && connection.hasEnablePassword ? "Key + Enable" :
+                                    (connection.hasEnablePassword ? "Enable" : "Key"),
+                                systemImage: "key.fill"
+                            ).font(.system(size: 11)).foregroundStyle(.green)
                         } else {
                             Text("未設定").font(.system(size: 11)).foregroundStyle(.secondary)
                         }
-                    }.width(65)
+                    }.width(90)
                     TableColumn("ステータス") { connection in
                         if let status = model.connectionStatuses[connection.id] {
                             HStack(spacing: 4) {
@@ -1688,14 +1627,15 @@ private struct ConnectionsWorkspace: View {
             presentCSVMessage(json)
             return
         }
-        guard let devices = try? JSONDecoder().decode([TauriDeviceSummary].self, from: Data(json.utf8)) else {
+        let result: TauriConnectionImportResult
+        do {
+            result = try model.importTauriDevices(fromJSON: Data(json.utf8))
+        } catch {
             presentCSVMessage("Tauri の機器情報 JSON を読み取れませんでした。元ファイルは変更していません。")
             return
         }
-        let result = model.importTauriDevices(devices)
-        let missingIDs = devices.filter { $0.id == nil }.count
-        var note = "\(result.imported) 件を追加し、\(result.skipped) 件をスキップしました。元ファイルは変更していません。"
-        if missingIDs > 0 { note += " IDのない行は重複判定せず追加しました。" }
+        var note = "\(result.imported.count) 件を追加し、\(result.skipped) 件をスキップしました。元ファイルは変更していません。"
+        if result.missingIDs > 0 { note += " IDのない行は重複判定せず追加しました。" }
         presentCSVMessage(note)
     }
 
@@ -1706,11 +1646,9 @@ private struct ConnectionsWorkspace: View {
             presentCSVMessage("\(invalid.name) のホスト名が Tauri CSV 形式の制約に合いません。機器情報を編集してください。")
             return
         }
-        let rows = ["id,status,hostname,ip,port,type,lastConnected,deviceType,vendorType,username"] + model.connections.map {
-            ["", "offline", $0.name, $0.host, $0.port, "SSH", "Never", $0.deviceType, "", $0.username].map(csvEscape).joined(separator: ",")
-        }
         do {
-            try rows.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+            let csv = try ConnectionCSVCodec.exportCSV(model.connections)
+            try csv.write(to: url, atomically: true, encoding: .utf8)
         } catch {
             presentCSVMessage("CSV ファイルを書き込めませんでした。\(error.localizedDescription)")
         }
@@ -1722,65 +1660,17 @@ private struct ConnectionsWorkspace: View {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url,
               let content = try? String(contentsOf: url, encoding: .utf8) else { return }
-        guard let rows = parseCSV(content), let firstHeader = rows.first else {
-            presentCSVMessage("CSV の引用符または行形式を確認してください。")
-            return
+        do {
+            let result = try ConnectionCSVCodec.importCSV(content, existing: model.connections)
+            model.connections = result.connections
+            let details = result.warnings.prefix(5).map { "\($0.row)行目: \($0.reason)" }
+            var message = "\(result.importedCount) 件を読み込みました。\(result.warnings.count) 件は形式が合わないためスキップしました。"
+            if !details.isEmpty { message += "\n" + details.joined(separator: "\n") }
+            if result.warnings.count > details.count { message += "\nほか \(result.warnings.count - details.count) 件" }
+            presentCSVMessage(message)
+        } catch {
+            presentCSVMessage(error.localizedDescription)
         }
-        var header = firstHeader.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-        if let first = header.first { header[0] = first.trimmingCharacters(in: CharacterSet(charactersIn: "\u{feff}")) }
-        var columns: [String: Int] = [:]
-        for (index, key) in header.enumerated() where columns[key] == nil { columns[key] = index }
-        func value(_ row: [String], _ key: String, fallback: String = "") -> String {
-            guard let index = columns[key], row.indices.contains(index) else { return fallback }
-            return row[index].trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        var importedCount = 0
-        var skippedCount = 0
-        for row in rows.dropFirst() where !row.allSatisfy({ $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-            guard row.count == header.count else { skippedCount += 1; continue }
-            let name = value(row, "name", fallback: value(row, "hostname"))
-            let host = value(row, "host", fallback: value(row, "ip"))
-            guard !name.isEmpty, !host.isEmpty else { skippedCount += 1; continue }
-            let connection = SavedConnection(name: name, host: host, port: value(row, "port", fallback: "22"), username: value(row, "username"), deviceType: value(row, "devicetype", fallback: "Cisco IOS"))
-            guard connection.validationError == nil else { skippedCount += 1; continue }
-            model.saveConnection(connection)
-            importedCount += 1
-        }
-        presentCSVMessage("\(importedCount) 件を読み込みました。\(skippedCount) 件は形式が合わないためスキップしました。")
-    }
-
-    private func parseCSV(_ input: String) -> [[String]]? {
-        var rows: [[String]] = []
-        var row: [String] = []
-        var field = ""
-        var quoted = false
-        var closedQuote = false
-        let characters = Array(input)
-        var index = 0
-        while index < characters.count {
-            let character = characters[index]
-            if quoted {
-                if character == "\"" {
-                    if index + 1 < characters.count && characters[index + 1] == "\"" { field.append("\""); index += 1 }
-                    else { quoted = false; closedQuote = true }
-                } else { field.append(character) }
-            } else if character == "\"" {
-                guard field.isEmpty && !closedQuote else { return nil }
-                quoted = true
-            }
-            else if character == "," { row.append(field); field = ""; closedQuote = false }
-            else if character == "\n" || character == "\r" {
-                if character == "\r", index + 1 < characters.count, characters[index + 1] == "\n" { index += 1 }
-                row.append(field); rows.append(row); row = []; field = ""; closedQuote = false
-            } else {
-                guard !closedQuote else { return nil }
-                field.append(character)
-            }
-            index += 1
-        }
-        guard !quoted else { return nil }
-        if !field.isEmpty || !row.isEmpty { row.append(field); rows.append(row) }
-        return rows
     }
 
     private func presentCSVMessage(_ message: String) {
@@ -1788,7 +1678,6 @@ private struct ConnectionsWorkspace: View {
         showsCSVAlert = true
     }
 
-    private func csvEscape(_ value: String) -> String { "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\"" }
 }
 
 // MARK: - Connection Editor with Keychain
@@ -1818,6 +1707,13 @@ private struct ConnectionEditor: View {
                 TextField("ホスト名または IP", text: $connection.host)
                 TextField("ポート", text: $connection.port)
                 TextField("ユーザー名", text: $connection.username)
+                Picker("接続方式", selection: Binding(
+                    get: { connection.connectionType ?? "SSH" },
+                    set: { connection.connectionType = $0 }
+                )) {
+                    Text("SSH").tag("SSH")
+                    Text("Console").tag("Console")
+                }
                 Picker("機器タイプ", selection: $connection.deviceType) { ForEach(deviceTypes, id: \.self) { Text($0) } }
 
                 Section("資格情報 (Keychain)") {
@@ -1826,16 +1722,21 @@ private struct ConnectionEditor: View {
                     Text("パスワードは macOS Keychain に暗号化されて安全に保管されます。平文ファイルには保存されません。")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped)
+            }
+            .formStyle(.grouped)
+            if let validationError = connection.validationError {
+                Text(validationError).font(.system(size: 11)).foregroundStyle(.red)
+            }
             HStack {
                 Spacer()
                 Button("キャンセル") { dismiss() }
                 Button("保存") {
+                    guard connection.validationError == nil else { return }
                     onSave(connection, password, enablePassword)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(connection.name.isEmpty || connection.host.isEmpty)
+                .disabled(connection.validationError != nil)
             }
         }.padding(18).frame(width: 440, height: 440)
     }

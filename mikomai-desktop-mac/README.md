@@ -16,12 +16,55 @@ Device records use a separate Swift-only store. The app can import non-secret me
 | Network diagnostics tools | Available | Dedicated workspace for TCP connection tests (with port presets & latency measurement), live streaming Ping & Traceroute, local ARP cache table inspection (with 1-click device registration), and routing table view. |
 | Status bar & Native menus | Available | macOS native CommandMenu shortcuts (`Cmd+N`, `Cmd+1..4`, network actions) and bottom status bar (model status, knowledge path, device count). |
 | Model selection/loading/inference | Available, separate runtime | Select and load a local `.gguf` in Settings. Uses Tauri's llama.cpp binding, system prompt, and Gemma turn framing, but does not share Tauri's loaded model/state. |
-| MCP tools, host suggestions, and user choices | In progress (Phase 3) | Basic diagnostics (Ping, Trace, ARP, Route, TCP Test) are available; full Netmiko multi-vendor CLI execution is planned for Phase 3. |
+| MCP tools, host suggestions, and user choices | In progress (Phase 3) | Chat suggestions use saved native connections and Tauri recent IP settings. MCP host discovery and tool-choice flows remain unimplemented; diagnostics (Ping, Trace, ARP, Route, TCP Test) are available. |
 | Operation plans, approvals, and config diff | Not available (Phase 3) | Tauri safety and execution state remains bound to its app services. |
 | Scheduled watches and notifications | Not available | Tauri scheduler depends on AppHandle, managed state, and emitted events. |
 | Agent task audit/history | Not available | Native chat sessions are not agent task snapshots or audit records. |
 | Attachments and images | Text files available | `.txt`, `.md`, `.csv`, `.json`, `.yaml`, `.xml`, and `.log` are read as UTF-8, limited to 64 KiB per file / 128 KiB total, and passed as untrusted reference material to the model. File contents are not saved in chat history; the filename is retained. Images, PDF extraction, and attachments shared with Tauri history are not supported. |
 | Stop generation | Available | Cancels token generation in real time; prompt preparation and model loading are not interruptible. |
+
+## Swift test migration
+
+`Tests/MikomaiDesktopCoreTests` ports the first desktop test behaviors to the shared native core. The tested logic is also called by the SwiftUI app.
+
+| Existing desktop test area | Migrated behavior |
+| --- | --- |
+| `ChatInput.test.tsx` | Sending before a model is loaded, blocking empty or in-progress sends, supported text files, duplicate names, UTF-8/NUL checks, and the 64 KiB per-file / 128 KiB total boundaries. Core tests also cover prompt normalization, attachment-aware send availability, stop availability, suggestion updates/empty-result dismissal, and Escape dismissal. |
+| `Sidebar.test.tsx` | Selecting a session, keeping the active ID valid after selection or deletion, creating a replacement after deleting the final session, and ignoring blank rename values. |
+| Connection import and `connections/mod.rs` serialization tests | Tauri `type` alias, numeric port (as emitted by Tauri) and string port, missing IDs, duplicate IDs, invalid rows, and preserving valid rows when another row is malformed. |
+| `CsvImportExport.test.tsx` and `connections/mod.rs` CSV cases | Tauri CSV headers and type aliases, ID generation and last-row-wins upsert, per-row warnings, required address fields, invalid hostname/IP/port/type and control characters, quoted fields/newlines, BOM/CRLF, and excluding credential fields from export. |
+| `ConnectionSettingsPanel.test.tsx` native-app subset | Connection editor validation, inventory save/update/delete policy, credential-presence metadata (including empty-value clearing), SSH/Console selection, and serial port/baud settings persistence. macOS Keychain operations remain in the app's Keychain helper. The bulk Node DB refresh and Tauri SSH execution are backend-only and unsupported by the native FFI. |
+| `suggestionModel.test.ts` and `useHostSuggestions.test.ts` | Case-insensitive hostname/local-host matching, matching recent IPs, suppressing IPs already represented by saved connections, prepending/deduplicating recent hosts, and retaining only the newest 10. The native composer offers saved connection and recent-IP candidates and saves hosts/IPs found when sending. |
+| `useSettings.test.ts` | Loads populated Tauri settings with defaults for omitted keys; partial temperature updates merge into current values, and save encoding retains a complete settings payload. The native app uses this Core DTO/codec for its existing `settings.json` sync. |
+| `attachmentModel.test.ts` | Image extension and MIME classification, including uppercase paths and MIME detection when the filename extension is not an image. This is classification only: the native text attachment workflow rejects image and PDF files. |
+| `ipUtils.test.ts` | IPv4/IPv6 public-vs-local range and invalid-address cases. Native host suggestions use this classification to distinguish public recent IPs; Ping targets still allow private/local addresses. |
+| `commandParser.test.ts` | Free-form ping host extraction, Japanese command words, size/count/DF options, and unrelated-input rejection. The pure parser contract is ported, but the native diagnostics UI intentionally stays structured (target, mode, count controls) and does not add free-form command parsing. |
+| `settingsModelPresets.test.ts` | The three shipped model presets remain stable, and exact repository/filename lookup returns a preset only for known coordinates. The native settings picker now reads this tested Core catalog. |
+| `timelineModel.test.ts` | Cross-platform basename extraction from Windows and POSIX paths; the native Tauri settings loader uses it to match model filenames and presets. Agent tool-event classification helpers remain out of scope because native chat messages do not carry those event types. |
+
+The SwiftUI suggestion list is click-selected and replaces the trailing `@query`; empty results close it and Escape dismisses it. The composer uses ⌘+Enter for sending. Core policy tests cover these states and send/stop eligibility, but actual SwiftUI button clicks, keyboard dispatch, rendered states, browser textarea caret tracking, cursor restoration, arrow-key suggestion selection, Tab selection, and IME composition still need interaction-level UI tests. The Tauri hook also merges MCP-discovered hosts and resolves unknown IPv4 addresses; native suggestions currently use saved connections and configured recent IPs only. Settings tests cover shared load/merge/serialization policy, not filesystem path precedence, access failures, or cross-process changes while the native app is open. The DOM-specific assertions in `ImageModal.test.tsx` (image rendering, close button, backdrop and Escape handling) are not migrated because the native attachment workflow cannot accept or infer images. The FFI currently accepts UTF-8 text only; adding a local preview without an actual image attachment workflow would imply unsupported vision capability.
+
+Run the native core tests with `swift test --package-path mikomai-desktop-mac`. When the active compiler and SDK do not match, this machine uses the installed 26.5 SDK and writable temporary caches:
+
+```sh
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk \
+CLANG_MODULE_CACHE_PATH=/private/tmp/mikomai-clang-cache \
+SWIFTPM_MODULECACHE_OVERRIDE=/private/tmp/mikomai-swiftpm-cache \
+swift test --disable-sandbox --package-path mikomai-desktop-mac \
+  --scratch-path /private/tmp/mikomai-swift-test-build
+```
+
+### Remaining test-driven port
+
+The imported/exported data codec and validation are covered in Core. Native file-panel presentation, cancellation, read/write failures, and warning dialogs do not yet have SwiftUI interaction tests. Connection inventory CRUD, editor validation, credential metadata, and console setting serialization have Core tests; actual editor field selection, save/delete clicks, and Keychain access still need macOS UI/integration tests. Node DB bulk refresh and SSH execution require Tauri backend services absent from the native FFI and remain unsupported. The tests above are a starting slice, not full parity. Continue porting cases and implement the missing behavior in this order:
+
+1. Chat input and settings: IME/keyboard behavior and vision rejection in `ChatInput`; native file-panel cancellation/read errors; and image/PDF handling only after the native FFI has a real multimodal or extraction API. Port `ImageModal.test.tsx` interaction assertions only with that user-facing preview workflow.
+2. Device connections: editor/Console credential interactions and CSV cases (`ConnectionSettingsPanel`), followed by bulk Node DB refresh. Native local inventory and metadata import do not implement these service-backed actions.
+3. Agent interaction and safety: user choice queues (`useQuestionQueue`), hash-bound plan approval and execution (`ConfigDiffPanel`), and task selection/resume/audit (`TaskAuditPanel`). Keep the native implementation's approval and execution state explicit before enabling device changes.
+4. MCP and scheduled work: listener lifecycle (`useMcpListeners`, `mcpListenerState`), host suggestion updates, watches, and notifications. Validate mocks separately from real device or server access.
+5. UI parity and presentation: sidebar event/agent-step rendering, Terminal highlighting, status bar, settings controls, modal dismissal, and pane resizing. The native SwiftUI UI needs interaction-level checks in addition to Core unit tests.
+
+The existing Tauri Rust integration and harness tests also cover device operations and app-managed state. Port those contracts alongside the corresponding native feature; passing CLI chat or Core tests does not verify UI actions, MCP calls, or device access.
 
 ## Requirements
 

@@ -4,7 +4,7 @@ use mikomai_adapters::knowledge::{KnowledgePlanner, KnowledgeStore};
 use mikomai_core::application::ChatService;
 use mikomai_core::TaskManager;
 use std::ffi::{c_char, CStr, CString};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -77,6 +77,15 @@ pub unsafe extern "C" fn mikomai_set_inference_params(
     }
 }
 
+fn expand_tilde(path: &Path) -> PathBuf {
+    if let Ok(stripped) = path.strip_prefix("~") {
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join(stripped);
+        }
+    }
+    path.to_path_buf()
+}
+
 fn model_slot() -> &'static Mutex<Option<LoadedModel>> {
     MODEL.get_or_init(|| Mutex::new(None))
 }
@@ -87,7 +96,8 @@ pub unsafe extern "C" fn mikomai_model_load(path: *const c_char) -> MikomaiResul
         return error_result("model path must not be null".into());
     }
     let caught = std::panic::catch_unwind(|| {
-        let path = PathBuf::from(CStr::from_ptr(path).to_str().map_err(|e| e.to_string())?);
+        let raw_str = CStr::from_ptr(path).to_str().map_err(|e| e.to_string())?;
+        let path = expand_tilde(Path::new(raw_str));
         if !path.is_file() {
             return Err(format!("model file does not exist: {}", path.display()));
         }
@@ -113,6 +123,7 @@ pub unsafe extern "C" fn mikomai_model_load(path: *const c_char) -> MikomaiResul
             path,
             gpu_layers: layers,
         });
+        CANCEL_INFERENCE.store(false, Ordering::Relaxed);
         Ok("モデルを読み込みました".to_string())
     });
     match caught {
@@ -243,16 +254,16 @@ pub unsafe extern "C" fn mikomai_assistant_chat_streaming(
         let history = CStr::from_ptr(history)
             .to_str()
             .map_err(|e| e.to_string())?;
-        let docs = PathBuf::from(
+        let docs = expand_tilde(&PathBuf::from(
             CStr::from_ptr(documents_dir)
                 .to_str()
                 .map_err(|e| e.to_string())?,
-        );
-        let index = PathBuf::from(
+        ));
+        let index = expand_tilde(&PathBuf::from(
             CStr::from_ptr(knowledge_dir)
                 .to_str()
                 .map_err(|e| e.to_string())?,
-        );
+        ));
         let attachments = if attachments.is_null() {
             ""
         } else {
@@ -263,7 +274,14 @@ pub unsafe extern "C" fn mikomai_assistant_chat_streaming(
         if attachments.len() > 128 * 1024 {
             return Err("添付ファイルの合計サイズが128 KiBを超えています。".to_string());
         }
-        let evidence = chat_with_paths(question, docs, index)?;
+        let evidence = if docs.exists() && docs.is_dir() {
+            chat_with_paths(question, docs, index).unwrap_or_else(|err| {
+                eprintln!("RAG lookup failed: {err}");
+                String::new()
+            })
+        } else {
+            String::new()
+        };
         let attachment_context = if attachments.is_empty() {
             String::new()
         } else {
@@ -310,19 +328,35 @@ fn infer_streaming<F: FnMut(&str, bool)>(prompt: &str, mut on_token: F) -> Resul
         .model
         .str_to_token(&formatted, AddBos::Always)
         .map_err(|e| format!("system prompt tokenization failed: {e}"))?;
-    let user_tokens = loaded
+    let mut user_tokens = loaded
         .model
         .str_to_token(
             &format!("<|turn>user\n{prompt}<turn|>\n<|turn>model\n"),
             AddBos::Never,
         )
         .map_err(|e| format!("chat prompt tokenization failed: {e}"))?;
-    if tokens.len() + user_tokens.len() + max_new >= n_ctx as usize {
-        return Err(
-            "会話がモデルのコンテキスト上限を超えています。履歴を短くしてください。".into(),
-        );
+
+    let n_ctx_val = (n_ctx as usize).max(512);
+    // Reserve minimum generation room: at least 64 tokens, up to 1/4 context
+    let min_generation_room = 64.max(16).min(n_ctx_val / 4);
+    let max_prompt_budget = n_ctx_val.saturating_sub(min_generation_room);
+
+    // If total prompt tokens exceed prompt budget, truncate gracefully instead of hard failing
+    if tokens.len() + user_tokens.len() > max_prompt_budget {
+        let max_sys = max_prompt_budget / 3;
+        if tokens.len() > max_sys {
+            tokens.truncate(max_sys);
+        }
+        let remaining_for_user = max_prompt_budget.saturating_sub(tokens.len());
+        if user_tokens.len() > remaining_for_user {
+            let skip = user_tokens.len() - remaining_for_user;
+            user_tokens = user_tokens[skip..].to_vec();
+        }
     }
     tokens.extend(user_tokens);
+
+    let actual_max_new = max_new.min(n_ctx_val.saturating_sub(tokens.len())).max(1);
+
     let mut params = LlamaContextParams::default();
     params = params
         .with_n_ctx(std::num::NonZeroU32::new(n_ctx))
@@ -336,9 +370,17 @@ fn infer_streaming<F: FnMut(&str, bool)>(prompt: &str, mut on_token: F) -> Resul
         .with_type_v(llama_cpp_2::context::params::KvCacheType::Q4_0);
     let backend: &'static LlamaBackend = unsafe { &*Arc::as_ptr(&loaded.backend) };
     let model: &'static LlamaModel = unsafe { &*Arc::as_ptr(&loaded.model) };
-    let mut ctx = model
-        .new_context(backend, params)
-        .map_err(|e| format!("inference context creation failed: {e}"))?;
+    let mut ctx = match model.new_context(backend, params) {
+        Ok(c) => c,
+        Err(_) => {
+            let fallback_params = LlamaContextParams::default()
+                .with_n_ctx(std::num::NonZeroU32::new(n_ctx))
+                .with_n_batch(512);
+            model
+                .new_context(backend, fallback_params)
+                .map_err(|e| format!("inference context creation failed: {e}"))?
+        }
+    };
     let mut batch = LlamaBatch::new(512, 1);
     for (chunk_index, chunk) in tokens.chunks(256).enumerate() {
         batch.clear();
@@ -364,7 +406,7 @@ fn infer_streaming<F: FnMut(&str, bool)>(prompt: &str, mut on_token: F) -> Resul
     let mut out = String::new();
     let mut pending_utf8 = Vec::new();
     let mut pos = tokens.len() as i32;
-    for _ in 0..max_new {
+    for _ in 0..actual_max_new {
         if CANCEL_INFERENCE.load(Ordering::Relaxed) {
             if out.trim().is_empty() {
                 let msg = "生成を停止しました。";
@@ -634,6 +676,27 @@ mod tests {
         assert_eq!(response.status, 1);
         let error = unsafe { CStr::from_ptr(response.message).to_string_lossy() };
         assert!(error.contains("128 KiB"));
+        unsafe { mikomai_result_free(response) };
+    }
+
+    #[test]
+    fn assistant_chat_proceeds_to_model_when_docs_missing() {
+        let message = CString::new("こんにちは").unwrap();
+        let history = CString::new("").unwrap();
+        let docs = CString::new("/nonexistent/documents/dir").unwrap();
+        let index = CString::new("/nonexistent/knowledge/dir").unwrap();
+        let response = unsafe {
+            mikomai_assistant_chat(
+                message.as_ptr(),
+                history.as_ptr(),
+                docs.as_ptr(),
+                index.as_ptr(),
+            )
+        };
+        // Should reach model check and report uninitialized model, NOT fail on documents missing
+        assert_eq!(response.status, 1);
+        let error = unsafe { CStr::from_ptr(response.message).to_string_lossy() };
+        assert!(error.contains("モデルが未ロードです"), "got unexpected error: {error}");
         unsafe { mikomai_result_free(response) };
     }
 

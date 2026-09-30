@@ -15,6 +15,7 @@ let package = Package(
         .executable(name: "MikomaiDesktopMac", targets: ["MikomaiDesktopMac"])
     ],
     targets: [
+        .target(name: "MikomaiDesktopCore", path: "Sources/MikomaiDesktopCore"),
         .target(
             name: "MikomaiFFI",
             path: "Sources/MikomaiFFI",
@@ -27,7 +28,8 @@ let package = Package(
         ),
         .executableTarget(
             name: "MikomaiDesktopMac",
-            dependencies: ["MikomaiFFI"]
-        )
+            dependencies: ["MikomaiDesktopCore", "MikomaiFFI"]
+        ),
+        .testTarget(name: "MikomaiDesktopCoreTests", dependencies: ["MikomaiDesktopCore"])
     ]
 )
