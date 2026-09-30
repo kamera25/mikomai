@@ -8,7 +8,7 @@ echo "Starting document ingestion to SurrealDB..."
 # Navigate to project root (where the script is located)
 cd "$(dirname "$0")"
 
-cargo run --manifest-path mikomai-desktop/src-tauri/Cargo.toml --bin mikomai-cli -- rag-ingest nw-docs
+cargo run -p mikomai-cli -- rag-ingest nw-docs
 
 
 echo "Done!"

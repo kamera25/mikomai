@@ -8,7 +8,7 @@
 bash .agents/skills/mikomai-regression/scripts/run_regression.sh
 ```
 
-このスキルは Rust ワークスペース、フロントエンド単体テスト、優先度付き10ケース、現在の CLI 基準応答をまとめて検証します。基準応答は明示的な合意なしに更新しません。GUI 側 LLM、SurrealDB、実機 MCP、実機疎通は自動試験の対象外として未検証で報告します。
+このスキルは Rust ワークスペース、優先度付きケース、現在の CLI 基準応答をまとめて検証します。基準応答は明示的な合意なしに更新しません。Swift UI 操作と実機接続・設定変更は自動試験の対象外として未検証で報告します。
 
 ## 必須ルールと検証範囲
 
@@ -16,10 +16,9 @@ bash .agents/skills/mikomai-regression/scripts/run_regression.sh
 
 実行経路は変更され得るため、まず [package.json](../package.json) の `scripts.cli` と呼び出し先を確認してください。現在の実装は次のとおりです。
 
-- `npm run cli` は `cargo run -p mikomai-cli --` を実行し、[独立 CLI](../crates/mikomai-cli/src/main.rs) を起動する。
-- `chat` は `KnowledgePlanner`、ローカル Markdown 用 `KnowledgeStore`、`EchoToolExecutor` を使用する。`nw-docs` が存在すれば取り込み、検索した資料を回答として返す。
-- これにより独立 CLI の取り込み・検索・回答出力経路を確認できるが、GUI 側の LLM 推論、SurrealDB、実機 MCP 呼び出し、AgentLoop、画面操作は検証できない。共有コアの利用だけで同一の E2E 経路と判断しない。
-- [Tauri 側 CLI](../mikomai-desktop/src-tauri/src/cli.rs) は別の実行経路。こちらを使う場合も、現在の起動方法と対象機能まで到達した証拠を確認する。
+- `npm run cli` は `cargo run -p mikomai-cli --` を実行し、[`mikomai-cli`](../crates/mikomai-cli/src/main.rs) を起動する。
+- GGUFモデル設定時、CLI と Swift は共有 `mikomai-ffi` 経由で同じローカル LLM と multilingual E5 RAG、SurrealDB graph/RAG を使う。モデル未設定時のCLIは決定的なMarkdown検索へフォールバックする。Swift のAgent tool executionにはSwift callbackが入り、設定変更、serial送信、FTP/TFTP転送はSwiftの承認UIを経由する。
+- CLI の成功は回答生成とローカル RAG の経路を確認する。Swift UI、選択端末へのSSH/serial操作、承認後の実機変更はそれぞれ別途確認し、fake/loopback成功を実機成功と扱わない。
 
 ## 1. 実行前に合格条件を決める
 
@@ -29,10 +28,10 @@ bash .agents/skills/mikomai-regression/scripts/run_regression.sh
 
 | 変更対象 | CLI と併せて行う検証 | 合格を判断する証拠 |
 | --- | --- | --- |
-| 独立 CLI・出力形式 | 対象引数の実行、必要なら不正入力の確認 | 終了コード、stdout の構造、期待する内容またはエラー |
+| CLI・出力形式 | 対象引数の実行、必要なら不正入力の確認 | 終了コード、stdout の構造、根拠資料に整合した回答 |
 | ナレッジ検索・資料 | 対象機種や用語を指定した検索、元資料との照合 | 対象資料の取得、無関係な機種の混入や根拠の欠落がないこと |
 | GUI 側 RAG・LLM | 実際の GUI 側経路を通る検証、関連テスト | 検索結果・引用・生成回答と元資料の整合性 |
-| 機器接続・MCP・AgentLoop | 対象実装のテスト、必要な場合は許可された対象への読み取り操作 | 実際のツール入力・結果と最終回答の一致。モック成功は実機成功と分ける |
+| 機器接続・AgentLoop | 対象実装のテスト、fake transport、必要な場合は許可された対象への読み取り操作 | 実際のツール入力・結果と最終回答の一致。fake成功は実機成功と分ける |
 | UI | 関連コンポーネントテストや画面操作 | 修正した表示・操作・状態遷移。CLI 成功で代用しない |
 | その他のロジック・型・ビルド | 変更に対応する既存テスト、型検査やビルド | 変更箇所の振る舞いと関連する回帰の確認 |
 
@@ -55,8 +54,7 @@ npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --json
 - 終了コード、stdout、stderr を別々に取得する。JSON 検証で stderr を stdout に結合しない。
 - パイプを使う場合は、後段のパーサーだけでなく CLI 自身の終了コードも保持する。終了コードは実行直後に取得する。
 - stdout 全体を JSON としてパースする。余分な行を削除したり、最後の JSON だけ抽出して成功扱いにしない。
-- 現在の独立 CLI で JSON 指定に使えるのは `--json` / `-j`。`--agent-json` は未対応で、`--debug` / `-d` は引数から除去されるだけでデバッグログを有効化しない。
-- 実行環境、使用データ、関連設定を再現に必要な範囲で記録する。独立 CLI のナレッジ保存先は `MIKOMAI_KNOWLEDGE_DIR`、未指定時は OS の一時ディレクトリ配下の `mikomai-knowledge`。取り込みによる既存データ混入が結果に影響する場合は、専用の一時ディレクトリを指定する。
+- 現在のCLI JSON指定は `--json` / `-j`。実行環境、モデル、資料、`MIKOMAI_GRAPH_DB_PATH` と `MIKOMAI_E5_CACHE_DIR` を再現に必要な範囲で記録する。通常の検索先はmacOS Application Support内のSurrealDBとE5 cache。
 - 実行が完了するまで待ち、出力途中や回答表示直後だけで成功としない。タイムアウト・中断は成功に含めず、停止時点を記録する。
 
 ## 3. 成否を二段階で判定する
@@ -80,7 +78,7 @@ npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --json
 - MCP や実機操作を検証する場合、呼び出しと結果の証拠があるか。「確認しました」という回答だけで実行済みと判断しない。
 - 修正した処理を実際に通ったか。対象に到達していない場合は、その修正の検証として合格にしない。
 
-現在の独立 CLI は資料本文を返すため、基本質問でもテンプレート・内部指示・別機種の資料が含まれることがあります。形式確認が通っても、完成回答の品質や GUI 側処理まで合格にせず、観測した限界を記録してください。
+資料検索の確認時は機種/vendor filter、citation、回答中の出典と値を元資料に照合します。CLI成功だけでSwift UIや実機操作まで合格としません。
 
 ## 4. 結果を報告する
 

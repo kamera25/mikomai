@@ -1,15 +1,19 @@
 //! GUI and infrastructure independent application core.
 pub mod application;
 pub mod attachment_policy;
+pub mod audit;
 pub mod desired_change;
 pub mod dispatch;
 pub mod domain;
 pub mod graph_identity;
-pub mod nwdiag;
+pub mod intent;
 pub mod network;
+pub mod nwdiag;
+pub mod planner;
+pub mod port;
+pub mod redaction;
 pub mod schema;
 pub mod tool_kind;
-pub mod port;
 pub use application::{ApplicationError, ApplicationResult, TaskManager};
 pub use application::{ChangeService, ChatService, DiagnoseService};
 pub use dispatch::{select_dispatch_mode, DispatchMode};
@@ -21,6 +25,7 @@ pub use domain::{
     ActionType, Decision, Evidence, Observation, ObservationSource, OperationClass, OperationGate,
     OperationPlan, OperationStatus, Provenance, ProvenanceOrigin, Task, TaskSnapshot, TaskStatus,
 };
+pub use intent::is_configuration_change_request;
 pub use port::{
     HistoryRepository, InferencePort, OperationRepository, PlanDecision, PlannerPort, PortFuture,
     ReportEvent, ReporterPort, SearchHit, SearchPort, TaskRepository, ToolExecutorPort, ToolResult,

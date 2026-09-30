@@ -12,6 +12,7 @@ chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 serde_yaml = "0.9"
 validator = { version = "0.21", features = ["derive"] }
+etherparse = "0.21.0"
 
 [dev-dependencies]
 futures-lite = "2"

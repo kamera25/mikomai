@@ -184,7 +184,7 @@ public enum AttachmentMediaPolicy {
     }
 }
 
-public struct SavedConnection: Identifiable, Codable, Equatable {
+public struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var sourceID: String?
     public var name: String
@@ -299,7 +299,7 @@ public enum HostSuggestionPolicy {
     }
 }
 
-public struct TauriDeviceSummary: Decodable {
+public struct LegacyDeviceSummary: Decodable {
     public var id: String?
     public var hostname: String
     public var ip: String?
@@ -327,7 +327,7 @@ public struct TauriDeviceSummary: Decodable {
     }
 }
 
-public struct TauriConnectionImportResult {
+public struct LegacyConnectionImportResult {
     public let imported: [SavedConnection]
     public let skipped: Int
     public let missingIDs: Int
@@ -423,11 +423,11 @@ public struct ConnectionCredentialPersistence: Sendable {
     }
 }
 
-public enum TauriConnectionImporter {
-    public static func importJSON(_ data: Data, existing: [SavedConnection]) throws -> TauriConnectionImportResult {
+public enum LegacyConnectionImporter {
+    public static func importJSON(_ data: Data, existing: [SavedConnection]) throws -> LegacyConnectionImportResult {
         let raw = try JSONSerialization.jsonObject(with: data)
         guard let rows = raw as? [Any] else {
-            throw DecodingError.typeMismatch([TauriDeviceSummary].self, .init(codingPath: [], debugDescription: "Expected an array of device records"))
+            throw DecodingError.typeMismatch([LegacyDeviceSummary].self, .init(codingPath: [], debugDescription: "Expected an array of device records"))
         }
 
         var knownIDs = Set(existing.compactMap(\.sourceID))
@@ -437,7 +437,7 @@ public enum TauriConnectionImporter {
         let decoder = JSONDecoder()
         for row in rows {
             guard JSONSerialization.isValidJSONObject(row), let rowData = try? JSONSerialization.data(withJSONObject: row),
-                  let device = try? decoder.decode(TauriDeviceSummary.self, from: rowData) else {
+                  let device = try? decoder.decode(LegacyDeviceSummary.self, from: rowData) else {
                 skipped += 1
                 continue
             }
@@ -460,7 +460,7 @@ public enum TauriConnectionImporter {
             if let id = device.id { knownIDs.insert(id) }
             imported.append(connection)
         }
-        return TauriConnectionImportResult(imported: imported, skipped: skipped, missingIDs: missingIDs)
+        return LegacyConnectionImportResult(imported: imported, skipped: skipped, missingIDs: missingIDs)
     }
 }
 

@@ -1,78 +1,47 @@
-<p align="center"><img src="mikomai-desktop/src-tauri/icons/icon.png" width="128"></p>
-
 # mikomai - ネットワークAIアシスタントツール
 
-### Managed Infrastructure Knowledge Operator of Ml Agent Interface
-
-<img src="doc/screenshot.png" width="1000">
-
-ネットワーク機器の診断および技術文書の参照を支援するAIアシスタント。ローカルLLMとRAG（検索拡張生成）を統合したデスクトップアプリケーションです。
+ネットワーク機器の診断と技術文書の参照を支援する、macOSネイティブのAIアシスタントです。Swift製デスクトップアプリは `mikomai-desktop-mac/`、共有Rustロジックは `mikomai-core/`、Swiftから呼び出すRust FFIは `crates/mikomai-ffi/` にあります。
 
 ## 機能
 
-- **推論エンジン**: ローカル環境のGPU（Metal等）を使用した低遅延な推論。
-- **ネットワーク診断**: MCP（Model Context Protocol）によるツールの自動実行（Ping, Traceroute, ARP, IP情報取得等）。
-- **ドキュメント検索**: 独自ナレッジベース（NW-DB）を対象としたRAG機能。
-- **管理機能**: セッション履歴の自動要約、およびネットワーク接続ホスト管理。
+- ローカルLLMと外部LLMを使った日本語の質問応答
+- `nw-docs/` の技術資料を使ったナレッジ検索
+- MCPを使ったネットワーク機器の読み取り診断
+- macOS Keychainを使った認証情報の保護
 
-## 技術構成
+## セットアップと起動
 
-- **Core**: Rust domain and application services in `mikomai-core/`
-- **Desktop**: React / TypeScript and the Tauri shell in `mikomai-desktop/`
-- **Inference**: Llama.cpp
-- **Storage**: SurrealDB (network graph, history, and RAG vector store)
-
-Rust workspace の中心にある `mikomai-core/` は Tauri に依存せず、共有ドメイン・アプリケーションサービス・ポートを提供します。デスクトップの React UI と Tauri 統合は `mikomai-desktop/` にまとめています。Tauri 側には既存の GUI 固有サービスも残っており、共通コアへの移行は段階的に進めます。
-
-## セットアップ
-
-### 依存関係のインストール
+必要な開発環境は Rust stable、Swift toolchain、macOS SDK です。アプリを起動するにはリポジトリのルートで実行します。
 
 ```bash
-npm install
+./mikomai-desktop-mac/run.sh
 ```
 
-### 開発サーバーの起動
+macOSアプリバンドルを作る場合:
 
 ```bash
-npm run tauri dev
+./mikomai-desktop-mac/build-app.sh
 ```
 
-### ビルド
+## CLI
+
+CLIはRust workspaceの独立したパッケージです。
 
 ```bash
-npm run tauri build
-```
-
-### CLI
-
-GUIと同じRust Coreを利用するCLIが用意されており、npmスクリプトまたはcargoから直接実行できます。
-
-```bash
-# 最も簡単な実行方法 (npm経由)
-npm run cli -- resources
-npm run cli -- devices
-npm run cli -- get-state <device> <resource>
+npm run cli -- --help
+npm run cli -- chat "FITELnet F220 の VLAN 設定方法を教えて"
 npm run cli -- rag-search "VLAN"
-npm run cli -- chat "NakaokuGWのインターフェース状態を診断して"
-
-# cargo経由
-cargo run --manifest-path mikomai-desktop/src-tauri/Cargo.toml --bin mikomai-cli -- chat "VLAN設定のコマンド例"
 ```
 
-より詳細なコマンド一覧や使用例については、[CLI 実行マニュアル](doc/mikomai-cli.md) を参照してください。
+ドキュメントを取り込むには `./ingest.sh` または `npm run cli -- rag-ingest nw-docs` を使います。利用可能なコマンドは `npm run cli -- --help` で確認できます。
 
-### キャッシュのクリーンアップ
-
-プロジェクト内の不要なビルドキャッシュや一時ファイルを一括で削除し、ディスク容量を解放するためのスクリプトが用意されています。
+## キャッシュのクリーンアップ
 
 ```bash
 ./clean.sh
 ```
 
-- **通常クリーンアップ（デフォルト）**: `target`（Rustビルド成果物）、`mikomai-desktop/dist`、`build`、Pythonキャッシュ（`__pycache__`、`*.pyc`）、`.pytest_cache`、OS一時ファイル（`.DS_Store`）などを安全に削除します。
-- **ディープクリーンアップ（`-d` / `--deep`）**: 通常のターゲットに加え、再構築に時間がかかる `node_modules`、`venv`、`.fastembed_cache`（ダウンロード済みの埋め込みモデル）も削除対象に含めます。
-- **ドライラン（`-n` / `--dry-run`）**: 実際の削除は行わず、どのファイルが削除され、どれだけの容量が解放されるかのシミュレーション結果を表示します。
+`-n` は削除対象の確認、`-d` は `node_modules`、`venv`、埋め込みモデルキャッシュを含む深いクリーンアップです。
 
 ## ライセンス
 

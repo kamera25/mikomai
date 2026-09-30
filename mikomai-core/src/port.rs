@@ -80,8 +80,24 @@ pub struct SearchHit {
 }
 #[derive(Debug, Clone)]
 pub enum ReportEvent {
-    TaskStarted { task_id: Uuid },
-    Evidence { task_id: Uuid, evidence: Evidence },
-    Status { task_id: Uuid, status: String },
-    Completed { task_id: Uuid, answer: String },
+    TaskStarted {
+        task_id: Uuid,
+    },
+    Evidence {
+        task_id: Uuid,
+        evidence: Evidence,
+    },
+    ApprovalRequired {
+        task_id: Uuid,
+        plan: OperationPlan,
+        message: String,
+    },
+    Status {
+        task_id: Uuid,
+        status: String,
+    },
+    Completed {
+        task_id: Uuid,
+        answer: String,
+    },
 }

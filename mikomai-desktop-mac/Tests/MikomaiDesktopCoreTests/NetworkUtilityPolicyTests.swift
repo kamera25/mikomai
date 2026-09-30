@@ -41,4 +41,22 @@ struct NetworkUtilityPolicyTests {
         #expect(PingCommandParser.parse("ping 8.8.8.8 5回実行") == PingCommand(host: "8.8.8.8", count: 5))
         #expect(PingCommandParser.parse("ping 1.1.1.1 フラグメント禁止") == PingCommand(host: "1.1.1.1", df: true))
     }
+
+    @Test func mapsPortableAgentPingArgumentsToSafeMacOSFlags() {
+        #expect(PingCommand(host: "192.0.2.1", size: 1200, count: 3, df: true).processArguments == ["-c", "3", "-s", "1200", "-D", "192.0.2.1"])
+        #expect(PingCommand(host: "192.0.2.1", size: 65_501).processArguments == nil)
+        #expect(PingCommand(host: "-c").processArguments == nil)
+    }
+
+    @Test func cpuWatchUsesLegacyVendorCommandsAndRequiresNumericUsage() {
+        #expect(CPUUsagePolicy.command(for: "juniper_junos") == "show system processes extensive | match CPU")
+        #expect(CPUUsagePolicy.command(for: "arista_eos") == "show processes top once")
+        #expect(CPUUsagePolicy.command(for: "yamaha") == "show status cpu")
+        #expect(CPUUsagePolicy.command(for: "furukawa_fitelnet") == "show cpu")
+        #expect(CPUUsagePolicy.command(for: "cisco_ios") == "show processes cpu")
+        #expect(CPUUsagePolicy.parse("CPU utilization for five seconds: 82%/10%") == 82)
+        #expect(CPUUsagePolicy.parse("CPU utilization: 17 percent") == 17)
+        #expect(CPUUsagePolicy.parse("CPU utilization: 101%") == nil)
+        #expect(CPUUsagePolicy.parse("no CPU data") == nil)
+    }
 }

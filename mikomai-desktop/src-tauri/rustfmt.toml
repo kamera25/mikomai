@@ -1,4 +1,0 @@
-# nightly toolchain限定オプション
-unstable_features = true
-brace_style = "AlwaysNextLine"
-control_brace_style = "AlwaysNextLine"

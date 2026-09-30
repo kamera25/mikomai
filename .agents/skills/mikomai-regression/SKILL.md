@@ -19,9 +19,9 @@ From the Mikomai repository root, run:
 bash .agents/skills/mikomai-regression/scripts/run_regression.sh
 ```
 
-The script runs the Rust workspace suite, the frontend unit suite, the initial ten prioritized cases plus cases added later, and the current CLI baseline. It continues after an individual failure, prints a per-check result, and exits nonzero when any check fails. Do not stop after the first failure unless the user asks for a short diagnosis.
+The script runs the Rust workspace suite and the current CLI baseline. It continues after an individual failure, prints a per-check result, and exits nonzero when any check fails. Do not stop after the first failure unless the user asks for a short diagnosis.
 
-Before running, check the working tree and record whether failures come from the current change or from pre-existing local modifications. Do not connect to or modify real network devices as part of this skill. Live MCP/GUI behavior is outside this automated suite and must be reported as unverified.
+Before running, check the working tree and record whether failures come from the current change or from pre-existing local modifications. Loopback and fake transport tests do not connect to real network devices. Live Swift UI and device behavior remain outside this automated suite and must be reported as unverified.
 
 ## Interpret results
 

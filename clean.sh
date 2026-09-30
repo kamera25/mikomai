@@ -29,14 +29,13 @@ ASSUME_YES=false
 # Targets definition
 STANDARD_TARGETS=(
     "target"
-    "mikomai-desktop/dist"
+    "mikomai-desktop-mac/dist"
     "build"
-    "mikomai-desktop/coverage"
     ".eslintcache"
 )
 
 DEEP_TARGETS=(
-    "mikomai-desktop/src-tauri/.fastembed_cache"
+    ".fastembed_cache"
     "node_modules"
     "venv"
 )

@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['../mikomai-desktop/src-tauri/python/netmiko_wrapper.py'],
+    ['../mikomai-core/assets/network/netmiko_wrapper.py'],
     pathex=[],
     binaries=[],
     datas=[],

@@ -30,4 +30,4 @@ npm run cli -- chat "F220のVLAN設定方法を教えて"
 npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --json
 ```
 
-現在の `npm run cli` は独立 CLI です。その成功だけでは GUI 側の LLM・SurrealDB・実機 MCP・AgentLoop の動作を証明できません。`ok: true` と回答の存在だけで検証を完了しないでください。
+GGUFモデル設定時、`npm run cli` は共通FFIを通り、Swift UIと同じローカルLLM・E5 RAG/SurrealDB検索を使います。モデル未設定時は決定的なMarkdown検索へフォールバックします。CLIで確認できないSwift画面操作、Swift callbackを介した実機接続、承認後の実機変更は別に検証してください。`ok: true` と回答の存在だけで内容検証を完了しないでください。

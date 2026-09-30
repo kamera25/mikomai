@@ -96,7 +96,7 @@ struct NativeFeatureLogicTests {
         }
     }
 
-    @Test func tauriRegistryImportMapsTypeAliasAndNumericOrStringPort() throws {
+    @Test func legacyRegistryImportMapsTypeAliasAndNumericOrStringPort() throws {
         let json = Data(#"""
         [
           {"id":"router-1","hostname":"router-1","ip":"192.0.2.1","port":2222,"type":"SSH (Password)","deviceType":"cisco_ios"},
@@ -104,7 +104,7 @@ struct NativeFeatureLogicTests {
         ]
         """#.utf8)
 
-        let result = try TauriConnectionImporter.importJSON(json, existing: [])
+        let result = try LegacyConnectionImporter.importJSON(json, existing: [])
 
         #expect(result.imported.count == 2)
         #expect(result.imported[0].port == "2222")
@@ -113,7 +113,7 @@ struct NativeFeatureLogicTests {
         #expect(result.imported[1].host == "console-1")
     }
 
-    @Test func tauriRegistrySkipsExistingDuplicateAndInvalidRowsWithoutAbortingValidRows() throws {
+    @Test func legacyRegistrySkipsExistingDuplicateAndInvalidRowsWithoutAbortingValidRows() throws {
         let existing = [SavedConnection(sourceID: "already", name: "old-router", host: "192.0.2.9")]
         let json = Data(#"""
         [
@@ -128,7 +128,7 @@ struct NativeFeatureLogicTests {
         ]
         """#.utf8)
 
-        let result = try TauriConnectionImporter.importJSON(json, existing: existing)
+        let result = try LegacyConnectionImporter.importJSON(json, existing: existing)
 
         #expect(result.imported.map(\.sourceID) == ["new", "recoverable", "new-without-host"])
         #expect(result.imported.last?.host == "new-without-host")
@@ -136,9 +136,9 @@ struct NativeFeatureLogicTests {
         #expect(result.missingIDs == 1)
     }
 
-    @Test func tauriRegistryRejectsNonArrayTopLevel() {
+    @Test func legacyRegistryRejectsNonArrayTopLevel() {
         do {
-            _ = try TauriConnectionImporter.importJSON(Data("{}".utf8), existing: [])
+            _ = try LegacyConnectionImporter.importJSON(Data("{}".utf8), existing: [])
             Issue.record("Expected a non-array registry to fail")
         } catch {}
     }

@@ -1,5 +1,7 @@
 # Coordinator と Fast Agent の設計
 
+> 旧Tauriバックエンドの設計記録です。記載された実装パスと機能は現行Swiftアプリの対応状況を示しません。現行の境界は [agent-architecture.md](agent-architecture.md) を参照してください。
+
 ## 目的
 
 Worker の追加ごとに AgentLoop へ個別の分岐を増やさず、完了、追加入力、承認、引継ぎ、失敗を同じ規約で扱う。

@@ -8,13 +8,15 @@ impl ReporterPort for CliReporter {
         match event {
             ReportEvent::Completed { answer, .. } => eprintln!("[mikomai] completed: {answer}"),
             ReportEvent::Status { status, .. } => eprintln!("[mikomai] {status}"),
-            ReportEvent::TaskStarted { .. } | ReportEvent::Evidence { .. } => {}
+            ReportEvent::TaskStarted { .. }
+            | ReportEvent::Evidence { .. }
+            | ReportEvent::ApprovalRequired { .. } => {}
         }
     }
 }
 
 /// Adapter for GUI/event-loop reporters. The callback is supplied by the
-/// inbound application layer, so this crate stays independent from Tauri.
+/// inbound application layer, so this crate stays independent from desktop UI frameworks.
 pub struct CallbackReporter<F>(pub F);
 impl<F> ReporterPort for CallbackReporter<F>
 where

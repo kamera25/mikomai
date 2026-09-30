@@ -59,23 +59,79 @@ fn chat(goal: String, json: bool) -> Result<String, String> {
     if goal.trim().is_empty() {
         return Err("chat message is required".into());
     }
-    let manager = TaskManager::new(JsonTaskRepository::default());
-    let store = knowledge_store();
-    let default_documents = PathBuf::from("nw-docs");
-    if default_documents.exists() {
-        store.ingest(&default_documents)?;
-    }
-    let planner = KnowledgePlanner::new(&store);
-    let executor = EchoToolExecutor;
-    let reporter = StdoutReporter::default();
-    let task = manager.start(goal).map_err(|error| error.to_string())?;
-    let service = ChatService::new(&planner, &executor, &reporter);
-    let answer = futures_lite::future::block_on(manager.run_chat(&service, task))?;
+    let docs = std::env::var_os("MIKOMAI_DOCS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("nw-docs"));
+    let model_path = configured_model_path();
+    let answer = if let Some(path) = model_path {
+        mikomai_ffi::load_local_model(&path)?;
+        let knowledge = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::temp_dir().join("mikomai-knowledge"));
+        mikomai_ffi::local_model_chat(
+            &goal,
+            "",
+            &docs.to_string_lossy(),
+            &knowledge.to_string_lossy(),
+        )?
+    } else {
+        // Keep a deterministic, explicitly non-generative fallback for headless
+        // installations without a local model configured.
+        let manager = TaskManager::new(JsonTaskRepository::default());
+        let task = manager
+            .start(goal.clone())
+            .map_err(|error| error.to_string())?;
+        let store = knowledge_store();
+        if docs.exists() {
+            store.ingest(&docs)?;
+        }
+        let planner = KnowledgePlanner::new(&store);
+        let executor = EchoToolExecutor;
+        let reporter = StdoutReporter::default();
+        let service = ChatService::new(&planner, &executor, &reporter);
+        futures_lite::future::block_on(manager.run_chat(&service, task))?
+    };
     Ok(if json {
         serde_json::json!({"ok": true, "data": {"response": answer}}).to_string()
     } else {
         answer
     })
+}
+
+fn configured_model_path() -> Option<String> {
+    if let Some(path) = std::env::var_os("MIKOMAI_MODEL_PATH") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Some(path.to_string_lossy().into_owned());
+        }
+    }
+    let home = std::env::var_os("HOME").map(PathBuf::from)?;
+    let candidates = [
+        std::env::var_os("MIKOMAI_SETTINGS_PATH").map(PathBuf::from),
+        Some(home.join("Library/Application Support/MikomaiDesktopMac/settings.json")),
+        Some(home.join("Library/Application Support/com.mikomai.agent/settings.json")),
+        Some(home.join("Library/Application Support/mikomai/settings.json")),
+        Some(home.join(".config/mikomai/settings.json")),
+    ];
+    for path in candidates.into_iter().flatten() {
+        let Ok(contents) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let Ok(settings) = serde_json::from_str::<serde_json::Value>(&contents) else {
+            continue;
+        };
+        let Some(model) = settings
+            .get("modelPath")
+            .and_then(serde_json::Value::as_str)
+        else {
+            continue;
+        };
+        let path = PathBuf::from(model.replace("~", &home.to_string_lossy()));
+        if path.is_file() {
+            return Some(path.to_string_lossy().into_owned());
+        }
+    }
+    None
 }
 
 fn knowledge_store() -> KnowledgeStore {

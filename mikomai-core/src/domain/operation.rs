@@ -122,9 +122,19 @@ impl OperationGate {
     }
 }
 fn classify_tool(tool: &str) -> OperationClass {
-    if ["network_config", "configure", "write_config", "reload"]
-        .iter()
-        .any(|name| tool.eq_ignore_ascii_case(name))
+    if [
+        "network_config",
+        "network_send_console_message",
+        "network_ftp_download",
+        "network_ftp_upload",
+        "network_tftp_download",
+        "network_tftp_upload",
+        "configure",
+        "write_config",
+        "reload",
+    ]
+    .iter()
+    .any(|name| tool.eq_ignore_ascii_case(name))
     {
         OperationClass::Change
     } else {

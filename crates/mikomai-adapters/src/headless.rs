@@ -48,8 +48,8 @@ impl ReporterPort for StdoutReporter {
     }
 }
 
-#[derive(Default)]
-pub struct JsonTaskRepository(pub Mutex<std::collections::HashMap<Uuid, TaskSnapshot>>);
+#[derive(Default, Clone)]
+pub struct JsonTaskRepository(pub Arc<Mutex<std::collections::HashMap<Uuid, TaskSnapshot>>>);
 impl TaskRepository for JsonTaskRepository {
     fn save(&self, snapshot: &TaskSnapshot) -> Result<(), ApplicationError> {
         self.0

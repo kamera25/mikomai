@@ -11,7 +11,7 @@ LLM はネットワーク状態を直接更新せず、ツール実行や設定�
 `harness` は以下の責務に分ける。
 
 ```text
-UI / Tauri command
+Swift UI / FFI
         |
         v
 Request dispatcher --- Worker (単発の説明・生成)
@@ -44,7 +44,7 @@ Event-sourced NetworkState <- Tool executor port -> MCP / device
 | `ActionAuthorizer` | スキーマ、ポリシー、承認計画を検査 | SchemaValidator + PolicyValidator |
 | `ToolExecutor` | 許可済み Action を実行 | MCP executor |
 | `EventStore` | Goal/Decision/Action/Result を永続化・再生 | 現在の EventLog、後に DB |
-| `Reporter` | UI への進捗・最終結果を通知 | Tauri Emitter |
+| `Reporter` | UI への進捗・最終結果を通知 | Swift FFI reporter |
 
 `AgentLoop` はこれらのポートを受け取り、`plan -> authorize -> execute -> record` の
 順序だけを管理する。各ポートはフェイク実装に置換できるため、LLM・Tauri・実機なしで
@@ -63,9 +63,9 @@ Event-sourced NetworkState <- Tool executor port -> MCP / device
 1. ~~`AgentLoop` から `Planner` / `ToolExecutor` / `Reporter` trait を抽出し、既存実装を adapter にする。~~ 完了
 2. ~~`EventLog` をタスク ID 単位で永続化し、開始・再開・監査表示を replay に統一する。~~ タスクごとの永続化と replay を実装済み。再開・監査 UI は次の UI 段階で接続する。
 3. Action の idempotency key、タイムアウト、キャンセル、リトライ方針を ActionResult に追加する。
-4. ~~フェイクポートを用いた「調査成功」「ポリシー拒否」「承認待ち」「ツール失敗」のシナリオテストを追加する。~~ `mikomai-desktop/src-tauri/src/harness/scenario_tests.rs` に実装・検証完了。
+4. ~~フェイクポートを用いた「調査成功」「ポリシー拒否」「承認待ち」「ツール失敗」のシナリオテストを追加する。~~ 共通ロジックはRust coreのテストで検証する。
 
-この順序なら、既存の Tauri/MCP 境界を壊さずに、複数エージェントや長時間タスクへ拡張できる。
+この設計はTauriランタイムを前提にせず、複数エージェントや長時間タスクへ拡張できる。
 
 
 ### Planner の部分グラフ取得

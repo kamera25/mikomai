@@ -44,6 +44,46 @@ public struct PingCommand: Equatable {
         self.count = count
         self.df = df
     }
+
+    public var processArguments: [String]? {
+        guard !host.isEmpty, !host.hasPrefix("-"),
+              host.range(of: "^[A-Za-z0-9._:%-]+$", options: .regularExpression) != nil else { return nil }
+        if let size, !(1...65_500).contains(size) { return nil }
+        var result = ["-c", "\(min(max(count ?? 4, 1), 10))"]
+        if let size { result += ["-s", "\(size)"] }
+        if df == true { result.append("-D") }
+        result.append(host)
+        return result
+    }
+}
+
+/// Preserves the former `get_state(resource: cpu)` read-only contract: a
+/// vendor-specific show command is run, then only a finite 0...100 usage value
+/// is returned to a Watch condition.
+public enum CPUUsagePolicy {
+    public static func command(for deviceType: String) -> String {
+        let type = deviceType.lowercased()
+        if type.contains("juniper") { return "show system processes extensive | match CPU" }
+        if type.contains("arista") { return "show processes top once" }
+        if type.contains("yamaha") { return "show status cpu" }
+        if type.contains("furukawa") || type.contains("fitel") { return "show cpu" }
+        return "show processes cpu"
+    }
+
+    public static func parse(_ output: String) -> Double? {
+        let patterns = [
+            #"(?i)cpu\s+utilization[^\n:]*:\s*(\d+(?:\.\d+)?)\s*%"#,
+            #"(?i)cpu[^\n]*?\b(\d+(?:\.\d+)?)\s*(?:%|percent)\b"#
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: output, range: NSRange(output.startIndex..., in: output)),
+                  let range = Range(match.range(at: 1), in: output),
+                  let value = Double(output[range]), value.isFinite, (0...100).contains(value) else { continue }
+            return value
+        }
+        return nil
+    }
 }
 
 public enum PingCommandParser {

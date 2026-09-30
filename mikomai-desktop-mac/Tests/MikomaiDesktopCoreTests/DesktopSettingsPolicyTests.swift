@@ -4,7 +4,7 @@ import Testing
 
 @Suite
 struct DesktopSettingsPolicyTests {
-    @Test func loadsTauriSettingsAndAppliesDefaultsForMissingValues() throws {
+    @Test func loadsLegacySettingsAndAppliesDefaultsForMissingValues() throws {
         let json = Data(#"""
         {
           "historyLimit": 8,

@@ -46,6 +46,7 @@ struct MikomaiDesktopMac: App {
                 Button("機器情報一覧") { model.workspace = .connections }.keyboardShortcut("2", modifiers: .command)
                 Button("ネットワークツール") { model.workspace = .tools }.keyboardShortcut("3", modifiers: .command)
                 Button("設定") { model.workspace = .settings }.keyboardShortcut("4", modifiers: .command)
+                Button("監視・タスク履歴") { model.workspace = .monitoring }.keyboardShortcut("5", modifiers: .command)
             }
             CommandMenu("ネットワーク") {
                 Button("接続テスト") {
@@ -75,6 +76,7 @@ private enum Workspace: String, CaseIterable, Identifiable {
     case chat = "チャット"
     case connections = "機器情報一覧"
     case tools = "ネットワークツール"
+    case monitoring = "監視・タスク履歴"
     case settings = "設定"
 
     var id: String { rawValue }
@@ -83,6 +85,7 @@ private enum Workspace: String, CaseIterable, Identifiable {
         case .chat: "bubble.left.and.bubble.right"
         case .connections: "point.3.connected.trianglepath.dotted"
         case .tools: "wrench.and.screwdriver"
+        case .monitoring: "waveform.path.ecg"
         case .settings: "gearshape"
         }
     }
@@ -105,9 +108,9 @@ private enum ToolTab: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Tauri Settings Model
+// MARK: - Native Settings Model
 
-private typealias TauriSettings = DesktopSettings
+private typealias AppSettings = DesktopSettings
 
 // MARK: - Model Presets
 
@@ -150,42 +153,42 @@ private enum SerialPortDetector {
     }
 }
 
-// MARK: - Settings Manager (Tauri Config Auto-loader & Sync)
+// MARK: - Native Settings Store
 
 private enum SettingsManager {
-    static var tauriSettingsURL: URL {
+    static var settingsURL: URL {
         if let env = ProcessInfo.processInfo.environment["MIKOMAI_SETTINGS_PATH"], !env.isEmpty {
             return URL(fileURLWithPath: env)
         }
-        let fm = FileManager.default
-        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        let candidates = [
-            appSupport?.appendingPathComponent("com.mikomai.agent/settings.json"),
-            appSupport?.appendingPathComponent("mikomai/settings.json"),
-            fm.homeDirectoryForCurrentUser.appendingPathComponent(".config/mikomai/settings.json")
-        ].compactMap { $0 }
-
-        for url in candidates {
-            if fm.fileExists(atPath: url.path) {
-                return url
-            }
-        }
-        return appSupport?.appendingPathComponent("com.mikomai.agent/settings.json")
-            ?? fm.homeDirectoryForCurrentUser.appendingPathComponent(".config/mikomai/settings.json")
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+        return support.appendingPathComponent("MikomaiDesktopMac/settings.json")
     }
 
-    static func loadFromTauri() -> (settings: TauriSettings, url: URL, isLoaded: Bool) {
-        let url = tauriSettingsURL
-        guard FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url),
-              let decoded = try? DesktopSettingsCodec.decode(data) else {
-            return (TauriSettings(), url, false)
+    static func load() -> (settings: AppSettings, url: URL, source: String?) {
+        let url = settingsURL
+        if let data = try? Data(contentsOf: url), let decoded = try? DesktopSettingsCodec.decode(data) {
+            return (decoded, url, "native")
         }
-        return (decoded, url, true)
+
+        // Import existing installs once; all future saves go to the native app store.
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let legacyURLs = [
+            support?.appendingPathComponent("com.mikomai.agent/settings.json"),
+            support?.appendingPathComponent("mikomai/settings.json"),
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/mikomai/settings.json")
+        ].compactMap { $0 }.filter { $0.standardizedFileURL != url.standardizedFileURL }
+        for legacyURL in legacyURLs {
+            guard let data = try? Data(contentsOf: legacyURL),
+                  let decoded = try? DesktopSettingsCodec.decode(data) else { continue }
+            try? save(decoded)
+            return (decoded, url, "imported")
+        }
+        return (AppSettings(), url, nil)
     }
 
-    static func saveToTauri(_ settings: TauriSettings) throws {
-        let url = tauriSettingsURL
+    static func save(_ settings: AppSettings) throws {
+        let url = settingsURL
         let dir = url.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: dir.path) {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -230,12 +233,14 @@ private struct NativeOperationPlan: Decodable, Identifiable {
     let id: String
     let planHash: String
     let status: String
+    let toolId: String
+    let rationale: String
     var target: String?
     let args: NativeOperationPlanArgs
 }
 
 private struct NativeOperationPlanArgs: Decodable {
-    let commands: [String]
+    let commands: [String]?
     let deviceSnapshot: NativeDeviceSnapshot
 }
 
@@ -336,11 +341,218 @@ private final class StreamBox: @unchecked Sendable {
     }
 }
 
+private final class ChatCallbackBox: @unchecked Sendable {
+    let stream: StreamBox
+    let connections: [SavedConnection]
+    let credentialPersistence: ConnectionCredentialPersistence
+    let onOperationPlan: (Data) -> Void
+
+    init(stream: StreamBox, connections: [SavedConnection], credentialPersistence: ConnectionCredentialPersistence, onOperationPlan: @escaping (Data) -> Void) {
+        self.stream = stream
+        self.connections = connections
+        self.credentialPersistence = credentialPersistence
+        self.onOperationPlan = onOperationPlan
+    }
+}
+
 private func streamBridge(chunk: UnsafePointer<CChar>?, isDone: Int32, context: UnsafeMutableRawPointer?) {
     guard let context else { return }
-    let box = Unmanaged<StreamBox>.fromOpaque(context).takeUnretainedValue()
+    let box = Unmanaged<ChatCallbackBox>.fromOpaque(context).takeUnretainedValue()
     let text = chunk.flatMap { String(cString: $0) } ?? ""
-    box.onChunk(text, isDone != 0)
+    let approvalPrefix = "__MIKOMAI_APPROVAL_PLAN__"
+    if text.hasPrefix(approvalPrefix) {
+        let json = String(text.dropFirst(approvalPrefix.count)).components(separatedBy: "\n").first ?? ""
+        box.onOperationPlan(Data(json.utf8))
+        return
+    }
+    box.stream.onChunk(text, isDone != 0)
+}
+
+private struct PortableDeviceTarget: Decodable {
+    let id: String?
+    let hostname: String
+    let ip: String?
+    let deviceType: String?
+}
+
+private struct NativeWatch: Codable, Identifiable {
+    struct IR: Codable {
+        struct Schedule: Codable { var every: String }
+        struct CallArgs: Codable { var device: String; var resource: String }
+        struct Call: Codable { var id: String; var call: String; var args: CallArgs }
+        struct Reference: Codable { var ref: String }
+        struct Comparison: Codable { var left: Reference; var `operator`: String; var right: Double }
+        struct NotificationArgs: Codable { var message: String }
+        struct Notification: Codable { var call: String; var args: NotificationArgs }
+        struct When: Codable { var when: Comparison; var then: [Notification] }
+        var version: Int
+        var schedule: Schedule
+        var steps: [Step]
+        enum Step: Codable {
+            case call(Call)
+            case when(When)
+            init(from decoder: Decoder) throws {
+                let container = try decoder.singleValueContainer()
+                if let call = try? container.decode(Call.self) { self = .call(call); return }
+                self = .when(try container.decode(When.self))
+            }
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.singleValueContainer()
+                switch self { case .call(let value): try container.encode(value); case .when(let value): try container.encode(value) }
+            }
+        }
+    }
+    struct Run: Codable, Identifiable {
+        struct Notice: Codable, Identifiable { var watchId: String; var message: String; var emittedAt: String; var id: String { emittedAt } }
+        var runId: String; var startedAt: String; var completedAt: String; var notifications: [Notice]; var error: String?
+        var id: String { runId }
+    }
+    var id: String
+    var name: String
+    var status: String
+    var ir: IR
+    var createdAt: String
+    var lastRunAt: String?
+    var lastError: String?
+    var history: [Run]?
+}
+
+private struct NativeAgentTask: Decodable, Identifiable {
+    var taskId: String
+    var goal: String
+    var status: String
+    var startedAt: String
+    var lastEventAt: String
+    var eventCount: Int
+    var id: String { taskId }
+}
+
+private struct WatchAlert: Identifiable {
+    let id = UUID()
+    let message: String
+}
+
+private final class WatchCallbackBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var savedConnections: [SavedConnection]
+    let credentialPersistence: ConnectionCredentialPersistence
+    let onNotification: @Sendable (Data) -> Void
+    init(connections: [SavedConnection], credentialPersistence: ConnectionCredentialPersistence, onNotification: @escaping @Sendable (Data) -> Void) {
+        self.savedConnections = connections
+        self.credentialPersistence = credentialPersistence
+        self.onNotification = onNotification
+    }
+    var connections: [SavedConnection] { lock.lock(); defer { lock.unlock() }; return savedConnections }
+    func update(connections: [SavedConnection]) { lock.lock(); savedConnections = connections; lock.unlock() }
+}
+
+private func watchToolBridge(
+    toolID: UnsafePointer<CChar>?, targetJSON: UnsafePointer<CChar>?, argsJSON: UnsafePointer<CChar>?,
+    output: UnsafeMutablePointer<CChar>?, outputCapacity: UInt, context: UnsafeMutableRawPointer?
+) -> Int32 {
+    guard let output, outputCapacity > 0 else { return 1 }
+    let capacity = Int(outputCapacity); output[0] = 0
+    guard let context, let toolID, let targetJSON, let argsJSON else { return 1 }
+    let box = Unmanaged<WatchCallbackBox>.fromOpaque(context).takeUnretainedValue()
+    do {
+        let target = try JSONDecoder().decode(PortableDeviceTarget.self, from: Data(String(cString: targetJSON).utf8))
+        let arguments = try JSONSerialization.jsonObject(with: Data(String(cString: argsJSON).utf8)) as? [String: Any] ?? [:]
+        let result = DesktopModel.runPortableAgentTool(tool: String(cString: toolID), target: target, arguments: arguments, connections: box.connections, credentialPersistence: box.credentialPersistence)
+        let payload = try JSONSerialization.data(withJSONObject: ["success": result.success, "output": result.success ? result.stdout : result.stderr])
+        let text = String(decoding: payload, as: UTF8.self)
+        return text.withCString { strlcpy(output, $0, capacity) < capacity ? 0 : 1 }
+    } catch {
+        let text = "watch probe failed: \(error.localizedDescription)"
+        return text.withCString { _ = strlcpy(output, $0, capacity); return 1 }
+    }
+}
+
+private func watchNotificationBridge(notificationJSON: UnsafePointer<CChar>?, context: UnsafeMutableRawPointer?) {
+    guard let context, let notificationJSON else { return }
+    let box = Unmanaged<WatchCallbackBox>.fromOpaque(context).takeUnretainedValue()
+    box.onNotification(Data(String(cString: notificationJSON).utf8))
+}
+
+private func agentToolBridge(
+    toolID: UnsafePointer<CChar>?,
+    targetJSON: UnsafePointer<CChar>?,
+    argsJSON: UnsafePointer<CChar>?,
+    output: UnsafeMutablePointer<CChar>?,
+    outputCapacity: UInt,
+    context: UnsafeMutableRawPointer?
+) -> Int32 {
+    guard let output, outputCapacity > 0 else { return 1 }
+    let capacity = Int(outputCapacity)
+    output[0] = 0
+    guard let context, let toolID, let targetJSON, let argsJSON else {
+        "agent tool bridge arguments are missing".withCString { _ = strlcpy(output, $0, capacity) }
+        return 1
+    }
+    let box = Unmanaged<ChatCallbackBox>.fromOpaque(context).takeUnretainedValue()
+    let tool = String(cString: toolID)
+    do {
+        let target = try JSONDecoder().decode(PortableDeviceTarget.self, from: Data(String(cString: targetJSON).utf8))
+        let arguments = try JSONSerialization.jsonObject(with: Data(String(cString: argsJSON).utf8)) as? [String: Any] ?? [:]
+        let result = DesktopModel.runPortableAgentTool(
+            tool: tool,
+            target: target,
+            arguments: arguments,
+            connections: box.connections,
+            credentialPersistence: box.credentialPersistence
+        )
+        let payload = try JSONSerialization.data(withJSONObject: ["success": result.success, "output": result.success ? result.stdout : result.stderr])
+        let text = String(decoding: payload, as: UTF8.self)
+        let copied = text.withCString { strlcpy(output, $0, capacity) }
+        return copied < capacity ? 0 : 1
+    } catch {
+        let text = "agent tool failed: \(error.localizedDescription)"
+        let _ = text.withCString { strlcpy(output, $0, capacity) }
+        return 1
+    }
+}
+
+private func agentPlanBridge(
+    target: UnsafePointer<CChar>?,
+    toolID: UnsafePointer<CChar>?,
+    argsJSON: UnsafePointer<CChar>?,
+    rationale: UnsafePointer<CChar>?,
+    output: UnsafeMutablePointer<CChar>?,
+    outputCapacity: UInt,
+    context: UnsafeMutableRawPointer?
+) -> Int32 {
+    guard let output, outputCapacity > 0 else { return 1 }
+    let capacity = Int(outputCapacity)
+    output[0] = 0
+    guard let context, let target, let toolID, let argsJSON, let rationale else { return 1 }
+    let box = Unmanaged<ChatCallbackBox>.fromOpaque(context).takeUnretainedValue()
+    let targetName = String(cString: target)
+    guard let connection = box.connections.first(where: { $0.name == targetName || $0.host == targetName || $0.id.uuidString == targetName }) else {
+        "変更対象がSwift側の登録端末にありません。".withCString { _ = strlcpy(output, $0, capacity) }
+        return 1
+    }
+    guard let credentialsJSON = try? String(data: JSONEncoder().encode(NativeDeviceSnapshot(connection, credentials: box.credentialPersistence.load(for: connection.id))), encoding: .utf8) else { return 1 }
+    let toolName = String(cString: toolID)
+    let args = String(cString: argsJSON)
+    let rationaleText = String(cString: rationale)
+    let response = connection.name.withCString { targetPtr in
+        credentialsJSON.withCString { snapshotPtr in
+            toolName.withCString { toolPtr in
+                args.withCString { argsPtr in
+                rationaleText.withCString { rationalePtr in
+                    mikomai_operation_plan_create_generic(targetPtr, toolPtr, snapshotPtr, argsPtr, rationalePtr)
+                }
+                }
+            }
+        }
+    }
+    defer { mikomai_result_free(response) }
+    guard response.status == 0, let message = response.message else {
+        let text = response.message.map { String(cString: $0) } ?? "変更計画を作成できませんでした。"
+        let _ = text.withCString { strlcpy(output, $0, capacity) }
+        return 1
+    }
+    let copied = strlcpy(output, message, capacity)
+    return copied < capacity ? 0 : 1
 }
 
 // MARK: - DesktopModel
@@ -355,7 +567,7 @@ private final class DesktopModel: ObservableObject {
     @Published var pendingAttachments: [PendingAttachment] = []
     @Published var attachmentError = ""
     @Published var isWorking = false
-    @Published var connections: [SavedConnection] = [] { didSet { persistConnections() } }
+    @Published var connections: [SavedConnection] = [] { didSet { persistConnections(); watchCallbackBox?.update(connections: connections) } }
     @Published var editingConnection: SavedConnection?
     @Published var connectionStatuses: [UUID: ConnectionTestStatus] = [:]
     @Published var operationProposal = ""
@@ -365,6 +577,23 @@ private final class DesktopModel: ObservableObject {
     @Published var operationAfterConfig = ""
     @Published var operationDiffLines: [String] = []
     @Published var operationPhase = "idle"
+    @Published var watches: [NativeWatch] = []
+    @Published var watchStatus = "監視サービス未起動"
+    @Published var watchAlert: WatchAlert?
+    @Published var watchDevice = ""
+    @Published var watchName = "CPU 使用率"
+    @Published var watchInterval = "60"
+    @Published var watchThreshold = "80"
+    @Published var watchMessage = "CPU 使用率がしきい値を超えました"
+    @Published var watchEditingID: String?
+    @Published var agentTasks: [NativeAgentTask] = []
+    @Published var selectedTaskHistory = ""
+    @Published var operationAuditText = ""
+    @Published var selectedAgentTaskID: String?
+    private var watchCallbackBox: WatchCallbackBox?
+    private var watchCallbackContext: UnsafeMutableRawPointer?
+    private var pendingAgentTaskIDs: [UUID: String] = [:]
+    private var pendingSavedAgentTaskIDs: [UUID: String] = [:]
 
     // Knowledge dirs
     @Published var documentsDirectory: String { didSet { defaults.set(documentsDirectory, forKey: "mikomai.desktop.mac.documentsDirectory") } }
@@ -376,14 +605,14 @@ private final class DesktopModel: ObservableObject {
     @Published var isLoadingModel = false
     @Published var isCancelling = false
 
-    // Tauri Settings
-    @Published var settings: TauriSettings = TauriSettings()
-    @Published var tauriConfigURL: URL = SettingsManager.tauriSettingsURL
-    @Published var tauriCompletionHosts: [HostSuggestion] = []
+    // Native settings
+    @Published var settings: AppSettings = AppSettings()
+    @Published var settingsFileURL: URL = SettingsManager.settingsURL
+    @Published var registryHosts: [HostSuggestion] = []
     private var completionReloadTask: Task<Void, Never>?
     private var lastCompletionReload = Date.distantPast
-    @Published var isTauriConfigLoaded: Bool = false
-    @Published var tauriSyncMessage: String = ""
+    @Published var isSettingsLoaded: Bool = false
+    @Published var settingsStatusMessage: String = ""
 
     // Model Presets & HuggingFace
     @Published var selectedPresetId: String = "gemma-4-e4b-ud"
@@ -443,8 +672,7 @@ private final class DesktopModel: ObservableObject {
         }
         if sessions.isEmpty { createSession() }
 
-        // Automatically load Tauri settings
-        loadTauriConfig()
+        loadSettings()
 
         refreshModelStatus()
     }
@@ -457,6 +685,169 @@ private final class DesktopModel: ObservableObject {
         sessions = state.sessions
         activeSessionID = state.activeSessionID
         workspace = .chat
+    }
+
+    func startWatchService() {
+        guard watchCallbackContext == nil else { refreshWatches(); return }
+        let fm = FileManager.default
+        let support = (fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? fm.temporaryDirectory)
+            .appendingPathComponent("MikomaiDesktopMac", isDirectory: true)
+        let destination = support.appendingPathComponent("watches.json")
+        let legacy = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/com.mikomai.agent/watches.json")
+        do {
+            try fm.createDirectory(at: support, withIntermediateDirectories: true)
+            if !fm.fileExists(atPath: destination.path), fm.fileExists(atPath: legacy.path) {
+                try fm.copyItem(at: legacy, to: destination)
+                watchStatus = "旧版の監視設定をSwift版へ移行しました"
+            }
+        } catch {
+            watchStatus = "監視設定の移行に失敗しました: \(error.localizedDescription)"
+            return
+        }
+        let box = WatchCallbackBox(connections: connections, credentialPersistence: credentialPersistence) { [weak self] data in
+            Task { @MainActor [weak self] in
+                guard let self, let value = try? JSONDecoder().decode(NativeWatch.Run.Notice.self, from: data) else { return }
+                self.watchStatus = value.message
+                self.watchAlert = WatchAlert(message: value.message)
+                NSSound.beep()
+                self.refreshWatches()
+            }
+        }
+        let context = Unmanaged.passRetained(box).toOpaque()
+        let response = destination.path.withCString { mikomai_watch_start($0, watchToolBridge, watchNotificationBridge, context) }
+        defer { mikomai_result_free(response) }
+        if response.status == 0 {
+            watchCallbackBox = box
+            watchCallbackContext = context
+            if watchStatus == "監視サービス未起動" { watchStatus = "定期監視を実行中" }
+            refreshWatches()
+        } else {
+            Unmanaged<WatchCallbackBox>.fromOpaque(context).release()
+            watchStatus = response.message.map { String(cString: $0) } ?? "監視サービスを開始できませんでした"
+        }
+        refreshAgentTasks()
+    }
+
+    func stopWatchService() {
+        guard let context = watchCallbackContext else { return }
+        let response = mikomai_watch_stop()
+        let succeeded = response.status == 0
+        let message = response.message.map { String(cString: $0) }
+        mikomai_result_free(response)
+        guard succeeded else { watchStatus = message ?? "監視サービスの停止に失敗しました"; return }
+        watchCallbackContext = nil
+        watchCallbackBox = nil
+        Unmanaged<WatchCallbackBox>.fromOpaque(context).release()
+        watchStatus = message ?? "監視サービスを停止しました"
+    }
+
+    func refreshWatches() {
+        let response = mikomai_watch_list()
+        defer { mikomai_result_free(response) }
+        guard response.status == 0, let text = response.message,
+              let decoded = try? JSONDecoder().decode([NativeWatch].self, from: Data(String(cString: text).utf8)) else { return }
+        watches = decoded
+    }
+
+    func createCPUWatch() {
+        if watchCallbackContext == nil {
+            startWatchService()
+            guard watchCallbackContext != nil else { return }
+        }
+        guard !watchDevice.isEmpty, let interval = Int(watchInterval), interval > 0,
+              let threshold = Double(watchThreshold), (0...100).contains(threshold) else {
+            watchStatus = "機器、正の監視間隔、0〜100のしきい値を指定してください"; return
+        }
+        let ir: [String: Any] = [
+            "version": 1, "schedule": ["every": "\(interval)s"],
+            "steps": [
+                ["id": "cpu", "call": "get_state", "args": ["device": watchDevice, "resource": "cpu"]],
+                ["when": ["left": ["ref": "cpu.usage"], "operator": "gt", "right": threshold],
+                 "then": [["call": "notify", "args": ["message": watchMessage]]]]
+            ]
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: ["name": watchName, "ir": ir]) else { return }
+        let payload = String(decoding: data, as: UTF8.self)
+        let response: MikomaiResult
+        if let editingID = watchEditingID {
+            response = editingID.withCString { id in payload.withCString { mikomai_watch_update(id, $0) } }
+        } else {
+            response = payload.withCString { mikomai_watch_create($0) }
+        }
+        let message = response.message.map { String(cString: $0) } ?? "監視設定を作成できませんでした"
+        let ok = response.status == 0
+        mikomai_result_free(response)
+        watchStatus = ok ? (watchEditingID == nil ? "監視設定を作成しました" : "監視設定を更新しました") : message
+        if ok { watchEditingID = nil }
+        refreshWatches()
+    }
+
+    func editWatch(_ watch: NativeWatch) {
+        watchEditingID = watch.id
+        watchName = watch.name
+        watchInterval = String(watch.ir.schedule.every.dropLast())
+        for step in watch.ir.steps {
+            switch step {
+            case .call(let call): watchDevice = call.args.device
+            case .when(let condition):
+                watchThreshold = String(condition.when.right)
+                if let notification = condition.then.first { watchMessage = notification.args.message }
+            }
+        }
+    }
+
+    func setWatch(_ watch: NativeWatch, enabled: Bool) {
+        let response = watch.id.withCString { enabled ? mikomai_watch_enable($0) : mikomai_watch_disable($0) }
+        let message = response.message.map { String(cString: $0) } ?? "更新できませんでした"
+        watchStatus = response.status == 0 ? (enabled ? "監視を有効にしました" : "監視を停止しました") : message
+        mikomai_result_free(response); refreshWatches()
+    }
+
+    func runWatch(_ watch: NativeWatch) {
+        let response = watch.id.withCString { mikomai_watch_run_now($0) }
+        watchStatus = Self.consumeRust(response)
+        refreshWatches()
+    }
+
+    func deleteWatch(_ watch: NativeWatch) {
+        let response = watch.id.withCString { mikomai_watch_delete($0) }
+        watchStatus = Self.consumeRust(response); refreshWatches()
+    }
+
+    func refreshAgentTasks() {
+        let response = mikomai_agent_task_list()
+        defer { mikomai_result_free(response) }
+        guard response.status == 0, let text = response.message,
+              let decoded = try? JSONDecoder().decode([NativeAgentTask].self, from: Data(String(cString: text).utf8)) else { return }
+        agentTasks = decoded
+    }
+
+    func refreshOperationAudit() {
+        let response = mikomai_operation_audit_list()
+        defer { mikomai_result_free(response) }
+        guard response.status == 0, let message = response.message else {
+            operationAuditText = response.message.map { String(cString: $0) } ?? "操作監査記録を読み込めませんでした"
+            return
+        }
+        let raw = String(cString: message)
+        if let data = raw.data(using: .utf8), let value = try? JSONSerialization.jsonObject(with: data),
+           let formatted = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]) {
+            operationAuditText = String(decoding: formatted, as: UTF8.self)
+        } else { operationAuditText = raw }
+    }
+
+    func loadAgentTaskHistory(_ task: NativeAgentTask) {
+        selectedAgentTaskID = task.id
+        let response = task.id.withCString { mikomai_agent_task_history($0) }
+        defer { mikomai_result_free(response) }
+        selectedTaskHistory = response.message.map { String(cString: $0) } ?? "タスク履歴を読み込めませんでした"
+    }
+
+    func resumeAgentTask(_ task: NativeAgentTask) {
+        createSession()
+        if let activeSessionID { pendingSavedAgentTaskIDs[activeSessionID] = task.id }
+        draft = "以前の調査結果を踏まえて、続きから対応してください。"
+        send()
     }
 
     func select(_ id: UUID) {
@@ -482,7 +873,7 @@ private final class DesktopModel: ObservableObject {
 
     var availableCompletionHosts: [HostSuggestion] {
         HostCompletionSource.merge(
-            tauri: tauriCompletionHosts,
+            registry: registryHosts,
             native: connections.map { HostSuggestion(hostname: $0.name, ip: $0.host) }
         )
     }
@@ -492,26 +883,28 @@ private final class DesktopModel: ObservableObject {
         lastCompletionReload = Date()
         let override = ProcessInfo.processInfo.environment["MIKOMAI_CONNECTIONS_FILE"]
         let path = override.map { URL(fileURLWithPath: $0) }
-            ?? tauriConfigURL.deletingLastPathComponent().appendingPathComponent("connections.json")
+            ?? settingsFileURL.deletingLastPathComponent().appendingPathComponent("connections.json")
         completionReloadTask = Task {
             let hosts = await Task.detached(priority: .utility) {
                 HostCompletionSource.read(from: path)
             }.value
-            tauriCompletionHosts = hosts
+            registryHosts = hosts
             completionReloadTask = nil
         }
     }
 
-    // MARK: - Tauri Settings Management
+    // MARK: - Native Settings Management
 
-    func loadTauriConfig() {
-        let (loadedSettings, url, isLoaded) = SettingsManager.loadFromTauri()
+    func loadSettings() {
+        let (loadedSettings, url, source) = SettingsManager.load()
         self.settings = loadedSettings
-        self.tauriConfigURL = url
-        self.isTauriConfigLoaded = isLoaded
+        self.settingsFileURL = url
+        self.isSettingsLoaded = source != nil
 
-        if isLoaded {
-            self.tauriSyncMessage = "Tauri 版設定を自動読み込みしました: \(url.path)"
+        if source != nil {
+            self.settingsStatusMessage = source == "imported"
+                ? "既存設定を読み込み、Swift版の保存先へ移行しました: \(url.path)"
+                : "Swift版設定を読み込みました: \(url.path)"
             if let path = loadedSettings.modelPath, !path.isEmpty {
                 let expanded = (path as NSString).expandingTildeInPath
                 self.modelPath = expanded
@@ -532,7 +925,7 @@ private final class DesktopModel: ObservableObject {
         } else {
             let savedPath = defaults.string(forKey: "mikomai.desktop.mac.modelPath") ?? ""
             self.modelPath = (savedPath as NSString).expandingTildeInPath
-            self.tauriSyncMessage = "Tauri 版設定ファイルが見つかりません。デフォルト値を使用しています: \(url.path)"
+            self.settingsStatusMessage = "Swift版設定ファイルがありません。デフォルト値を使用しています: \(url.path)"
             if !self.modelPath.isEmpty && FileManager.default.fileExists(atPath: self.modelPath) {
                 loadModel()
             }
@@ -541,7 +934,7 @@ private final class DesktopModel: ObservableObject {
         applyInferenceParams()
     }
 
-    func saveTauriConfig() {
+    func saveSettings() {
         var toSave = settings
         if !modelPath.isEmpty {
             var patch = DesktopSettingsPatch()
@@ -549,20 +942,20 @@ private final class DesktopModel: ObservableObject {
             toSave.merge(patch)
         }
         do {
-            try SettingsManager.saveToTauri(toSave)
-            self.isTauriConfigLoaded = true
-            self.tauriSyncMessage = "Tauri 版設定ファイルに保存しました: \(tauriConfigURL.path)"
+            try SettingsManager.save(toSave)
+            self.isSettingsLoaded = true
+            self.settingsStatusMessage = "Swift版設定を保存しました: \(settingsFileURL.path)"
             applyInferenceParams()
         } catch {
-            self.tauriSyncMessage = "設定の保存に失敗しました: \(error.localizedDescription)"
+            self.settingsStatusMessage = "設定の保存に失敗しました: \(error.localizedDescription)"
         }
     }
 
     func resetSettingsToDefault() {
-        self.settings = TauriSettings()
-        saveTauriConfig()
+        self.settings = AppSettings()
+        saveSettings()
         applyInferenceParams()
-        self.tauriSyncMessage = "設定をデフォルト値にリセットしました。"
+        self.settingsStatusMessage = "設定をデフォルト値にリセットしました。"
     }
 
     func applyInferenceParams() {
@@ -601,7 +994,7 @@ private final class DesktopModel: ObservableObject {
             let updated = HostSuggestionPolicy.updateRecentHosts(recentHostCandidates, current: settings.recentIps)
             if updated != settings.recentIps {
                 settings.recentIps = updated
-                saveTauriConfig()
+                saveSettings()
             }
         }
         if activeSessionID == nil || !sessions.contains(where: { $0.id == activeSessionID }) {
@@ -617,6 +1010,14 @@ private final class DesktopModel: ObservableObject {
 
         let attachedNames = pendingAttachments.map(\.name)
         let userText = prompt.isEmpty ? "添付ファイルを確認してください。" : prompt
+        let submissionText: String
+        if let taskID = pendingSavedAgentTaskIDs.removeValue(forKey: id) {
+            submissionText = "__MIKOMAI_RESUME_SAVED__\(taskID)"
+        } else if let taskID = pendingAgentTaskIDs.removeValue(forKey: id) {
+            submissionText = "__MIKOMAI_RESUME__\(taskID)\n\(userText)"
+        } else {
+            submissionText = userText
+        }
         let attachmentText = pendingAttachments.enumerated().map { offset, attachment in
             "[添付ファイル \(offset + 1): \(attachment.name)]\n\(attachment.text)"
         }.joined(separator: "\n\n")
@@ -632,6 +1033,8 @@ private final class DesktopModel: ObservableObject {
         let documents = (documentsDirectory as NSString).expandingTildeInPath
         let knowledge = (knowledgeDirectory as NSString).expandingTildeInPath
         let modelP = (modelPath as NSString).expandingTildeInPath
+        let agentConnections = connections
+        let agentCredentialPersistence = credentialPersistence
         pendingAttachments = []
         attachmentError = ""
         draft = ""
@@ -648,11 +1051,28 @@ private final class DesktopModel: ObservableObject {
             }
 
             let finalAnswer = Self.askRustStreaming(
-                userText,
+                submissionText,
                 history: history,
                 documents: documents,
                 knowledge: knowledge,
-                attachments: attachmentText
+                attachments: attachmentText,
+                connections: agentConnections,
+                credentialPersistence: agentCredentialPersistence,
+                onOperationPlan: { data in
+                    Task { @MainActor in
+                        guard let plan = try? JSONDecoder().decode(NativeOperationPlan.self, from: data) else { return }
+                        self.operationPlan = plan
+                        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                           var args = object["args"] as? [String: Any] {
+                            args.removeValue(forKey: "deviceSnapshot")
+                            self.operationProposal = plan.args.commands?.joined(separator: "\n") ?? String(decoding: (try? JSONSerialization.data(withJSONObject: args, options: [.prettyPrinted, .sortedKeys])) ?? Data(), as: UTF8.self)
+                        } else {
+                            self.operationProposal = plan.args.commands?.joined(separator: "\n") ?? "\(plan.toolId)\n\(plan.rationale)"
+                        }
+                        self.operationPhase = "エージェント提案を確認中"
+                        self.operationLogs = []
+                    }
+                }
             ) { chunk, _ in
                 Task { @MainActor in
                     guard let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
@@ -667,14 +1087,29 @@ private final class DesktopModel: ObservableObject {
                     self.isWorking = false
                     return
                 }
-                if finalAnswer.hasPrefix("エラー:") {
-                    if self.sessions[sIdx].messages[mIdx].text.isEmpty {
-                        self.sessions[sIdx].messages[mIdx].text = finalAnswer
-                    } else {
-                        self.sessions[sIdx].messages[mIdx].text += "\n\n[\(finalAnswer)]"
+                var displayAnswer = finalAnswer
+                var receivedChoice = false
+                if finalAnswer.hasPrefix("__MIKOMAI_CHOICE__"),
+                   let payload = finalAnswer.dropFirst("__MIKOMAI_CHOICE__".count).data(using: .utf8),
+                   let choice = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                   let taskID = choice["task_id"] as? String,
+                   let text = choice["text"] as? String {
+                    self.pendingAgentTaskIDs[id] = taskID
+                    displayAnswer = text
+                    receivedChoice = true
+                    if let options = choice["question"] as? [String: Any],
+                       let values = options["options"] as? [String], !values.isEmpty {
+                        displayAnswer += "\n\n" + values.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
                     }
-                } else if self.sessions[sIdx].messages[mIdx].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    self.sessions[sIdx].messages[mIdx].text = finalAnswer
+                }
+                if displayAnswer.hasPrefix("エラー:") {
+                    if self.sessions[sIdx].messages[mIdx].text.isEmpty {
+                        self.sessions[sIdx].messages[mIdx].text = displayAnswer
+                    } else {
+                        self.sessions[sIdx].messages[mIdx].text += "\n\n[\(displayAnswer)]"
+                    }
+                } else if receivedChoice || self.sessions[sIdx].messages[mIdx].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    self.sessions[sIdx].messages[mIdx].text = displayAnswer
                 }
                 self.sessions[sIdx].updatedAt = Date()
                 self.isWorking = false
@@ -861,15 +1296,18 @@ private final class DesktopModel: ObservableObject {
             environmentWrapper,
             Bundle.main.resourceURL?.appendingPathComponent("netmiko_wrapper"),
             executableResources,
-            cwd.appendingPathComponent("mikomai-desktop/src/binaries/netmiko_wrapper-aarch64-apple-darwin"),
-            cwd.appendingPathComponent("mikomai-desktop/src-tauri/binaries/netmiko_wrapper-aarch64-apple-darwin")
+            cwd.appendingPathComponent("mikomai-core/assets/bin/netmiko_wrapper-macos-arm64"),
         ].compactMap { $0 }
-        let script = cwd.appendingPathComponent("mikomai-desktop/src-tauri/python/netmiko_wrapper.py")
+        let scriptCandidates = [
+            Bundle.main.resourceURL?.appendingPathComponent("network/netmiko_wrapper.py"),
+            cwd.appendingPathComponent("mikomai-core/assets/network/netmiko_wrapper.py")
+        ].compactMap { $0 }
+        let script = scriptCandidates.first(where: { FileManager.default.fileExists(atPath: $0.path) })
         let process = Process()
         if let binary = binaries.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) }) {
             process.executableURL = binary
             process.arguments = ["--stdin"]
-        } else if FileManager.default.fileExists(atPath: script.path) {
+        } else if let script {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = ["python3", script.path, "--stdin"]
         } else {
@@ -920,6 +1358,237 @@ private final class DesktopModel: ObservableObject {
         }
     }
 
+    fileprivate nonisolated static func runPortableAgentTool(
+        tool: String,
+        target: PortableDeviceTarget,
+        arguments: [String: Any],
+        connections: [SavedConnection],
+        credentialPersistence: ConnectionCredentialPersistence
+    ) -> NetworkOperationOutput {
+        if tool == "get_state", target.hostname == "localhost", arguments["resource"] as? String == "arp" {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/sbin/arp")
+            process.arguments = ["-an"]
+            let out = Pipe(); let err = Pipe()
+            process.standardOutput = out; process.standardError = err
+            do {
+                try process.run(); process.waitUntilExit()
+                let stdout = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                return NetworkOperationOutput(success: process.terminationStatus == 0, stdout: stdout, stderr: stderr)
+            } catch { return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription) }
+        }
+        if tool == "validate_cisco_config" || tool == "convert_cisco_config" {
+            guard let script = portableAsset("network/config_helper.py"),
+                  let python = portablePython() else {
+                return NetworkOperationOutput(success: false, stdout: "", stderr: "Config helperまたはPython runtimeが見つかりません。")
+            }
+            let payload: [String: Any] = [
+                "action": tool == "validate_cisco_config" ? "validate" : "convert",
+                "config": arguments["config"] as? String ?? "",
+                "target_vendor": arguments["target_vendor"] as? String ?? arguments["targetVendor"] as? String ?? "juniper"
+            ]
+            return runJSONPython(script: script, python: python, payload: payload)
+        }
+        if tool == "self_network_nwdiag" {
+            guard let wrapper = portableAsset("network/nwdiag_wrapper.py"),
+                  let python = portablePython(),
+                  let schema = arguments["schema"] as? String ?? arguments["nwdiag"] as? String else {
+                return NetworkOperationOutput(success: false, stdout: "", stderr: "nwdiag wrapper、Python runtime、またはschemaがありません。")
+            }
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mikomai-nwdiag-\(UUID().uuidString)", isDirectory: true)
+            let input = directory.appendingPathComponent("network.diag")
+            let output = directory.appendingPathComponent("network.svg")
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try Data(schema.utf8).write(to: input)
+                defer { try? FileManager.default.removeItem(at: directory) }
+                let process = Process(); process.executableURL = python
+                process.arguments = [wrapper.path, "-T", "svg", "-o", output.path, input.path]
+                let stdout = Pipe(); let stderr = Pipe(); process.standardOutput = stdout; process.standardError = stderr
+                try process.run(); process.waitUntilExit()
+                let err = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                guard process.terminationStatus == 0, let svg = try? Data(contentsOf: output), !svg.isEmpty else {
+                    return NetworkOperationOutput(success: false, stdout: "", stderr: err.isEmpty ? "nwdiag SVG生成に失敗しました。" : err)
+                }
+                let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+                let artifactDirectory = appSupport.appendingPathComponent("MikomaiDesktopMac/artifacts", isDirectory: true)
+                try FileManager.default.createDirectory(at: artifactDirectory, withIntermediateDirectories: true)
+                let artifact = artifactDirectory.appendingPathComponent("network-\(UUID().uuidString).svg")
+                try svg.write(to: artifact)
+                let dataURL = "data:image/svg+xml;base64,\(svg.base64EncodedString())"
+                return NetworkOperationOutput(success: true, stdout: "__PORTABLE_ARTIFACT__![Network Diagram](\(dataURL))\n\nSVGを保存しました: \(artifact.path)", stderr: "")
+            } catch { return NetworkOperationOutput(success: false, stdout: "", stderr: "nwdiagを実行できませんでした: \(error.localizedDescription)") }
+        }
+        if ["self_network_ping", "self_network_traceroute", "self_network_test_connection", "self_network_test_net_connection", "self_network_route", "network_get_ip_info", "network_list_serial_ports"].contains(tool) {
+            switch tool {
+            case "self_network_ping", "self_network_traceroute":
+                guard let host = arguments["host"] as? String, !host.isEmpty, host.count <= 255,
+                      !host.hasPrefix("-"), host.range(of: "^[A-Za-z0-9._:%-]+$", options: .regularExpression) != nil else {
+                    return NetworkOperationOutput(success: false, stdout: "", stderr: "ホスト名またはIPアドレスが不正です。")
+                }
+                let process = Process()
+                if tool == "self_network_ping" {
+                    let command = PingCommand(
+                        host: host,
+                        size: arguments["size"] as? Int,
+                        count: arguments["count"] as? Int,
+                        df: (arguments["dont_fragment"] as? Bool) ?? (arguments["df"] as? Bool)
+                    )
+                    guard let commandArguments = command.processArguments else {
+                        return NetworkOperationOutput(success: false, stdout: "", stderr: "Pingのサイズまたは引数が範囲外です。")
+                    }
+                    process.executableURL = URL(fileURLWithPath: "/sbin/ping")
+                    process.arguments = commandArguments
+                } else {
+                    process.executableURL = URL(fileURLWithPath: "/usr/sbin/traceroute")
+                    process.arguments = ["-w", "2", "-m", "15", host]
+                }
+                let out = Pipe(); let err = Pipe()
+                process.standardOutput = out; process.standardError = err
+                do {
+                    try process.run(); process.waitUntilExit()
+                    let stdout = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                    let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                    return NetworkOperationOutput(success: process.terminationStatus == 0, stdout: stdout, stderr: stderr)
+                } catch { return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription) }
+            case "self_network_test_connection", "self_network_test_net_connection":
+                guard let host = arguments["host"] as? String, let rawPort = arguments["port"] as? Int,
+                      (1...65535).contains(rawPort) else {
+                    return NetworkOperationOutput(success: false, stdout: "", stderr: "接続先と有効なportが必要です。")
+                }
+                let result = testTCP(host: host, port: UInt16(rawPort), timeoutMs: 3000)
+                return NetworkOperationOutput(success: result.success, stdout: result.success ? result.message : "", stderr: result.success ? "" : result.message)
+            case "self_network_route":
+                return runAgentUtility("/sbin/route", ["-n", "get", "default"])
+            case "network_get_ip_info":
+                return runAgentUtility("/sbin/ifconfig", ["-a"])
+            default:
+                let ports = SerialPortDetector.listPorts().joined(separator: "\n")
+                return NetworkOperationOutput(success: true, stdout: ports.isEmpty ? "シリアルポートは見つかりませんでした。" : ports, stderr: "")
+            }
+        }
+        guard let connection = connections.first(where: {
+            $0.id.uuidString == target.id || $0.name == target.hostname || $0.host == target.ip
+        }) else {
+            return NetworkOperationOutput(success: false, stdout: "", stderr: "登録済み機器が見つかりません。")
+        }
+        guard (connection.connectionType ?? "SSH").lowercased() != "console" else {
+            return NetworkOperationOutput(success: false, stdout: "", stderr: "コンソール接続はこの読み取りエージェントでは未対応です。")
+        }
+        let resource = arguments["resource"] as? String ?? ""
+        let command: String
+        switch tool {
+        case "network_show":
+            guard let supplied = arguments["command"] as? String else {
+                return NetworkOperationOutput(success: false, stdout: "", stderr: "show コマンドがありません。")
+            }
+            command = supplied
+        case "fetch_config": command = connection.deviceType.lowercased().contains("yamaha") ? "show config" : "show running-config"
+        case "fetch_routing": command = "show ip route"
+        case "fetch_arp": command = "show arp"
+        case "get_state":
+            switch resource {
+            case "arp": command = "show arp"
+            case "routes": command = "show ip route"
+            case "interfaces": command = "show interfaces"
+            case "lldp": command = "show lldp neighbors"
+            case "mac_table": command = "show mac address-table"
+            case "bgp": command = "show ip bgp summary"
+            case "ospf": command = "show ip ospf neighbor"
+            case "cpu": command = CPUUsagePolicy.command(for: connection.deviceType)
+            default: return NetworkOperationOutput(success: false, stdout: "", stderr: "未対応の状態リソースです。")
+            }
+        default:
+            return NetworkOperationOutput(success: false, stdout: "", stderr: "この読み取りツールはSwift transportで許可されていません。")
+        }
+        let credentials = credentialPersistence.load(for: connection.id)
+        let type = connection.deviceType.lowercased()
+        let deviceType: String = {
+            if type.contains("juniper") { return "juniper_junos" }
+            if type.contains("nx-os") || type.contains("nxos") { return "cisco_nxos" }
+            if type.contains("arista") { return "arista_eos" }
+            if type.contains("yamaha") { return "yamaha" }
+            if type.contains("furukawa") || type.contains("fitel") { return "furukawa_fitelnet" }
+            if type.contains("cisco") { return "cisco_ios" }
+            return type.replacingOccurrences(of: " ", with: "_")
+        }()
+        let request = NetworkRunnerRequest(
+            action: "show",
+            host: connection.host,
+            username: connection.username,
+            password: credentials.password ?? "",
+            secret: credentials.enablePassword ?? "",
+            deviceType: deviceType,
+            port: connection.port,
+            commands: [command]
+        )
+        let result = runNetworkWrapper(request)
+        if tool == "get_state", resource == "cpu" {
+            guard result.success else { return result }
+            guard let usage = CPUUsagePolicy.parse(result.stdout) else {
+                return NetworkOperationOutput(success: false, stdout: "", stderr: "CPU使用率を機器出力から数値として取得できませんでした。")
+            }
+            return NetworkOperationOutput(success: true, stdout: "{\"usage\":\(usage)}", stderr: "")
+        }
+        return result
+    }
+
+    private nonisolated static func portableAsset(_ relativePath: String) -> URL? {
+        let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let roots = [
+            ProcessInfo.processInfo.environment["MIKOMAI_ASSETS_DIR"].map { URL(fileURLWithPath: $0) },
+            Bundle.main.resourceURL,
+            cwd.appendingPathComponent("mikomai-core/assets"),
+            cwd.appendingPathComponent("../mikomai-core/assets").standardizedFileURL
+        ].compactMap { $0 }
+        return roots.map { $0.appendingPathComponent(relativePath) }.first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    private nonisolated static func portablePython() -> URL? {
+        let candidates = [
+            ProcessInfo.processInfo.environment["MIKOMAI_PYTHON"].map { URL(fileURLWithPath: $0) },
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("venv/bin/python"),
+            URL(fileURLWithPath: "/usr/bin/python3")
+        ].compactMap { $0 }
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
+    }
+
+    private nonisolated static func runJSONPython(script: URL, python: URL, payload: [String: Any]) -> NetworkOperationOutput {
+        do {
+            let process = Process(); process.executableURL = python; process.arguments = [script.path]
+            let input = Pipe(); let output = Pipe(); let error = Pipe()
+            process.standardInput = input; process.standardOutput = output; process.standardError = error
+            try process.run()
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            input.fileHandleForWriting.write(data); input.fileHandleForWriting.closeFile()
+            let stdout = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            let stderr = String(decoding: error.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            process.waitUntilExit()
+            guard process.terminationStatus == 0,
+                  let decoded = try JSONSerialization.jsonObject(with: Data(stdout.utf8)) as? [String: Any] else {
+                return NetworkOperationOutput(success: false, stdout: stdout, stderr: stderr.isEmpty ? "Config helperの出力を解析できません。" : stderr)
+            }
+            let success = decoded["success"] as? Bool ?? false
+            let pretty = (try? JSONSerialization.data(withJSONObject: decoded, options: [.prettyPrinted, .sortedKeys])).map { String(decoding: $0, as: UTF8.self) } ?? stdout
+            return NetworkOperationOutput(success: success, stdout: success ? pretty : "", stderr: success ? "" : (decoded["error"] as? String ?? pretty))
+        } catch { return NetworkOperationOutput(success: false, stdout: "", stderr: "Config helperを実行できません: \(error.localizedDescription)") }
+    }
+
+    private nonisolated static func runAgentUtility(_ executable: String, _ arguments: [String]) -> NetworkOperationOutput {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        let out = Pipe(); let err = Pipe()
+        process.standardOutput = out; process.standardError = err
+        do {
+            try process.run(); process.waitUntilExit()
+            let stdout = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            return NetworkOperationOutput(success: process.terminationStatus == 0, stdout: stdout, stderr: stderr)
+        } catch { return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription) }
+    }
+
     // MARK: - Model Management
 
     func selectModel() {
@@ -931,7 +1600,7 @@ private final class DesktopModel: ObservableObject {
         if panel.runModal() == .OK, let url = panel.url {
             modelPath = url.path
             settings.modelPath = url.path
-            saveTauriConfig()
+            saveSettings()
         }
     }
 
@@ -966,8 +1635,8 @@ private final class DesktopModel: ObservableObject {
         NSWorkspace.shared.open(dir)
     }
 
-    func openTauriConfigDirectory() {
-        let dir = tauriConfigURL.deletingLastPathComponent()
+    func openSettingsDirectory() {
+        let dir = settingsFileURL.deletingLastPathComponent()
         NSWorkspace.shared.open(dir)
     }
 
@@ -1035,8 +1704,8 @@ private final class DesktopModel: ObservableObject {
         }
     }
 
-    func importTauriDevices(fromJSON data: Data) throws -> TauriConnectionImportResult {
-        let result = try TauriConnectionImporter.importJSON(data, existing: connections)
+    func importLegacyDevices(fromJSON data: Data) throws -> LegacyConnectionImportResult {
+        let result = try LegacyConnectionImporter.importJSON(data, existing: connections)
         connections.append(contentsOf: result.imported)
         return result
     }
@@ -1060,24 +1729,39 @@ private final class DesktopModel: ObservableObject {
         documents: String,
         knowledge: String,
         attachments: String,
+        connections: [SavedConnection],
+        credentialPersistence: ConnectionCredentialPersistence,
+        onOperationPlan: @escaping (Data) -> Void,
         onChunk: @escaping (String, Bool) -> Void
     ) -> String {
-        let box = StreamBox(onChunk: onChunk)
+        let box = ChatCallbackBox(stream: StreamBox(onChunk: onChunk), connections: connections, credentialPersistence: credentialPersistence, onOperationPlan: onOperationPlan)
         let context = Unmanaged.passUnretained(box).toOpaque()
+        let publicDevices = connections.map { connection in
+            ["id": connection.id.uuidString, "hostname": connection.name, "ip": connection.host, "deviceType": connection.deviceType]
+        }
+        let devicesJSON = (try? JSONSerialization.data(withJSONObject: publicDevices)).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
         let response = prompt.withCString { message in
-            history.withCString { historyText in
-                documents.withCString { documentsPath in
-                    knowledge.withCString { knowledgePath in
-                        attachments.withCString { attachmentText in
-                            mikomai_assistant_chat_streaming(
-                                message,
-                                historyText,
-                                documentsPath,
-                                knowledgePath,
-                                attachmentText,
-                                streamBridge,
-                                context
-                            )
+            devicesJSON.withCString { devices in
+                let routeResult = mikomai_dispatch_mode(message, devices)
+                let mode = routeResult.message.map { String(cString: $0) } ?? "worker"
+                mikomai_result_free(routeResult)
+                if mode == "agent" {
+                    return history.withCString { historyText in
+                        documents.withCString { documentsPath in
+                            knowledge.withCString { knowledgePath in
+                                attachments.withCString { attachmentText in
+                                    mikomai_agent_chat_streaming(message, historyText, documentsPath, knowledgePath, attachmentText, devices, streamBridge, agentToolBridge, agentPlanBridge, context)
+                                }
+                            }
+                        }
+                    }
+                }
+                return history.withCString { historyText in
+                    documents.withCString { documentsPath in
+                        knowledge.withCString { knowledgePath in
+                            attachments.withCString { attachmentText in
+                                mikomai_assistant_chat_streaming(message, historyText, documentsPath, knowledgePath, attachmentText, streamBridge, context)
+                            }
                         }
                     }
                 }
@@ -1110,11 +1794,37 @@ private final class DesktopModel: ObservableObject {
     }
 
     private nonisolated static func callRust(_ call: () -> MikomaiResult) -> String {
-        let response = call()
+        consumeRust(call())
+    }
+
+    private nonisolated static func consumeRust(_ response: MikomaiResult) -> String {
         defer { mikomai_result_free(response) }
         guard let message = response.message else { return "応答がありませんでした。" }
         let text = String(cString: message)
         return response.status == 0 ? text : "エラー: \(text)"
+    }
+
+    fileprivate nonisolated static func executeApprovedAgentOperation(planID: String, planHash: String, password: String?) -> NetworkOperationOutput {
+        let credentials: String
+        do { credentials = String(decoding: try JSONSerialization.data(withJSONObject: ["password": password ?? ""]), as: UTF8.self) }
+        catch { return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription) }
+        let response = planID.withCString { id in
+            planHash.withCString { hash in
+                credentials.withCString { secretJSON in
+                    mikomai_operation_execute_approved(id, hash, secretJSON)
+                }
+            }
+        }
+        defer { mikomai_result_free(response) }
+        guard response.status == 0, let message = response.message else {
+            return NetworkOperationOutput(success: false, stdout: "", stderr: response.message.map { String(cString: $0) } ?? "承認済み操作が失敗しました。")
+        }
+        let text = String(cString: message)
+        if let data = text.data(using: .utf8), let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let output = payload["output"] as? String ?? text
+            return NetworkOperationOutput(success: true, stdout: output, stderr: "")
+        }
+        return NetworkOperationOutput(success: true, stdout: text, stderr: "")
     }
 }
 
@@ -1420,6 +2130,7 @@ private struct DesktopWindow: View {
                         case .chat: chatWorkspace
                         case .connections: ConnectionsWorkspace(model: model)
                         case .tools: NetworkToolsWorkspace(model: model)
+                        case .monitoring: MonitoringWorkspace(model: model)
                         case .settings: SettingsWorkspace(model: model)
                         }
                     }
@@ -1442,6 +2153,19 @@ private struct DesktopWindow: View {
             ConnectionEditor(connection: connection) { saved, pwd, enPwd in
                 model.saveConnection(saved, password: pwd, enablePassword: enPwd)
             }
+        }
+        .onChange(of: model.operationPlan?.id) { _ in
+            guard let plan = model.operationPlan,
+                  let id = UUID(uuidString: plan.args.deviceSnapshot.id) else { return }
+            selectedConnectionID = id
+            model.workspace = .chat
+            rightPaneTab = "diff"
+            isRightPaneOpen = true
+        }
+        .onAppear { model.startWatchService() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in model.stopWatchService() }
+        .alert(item: $model.watchAlert) { alert in
+            Alert(title: Text("ネットワーク監視"), message: Text(alert.message), dismissButton: .default(Text("閉じる")))
         }
     }
 
@@ -1714,11 +2438,34 @@ private struct DesktopWindow: View {
             isOperationRunning = false
             return
         }
+        if plan.toolId != "network_config" {
+            model.operationPhase = "承認済み操作を実行中…"
+            model.operationLogs.append("[STATUS] 承認済み操作を実行中")
+            rightPaneTab = "logs"
+            let output = await Task.detached {
+                DesktopModel.executeApprovedAgentOperation(planID: plan.id, planHash: plan.planHash, password: credentials.password)
+            }.value
+            model.operationLogs.append(contentsOf: output.stdout.split(whereSeparator: \.isNewline).map(String.init))
+            if !output.stderr.isEmpty { model.operationLogs.append(contentsOf: output.stderr.split(whereSeparator: \.isNewline).map(String.init)) }
+            model.finishOperationPlan(succeeded: output.success)
+            model.operationPhase = output.success ? "承認済み操作が完了しました" : "承認済み操作が失敗しました"
+            if !output.success { operationAlert = "操作に失敗しました。ログを確認してください。" }
+            isOperationRunning = false
+            return
+        }
+        let planCommands = plan.args.commands ?? []
+        guard !planCommands.isEmpty else {
+            model.finishOperationPlan(succeeded: false)
+            operationAlert = "この操作はSwift側の承認済み実行経路がまだ接続されていません。"
+            model.operationPhase = "実行経路未接続"
+            isOperationRunning = false
+            return
+        }
         let target = plan.args.deviceSnapshot
         let approvedRequest = NetworkRunnerRequest(
             action: "dry_run", host: target.host, username: target.username,
             password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
-            deviceType: runnerDeviceType(target.deviceType), port: target.port, commands: plan.args.commands
+            deviceType: runnerDeviceType(target.deviceType), port: target.port, commands: planCommands
         )
         model.operationPhase = "2/4 dry-run 検証中…"
         model.operationLogs.append("[STATUS] 2/4 dry-run 検証中")
@@ -1726,7 +2473,7 @@ private struct DesktopWindow: View {
         let configRequest = NetworkRunnerRequest(
             action: "config", host: target.host, username: target.username,
             password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
-            deviceType: runnerDeviceType(target.deviceType), port: target.port, commands: plan.args.commands
+            deviceType: runnerDeviceType(target.deviceType), port: target.port, commands: planCommands
         )
         let workflow = await OperationWorkflow.execute(
             dryRun: {
@@ -2155,7 +2902,7 @@ private struct ConnectionsWorkspace: View {
             HStack {
                 Text("機器情報一覧").font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Button("Tauri から取り込む") { importTauriRegistry() }
+                Button("旧形式 JSON から取り込む") { importLegacyRegistry() }
                     .buttonStyle(.bordered).controlSize(.small)
                 Button { model.editingConnection = SavedConnection(name: "", host: "") } label: { Label("機器を追加", systemImage: "plus") }
                     .buttonStyle(.borderedProminent).controlSize(.small)
@@ -2171,7 +2918,7 @@ private struct ConnectionsWorkspace: View {
                 Table(model.connections) {
                     TableColumn("名前", value: \.name)
                     TableColumn("登録元") { connection in
-                        Text(connection.sourceID == nil ? "Mac 内" : "Tauri")
+                        Text(connection.sourceID == nil ? "Mac 内" : "Imported")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                     }.width(62)
                     TableColumn("ホスト", value: \.host)
@@ -2241,7 +2988,7 @@ private struct ConnectionsWorkspace: View {
             }
             Spacer(minLength: 0)
             HStack {
-                Text("資格情報は macOS Keychain に暗号化保存されます。CSV 形式での入出力や Tauri 版のメタデータ取り込みに対応しています。")
+                Text("資格情報は macOS Keychain に暗号化保存されます。CSV 形式での入出力や 旧形式の機器メタデータ取り込みに対応しています。")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer()
                 Button("CSV を読み込む") { importCSV() }
@@ -2251,7 +2998,7 @@ private struct ConnectionsWorkspace: View {
         .alert("機器情報", isPresented: $showsCSVAlert) { Button("OK", role: .cancel) {} } message: { Text(csvAlert) }
     }
 
-    private func importTauriRegistry() {
+    private func importLegacyRegistry() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.canChooseFiles = true
@@ -2271,11 +3018,11 @@ private struct ConnectionsWorkspace: View {
             presentCSVMessage(json)
             return
         }
-        let result: TauriConnectionImportResult
+        let result: LegacyConnectionImportResult
         do {
-            result = try model.importTauriDevices(fromJSON: Data(json.utf8))
+            result = try model.importLegacyDevices(fromJSON: Data(json.utf8))
         } catch {
-            presentCSVMessage("Tauri の機器情報 JSON を読み取れませんでした。元ファイルは変更していません。")
+            presentCSVMessage("旧形式の機器情報 JSON を読み取れませんでした。元ファイルは変更していません。")
             return
         }
         var note = "\(result.imported.count) 件を追加し、\(result.skipped) 件をスキップしました。元ファイルは変更していません。"
@@ -2287,7 +3034,7 @@ private struct ConnectionsWorkspace: View {
         let panel = NSSavePanel(); panel.nameFieldStringValue = "connections.csv"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         if let invalid = model.connections.first(where: { $0.validationError != nil }) {
-            presentCSVMessage("\(invalid.name) のホスト名が Tauri CSV 形式の制約に合いません。機器情報を編集してください。")
+            presentCSVMessage("\(invalid.name) のホスト名が 旧 CSV 形式の制約に合いません。機器情報を編集してください。")
             return
         }
         do {
@@ -2797,7 +3544,7 @@ private struct WorkspaceTabButton: View {
     }
 }
 
-// MARK: - Full Settings Workspace (Complete Port of Tauri AppSettings)
+// MARK: - Full Settings Workspace
 
 private struct RightAlignedSwitchStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
@@ -2815,6 +3562,146 @@ private struct RightAlignedSwitchStyle: ToggleStyle {
     }
 }
 
+private struct MonitoringWorkspace: View {
+    @ObservedObject var model: DesktopModel
+    @State private var selectedTab = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("監視と実行履歴").font(.system(size: 22, weight: .semibold))
+                Spacer()
+                Text(model.watchStatus).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                Button("更新") { model.refreshWatches(); model.refreshAgentTasks() }
+            }
+            Picker("表示", selection: $selectedTab) {
+                Text("CPU監視").tag(0)
+                Text("Agent履歴").tag(1)
+                Text("操作監査").tag(2)
+            }.pickerStyle(.segmented).frame(maxWidth: 280)
+            if selectedTab == 0 { watchContent }
+            else if selectedTab == 1 { taskContent }
+            else { operationAuditContent }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear { model.refreshWatches(); model.refreshAgentTasks(); model.refreshOperationAudit() }
+    }
+
+    private var watchContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            GroupBox("新しいCPU監視") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        TextField("監視名", text: $model.watchName)
+                        Picker("機器", selection: $model.watchDevice) {
+                            Text("機器を選択").tag("")
+                            ForEach(model.connections) { connection in Text(connection.name).tag(connection.name) }
+                        }.frame(width: 220)
+                    }
+                    HStack {
+                        TextField("間隔（秒）", text: $model.watchInterval).frame(width: 130)
+                        TextField("CPUしきい値（%）", text: $model.watchThreshold).frame(width: 180)
+                        TextField("通知メッセージ", text: $model.watchMessage)
+                        if model.watchEditingID != nil { Button("取消") { model.watchEditingID = nil } }
+                        Button(model.watchEditingID == nil ? "監視を作成" : "監視を更新") { model.createCPUWatch() }.buttonStyle(.borderedProminent)
+                    }
+                    Text("読み取り専用のCPU状態を定期確認し、しきい値を超えたときに通知します。操作や設定変更は実行しません。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }.padding(.vertical, 4)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(model.watches.enumerated()), id: \.offset) { _, watch in
+                        watchCard(watch)
+                    }
+                    if model.watches.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "waveform.path.ecg").font(.title2).foregroundStyle(.secondary)
+                            Text("監視設定はありません").font(.headline)
+                            Text("機器とCPUしきい値を指定して監視を作成できます。").font(.caption).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity).padding(28)
+                    }
+                }
+            }
+        }
+    }
+
+    private func watchCard(_ watch: NativeWatch) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(watch.name).font(.headline)
+                        Text("\(watch.status == "enabled" ? "有効" : "停止中") · \(watch.ir.schedule.every) · \(watchDeviceName(watch))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("今すぐ実行") { model.runWatch(watch) }
+                    Button("編集") { model.editWatch(watch) }
+                    Button(watch.status == "enabled" ? "停止" : "再開") { model.setWatch(watch, enabled: watch.status != "enabled") }
+                    Button(role: .destructive) { model.deleteWatch(watch) } label: { Image(systemName: "trash") }
+                }
+                if let error = watch.lastError { Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange) }
+                if let latest = watch.history?.last {
+                    Text("直近: \(latest.completedAt) · \(latest.error ?? (latest.notifications.isEmpty ? "通知なし" : latest.notifications.map(\.message).joined(separator: "、")))")
+                        .font(.caption).foregroundStyle(latest.error == nil ? Color.secondary : Color.orange)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func watchDeviceName(_ watch: NativeWatch) -> String {
+        for step in watch.ir.steps {
+            if case .call(let call) = step { return call.args.device }
+        }
+        return ""
+    }
+
+    private var taskContent: some View {
+        HStack(alignment: .top, spacing: 14) {
+            List(selection: $model.selectedAgentTaskID) {
+                ForEach(model.agentTasks) { task in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(task.goal).lineLimit(2)
+                        Text("\(task.status) · \(task.eventCount)件 · \(task.lastEventAt)").font(.caption).foregroundStyle(.secondary)
+                    }.tag(task.id)
+                }
+            }.frame(minWidth: 250)
+            .onChange(of: model.selectedAgentTaskID) { _ in
+                guard let id = model.selectedAgentTaskID, let task = model.agentTasks.first(where: { $0.id == id }) else { return }
+                model.loadAgentTaskHistory(task)
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("選択したタスクの記録").font(.headline)
+                    Spacer()
+                    if let selected = model.agentTasks.first(where: { $0.id == model.selectedAgentTaskID }) {
+                        Button("調査を再開") { model.resumeAgentTask(selected) }
+                    }
+                }
+                ScrollView { Text(model.selectedTaskHistory).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                    .padding(8).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var operationAuditContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("承認済み操作の監査記録").font(.headline)
+                Spacer()
+                Button("更新") { model.refreshOperationAudit() }
+            }
+            ScrollView {
+                Text(model.operationAuditText.isEmpty ? "記録はありません" : model.operationAuditText)
+                    .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            }.background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 private struct SettingsWorkspace: View {
     @ObservedObject var model: DesktopModel
     @State private var selectedCategory = 0
@@ -2825,7 +3712,7 @@ private struct SettingsWorkspace: View {
         ("LLM モデル", "cpu", .purple),
         ("Vision (画像)", "photo.fill", .pink),
         ("ナレッジ RAG", "books.vertical.fill", .orange),
-        ("Tauri 同期", "arrow.triangle.2.circlepath", .green)
+        ("設定", "arrow.triangle.2.circlepath", .green)
     ]
 
     var body: some View {
@@ -2874,7 +3761,7 @@ private struct SettingsWorkspace: View {
                         case 1: llmModelSection
                         case 2: visionSection
                         case 3: knowledgeSection
-                        case 4: tauriSyncSection
+                        case 4: nativeSettingsSection
                         default: EmptyView()
                         }
                     }
@@ -2913,7 +3800,7 @@ private struct SettingsWorkspace: View {
                 }
                 Slider(value: Binding(
                     get: { Double(model.settings.historyLimit) },
-                    set: { model.settings.historyLimit = Int($0); model.saveTauriConfig() }
+                    set: { model.settings.historyLimit = Int($0); model.saveSettings() }
                 ), in: 0...20, step: 1)
                 Text("モデルに送信する直近の会話履歴の最大往復数です (0〜20)。").font(.system(size: 11)).foregroundStyle(.secondary)
             }
@@ -2929,7 +3816,7 @@ private struct SettingsWorkspace: View {
                 }
                 Slider(value: Binding(
                     get: { model.settings.temperature },
-                    set: { model.settings.temperature = $0; model.saveTauriConfig() }
+                    set: { model.settings.temperature = $0; model.saveSettings() }
                 ), in: 0.0...2.0, step: 0.1)
                 Text("生成される回答のランダム性を調整します。ネットワーク設定には 0.0〜0.2 の決定的な値が推奨されます。").font(.system(size: 11)).foregroundStyle(.secondary)
             }
@@ -2945,7 +3832,7 @@ private struct SettingsWorkspace: View {
                 }
                 Slider(value: Binding(
                     get: { model.settings.repetitionPenalty },
-                    set: { model.settings.repetitionPenalty = $0; model.saveTauriConfig() }
+                    set: { model.settings.repetitionPenalty = $0; model.saveSettings() }
                 ), in: 1.0...2.0, step: 0.05)
                 Text("同じ単語や句の重複を抑えるペナルティ係数です (1.0〜2.0、デフォルト: 1.10)。").font(.system(size: 11)).foregroundStyle(.secondary)
             }
@@ -2961,7 +3848,7 @@ private struct SettingsWorkspace: View {
                 }
                 Slider(value: Binding(
                     get: { Double(model.settings.mcpTimeout ?? 30) },
-                    set: { model.settings.mcpTimeout = Int($0); model.saveTauriConfig() }
+                    set: { model.settings.mcpTimeout = Int($0); model.saveSettings() }
                 ), in: 5...120, step: 5)
                 Text("ネットワークツールやコマンド実行の待機タイムアウト時間です。").font(.system(size: 11)).foregroundStyle(.secondary)
             }
@@ -2977,7 +3864,7 @@ private struct SettingsWorkspace: View {
                 }
                 Slider(value: Binding(
                     get: { Double(model.settings.cacheExpiryMinutes ?? 10) },
-                    set: { model.settings.cacheExpiryMinutes = Int($0); model.saveTauriConfig() }
+                    set: { model.settings.cacheExpiryMinutes = Int($0); model.saveSettings() }
                 ), in: 0...60, step: 1)
                 Text("ネットワークトポロジ事実キャッシュの保持時間です (0 = キャッシュ無効)。").font(.system(size: 11)).foregroundStyle(.secondary)
             }
@@ -2993,7 +3880,7 @@ private struct SettingsWorkspace: View {
                 Spacer()
                 Picker("", selection: Binding(
                     get: { model.settings.ipVersion ?? "auto" },
-                    set: { model.settings.ipVersion = $0; model.saveTauriConfig() }
+                    set: { model.settings.ipVersion = $0; model.saveSettings() }
                 )) {
                     Text("自動判定 (Auto)").tag("auto")
                     Text("IPv4").tag("ipv4")
@@ -3007,7 +3894,7 @@ private struct SettingsWorkspace: View {
             // Auto Dry-Run
             Toggle(isOn: Binding(
                 get: { model.settings.autoDryRun },
-                set: { model.settings.autoDryRun = $0; model.saveTauriConfig() }
+                set: { model.settings.autoDryRun = $0; model.saveSettings() }
             )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("自動 Dry-Run 検証").font(.system(size: 13, weight: .medium))
@@ -3023,7 +3910,7 @@ private struct SettingsWorkspace: View {
                 HStack(spacing: 12) {
                     Picker("ポート", selection: Binding(
                         get: { model.settings.consolePort ?? "" },
-                        set: { model.settings.consolePort = $0.isEmpty ? nil : $0; model.saveTauriConfig() }
+                        set: { model.settings.consolePort = $0.isEmpty ? nil : $0; model.saveSettings() }
                     )) {
                         Text("未設定 (None)").tag("")
                         ForEach(availablePorts, id: \.self) { port in
@@ -3034,7 +3921,7 @@ private struct SettingsWorkspace: View {
 
                     Picker("ボーレート", selection: Binding(
                         get: { model.settings.consoleBaudRate ?? 9600 },
-                        set: { model.settings.consoleBaudRate = $0; model.saveTauriConfig() }
+                        set: { model.settings.consoleBaudRate = $0; model.saveSettings() }
                     )) {
                         Text("9600 bps").tag(9600)
                         Text("19200 bps").tag(19200)
@@ -3101,7 +3988,7 @@ private struct SettingsWorkspace: View {
                             let url = HuggingFaceHub.modelURL(repo: model.repoPath, filename: model.modelFilename)
                             model.modelPath = url.path
                             model.loadModel()
-                            model.saveTauriConfig()
+                            model.saveSettings()
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
@@ -3142,7 +4029,7 @@ private struct SettingsWorkspace: View {
                         Text("コンテキスト長 (n_ctx)").font(.system(size: 11))
                         TextField("8192", value: Binding(
                             get: { model.settings.nCtx },
-                            set: { model.settings.nCtx = $0; model.saveTauriConfig() }
+                            set: { model.settings.nCtx = $0; model.saveSettings() }
                         ), formatter: NumberFormatter())
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
@@ -3152,7 +4039,7 @@ private struct SettingsWorkspace: View {
                         Text("最大生成トークン (max_gen)").font(.system(size: 11))
                         TextField("2048", value: Binding(
                             get: { model.settings.maxGen },
-                            set: { model.settings.maxGen = $0; model.saveTauriConfig() }
+                            set: { model.settings.maxGen = $0; model.saveSettings() }
                         ), formatter: NumberFormatter())
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
@@ -3162,7 +4049,7 @@ private struct SettingsWorkspace: View {
                         Text("保持トークン数 (prompt_keep)").font(.system(size: 11))
                         TextField("500", value: Binding(
                             get: { model.settings.promptKeepTokens },
-                            set: { model.settings.promptKeepTokens = $0; model.saveTauriConfig() }
+                            set: { model.settings.promptKeepTokens = $0; model.saveSettings() }
                         ), formatter: NumberFormatter())
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
@@ -3180,32 +4067,32 @@ private struct SettingsWorkspace: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("ナレッジワーカー", isOn: Binding(
                         get: { model.settings.preloadKnowledge },
-                        set: { model.settings.preloadKnowledge = $0; model.saveTauriConfig() }
+                        set: { model.settings.preloadKnowledge = $0; model.saveSettings() }
                     ))
                     Divider()
                     Toggle("アナリストワーカー", isOn: Binding(
                         get: { model.settings.preloadAnalysis },
-                        set: { model.settings.preloadAnalysis = $0; model.saveTauriConfig() }
+                        set: { model.settings.preloadAnalysis = $0; model.saveSettings() }
                     ))
                     Divider()
                     Toggle("RAG ワーカー", isOn: Binding(
                         get: { model.settings.preloadRag },
-                        set: { model.settings.preloadRag = $0; model.saveTauriConfig() }
+                        set: { model.settings.preloadRag = $0; model.saveSettings() }
                     ))
                     Divider()
                     Toggle("ビルダーワーカー", isOn: Binding(
                         get: { model.settings.preloadBuilder },
-                        set: { model.settings.preloadBuilder = $0; model.saveTauriConfig() }
+                        set: { model.settings.preloadBuilder = $0; model.saveSettings() }
                     ))
                     Divider()
                     Toggle("プロッターワーカー", isOn: Binding(
                         get: { model.settings.preloadPlotter },
-                        set: { model.settings.preloadPlotter = $0; model.saveTauriConfig() }
+                        set: { model.settings.preloadPlotter = $0; model.saveSettings() }
                     ))
                     Divider()
                     Toggle("要約ワーカー", isOn: Binding(
                         get: { model.settings.preloadSummarization },
-                        set: { model.settings.preloadSummarization = $0; model.saveTauriConfig() }
+                        set: { model.settings.preloadSummarization = $0; model.saveSettings() }
                     ))
                 }
                 .toggleStyle(RightAlignedSwitchStyle())
@@ -3229,7 +4116,7 @@ private struct SettingsWorkspace: View {
 
             Toggle(isOn: Binding(
                 get: { model.settings.visionEnabled },
-                set: { model.settings.visionEnabled = $0; model.saveTauriConfig() }
+                set: { model.settings.visionEnabled = $0; model.saveSettings() }
             )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Vision 機能を有効化").font(.system(size: 13, weight: .medium))
@@ -3245,7 +4132,7 @@ private struct SettingsWorkspace: View {
                 HStack(spacing: 8) {
                     TextField("mmproj ファイルパス", text: Binding(
                         get: { model.settings.mmprojPath ?? "" },
-                        set: { model.settings.mmprojPath = $0.isEmpty ? nil : $0; model.saveTauriConfig() }
+                        set: { model.settings.mmprojPath = $0.isEmpty ? nil : $0; model.saveSettings() }
                     ))
                     .textFieldStyle(.roundedBorder)
 
@@ -3257,7 +4144,7 @@ private struct SettingsWorkspace: View {
                         panel.allowsMultipleSelection = false
                         if panel.runModal() == .OK, let url = panel.url {
                             model.settings.mmprojPath = url.path
-                            model.saveTauriConfig()
+                            model.saveSettings()
                         }
                     }
                 }
@@ -3295,22 +4182,22 @@ private struct SettingsWorkspace: View {
         }
     }
 
-    // MARK: Category 4: Tauri Config Synchronization
+    // MARK: Category 4: Native Settings
 
-    private var tauriSyncSection: some View {
+    private var nativeSettingsSection: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Tauri 版設定との自動同期").font(.system(size: 15, weight: .semibold))
+            Text("Swift版設定").font(.system(size: 15, weight: .semibold))
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Circle().fill(model.isTauriConfigLoaded ? Color.green : Color.orange).frame(width: 10, height: 10)
-                    Text(model.isTauriConfigLoaded ? "Tauri 版設定と同期中" : "デフォルト設定を使用中 (Tauri設定未検出)")
+                    Circle().fill(model.isSettingsLoaded ? Color.green : Color.orange).frame(width: 10, height: 10)
+                    Text(model.isSettingsLoaded ? "設定を読み込み済み" : "デフォルト設定を使用中")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(model.isTauriConfigLoaded ? Color.green : Color.orange)
+                        .foregroundStyle(model.isSettingsLoaded ? Color.green : Color.orange)
                     Spacer()
                 }
 
-                Text(model.tauriSyncMessage)
+                Text(model.settingsStatusMessage)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
@@ -3319,18 +4206,18 @@ private struct SettingsWorkspace: View {
                     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
 
                 HStack(spacing: 10) {
-                    Button("Tauri 設定を再読込") {
-                        model.loadTauriConfig()
+                    Button("設定を再読込") {
+                        model.loadSettings()
                     }
                     .buttonStyle(.bordered)
 
-                    Button("Tauri 設定へ保存") {
-                        model.saveTauriConfig()
+                    Button("設定を保存") {
+                        model.saveSettings()
                     }
                     .buttonStyle(.borderedProminent)
 
                     Button("設定フォルダを Finder で開く") {
-                        model.openTauriConfigDirectory()
+                        model.openSettingsDirectory()
                     }
                     .buttonStyle(.bordered)
 
@@ -3348,7 +4235,7 @@ private struct SettingsWorkspace: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("同期される項目一覧").font(.system(size: 13, weight: .medium))
-                Text("以下の全項目が Tauri 版 (`settings.json`) と本ネイティブアプリ間で相互に共有されます:")
+                Text("設定は Swift版のApplication Support配下へ保存され、起動時に読み込まれます。")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 4) {

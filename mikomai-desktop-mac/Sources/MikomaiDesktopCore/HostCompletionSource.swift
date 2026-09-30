@@ -25,10 +25,10 @@ public enum HostCompletionSource {
         return hosts
     }
 
-    public static func merge(tauri: [HostSuggestion], native: [HostSuggestion]) -> [HostSuggestion] {
+    public static func merge(registry: [HostSuggestion], native: [HostSuggestion]) -> [HostSuggestion] {
         var seen = Set<String>()
-        // Local edits take precedence, while Tauri's registered hosts remain
+        // Local edits take precedence, while imported registry hosts remain
         // available even when the native inventory has not been imported.
-        return (native + tauri).filter { seen.insert($0.hostname).inserted }
+        return (native + registry).filter { seen.insert($0.hostname).inserted }
     }
 }

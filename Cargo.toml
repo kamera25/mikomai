@@ -5,5 +5,4 @@ members = [
   "crates/mikomai-adapters",
   "crates/mikomai-cli",
   "crates/mikomai-ffi",
-  "mikomai-desktop/src-tauri",
 ]

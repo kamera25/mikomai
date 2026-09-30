@@ -9,9 +9,15 @@ SDK_OVERRIDE="${MIKOMAI_MACOS_SDK:-}"
 SDK_FALLBACK="/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk"
 if [ -n "$SDK_OVERRIDE" ]; then
     SDK="$SDK_OVERRIDE"
+elif [ -d "$SDK_FALLBACK" ]; then
+    # Prefer the toolchain version used by the validated Swift build when it is installed.
+    SDK="$SDK_FALLBACK"
 else
     SDK="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
-    if [ ! -d "$SDK" ]; then SDK="$SDK_FALLBACK"; fi
+    if [ ! -d "$SDK" ]; then
+        echo "macOS SDK not found: $SDK" >&2
+        exit 1
+    fi
 fi
 SCRATCH="${MIKOMAI_SWIFT_SCRATCH_PATH:-/private/tmp/mikomai-swift-app-build}"
 CLANG_CACHE="${MIKOMAI_CLANG_MODULE_CACHE:-/private/tmp/mikomai-clang-cache}"
@@ -51,7 +57,13 @@ cp -R "$PRODUCTS/MikomaiDesktopMac_MikomaiDesktopMac.bundle" "$CONTENTS/Resource
 cp "$PRODUCTS/MikomaiDesktopMac" "$CONTENTS/MacOS/MikomaiDesktopMac"
 cp "$ROOT/target/debug/deps/libmikomai_ffi.dylib" "$CONTENTS/Frameworks/libmikomai_ffi.dylib"
 cp -R "$ROOT/nw-docs" "$CONTENTS/Resources/nw-docs"
-cp "$ROOT/mikomai-desktop/src-tauri/binaries/netmiko_wrapper-aarch64-apple-darwin" "$CONTENTS/Resources/netmiko_wrapper"
+cp "$ROOT/mikomai-core/assets/bin/netmiko_wrapper-macos-arm64" "$CONTENTS/Resources/netmiko_wrapper"
+mkdir -p "$CONTENTS/Resources/network"
+cp "$ROOT/mikomai-core/assets/network/netmiko_wrapper.py" "$CONTENTS/Resources/network/netmiko_wrapper.py"
+cp "$ROOT/mikomai-core/assets/network/netmiko_patches.py" "$CONTENTS/Resources/network/netmiko_patches.py"
+cp "$ROOT/mikomai-core/assets/network/config_helper.py" "$CONTENTS/Resources/network/config_helper.py"
+cp "$ROOT/mikomai-core/assets/network/nwdiag_wrapper.py" "$CONTENTS/Resources/network/nwdiag_wrapper.py"
+cp -R "$ROOT/mikomai-core/assets/templates" "$CONTENTS/Resources/templates"
 chmod 755 "$CONTENTS/Resources/netmiko_wrapper"
 touch "$CONTENTS/Resources/.mikomai-development-bundle"
 install_name_tool -id @rpath/libmikomai_ffi.dylib "$CONTENTS/Frameworks/libmikomai_ffi.dylib"

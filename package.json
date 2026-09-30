@@ -1,18 +1,7 @@
 {
   "name": "mikomai-workspace",
   "private": true,
-  "workspaces": ["mikomai-desktop"],
   "scripts": {
-    "dev": "npm run dev --workspace=mikomai-desktop",
-    "build": "npm run build --workspace=mikomai-desktop",
-    "check": "npm run check --workspace=mikomai-desktop",
-    "preview": "npm run preview --workspace=mikomai-desktop",
-    "tauri": "npm run tauri --workspace=mikomai-desktop",
-    "test": "npm run test --workspace=mikomai-desktop",
-    "test:coverage": "npm run test:coverage --workspace=mikomai-desktop",
-    "test:e2e": "npm run test:e2e --workspace=mikomai-desktop",
-    "lint": "npm run lint --workspace=mikomai-desktop",
-    "format": "npm run format --workspace=mikomai-desktop",
     "cli": "cargo run -p mikomai-cli --"
   }
 }

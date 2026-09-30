@@ -137,7 +137,11 @@ impl<'a, P: PlannerPort, E: ToolExecutorPort, R: ReporterPort> ChatService<'a, P
                 PlanDecision::AwaitApproval { plan, message } => {
                     machine.transition(HarnessState::AskingHuman)?;
                     task.status = TaskStatus::AwaitingApproval;
-                    let _ = plan;
+                    self.reporter.report(ReportEvent::ApprovalRequired {
+                        task_id: task.task.id,
+                        plan,
+                        message: message.clone(),
+                    });
                     return Ok(format!("### ✅ 承認待ち\n{message}"));
                 }
                 PlanDecision::Fail { message } => {
@@ -151,6 +155,9 @@ impl<'a, P: PlannerPort, E: ToolExecutorPort, R: ReporterPort> ChatService<'a, P
                         .executor
                         .execute(task.task.id, &tool, target.as_deref(), &args)
                         .await?;
+                    if !result.success {
+                        return Err(format!("read-only tool `{tool}` failed: {}", result.output));
+                    }
                     let evidence = Evidence::from_tool(result.output.clone(), target, Some(tool));
                     task.evidence.push(evidence.clone());
                     self.reporter.report(ReportEvent::Evidence {
@@ -340,6 +347,23 @@ mod tests {
             })
         }
     }
+    struct FailedExecutor;
+    impl ToolExecutorPort for FailedExecutor {
+        fn execute<'a>(
+            &'a self,
+            _task_id: Uuid,
+            _tool: &'a str,
+            _target: Option<&'a str>,
+            _args: &'a serde_json::Value,
+        ) -> PortFuture<'a, ToolResult> {
+            Box::pin(async {
+                Ok(ToolResult {
+                    success: false,
+                    output: "SSH authentication failed".into(),
+                })
+            })
+        }
+    }
     #[derive(Default)]
     struct Events(Mutex<Vec<ReportEvent>>);
     impl ReporterPort for Events {
@@ -369,6 +393,23 @@ mod tests {
         assert_eq!(answer, "診断完了");
         assert_eq!(*executor.0.lock().unwrap(), 1);
         assert_eq!(reporter.0.lock().unwrap().len(), 4);
+    }
+
+    #[test]
+    fn failed_tool_result_cannot_become_success_evidence_or_final_answer() {
+        let planner = ScriptedPlanner(Mutex::new(0));
+        let reporter = Events::default();
+        let task = TaskSnapshot::new("sw1を診断");
+        let result = futures_lite::future::block_on(
+            ChatService::new(&planner, &FailedExecutor, &reporter).answer(task),
+        );
+        assert!(result.unwrap_err().contains("SSH authentication failed"));
+        assert!(!reporter
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| matches!(event, ReportEvent::Evidence { .. })));
     }
 
     #[test]

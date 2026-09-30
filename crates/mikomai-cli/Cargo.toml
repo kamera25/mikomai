@@ -6,5 +6,6 @@ edition = "2021"
 [dependencies]
 mikomai-core = { path = "../../mikomai-core" }
 mikomai-adapters = { path = "../mikomai-adapters" }
+mikomai-ffi = { path = "../mikomai-ffi" }
 futures-lite = "2"
 serde_json = "1"
