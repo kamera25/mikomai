@@ -22,6 +22,11 @@ MikomaiResult mikomai_assistant_chat_with_attachments(const char *message, const
 MikomaiResult mikomai_assistant_chat_streaming(const char *message, const char *history, const char *documents_dir, const char *knowledge_dir, const char *attachments, MikomaiStreamCallback callback, void *context);
 MikomaiResult mikomai_test_tcp_connection(const char *host, uint16_t port, uint32_t timeout_ms);
 MikomaiResult mikomai_set_inference_params(float temperature, float repetition_penalty, uint32_t n_ctx, uint32_t max_new_tokens);
+MikomaiResult mikomai_operation_plan_create(const char *target, const char *target_snapshot_json, const char *commands_json, const char *rationale);
+MikomaiResult mikomai_operation_plan_approve(const char *id, const char *plan_hash);
+MikomaiResult mikomai_operation_plan_get(const char *id);
+MikomaiResult mikomai_operation_plan_begin(const char *id, const char *plan_hash);
+MikomaiResult mikomai_operation_plan_finish(const char *id, int32_t succeeded);
 void mikomai_result_free(MikomaiResult result);
 
 #endif

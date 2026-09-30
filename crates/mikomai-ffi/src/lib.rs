@@ -4,10 +4,12 @@ use mikomai_adapters::knowledge::{KnowledgePlanner, KnowledgeStore};
 use mikomai_core::application::ChatService;
 use mikomai_core::attachment_policy::validate_native_text_payload;
 use mikomai_core::TaskManager;
+use mikomai_core::domain::{ChangePlanner, OperationGate, OperationPlan};
 use std::ffi::{c_char, CStr, CString};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::HashMap;
 
 #[cfg(test)]
 mod approval_boundary;
@@ -28,6 +30,158 @@ struct LoadedModel {
 
 static MODEL: OnceLock<Mutex<Option<LoadedModel>>> = OnceLock::new();
 static CANCEL_INFERENCE: AtomicBool = AtomicBool::new(false);
+static OPERATION_PLANS: OnceLock<Mutex<HashMap<String, OperationPlan>>> = OnceLock::new();
+
+fn operation_plans() -> &'static Mutex<HashMap<String, OperationPlan>> {
+    OPERATION_PLANS.get_or_init(|| {
+        let restored = operation_plan_path()
+            .ok()
+            .and_then(|path| std::fs::read(path).ok())
+            .and_then(|bytes| serde_json::from_slice::<Vec<OperationPlan>>(&bytes).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|plan| (plan.id.to_string(), plan))
+            .collect();
+        Mutex::new(restored)
+    })
+}
+
+fn operation_plan_path() -> Result<PathBuf, String> {
+    if let Some(path) = std::env::var_os("MIKOMAI_OPERATION_PLANS_PATH") {
+        return Ok(PathBuf::from(path));
+    }
+    let home = std::env::var_os("HOME").ok_or_else(|| "home directory is unavailable".to_string())?;
+    Ok(PathBuf::from(home)
+        .join("Library/Application Support/MikomaiDesktopMac/operation-plans.json"))
+}
+
+fn persist_operation_plans(plans: &HashMap<String, OperationPlan>) -> Result<(), String> {
+    let path = operation_plan_path()?;
+    let directory = path.parent().ok_or_else(|| "operation plan storage path is invalid".to_string())?;
+    std::fs::create_dir_all(directory).map_err(|e| format!("cannot create operation plan storage: {e}"))?;
+    let bytes = serde_json::to_vec_pretty(&plans.values().cloned().collect::<Vec<_>>())
+        .map_err(|e| format!("cannot serialize operation plans: {e}"))?;
+    let temporary = path.with_extension("json.tmp");
+    std::fs::write(&temporary, bytes).map_err(|e| format!("cannot persist operation plans: {e}"))?;
+    std::fs::rename(&temporary, &path).map_err(|e| format!("cannot replace operation plan storage: {e}"))
+}
+
+fn validate_native_config_command(command: &str) -> Result<(), String> {
+    let trimmed = command.trim();
+    if trimmed.is_empty() { return Err("Config command cannot be empty".into()); }
+    let disallowed = [';', '|', '&', '$', '(', ')', '`', '>', '<', '\\', '\n', '\r', '"', '\''];
+    for character in trimmed.chars() {
+        if disallowed.contains(&character) {
+            return Err(format!("Config command contains forbidden character: '{character}'"));
+        }
+        if !character.is_alphanumeric() && ![' ', '-', '_', '.', '/', ':', '?', '*', '[', ']', ','].contains(&character) {
+            return Err(format!("Config command contains unsafe character: '{character}'"));
+        }
+    }
+    Ok(())
+}
+
+/// Creates an immutable, hash-bound device change plan for the native desktop.
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_operation_plan_create(
+    target: *const c_char,
+    target_snapshot_json: *const c_char,
+    commands_json: *const c_char,
+    rationale: *const c_char,
+) -> MikomaiResult {
+    if target.is_null() || target_snapshot_json.is_null() || commands_json.is_null() || rationale.is_null() {
+        return error_result("operation plan fields must not be null".into());
+    }
+    let caught = std::panic::catch_unwind(|| {
+        let target = CStr::from_ptr(target).to_str().map_err(|e| e.to_string())?.to_owned();
+        if target.trim().is_empty() { return Err("a registered target device is required".into()); }
+        let target_snapshot: serde_json::Value = serde_json::from_str(CStr::from_ptr(target_snapshot_json).to_str().map_err(|e| e.to_string())?)
+            .map_err(|e| format!("invalid target snapshot: {e}"))?;
+        let commands: Vec<String> = serde_json::from_str(CStr::from_ptr(commands_json).to_str().map_err(|e| e.to_string())?)
+            .map_err(|e| format!("invalid command list: {e}"))?;
+        if commands.is_empty() || commands.iter().any(|line| line.trim().is_empty()) {
+            return Err("at least one non-empty configuration command is required".into());
+        }
+        for command in &commands { validate_native_config_command(command)?; }
+        let rationale = CStr::from_ptr(rationale).to_str().map_err(|e| e.to_string())?.to_owned();
+        let plan = ChangePlanner::create(
+            "network_config".into(), Some(target.clone()),
+            serde_json::json!({"deviceName": target, "deviceSnapshot": target_snapshot, "commands": commands}), rationale,
+        )?;
+        let json = serde_json::to_string(&plan).map_err(|e| e.to_string())?;
+        let mut plans = operation_plans().lock().map_err(|_| "operation plan state is unavailable".to_string())?;
+        plans.insert(plan.id.to_string(), plan);
+        persist_operation_plans(&plans)?;
+        Ok(json)
+    });
+    match caught { Ok(Ok(v)) => result(0, v), Ok(Err(e)) => error_result(e), Err(_) => error_result("operation plan creation failed unexpectedly".into()) }
+}
+
+/// Approves only the stored plan identified by its exact id and hash.
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_operation_plan_approve(id: *const c_char, hash: *const c_char) -> MikomaiResult {
+    if id.is_null() || hash.is_null() { return error_result("operation plan id and hash must not be null".into()); }
+    let caught = std::panic::catch_unwind(|| {
+        let id = CStr::from_ptr(id).to_str().map_err(|e| e.to_string())?.to_owned();
+        let hash = CStr::from_ptr(hash).to_str().map_err(|e| e.to_string())?.to_owned();
+        let mut plans = operation_plans().lock().map_err(|_| "operation plan state is unavailable".to_string())?;
+        let plan = plans.get_mut(&id).ok_or_else(|| "operation plan was not found".to_string())?;
+        let previous = plan.clone();
+        OperationGate::approve(plan, &hash)?;
+        let output = serde_json::to_string(plan).map_err(|e| e.to_string())?;
+        if let Err(error) = persist_operation_plans(&plans) { plans.insert(id, previous); return Err(error); }
+        Ok(output)
+    });
+    match caught { Ok(Ok(v)) => result(0, v), Ok(Err(e)) => error_result(e), Err(_) => error_result("operation approval failed unexpectedly".into()) }
+}
+
+/// Reads a stored plan by id without accepting caller-provided plan contents.
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_operation_plan_get(id: *const c_char) -> MikomaiResult {
+    if id.is_null() { return error_result("operation plan id must not be null".into()); }
+    let caught = std::panic::catch_unwind(|| {
+        let id = CStr::from_ptr(id).to_str().map_err(|e| e.to_string())?.to_owned();
+        let plans = operation_plans().lock().map_err(|_| "operation plan state is unavailable".to_string())?;
+        let plan = plans.get(&id).ok_or_else(|| "operation plan was not found".to_string())?;
+        serde_json::to_string(plan).map_err(|e| e.to_string())
+    });
+    match caught { Ok(Ok(v)) => result(0, v), Ok(Err(e)) => error_result(e), Err(_) => error_result("operation plan lookup failed unexpectedly".into()) }
+}
+
+/// Claims an approved plan once before the native runner begins dry-run.
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_operation_plan_begin(id: *const c_char, hash: *const c_char) -> MikomaiResult {
+    if id.is_null() || hash.is_null() { return error_result("operation plan id and hash must not be null".into()); }
+    let caught = std::panic::catch_unwind(|| {
+        let id = CStr::from_ptr(id).to_str().map_err(|e| e.to_string())?.to_owned();
+        let hash = CStr::from_ptr(hash).to_str().map_err(|e| e.to_string())?.to_owned();
+        let mut plans = operation_plans().lock().map_err(|_| "operation plan state is unavailable".to_string())?;
+        let plan = plans.get_mut(&id).ok_or_else(|| "operation plan was not found".to_string())?;
+        let previous = plan.clone();
+        OperationGate::begin_execution(plan, &hash)?;
+        let output = serde_json::to_string(plan).map_err(|e| e.to_string())?;
+        if let Err(error) = persist_operation_plans(&plans) { plans.insert(id, previous); return Err(error); }
+        Ok(output)
+    });
+    match caught { Ok(Ok(v)) => result(0, v), Ok(Err(e)) => error_result(e), Err(_) => error_result("operation execution claim failed unexpectedly".into()) }
+}
+
+/// Records completion only for a plan previously claimed for execution.
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_operation_plan_finish(id: *const c_char, succeeded: i32) -> MikomaiResult {
+    if id.is_null() { return error_result("operation plan id must not be null".into()); }
+    let caught = std::panic::catch_unwind(|| {
+        let id = CStr::from_ptr(id).to_str().map_err(|e| e.to_string())?.to_owned();
+        let mut plans = operation_plans().lock().map_err(|_| "operation plan state is unavailable".to_string())?;
+        let plan = plans.get_mut(&id).ok_or_else(|| "operation plan was not found".to_string())?;
+        let previous = plan.clone();
+        OperationGate::finish_execution(plan, succeeded != 0)?;
+        let output = serde_json::to_string(plan).map_err(|e| e.to_string())?;
+        if let Err(error) = persist_operation_plans(&plans) { plans.insert(id, previous); return Err(error); }
+        Ok(output)
+    });
+    match caught { Ok(Ok(v)) => result(0, v), Ok(Err(e)) => error_result(e), Err(_) => error_result("operation completion update failed unexpectedly".into()) }
+}
 
 struct InferenceConfig {
     temperature: f32,
@@ -1039,6 +1193,62 @@ mod tests {
         let res = unsafe { mikomai_set_inference_params(0.7, 1.2, 4096, 1024) };
         assert_eq!(res.status, 0);
         unsafe { super::mikomai_result_free(res) };
+    }
+
+    #[test]
+    fn ffi_operation_plan_binds_hash_approval_and_single_execution_claim() {
+        use super::{mikomai_operation_plan_approve, mikomai_operation_plan_begin,
+            mikomai_operation_plan_create, mikomai_operation_plan_finish, mikomai_operation_plan_get};
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let storage = std::env::temp_dir().join(format!("mikomai-operation-{nonce}.json"));
+        let previous = std::env::var_os("MIKOMAI_OPERATION_PLANS_PATH");
+        std::env::set_var("MIKOMAI_OPERATION_PLANS_PATH", &storage);
+        let target = CString::new("edge-01").unwrap();
+        let snapshot = CString::new(r#"{"id":"device-1","host":"192.0.2.10"}"#).unwrap();
+        let commands = CString::new(r#"["hostname edge-01"]"#).unwrap();
+        let rationale = CString::new("Approved maintenance window").unwrap();
+        let created = unsafe { mikomai_operation_plan_create(target.as_ptr(), snapshot.as_ptr(), commands.as_ptr(), rationale.as_ptr()) };
+        assert_eq!(created.status, 0);
+        let plan_json = unsafe { CStr::from_ptr(created.message).to_string_lossy().into_owned() };
+        let plan: serde_json::Value = serde_json::from_str(&plan_json).unwrap();
+        unsafe { super::mikomai_result_free(created) };
+        let id = CString::new(plan["id"].as_str().unwrap()).unwrap();
+        let hash_text = plan["planHash"].as_str().unwrap();
+        let wrong_hash = CString::new("wrong-hash").unwrap();
+        let correct_hash = CString::new(hash_text).unwrap();
+
+        let unapproved_claim = unsafe { mikomai_operation_plan_begin(id.as_ptr(), correct_hash.as_ptr()) };
+        assert_eq!(unapproved_claim.status, 1);
+        unsafe { super::mikomai_result_free(unapproved_claim) };
+        let wrong_approval = unsafe { mikomai_operation_plan_approve(id.as_ptr(), wrong_hash.as_ptr()) };
+        assert_eq!(wrong_approval.status, 1);
+        unsafe { super::mikomai_result_free(wrong_approval) };
+        let fetched = unsafe { mikomai_operation_plan_get(id.as_ptr()) };
+        assert_eq!(fetched.status, 0);
+        unsafe { super::mikomai_result_free(fetched) };
+        let approved = unsafe { mikomai_operation_plan_approve(id.as_ptr(), correct_hash.as_ptr()) };
+        assert_eq!(approved.status, 0);
+        unsafe { super::mikomai_result_free(approved) };
+        let first_claim = unsafe { mikomai_operation_plan_begin(id.as_ptr(), correct_hash.as_ptr()) };
+        assert_eq!(first_claim.status, 0);
+        unsafe { super::mikomai_result_free(first_claim) };
+        let duplicate_claim = unsafe { mikomai_operation_plan_begin(id.as_ptr(), correct_hash.as_ptr()) };
+        assert_eq!(duplicate_claim.status, 1);
+        unsafe { super::mikomai_result_free(duplicate_claim) };
+        let before_execution = CString::new(format!("missing-{nonce}")).unwrap();
+        let finish_before_execution = unsafe { mikomai_operation_plan_finish(before_execution.as_ptr(), 1) };
+        assert_eq!(finish_before_execution.status, 1);
+        unsafe { super::mikomai_result_free(finish_before_execution) };
+        let completed = unsafe { mikomai_operation_plan_finish(id.as_ptr(), 1) };
+        assert_eq!(completed.status, 0);
+        unsafe { super::mikomai_result_free(completed) };
+        let duplicate_finish = unsafe { mikomai_operation_plan_finish(id.as_ptr(), 1) };
+        assert_eq!(duplicate_finish.status, 1);
+        unsafe { super::mikomai_result_free(duplicate_finish) };
+        assert!(super::validate_native_config_command("hostname edge-01").is_ok());
+        assert!(super::validate_native_config_command("hostname edge-01; reload").is_err());
+        let _ = std::fs::remove_file(storage);
+        restore_env("MIKOMAI_OPERATION_PLANS_PATH", previous);
     }
 
     fn restore_env(key: &str, value: Option<std::ffi::OsString>) {

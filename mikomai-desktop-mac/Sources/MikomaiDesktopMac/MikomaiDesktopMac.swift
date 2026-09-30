@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Darwin
 import Security
+import CryptoKit
 import MikomaiFFI
 import MikomaiDesktopCore
 import UniformTypeIdentifiers
@@ -221,6 +222,59 @@ private struct RouteRecord: Identifiable {
     let interface: String
 }
 
+private struct NativeOperationPlan: Decodable, Identifiable {
+    let id: String
+    let planHash: String
+    let status: String
+    var target: String?
+    let args: NativeOperationPlanArgs
+}
+
+private struct NativeOperationPlanArgs: Decodable {
+    let commands: [String]
+    let deviceSnapshot: NativeDeviceSnapshot
+}
+
+private struct NativeDeviceSnapshot: Codable, Equatable {
+    let id: String
+    let name: String
+    let host: String
+    let username: String
+    let deviceType: String
+    let connectionType: String
+    let port: String
+    let credentialsFingerprint: String
+
+    init(_ connection: SavedConnection, credentials: ConnectionCredentials) {
+        id = connection.id.uuidString
+        name = connection.name
+        host = connection.host
+        username = connection.username
+        deviceType = connection.deviceType
+        connectionType = connection.connectionType ?? "SSH"
+        port = connection.port
+        let credentialText = "\(credentials.password ?? "")\u{0}\(credentials.enablePassword ?? "")"
+        credentialsFingerprint = SHA256.hash(data: Data(credentialText.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+private struct NetworkRunnerRequest: Sendable {
+    let action: String
+    let host: String
+    let username: String
+    let password: String
+    let secret: String
+    let deviceType: String
+    let port: String
+    let commands: [String]
+}
+
+private struct NetworkOperationOutput: Sendable {
+    let success: Bool
+    let stdout: String
+    let stderr: String
+}
+
 // MARK: - Keychain Helper
 
 private enum KeychainHelper {
@@ -300,6 +354,13 @@ private final class DesktopModel: ObservableObject {
     @Published var connections: [SavedConnection] = [] { didSet { persistConnections() } }
     @Published var editingConnection: SavedConnection?
     @Published var connectionStatuses: [UUID: ConnectionTestStatus] = [:]
+    @Published var operationProposal = ""
+    @Published var operationPlan: NativeOperationPlan?
+    @Published var operationLogs: [String] = []
+    @Published var operationBeforeConfig = ""
+    @Published var operationAfterConfig = ""
+    @Published var operationDiffLines: [String] = []
+    @Published var operationPhase = "idle"
 
     // Knowledge dirs
     @Published var documentsDirectory: String { didSet { defaults.set(documentsDirectory, forKey: "mikomai.desktop.mac.documentsDirectory") } }
@@ -656,6 +717,180 @@ private final class DesktopModel: ObservableObject {
         _ = Self.callRust { mikomai_model_cancel() }
     }
 
+    func createOperationPlan(target: SavedConnection, proposal: String, rationale: String) -> String? {
+        let commands = proposal.split(whereSeparator: \.isNewline).map(String.init).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard !commands.isEmpty else { return "変更コマンドがありません。" }
+        let args: String
+        do { args = String(data: try JSONEncoder().encode(commands), encoding: .utf8) ?? "[]" }
+        catch { return error.localizedDescription }
+        let snapshotText: String
+        let credentials = credentialPersistence.load(for: target.id)
+        do { snapshotText = String(data: try JSONEncoder().encode(NativeDeviceSnapshot(target, credentials: credentials)), encoding: .utf8) ?? "{}" }
+        catch { return error.localizedDescription }
+        let responseText = target.name.withCString { targetPtr in
+            snapshotText.withCString { snapshotPtr in
+                args.withCString { argsPtr in
+                    rationale.withCString { rationalePtr in
+                        let response = mikomai_operation_plan_create(targetPtr, snapshotPtr, argsPtr, rationalePtr)
+                        defer { mikomai_result_free(response) }
+                        guard let message = response.message else { return "エラー: 応答がありません。" }
+                        let text = String(cString: message)
+                        return response.status == 0 ? text : "エラー: \(text)"
+                    }
+                }
+            }
+        }
+        guard !responseText.hasPrefix("エラー:") else { return responseText }
+        do {
+            operationPlan = try JSONDecoder().decode(NativeOperationPlan.self, from: Data(responseText.utf8))
+            operationPhase = "計画作成済み"
+            operationLogs.append("[STATUS] 変更計画を作成しました（\(target)）")
+            return nil
+        } catch { return "変更計画を読み取れませんでした: \(error.localizedDescription)" }
+    }
+
+    func approveOperationPlan() -> String? {
+        guard let plan = operationPlan else { return "承認する変更計画がありません。" }
+        let responseText = plan.id.withCString { id in
+            plan.planHash.withCString { hash in
+                let response = mikomai_operation_plan_approve(id, hash)
+                defer { mikomai_result_free(response) }
+                guard let message = response.message else { return "エラー: 応答がありません。" }
+                let text = String(cString: message)
+                return response.status == 0 ? text : "エラー: \(text)"
+            }
+        }
+        guard !responseText.hasPrefix("エラー:") else { return responseText }
+        do {
+            operationPlan = try JSONDecoder().decode(NativeOperationPlan.self, from: Data(responseText.utf8))
+            operationPhase = "承認済み"
+            operationLogs.append("[STATUS] ハッシュを照合し、計画を承認しました")
+            return nil
+        } catch { return "承認状態を読み取れませんでした: \(error.localizedDescription)" }
+    }
+
+    func beginOperationPlan() -> String? {
+        guard let plan = operationPlan else { return "実行する計画がありません。" }
+        let responseText = plan.id.withCString { id in
+            plan.planHash.withCString { hash in
+                let response = mikomai_operation_plan_begin(id, hash)
+                defer { mikomai_result_free(response) }
+                guard let message = response.message else { return "エラー: 応答がありません。" }
+                let text = String(cString: message)
+                return response.status == 0 ? text : "エラー: \(text)"
+            }
+        }
+        guard !responseText.hasPrefix("エラー:") else { return responseText }
+        do { operationPlan = try JSONDecoder().decode(NativeOperationPlan.self, from: Data(responseText.utf8)); return nil }
+        catch { return "実行状態を読み取れませんでした: \(error.localizedDescription)" }
+    }
+
+    func finishOperationPlan(succeeded: Bool) {
+        guard let id = operationPlan?.id else { return }
+        id.withCString { idPtr in
+            let response = mikomai_operation_plan_finish(idPtr, succeeded ? 1 : 0)
+            defer { mikomai_result_free(response) }
+            guard response.status == 0, let message = response.message,
+                  let data = String(cString: message).data(using: .utf8) else { return }
+            operationPlan = try? JSONDecoder().decode(NativeOperationPlan.self, from: data)
+        }
+    }
+
+    func resolveOperationTarget(for plan: NativeOperationPlan) -> (SavedConnection, ConnectionCredentials)? {
+        guard let id = UUID(uuidString: plan.args.deviceSnapshot.id),
+              let connection = connections.first(where: { $0.id == id }) else { return nil }
+        let credentials = credentialPersistence.load(for: id)
+        guard NativeDeviceSnapshot(connection, credentials: credentials) == plan.args.deviceSnapshot else { return nil }
+        return (connection, credentials)
+    }
+
+    func networkRequest(action: String, connection: SavedConnection, commands: [String]) -> NetworkRunnerRequest? {
+        guard (connection.connectionType ?? "SSH").lowercased() != "console" else { return nil }
+        let credentials = credentialPersistence.load(for: connection.id)
+        let deviceType: String = {
+            let lower = connection.deviceType.lowercased()
+            if lower.contains("juniper") { return "juniper_junos" }
+            if lower.contains("nx-os") || lower.contains("nxos") { return "cisco_nxos" }
+            if lower.contains("arista") { return "arista_eos" }
+            if lower.contains("yamaha") { return "yamaha" }
+            if lower.contains("furukawa") || lower.contains("fitel") { return "furukawa_fitelnet" }
+            if lower.contains("cisco") { return "cisco_ios" }
+            return lower.replacingOccurrences(of: " ", with: "_")
+        }()
+        return NetworkRunnerRequest(
+            action: action, host: connection.host, username: connection.username,
+            password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
+            deviceType: deviceType, port: connection.port, commands: commands
+        )
+    }
+
+    nonisolated static func runNetworkWrapper(_ request: NetworkRunnerRequest) -> NetworkOperationOutput {
+        let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let executableResources = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("../Resources/netmiko_wrapper").standardizedFileURL
+        let environmentWrapper = ProcessInfo.processInfo.environment["MIKOMAI_NETMIKO_WRAPPER"].map { URL(fileURLWithPath: $0) }
+        let binaries = [
+            environmentWrapper,
+            Bundle.main.resourceURL?.appendingPathComponent("netmiko_wrapper"),
+            executableResources,
+            cwd.appendingPathComponent("mikomai-desktop/src/binaries/netmiko_wrapper-aarch64-apple-darwin"),
+            cwd.appendingPathComponent("mikomai-desktop/src-tauri/binaries/netmiko_wrapper-aarch64-apple-darwin")
+        ].compactMap { $0 }
+        let script = cwd.appendingPathComponent("mikomai-desktop/src-tauri/python/netmiko_wrapper.py")
+        let process = Process()
+        if let binary = binaries.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) }) {
+            process.executableURL = binary
+            process.arguments = ["--stdin"]
+        } else if FileManager.default.fileExists(atPath: script.path) {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = ["python3", script.path, "--stdin"]
+        } else {
+            return NetworkOperationOutput(success: false, stdout: "", stderr: "Netmiko 実行ツールが見つかりません。")
+        }
+
+        let input = Pipe()
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("mikomai-net-\(UUID().uuidString)", isDirectory: true)
+        do { try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true) }
+        catch { return NetworkOperationOutput(success: false, stdout: "", stderr: "一時ログ領域を作成できません: \(error.localizedDescription)") }
+        let outURL = tempDirectory.appendingPathComponent("stdout.log")
+        let errURL = tempDirectory.appendingPathComponent("stderr.log")
+        FileManager.default.createFile(atPath: outURL.path, contents: nil)
+        FileManager.default.createFile(atPath: errURL.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+        guard let out = try? FileHandle(forWritingTo: outURL), let err = try? FileHandle(forWritingTo: errURL) else {
+            return NetworkOperationOutput(success: false, stdout: "", stderr: "ログを作成できません。")
+        }
+        process.standardInput = input
+        process.standardOutput = out
+        process.standardError = err
+        do {
+            try process.run()
+            let payload: [String: Any] = [
+                "action": request.action,
+                "host": request.host,
+                "username": request.username,
+                "password": request.password,
+                "secret": request.secret,
+                "device_type": request.deviceType,
+                "commands": request.commands,
+                "port": request.port
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            input.fileHandleForWriting.write(data)
+            input.fileHandleForWriting.write(Data([0x0a]))
+            input.fileHandleForWriting.closeFile()
+            process.waitUntilExit()
+            try? out.close()
+            try? err.close()
+            let stdout = (try? String(contentsOf: outURL, encoding: .utf8)) ?? ""
+            let stderr = (try? String(contentsOf: errURL, encoding: .utf8)) ?? ""
+            return NetworkOperationOutput(success: process.terminationStatus == 0, stdout: stdout, stderr: stderr)
+        } catch {
+            process.terminate()
+            try? out.close(); try? err.close(); input.fileHandleForWriting.closeFile()
+            return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription)
+        }
+    }
+
     // MARK: - Model Management
 
     func selectModel() {
@@ -999,10 +1234,47 @@ private enum NetworkInspector {
 
 // MARK: - Main Desktop Window
 
+private struct ChatBottomPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 private struct DesktopWindow: View {
     @ObservedObject var model: DesktopModel
     @State private var suggestionVisibility = ChatSuggestionVisibilityState()
+    @AppStorage("mikomai.desktop.mac.historyWidth") private var historyWidth = 248.0
+    @State private var historyDragStart: CGFloat?
+    @State private var isRightPaneOpen = false
+    @State private var rightPaneTab = "diff"
+    @State private var isAtChatBottom = true
+    @State private var selectedConnectionID: UUID?
+    @State private var operationAlert = ""
+    @State private var isOperationRunning = false
+    @State private var operationRationale = "選択した変更案を適用する"
     @FocusState private var isChatInputFocused: Bool
+
+    private func historyMaximumWidth(containerWidth: CGFloat) -> CGFloat {
+        max(180, min(420, containerWidth - 50 - 440 - (isRightPaneOpen ? 330 : 0) - 8))
+    }
+
+    private var historyResizeDivider: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor).opacity(0.65))
+            .frame(width: 1)
+            .frame(width: 8)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { value in
+                    if historyDragStart == nil { historyDragStart = CGFloat(historyWidth) }
+                    let delta = value.location.x - value.startLocation.x
+                    historyWidth = Double(min(activeHistoryMaximumWidth, max(180, (historyDragStart ?? 248) + delta)))
+                }
+                .onEnded { _ in historyDragStart = nil })
+            .help("ドラッグして会話履歴の幅を調整")
+            .accessibilityLabel("会話履歴の幅を調整")
+    }
+
+    @State private var activeHistoryMaximumWidth: CGFloat = 420
 
     private var hostSuggestionContext: (query: String, atIndex: String.Index)? {
         guard let atIndex = model.draft.lastIndex(of: "@") else { return nil }
@@ -1029,24 +1301,40 @@ private struct DesktopWindow: View {
     }
 
     var body: some View {
+        GeometryReader { geometry in
         HStack(spacing: 0) {
             activityBar
-            if model.workspace == .chat { historySidebar }
-            VStack(spacing: 0) {
-                header
-                Group {
-                    switch model.workspace {
-                    case .chat: chatWorkspace
-                    case .connections: ConnectionsWorkspace(model: model)
-                    case .tools: NetworkToolsWorkspace(model: model)
-                    case .settings: SettingsWorkspace(model: model)
-                    }
-                }
-                statusBar
+            if model.workspace == .chat {
+                historySidebar
+                    .frame(width: min(CGFloat(historyWidth), historyMaximumWidth(containerWidth: geometry.size.width)))
+                historyResizeDivider
+                    .onAppear { activeHistoryMaximumWidth = historyMaximumWidth(containerWidth: geometry.size.width) }
+                    .onChange(of: geometry.size.width) { width in activeHistoryMaximumWidth = historyMaximumWidth(containerWidth: width) }
+                    .onChange(of: isRightPaneOpen) { _ in activeHistoryMaximumWidth = historyMaximumWidth(containerWidth: geometry.size.width) }
             }
-            .background(Color(nsColor: .windowBackgroundColor))
+            HStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    header
+                    Group {
+                        switch model.workspace {
+                        case .chat: chatWorkspace
+                        case .connections: ConnectionsWorkspace(model: model)
+                        case .tools: NetworkToolsWorkspace(model: model)
+                        case .settings: SettingsWorkspace(model: model)
+                        }
+                    }
+                    statusBar
+                }
+                .background(Color(nsColor: .windowBackgroundColor))
+                if model.workspace == .chat && isRightPaneOpen {
+                    rightSidePane
+                        .frame(width: 330)
+                        .transition(.move(edge: .trailing))
+                }
+            }
         }
         .background(Color(nsColor: .underPageBackgroundColor))
+        }
         .sheet(item: $model.editingConnection) { connection in
             ConnectionEditor(connection: connection) { saved, pwd, enPwd in
                 model.saveConnection(saved, password: pwd, enablePassword: enPwd)
@@ -1105,7 +1393,6 @@ private struct DesktopWindow: View {
                 }
             }.padding(12)
         }
-        .frame(width: 248)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.7))
         .overlay(alignment: .trailing) { Divider() }
     }
@@ -1133,11 +1420,314 @@ private struct DesktopWindow: View {
             if model.workspace == .chat {
                 Circle().fill(.green).frame(width: 7, height: 7)
                 Text("ローカルナレッジ").font(.system(size: 11)).foregroundStyle(.secondary)
+                Button { withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen.toggle() } } label: {
+                    Image(systemName: "sidebar.right")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 28, height: 26)
+                        .background(isRightPaneOpen ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain).help(isRightPaneOpen ? "右ペインを閉じる" : "差分とログを表示")
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var rightSidePane: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("作業パネル").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button { isRightPaneOpen = false } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("右ペインを閉じる")
+            }.padding(.horizontal, 14).padding(.vertical, 12)
+            Divider()
+            HStack(spacing: 0) {
+                ForEach([("diff", "Diff"), ("logs", "ログ")], id: \.0) { key, title in
+                    Button { rightPaneTab = key } label: {
+                        Text(title).font(.system(size: 12, weight: rightPaneTab == key ? .semibold : .regular))
+                            .foregroundStyle(rightPaneTab == key ? Color.accentColor : Color.secondary)
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .overlay(alignment: .bottom) { if rightPaneTab == key { Rectangle().fill(Color.accentColor).frame(height: 2) } }
+                    }.buttonStyle(.plain)
+                }
+            }
+            Divider()
+            if rightPaneTab == "diff" {
+                operationDiffPane
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("投入ログ", systemImage: "text.alignleft").font(.system(size: 12, weight: .semibold))
+                    if model.operationLogs.isEmpty {
+                        Text("変更案の確認と投入を行うと、各手順の結果がここに表示されます。")
+                            .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 5) {
+                                ForEach(Array(model.operationLogs.enumerated()), id: \.offset) { _, line in
+                                    Text(line).font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        }
+                    }
+                    Spacer()
+                }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+        .overlay(alignment: .leading) { Divider() }
+    }
+
+    private var operationDiffPane: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("変更計画", systemImage: "doc.text.magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+            if model.operationProposal.isEmpty {
+                Text("回答の設定コマンドを右クリックし、「変更計画として確認」を選ぶと、ここで現状との差分を確認できます。")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+            } else {
+                Picker("対象機器", selection: $selectedConnectionID) {
+                    Text("機器を選択").tag(Optional<UUID>.none)
+                    ForEach(model.connections.filter { ($0.connectionType ?? "SSH").lowercased() == "ssh" }) { connection in
+                        Text("\(connection.name) (\(connection.host))").tag(Optional(connection.id))
+                    }
+                }
+                .disabled(model.operationPlan != nil || isOperationRunning)
+                TextEditor(text: $model.operationProposal)
+                    .font(.system(size: 10, design: .monospaced)).frame(minHeight: 95, maxHeight: 170)
+                    .disabled(model.operationPlan != nil || isOperationRunning)
+                DisclosureGroup("取得した現状のConfig") {
+                    ScrollView {
+                        Text(model.operationBeforeConfig.isEmpty ? "まだ取得していません。" : model.operationBeforeConfig)
+                            .font(.system(size: 9, design: .monospaced)).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }.frame(maxHeight: 110)
+                }
+                TextField("変更の理由", text: $operationRationale)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 11))
+                    .disabled(model.operationPlan != nil || isOperationRunning)
+                if !model.operationBeforeConfig.isEmpty {
+                    Text(model.operationAfterConfig.isEmpty ? "提案コマンド" : "投入後の実機差分").font(.system(size: 11, weight: .semibold))
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(operationPreviewLines.enumerated()), id: \.offset) { _, item in
+                                Text(item).font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(item.hasPrefix("+") ? Color.green : Color.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }.frame(maxHeight: 180)
+                }
+                if let plan = model.operationPlan {
+                    Text("状態: \(operationStatusLabel(plan.status))")
+                        .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                    DisclosureGroup("計画の照合情報") {
+                        Text("ID: \(plan.id)\nSHA-256: \(plan.planHash)")
+                            .font(.system(size: 9, design: .monospaced)).textSelection(.enabled)
+                            .foregroundStyle(.secondary).lineLimit(4)
+                    }
+                }
+                if !operationAlert.isEmpty {
+                    Text(operationAlert).font(.system(size: 10)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                if isOperationRunning {
+                    HStack(spacing: 7) { ProgressView().controlSize(.small); Text(model.operationPhase).font(.system(size: 11)) }
+                } else if model.operationPlan == nil {
+                    Button("現状を取得して差分を確認") { Task { await prepareOperationPlan() } }
+                        .buttonStyle(.borderedProminent).disabled(selectedConnectionID == nil || model.connections.isEmpty)
+                } else if model.operationPlan?.status == "pending" {
+                    Button("確認して承認・投入") { Task { await approveAndExecutePlan() } }
+                        .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var operationPreviewLines: [String] {
+        if !model.operationAfterConfig.isEmpty {
+            return model.operationDiffLines
+        }
+        return model.operationProposal.split(whereSeparator: \.isNewline).map { "+ \($0)" }
+    }
+
+    nonisolated private static func lineDiff(old: String, new: String) -> [String] {
+        let oldLines = old.components(separatedBy: .newlines)
+        let newLines = new.components(separatedBy: .newlines)
+        let changes = newLines.difference(from: oldLines)
+        let edits: [(Int, Int, String)] = changes.compactMap { change in
+            switch change {
+            case let .remove(offset, element, _): (offset, 0, "- \(element)")
+            case let .insert(offset, element, _): (offset, 1, "+ \(element)")
+            }
+        }
+        return edits.sorted { ($0.0, $0.1) < ($1.0, $1.1) }.map(\.2)
+    }
+
+    private func prepareOperationPlan() async {
+        guard !isOperationRunning, let id = selectedConnectionID,
+              let connection = model.connections.first(where: { $0.id == id }) else { return }
+        guard let request = model.networkRequest(action: "show", connection: connection, commands: [showConfigCommand(for: connection)]) else {
+            operationAlert = "現在、Console 接続の変更計画には対応していません。SSH 接続の機器を選んでください。"
+            return
+        }
+        isOperationRunning = true
+        operationAlert = ""
+        model.operationLogs.append("[STATUS] 1/4 現状のConfigを取得中")
+        model.operationPhase = "現状のConfigを取得中…"
+        let output = await Task.detached { DesktopModel.runNetworkWrapper(request) }.value
+        if !output.stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            model.operationLogs.append(contentsOf: output.stderr.split(whereSeparator: \.isNewline).map(String.init))
+        }
+        guard output.success, !output.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !networkOutputHasError(output.stdout) else {
+            model.operationLogs.append("[ERROR] 現状Config取得に失敗しました。変更計画は作成していません。")
+            operationAlert = "現状のConfigを取得できませんでした。機器情報と接続を確認してください。"
+            model.operationPhase = "現状取得失敗"
+            isOperationRunning = false
+            return
+        }
+        model.operationBeforeConfig = output.stdout
+        if let error = model.createOperationPlan(target: connection, proposal: model.operationProposal, rationale: operationRationale) {
+            operationAlert = error
+            model.operationPhase = "計画作成失敗"
+            isOperationRunning = false
+            return
+        }
+        model.operationLogs.append("[STATUS] 現状取得後、機器・コマンドに固定した変更計画を作成しました")
+        isOperationRunning = false
+    }
+
+    private func approveAndExecutePlan() async {
+        guard !isOperationRunning, let plan = model.operationPlan,
+              plan.status == "pending", let (connection, credentials) = model.resolveOperationTarget(for: plan) else {
+            operationAlert = "計画作成後に対象機器の情報が変わりました。変更計画を作り直してください。"
+            return
+        }
+        isOperationRunning = true
+        operationAlert = ""
+        guard model.approveOperationPlan() == nil, model.beginOperationPlan() == nil else {
+            operationAlert = "変更計画を承認できませんでした。"
+            model.operationLogs.append("[ERROR] ハッシュ照合による承認に失敗しました")
+            model.operationPhase = "承認失敗"
+            isOperationRunning = false
+            return
+        }
+        let target = plan.args.deviceSnapshot
+        let approvedRequest = NetworkRunnerRequest(
+            action: "dry_run", host: target.host, username: target.username,
+            password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
+            deviceType: runnerDeviceType(target.deviceType), port: target.port, commands: plan.args.commands
+        )
+        model.operationPhase = "2/4 dry-run 検証中…"
+        model.operationLogs.append("[STATUS] 2/4 dry-run 検証中")
+        rightPaneTab = "logs"
+        let configRequest = NetworkRunnerRequest(
+            action: "config", host: target.host, username: target.username,
+            password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
+            deviceType: runnerDeviceType(target.deviceType), port: target.port, commands: plan.args.commands
+        )
+        let workflow = await OperationWorkflow.execute(
+            dryRun: {
+                let output = await Task.detached { DesktopModel.runNetworkWrapper(approvedRequest) }.value
+                return OperationCommandOutput(processSucceeded: output.success, stdout: output.stdout, stderr: output.stderr)
+            },
+            configure: {
+                await MainActor.run {
+                    model.operationPhase = "3/4 Config 投入中…"
+                    model.operationLogs.append("[STATUS] 3/4 Configを投入中")
+                }
+                let output = await Task.detached { DesktopModel.runNetworkWrapper(configRequest) }.value
+                return OperationCommandOutput(processSucceeded: output.success, stdout: output.stdout, stderr: output.stderr)
+            }
+        )
+        let dryRun = workflow.dryRun
+        model.operationLogs.append(contentsOf: dryRun.stderr.split(whereSeparator: \.isNewline).map(String.init))
+        guard workflow.dryRunPassed, let deployed = workflow.configuration else {
+            model.operationLogs.append("[ERROR] dry-runに失敗したためConfig投入を中止しました")
+            model.operationPhase = "dry-run失敗"
+            model.finishOperationPlan(succeeded: false)
+            operationAlert = "dry-runでエラーが見つかったため、機器への投入を中止しました。"
+            isOperationRunning = false
+            return
+        }
+        model.operationLogs.append(contentsOf: deployed.stderr.split(whereSeparator: \.isNewline).map(String.init))
+        guard deployed.processSucceeded else {
+            model.operationLogs.append("[ERROR] Config投入に失敗しました")
+            model.operationPhase = "投入失敗"
+            model.finishOperationPlan(succeeded: false)
+            operationAlert = "Configを投入できませんでした。ログを確認してください。"
+            isOperationRunning = false
+            return
+        }
+        model.operationPhase = "4/4 投入後のConfigを検証中…"
+        model.operationLogs.append("[STATUS] 4/4 投入後のConfigを取得して差分を検証中")
+        let verifyRequest = NetworkRunnerRequest(
+            action: "show", host: target.host, username: target.username,
+            password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
+            deviceType: runnerDeviceType(target.deviceType), port: target.port,
+            commands: [showConfigCommand(for: connection)]
+        )
+        let verified = await Task.detached { DesktopModel.runNetworkWrapper(verifyRequest) }.value
+        model.operationLogs.append(contentsOf: verified.stderr.split(whereSeparator: \.isNewline).map(String.init))
+        guard verified.success, !verified.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !networkOutputHasError(verified.stdout) else {
+            model.operationLogs.append("[ERROR] 投入後Configの取得に失敗しました")
+            model.operationPhase = "検証失敗"
+            model.finishOperationPlan(succeeded: false)
+            operationAlert = "Configは投入されましたが、投入後の状態を確認できませんでした。"
+            isOperationRunning = false
+            return
+        }
+        let before = model.operationBeforeConfig
+        let after = verified.stdout
+        let diff = await Task.detached { Self.lineDiff(old: before, new: after) }.value
+        model.operationAfterConfig = after
+        model.operationDiffLines = diff
+        model.finishOperationPlan(succeeded: true)
+        model.operationPhase = "投入後Configを取得しました。差分を確認してください"
+        model.operationLogs.append("[STATUS] Config投入が成功し、投入後Configを取得しました。差分を確認してください")
+        rightPaneTab = "diff"
+        isOperationRunning = false
+    }
+
+    private func networkOutputHasError(_ output: String) -> Bool {
+        let lower = output.lowercased()
+        return ["% invalid input", "% incomplete command", "% ambiguous command", "syntax error", "netmiko error:", "error: device"].contains { lower.contains($0) }
+    }
+
+    private func operationStatusLabel(_ status: String) -> String {
+        switch status {
+        case "pending": "承認待ち"
+        case "approved": "承認済み"
+        case "executing": "実行中"
+        case "executed": "完了"
+        case "failed": "失敗"
+        case "rejected": "却下"
+        default: status
+        }
+    }
+
+    private func showConfigCommand(for connection: SavedConnection) -> String {
+        let device = runnerDeviceType(connection.deviceType)
+        if device == "juniper_junos" { return "show configuration" }
+        if device == "yamaha" { return "show config" }
+        return "show running-config"
+    }
+
+    private func runnerDeviceType(_ value: String) -> String {
+        let lower = value.lowercased()
+        if lower.contains("juniper") { return "juniper_junos" }
+        if lower.contains("nx-os") || lower.contains("nxos") { return "cisco_nxos" }
+        if lower.contains("arista") { return "arista_eos" }
+        if lower.contains("yamaha") { return "yamaha" }
+        if lower.contains("furukawa") || lower.contains("fitel") { return "furukawa_fitelnet" }
+        if lower.contains("cisco") { return "cisco_ios" }
+        return lower.replacingOccurrences(of: " ", with: "_")
     }
 
     private var statusBar: some View {
@@ -1185,12 +1775,27 @@ private struct DesktopWindow: View {
 
     private var chatWorkspace: some View {
         VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
+            GeometryReader { viewport in
+                ScrollViewReader { proxy in
+                    ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         if let session = model.activeSession, session.messages.isEmpty { emptyState }
                         if let session = model.activeSession {
-                            ForEach(session.messages) { message in MessageRow(message: message).id(message.id) }
+                            ForEach(session.messages) { message in
+                                MessageRow(message: message, onSelectConfig: { config in
+                                    guard !isOperationRunning else { return }
+                                    model.operationProposal = config
+                                    model.operationPlan = nil
+                                    model.operationBeforeConfig = ""
+                                    model.operationAfterConfig = ""
+                                    model.operationDiffLines = []
+                                    model.operationLogs = []
+                                    model.operationPhase = "変更案を確認中"
+                                    operationRationale = "選択した変更案を適用する"
+                                    isRightPaneOpen = true
+                                    rightPaneTab = "diff"
+                                }).id(message.id)
+                            }
                         }
                         if model.isWorking {
                             HStack(spacing: 8) {
@@ -1200,14 +1805,43 @@ private struct DesktopWindow: View {
                             }
                             .padding(.leading, 42)
                         }
+                        GeometryReader { bottomProxy in
+                            Color.clear.preference(key: ChatBottomPreferenceKey.self,
+                                                   value: bottomProxy.frame(in: .named("chatScroll")).maxY)
+                        }
+                        .frame(height: 1)
                     }
                     .frame(maxWidth: 760).frame(maxWidth: .infinity).padding(.horizontal, 24).padding(.vertical, 24)
-                }
-                .onChange(of: model.activeSession?.messages.last?.text ?? "") { _ in
-                    if let message = model.activeSession?.messages.last { proxy.scrollTo(message.id, anchor: .bottom) }
-                }
-                .onChange(of: model.activeSession?.messages.count ?? 0) { _ in
-                    if let message = model.activeSession?.messages.last { proxy.scrollTo(message.id, anchor: .bottom) }
+                    }
+                    .coordinateSpace(name: "chatScroll")
+                    .onPreferenceChange(ChatBottomPreferenceKey.self) { bottomY in
+                        isAtChatBottom = bottomY <= viewport.size.height + 32
+                    }
+                    .onChange(of: model.activeSession?.messages.last?.text ?? "") { _ in
+                        if isAtChatBottom, let message = model.activeSession?.messages.last {
+                            proxy.scrollTo(message.id, anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: model.activeSession?.messages.count ?? 0) { _ in
+                        if let message = model.activeSession?.messages.last { proxy.scrollTo(message.id, anchor: .bottom) }
+                    }
+                    .onChange(of: model.activeSessionID) { _ in
+                        isAtChatBottom = true
+                        if let message = model.activeSession?.messages.last { proxy.scrollTo(message.id, anchor: .bottom) }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if !isAtChatBottom {
+                            Button {
+                                if let message = model.activeSession?.messages.last {
+                                    withAnimation { proxy.scrollTo(message.id, anchor: .bottom) }
+                                }
+                            } label: {
+                                Label("最新へ", systemImage: "arrow.down")
+                                    .font(.system(size: 11, weight: .medium)).padding(.horizontal, 10).padding(.vertical, 7)
+                            }
+                            .buttonStyle(.bordered).padding(.trailing, 22).padding(.bottom, 12)
+                        }
+                    }
                 }
             }
             composer
@@ -1305,8 +1939,13 @@ private struct DesktopWindow: View {
                         .disabled(!ChatSubmissionPolicy.canStop(isWorking: model.isWorking, isCancelling: model.isCancelling))
                         .help("生成を停止")
                 } else {
-                    Button(action: model.send) { Image(systemName: "arrow.up").font(.system(size: 12, weight: .semibold)).frame(width: 28, height: 28) }
-                        .buttonStyle(.borderedProminent).controlSize(.small).keyboardShortcut(.return, modifiers: [.command])
+                    Button(action: model.send) {
+                        Image(systemName: ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) ? "paperplane.fill" : "arrow.up")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white).frame(width: 30, height: 30)
+                            .background(ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) ? Color.accentColor : Color.gray.opacity(0.55), in: Circle())
+                    }
+                        .buttonStyle(.plain).keyboardShortcut(.return, modifiers: [.command])
                         .disabled(!ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count))
                         .help("送信 (⌘+Enter)")
                 }
@@ -1371,6 +2010,7 @@ private struct SessionRow: View {
 
 private struct MessageRow: View {
     let message: ChatMessage
+    var onSelectConfig: (String) -> Void = { _ in }
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: message.role == .user ? "person.fill" : "point.3.connected.trianglepath.dotted")
@@ -1378,7 +2018,7 @@ private struct MessageRow: View {
                 .frame(width: 27, height: 27).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
             Group {
                 if message.role == .assistant {
-                    MarkdownMessage(text: message.text)
+                    MarkdownMessage(text: message.text, onSelectConfig: onSelectConfig)
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(message.text).font(.system(size: 13)).textSelection(.enabled)
@@ -1412,6 +2052,7 @@ private struct MarkdownBlock: Identifiable {
 
 private struct MarkdownMessage: View {
     let text: String
+    var onSelectConfig: (String) -> Void = { _ in }
     private var blocks: [MarkdownBlock] { Self.parse(text) }
 
     var body: some View {
@@ -1436,6 +2077,9 @@ private struct MarkdownMessage: View {
                             .buttonStyle(.borderless)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
+                            Button("変更計画として確認") { onSelectConfig(content) }
+                                .buttonStyle(.borderless).font(.system(size: 10))
+                                .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                         Text(content).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)

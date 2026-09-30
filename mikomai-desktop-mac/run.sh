@@ -7,6 +7,7 @@ cargo build -p mikomai-ffi
 
 if swift build --package-path "$APP"; then
     MIKOMAI_DOCS_DIR="$ROOT/nw-docs" \
+    MIKOMAI_NETMIKO_WRAPPER="$ROOT/mikomai-desktop/src-tauri/binaries/netmiko_wrapper-aarch64-apple-darwin" \
     DYLD_LIBRARY_PATH="$ROOT/target/debug${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" \
     swift run --package-path "$APP" MikomaiDesktopMac
     exit $?
@@ -32,5 +33,6 @@ swift_environment() {
 
 swift_environment build --disable-sandbox --package-path "$APP" --scratch-path "$SCRATCH"
 MIKOMAI_DOCS_DIR="$ROOT/nw-docs" \
+MIKOMAI_NETMIKO_WRAPPER="$ROOT/mikomai-desktop/src-tauri/binaries/netmiko_wrapper-aarch64-apple-darwin" \
 DYLD_LIBRARY_PATH="$ROOT/target/debug${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" \
 swift_environment run --disable-sandbox --package-path "$APP" --scratch-path "$SCRATCH" MikomaiDesktopMac
