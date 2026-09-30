@@ -379,6 +379,9 @@ private final class DesktopModel: ObservableObject {
     // Tauri Settings
     @Published var settings: TauriSettings = TauriSettings()
     @Published var tauriConfigURL: URL = SettingsManager.tauriSettingsURL
+    @Published var tauriCompletionHosts: [HostSuggestion] = []
+    private var completionReloadTask: Task<Void, Never>?
+    private var lastCompletionReload = Date.distantPast
     @Published var isTauriConfigLoaded: Bool = false
     @Published var tauriSyncMessage: String = ""
 
@@ -475,6 +478,28 @@ private final class DesktopModel: ObservableObject {
         var state = ChatSessionState(sessions: sessions, activeSessionID: activeSessionID)
         state.rename(id, to: title)
         sessions = state.sessions
+    }
+
+    var availableCompletionHosts: [HostSuggestion] {
+        HostCompletionSource.merge(
+            tauri: tauriCompletionHosts,
+            native: connections.map { HostSuggestion(hostname: $0.name, ip: $0.host) }
+        )
+    }
+
+    func reloadCompletionHosts() {
+        guard completionReloadTask == nil, Date().timeIntervalSince(lastCompletionReload) > 1 else { return }
+        lastCompletionReload = Date()
+        let override = ProcessInfo.processInfo.environment["MIKOMAI_CONNECTIONS_FILE"]
+        let path = override.map { URL(fileURLWithPath: $0) }
+            ?? tauriConfigURL.deletingLastPathComponent().appendingPathComponent("connections.json")
+        completionReloadTask = Task {
+            let hosts = await Task.detached(priority: .utility) {
+                HostCompletionSource.read(from: path)
+            }.value
+            tauriCompletionHosts = hosts
+            completionReloadTask = nil
+        }
     }
 
     // MARK: - Tauri Settings Management
@@ -1245,7 +1270,14 @@ private struct ChatBottomPreferenceKey: PreferenceKey {
 
 private struct DesktopWindow: View {
     @ObservedObject var model: DesktopModel
-    @State private var suggestionVisibility = ChatSuggestionVisibilityState()
+    @State private var mentionPresentation = ChatMentionPresentation()
+    @State private var isChatInputFocused = false
+    private var mentionContext: ChatMentionContext? { mentionPresentation.context }
+    private var showsHostSuggestions: Bool { mentionPresentation.isVisible(candidateCount: hostSuggestions.count) }
+    @State private var hostSuggestionIndex = 0
+    @State private var mentionCompletion: ChatMentionCompletion?
+
+
     @AppStorage("mikomai.desktop.mac.historyWidth") private var historyWidth = 248.0
     @State private var historyDragStart: CGFloat?
     @State private var isRightPaneOpen = false
@@ -1255,7 +1287,6 @@ private struct DesktopWindow: View {
     @State private var operationAlert = ""
     @State private var isOperationRunning = false
     @State private var operationRationale = "選択した変更案を適用する"
-    @State private var isChatInputFocused = false
 
     private func historyMaximumWidth(containerWidth: CGFloat) -> CGFloat {
         max(180, min(420, containerWidth - 50 - 440 - (isRightPaneOpen ? 330 : 0) - 8))
@@ -1280,17 +1311,9 @@ private struct DesktopWindow: View {
 
     @State private var activeHistoryMaximumWidth: CGFloat = 420
 
-    private var hostSuggestionContext: (query: String, atIndex: String.Index)? {
-        guard let atIndex = model.draft.lastIndex(of: "@") else { return nil }
-        let queryStart = model.draft.index(after: atIndex)
-        let query = String(model.draft[queryStart...])
-        guard !query.contains(where: \.isWhitespace) else { return nil }
-        return (query, atIndex)
-    }
-
     private var hostSuggestions: [HostSuggestion] {
-        guard let context = hostSuggestionContext else { return [] }
-        let hosts = model.connections.map { HostSuggestion(hostname: $0.name, ip: $0.host) }
+        guard let context = mentionContext else { return [] }
+        let hosts = model.availableCompletionHosts
         return HostSuggestionPolicy.find(
             query: context.query,
             availableHosts: hosts,
@@ -1300,8 +1323,20 @@ private struct DesktopWindow: View {
     }
 
     private func selectHostSuggestion(_ suggestion: HostSuggestion) {
-        guard let context = hostSuggestionContext else { return }
-        model.draft.replaceSubrange(context.atIndex..., with: "\(suggestion.hostname) ")
+        mentionCompletion = ChatMentionCompletion(hostname: suggestion.hostname)
+        mentionPresentation.dismiss()
+        isChatInputFocused = true
+    }
+
+    private func handleSuggestionKey(_ key: ChatSuggestionKey) -> Bool {
+        guard showsHostSuggestions else { return false }
+        switch key {
+        case .next: hostSuggestionIndex = (hostSuggestionIndex + 1) % hostSuggestions.count
+        case .previous: hostSuggestionIndex = (hostSuggestionIndex + hostSuggestions.count - 1) % hostSuggestions.count
+        case .accept: selectHostSuggestion(hostSuggestions[min(hostSuggestionIndex, hostSuggestions.count - 1)])
+        case .dismiss: mentionPresentation.dismiss()
+        }
+        return true
     }
 
     var body: some View {
@@ -1407,17 +1442,6 @@ private struct DesktopWindow: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
-            if model.isTauriConfigLoaded {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 9))
-                    Text("Tauri 設定同期中")
-                        .font(.system(size: 10))
-                }
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Color.green.opacity(0.12), in: Capsule())
-                .foregroundStyle(.green)
-            }
             if model.workspace == .chat {
                 Circle().fill(.green).frame(width: 7, height: 7)
                 Text("ローカルナレッジ").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -1867,9 +1891,11 @@ private struct DesktopWindow: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if suggestionVisibility.isVisible && hostSuggestionContext != nil && !hostSuggestions.isEmpty {
+            if showsHostSuggestions {
+                ScrollViewReader { suggestionProxy in
+                ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(hostSuggestions) { suggestion in
+                    ForEach(Array(hostSuggestions.enumerated()), id: \.element.id) { index, suggestion in
                         let icon: String = {
                             if suggestion.hostname == "localhost" { return "desktopcomputer" }
                             if suggestion.ip == "過去に投入したIPアドレス",
@@ -1892,7 +1918,15 @@ private struct DesktopWindow: View {
                             .padding(.vertical, 5)
                         }
                         .buttonStyle(.plain)
+                        .background(index == hostSuggestionIndex ? Color.accentColor.opacity(0.14) : .clear,
+                                    in: RoundedRectangle(cornerRadius: 4))
+                        .id(index)
+                        .onHover { hovering in if hovering { hostSuggestionIndex = index } }
                     }
+                }
+                }
+                .frame(height: min(180, CGFloat(hostSuggestions.count) * 29))
+                .onChange(of: hostSuggestionIndex) { index in suggestionProxy.scrollTo(index) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(4)
@@ -1926,7 +1960,14 @@ private struct DesktopWindow: View {
 
                 ChatComposer(text: $model.draft, isFocused: $isChatInputFocused,
                              isEnabled: !model.isWorking, onSubmit: model.send,
-                             onEscape: { suggestionVisibility.dismissForEscape() })
+                             onEscape: { mentionPresentation.dismiss() },
+                             onSuggestionKey: handleSuggestionKey,
+                             onMentionContextChanged: { context in
+                                 guard mentionContext != context else { return }
+                                 hostSuggestionIndex = 0
+                                 mentionPresentation.update(context: context)
+                                 if context != nil { model.reloadCompletionHosts() }
+                             }, completion: mentionCompletion)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 4)
 
@@ -1953,25 +1994,21 @@ private struct DesktopWindow: View {
         .frame(maxWidth: 760).padding(.horizontal, 22).padding(.top, 10).padding(.bottom, 14)
         .frame(maxWidth: .infinity).background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
-            refreshSuggestionVisibilityForInput()
+            model.reloadCompletionHosts()
             isChatInputFocused = !model.isWorking
         }
         .onChange(of: model.isWorking) { isWorking in
             if !isWorking { isChatInputFocused = true }
         }
-        .onChange(of: model.draft) { _ in refreshSuggestionVisibilityForInput() }
+
         .onChange(of: hostSuggestions.map(\.hostname)) { _ in
-            suggestionVisibility.updateCandidates(count: hostSuggestions.count)
+            hostSuggestionIndex = min(hostSuggestionIndex, max(0, hostSuggestions.count - 1))
         }
     }
 
-    private func refreshSuggestionVisibilityForInput() {
-        suggestionVisibility.updateForInput(
-            hasMentionQuery: hostSuggestionContext != nil,
-            candidateCount: hostSuggestions.count
-        )
-    }
+
 }
+
 
 // MARK: - Session & Message Rows
 

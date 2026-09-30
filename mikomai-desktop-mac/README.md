@@ -54,6 +54,16 @@ swift test --disable-sandbox --package-path mikomai-desktop-mac \
   --scratch-path /private/tmp/mikomai-swift-test-build
 ```
 
+### Chat keyboard regression checks
+
+Run `sh mikomai-desktop-mac/test-chat-composer.sh` from the repository root on macOS. The script compiles the production `ChatComposer.swift` together with `Tests/ChatComposerChecks/ChatComposerChecks.swift`; it does not duplicate the input implementation or require the Swift Testing plugin or Rust library. The script also builds the native core module for host-registry checks. Set `MIKOMAI_MACOS_SDK` if a specific SDK is needed.
+
+The checks send AppKit key events to the actual chat text view and set marked text through `NSTextInputClient`. They cover Enter submission without a newline, suppression during Japanese composition (including Command/Shift modifiers), submission after composition, Shift+Enter newline insertion, Command+Enter, keypad Enter, and a disabled input. They also cover cursor-aware @ completion, Unicode offsets, suffix preservation, suggestion navigation/acceptance/dismissal, and IME priority over suggestions. The checks also mount the production input and completion presentation state in SwiftUI, covering delayed host loading, Escape dismissal, and the full completion round trip. They do not automate a real IME candidate window or model inference.
+
+Host suggestions read non-secret names and IP addresses from Tauri's `connections.json` beside the settings file, alongside native connections and recent IPs. `MIKOMAI_CONNECTIONS_FILE` can override the registry path. This lookup does not import or modify connections or credentials. Both `@` and Japanese full-width `＠` open completion suggestions.
+
+
+
 ### Remaining test-driven port
 
 The imported/exported data codec and validation are covered in Core. Native file-panel presentation, cancellation, read/write failures, and warning dialogs do not yet have SwiftUI interaction tests. Connection inventory CRUD, editor validation, credential metadata, and console setting serialization have Core tests; actual editor field selection, save/delete clicks, and Keychain access still need macOS UI/integration tests. Node DB bulk refresh and SSH execution require Tauri backend services absent from the native FFI and remain unsupported. The tests above are a starting slice, not full parity. Continue porting cases and implement the missing behavior in this order:
@@ -91,3 +101,11 @@ On first launch, open Settings, choose a `.gguf` file, and select **読み込む
 Run `./mikomai-desktop-mac/build-app.sh` from the repository root. It creates `mikomai-desktop-mac/dist/MikomaiDesktopMac.app`, bundles the Rust FFI library and the repository's `nw-docs`, uses an executable-relative `@rpath`, and applies an ad-hoc local signature. This machine-local development bundle is not a release or distribution package. The script replaces only a previous bundle it created, and refuses to replace an unrelated app at the same path.
 
 The C ABI is declared in `Sources/MikomaiFFI/include/mikomai_ffi.h`. The app loads a selected model with `mikomai_model_load`, checks the active path with `mikomai_model_status`, and sends chat requests through `mikomai_assistant_chat` with the current document and index directories. Rust returns a status code and owned UTF-8 string; Swift releases each result with `mikomai_result_free`.
+
+For a production-window regression check, build the app first, then run:
+
+```sh
+sh mikomai-desktop-mac/test-chat-window.sh
+```
+
+This mounts the actual `DesktopWindow` and `DesktopModel`, verifies that bare half-width and full-width @ produce an Enter-selectable localhost candidate, and saves a rendered window to `/private/tmp/mikomai-full-check/window.png`. The completion policy checks also verify empty-query results with zero devices, registered Tauri hosts, and recent IPs.

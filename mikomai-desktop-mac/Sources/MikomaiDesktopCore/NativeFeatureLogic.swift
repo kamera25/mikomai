@@ -240,7 +240,7 @@ public struct SavedConnection: Identifiable, Codable, Equatable {
     }
 }
 
-public struct HostSuggestion: Equatable, Identifiable {
+public struct HostSuggestion: Equatable, Identifiable, Sendable {
     public var hostname: String
     public var ip: String
     public var id: String { "\(hostname)\u{0}\(ip)" }
@@ -272,20 +272,20 @@ public enum HostSuggestionPolicy {
         var suggestions: [HostSuggestion] = []
         var seenIPs = Set<String>()
 
-        if "localhost".contains(loweredQuery) || labels.localhost.contains(query) {
+        if query.isEmpty || "localhost".contains(loweredQuery) || labels.localhost.contains(query) {
             suggestions.append(HostSuggestion(hostname: "localhost", ip: labels.localhost))
             seenIPs.formUnion(["127.0.0.1", "localhost"])
         }
 
         for host in availableHosts {
             if host.hostname != "localhost",
-               (host.hostname.lowercased().contains(loweredQuery) || host.ip.contains(query)) {
+               (query.isEmpty || host.hostname.lowercased().contains(loweredQuery) || host.ip.contains(query)) {
                 suggestions.append(host)
             }
             seenIPs.insert(host.ip)
         }
 
-        for ip in recentIPs where (ip.lowercased().contains(loweredQuery) || labels.pastIps.contains(query)) && !seenIPs.contains(ip) {
+        for ip in recentIPs where (query.isEmpty || ip.lowercased().contains(loweredQuery) || labels.pastIps.contains(query)) && !seenIPs.contains(ip) {
             suggestions.append(HostSuggestion(hostname: ip, ip: labels.pastIps))
             seenIPs.insert(ip)
         }

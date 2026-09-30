@@ -1,15 +1,101 @@
 import AppKit
 import SwiftUI
 
+enum ChatSuggestionKey: Equatable { case next, previous, accept, dismiss }
+
+struct ChatMentionCompletion {
+    let id = UUID()
+    let hostname: String
+}
+
+struct ChatMentionContext: Equatable {
+    let query: String
+    let range: NSRange
+
+    init?(text: String, selection: NSRange) {
+        let source = text as NSString
+        guard selection.length == 0, selection.location <= source.length else { return nil }
+        let prefix = source.substring(to: selection.location) as NSString
+        let at = prefix.rangeOfCharacter(from: CharacterSet(charactersIn: "@＠"), options: .backwards)
+        guard at.location != NSNotFound else { return nil }
+        let query = prefix.substring(from: at.location + 1)
+        guard !query.contains(where: \.isWhitespace) else { return nil }
+        // Japanese input can commit full-width ASCII. Keep the original range
+        // for replacement, but search using the equivalent half-width query.
+        self.query = query.unicodeScalars.map { scalar in
+            (0xFF01...0xFF5E).contains(scalar.value)
+                ? String(Unicode.Scalar(scalar.value - 0xFEE0)!) : String(scalar)
+        }.joined()
+        range = NSRange(location: at.location, length: selection.location - at.location)
+    }
+}
+
+struct ChatMentionPresentation {
+    private(set) var context: ChatMentionContext?
+    private var dismissedContext: ChatMentionContext?
+
+    mutating func update(context: ChatMentionContext?) {
+        guard self.context != context else { return }
+        self.context = context
+        dismissedContext = nil
+    }
+
+    mutating func dismiss() { dismissedContext = context }
+
+    func isVisible(candidateCount: Int) -> Bool {
+        context != nil && context != dismissedContext && candidateCount > 0
+    }
+}
+
 /// Checks the composition state before AppKit consumes the Return event.
 /// Checking afterwards would mistake the Return that commits Japanese text
 /// for a request to send that text.
 final class ChatComposerTextView: NSTextView {
     var onSubmit: () -> Void = {}
     var onEscape: () -> Void = {}
+    var onSuggestionKey: (ChatSuggestionKey) -> Bool = { _ in false }
+    var onMentionContextChanged: (ChatMentionContext?) -> Void = { _ in }
+
+    func scheduleMentionReport() {
+        DispatchQueue.main.async { [weak self] in self?.reportMentionQuery() }
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        // NSTextView delegates can be notified before the input method finishes
+        // committing text and moving the caret. Read both on the next run loop.
+        scheduleMentionReport()
+    }
+
+    override func unmarkText() {
+        super.unmarkText()
+        scheduleMentionReport()
+    }
+
+    func reportMentionQuery() {
+        onMentionContextChanged(hasMarkedText() ? nil : ChatMentionContext(text: string, selection: selectedRange()))
+    }
+
+    func completeMention(with hostname: String) {
+        guard isEditable, !hasMarkedText(),
+              let context = ChatMentionContext(text: string, selection: selectedRange()) else { return }
+        insertText(hostname + " ", replacementRange: context.range)
+        reportMentionQuery()
+    }
 
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        // The input method gets first refusal during Japanese composition.
+        if !hasMarkedText(), isEditable {
+            let key: ChatSuggestionKey? = switch event.keyCode {
+            case 125: .next
+            case 126: .previous
+            case 36, 76, 48: .accept
+            case 53: .dismiss
+            default: nil
+            }
+            if let key, onSuggestionKey(key) { return }
+        }
         if (event.keyCode == 36 || event.keyCode == 76), !hasMarkedText() {
             if modifiers.contains(.shift) {
                 if isEditable { insertNewline(nil) }
@@ -55,6 +141,9 @@ struct ChatComposer: NSViewRepresentable {
     let isEnabled: Bool
     let onSubmit: () -> Void
     let onEscape: () -> Void
+    var onSuggestionKey: (ChatSuggestionKey) -> Bool = { _ in false }
+    var onMentionContextChanged: (ChatMentionContext?) -> Void = { _ in }
+    var completion: ChatMentionCompletion? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -95,12 +184,24 @@ struct ChatComposer: NSViewRepresentable {
         // Never replace the text storage while an input method owns marked text.
         if !editor.hasMarkedText(), editor.string != text {
             editor.string = text
+            editor.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+            editor.scheduleMentionReport()
             editor.needsDisplay = true
         }
         editor.isEditable = isEnabled
         editor.isSelectable = isEnabled
         editor.onSubmit = onSubmit
         editor.onEscape = onEscape
+        editor.onSuggestionKey = onSuggestionKey
+        editor.onMentionContextChanged = onMentionContextChanged
+        if let completion, context.coordinator.lastCompletionID != completion.id {
+            context.coordinator.lastCompletionID = completion.id
+            DispatchQueue.main.async { [weak editor, weak coordinator = context.coordinator] in
+                guard let editor, coordinator?.owner.completion?.id == completion.id else { return }
+                scroll.window?.makeFirstResponder(editor)
+                editor.completeMention(with: completion.hostname)
+            }
+        }
         if let scroll = scroll as? ChatComposerScrollView {
             scroll.focusOnAttachment = isFocused && isEnabled
         }
@@ -124,16 +225,24 @@ struct ChatComposer: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var owner: ChatComposer
         var requestedFocus = false
+        var lastCompletionID: UUID?
         init(_ owner: ChatComposer) { self.owner = owner }
 
         func textDidChange(_ notification: Notification) {
-            guard let editor = notification.object as? NSTextView else { return }
+            guard let editor = notification.object as? ChatComposerTextView else { return }
             owner.text = editor.string
+            editor.reportMentionQuery()
             editor.needsDisplay = true
             editor.enclosingScrollView?.invalidateIntrinsicContentSize()
         }
 
         func textDidBeginEditing(_ notification: Notification) { owner.isFocused = true }
         func textDidEndEditing(_ notification: Notification) { owner.isFocused = false }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let editor = notification.object as? ChatComposerTextView else { return }
+            // Programmatic storage updates can notify during SwiftUI rendering.
+            DispatchQueue.main.async { [weak editor] in editor?.reportMentionQuery() }
+        }
     }
 }
