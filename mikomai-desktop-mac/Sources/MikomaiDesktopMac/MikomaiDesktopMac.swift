@@ -1383,20 +1383,26 @@ private struct DesktopWindow: View {
 
     private var activityBar: some View {
         VStack(spacing: 8) {
-            ForEach(Workspace.allCases) { item in
-                Button { model.workspace = item } label: {
-                    Image(systemName: item.icon).font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(model.workspace == item ? .primary : .secondary)
-                        .frame(width: 34, height: 34)
-                        .background(model.workspace == item ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain).help(item.rawValue)
+            ForEach(Workspace.allCases.filter { $0 != .settings }) { item in
+                activityButton(item)
             }
             Spacer()
+            activityButton(.settings)
         }
-        .padding(.top, 12).frame(width: 50)
+        .padding(.vertical, 12).frame(width: 50)
         .background(Color(nsColor: .controlBackgroundColor))
         .overlay(alignment: .trailing) { Divider() }
+    }
+
+    private func activityButton(_ item: Workspace) -> some View {
+        Button { model.workspace = item } label: {
+            Image(systemName: item.icon).font(.system(size: 16, weight: .medium))
+                .foregroundStyle(model.workspace == item ? .primary : .secondary)
+                .frame(width: 34, height: 34)
+                .background(model.workspace == item ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help(item.rawValue)
     }
 
     private var historySidebar: some View {
@@ -1468,16 +1474,17 @@ private struct DesktopWindow: View {
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("右ペインを閉じる")
             }.padding(.horizontal, 14).padding(.vertical, 12)
             Divider()
-            HStack(spacing: 0) {
-                ForEach([("diff", "Diff"), ("logs", "ログ")], id: \.0) { key, title in
-                    Button { rightPaneTab = key } label: {
-                        Text(title).font(.system(size: 12, weight: rightPaneTab == key ? .semibold : .regular))
-                            .foregroundStyle(rightPaneTab == key ? Color.accentColor : Color.secondary)
-                            .frame(maxWidth: .infinity).padding(.vertical, 9)
-                            .overlay(alignment: .bottom) { if rightPaneTab == key { Rectangle().fill(Color.accentColor).frame(height: 2) } }
-                    }.buttonStyle(.plain)
+            HStack(spacing: 12) {
+                WorkspaceTabButton(title: "Diff", icon: "arrow.left.arrow.right", isSelected: rightPaneTab == "diff") {
+                    rightPaneTab = "diff"
                 }
+                WorkspaceTabButton(title: "ログ", icon: "text.alignleft", isSelected: rightPaneTab == "logs") {
+                    rightPaneTab = "logs"
+                }
+                Spacer()
             }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(Color(nsColor: .controlBackgroundColor))
             Divider()
             if rightPaneTab == "diff" {
                 operationDiffPane
@@ -2481,18 +2488,9 @@ private struct NetworkToolsWorkspace: View {
     private var tabBar: some View {
         HStack(spacing: 12) {
             ForEach(ToolTab.allCases) { tab in
-                Button {
+                WorkspaceTabButton(title: tab.rawValue, icon: tab.icon, isSelected: model.selectedToolTab == tab) {
                     model.selectedToolTab = tab
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: tab.icon)
-                        Text(tab.rawValue)
-                    }
-                    .font(.system(size: 12, weight: model.selectedToolTab == tab ? .semibold : .regular))
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(model.selectedToolTab == tab ? Color(nsColor: .selectedControlColor).opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 6))
                 }
-                .buttonStyle(.plain)
             }
             Spacer()
         }
@@ -2836,6 +2834,27 @@ private struct NetworkToolsWorkspace: View {
     }
 }
 
+private struct WorkspaceTabButton: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                Text(title)
+            }
+            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(isSelected ? Color(nsColor: .selectedControlColor).opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Full Settings Workspace (Complete Port of Tauri AppSettings)
 
 private struct SettingsWorkspace: View {
@@ -2845,16 +2864,21 @@ private struct SettingsWorkspace: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Category Segmented Control
-            Picker("", selection: $selectedCategory) {
-                Text("チャット・通信").tag(0)
-                Text("LLM モデル").tag(1)
-                Text("Vision (画像)").tag(2)
-                Text("ナレッジ RAG").tag(3)
-                Text("Tauri 同期").tag(4)
+            HStack(spacing: 12) {
+                ForEach(Array([
+                    ("チャット・通信", "bubble.left.and.bubble.right"),
+                    ("LLM モデル", "cpu"),
+                    ("Vision (画像)", "photo"),
+                    ("ナレッジ RAG", "books.vertical"),
+                    ("Tauri 同期", "arrow.triangle.2.circlepath")
+                ].enumerated()), id: \.offset) { index, category in
+                    WorkspaceTabButton(title: category.0, icon: category.1, isSelected: selectedCategory == index) {
+                        selectedCategory = index
+                    }
+                }
+                Spacer()
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 20).padding(.vertical, 10)
+            .padding(.horizontal, 16).padding(.vertical, 8)
             .background(Color(nsColor: .controlBackgroundColor))
 
             Divider()
