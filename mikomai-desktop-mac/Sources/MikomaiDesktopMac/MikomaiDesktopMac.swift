@@ -250,6 +250,12 @@ private enum KeychainHelper {
     }
 }
 
+private struct KeychainCredentialAdapter: CredentialStore {
+    func save(key: String, value: String) { KeychainHelper.save(key: key, value: value) }
+    func load(key: String) -> String? { KeychainHelper.load(key: key) }
+    func delete(key: String) { KeychainHelper.delete(key: key) }
+}
+
 // MARK: - C ABI Streaming Callback Bridge
 
 private final class StreamBox: @unchecked Sendable {
@@ -315,6 +321,7 @@ private final class DesktopModel: ObservableObject {
     @Published var recentTcpTests: [String] = []
 
     private let defaults = UserDefaults.standard
+    private let credentialPersistence = ConnectionCredentialPersistence(store: KeychainCredentialAdapter())
     private let sessionsKey = "mikomai.desktop.mac.sessions.v1"
     private let activeKey = "mikomai.desktop.mac.activeSession.v1"
     private let connectionsKey = "mikomai.desktop.mac.connections.v1"
@@ -692,17 +699,7 @@ private final class DesktopModel: ObservableObject {
     func saveConnection(_ connection: SavedConnection, password: String? = nil, enablePassword: String? = nil) {
         guard connection.validationError == nil else { return }
         var updated = connection
-        if let pwd = password, !pwd.isEmpty {
-            KeychainHelper.save(key: "conn.\(connection.id.uuidString).password", value: pwd)
-        } else if password != nil {
-            KeychainHelper.delete(key: "conn.\(connection.id.uuidString).password")
-        }
-
-        if let enPwd = enablePassword, !enPwd.isEmpty {
-            KeychainHelper.save(key: "conn.\(connection.id.uuidString).enable", value: enPwd)
-        } else if enablePassword != nil {
-            KeychainHelper.delete(key: "conn.\(connection.id.uuidString).enable")
-        }
+        credentialPersistence.save(for: connection.id, password: password, enablePassword: enablePassword)
         updated = ConnectionCredentialPolicy.applying(
             password: password,
             enablePassword: enablePassword,
@@ -716,8 +713,7 @@ private final class DesktopModel: ObservableObject {
     func deleteConnection(_ id: UUID) {
         connections = ConnectionInventoryPolicy.removing(id, from: connections)
         connectionStatuses.removeValue(forKey: id)
-        KeychainHelper.delete(key: "conn.\(id.uuidString).password")
-        KeychainHelper.delete(key: "conn.\(id.uuidString).enable")
+        credentialPersistence.delete(for: id)
     }
 
     func testConnection(_ connection: SavedConnection) {
@@ -1693,10 +1689,9 @@ private struct ConnectionEditor: View {
     init(connection: SavedConnection, onSave: @escaping (SavedConnection, String?, String?) -> Void) {
         self._connection = State(initialValue: connection)
         self.onSave = onSave
-        let existingPwd = KeychainHelper.load(key: "conn.\(connection.id.uuidString).password") ?? ""
-        let existingEn = KeychainHelper.load(key: "conn.\(connection.id.uuidString).enable") ?? ""
-        self._password = State(initialValue: existingPwd)
-        self._enablePassword = State(initialValue: existingEn)
+        let credentials = ConnectionCredentialPersistence(store: KeychainCredentialAdapter()).load(for: connection.id)
+        self._password = State(initialValue: credentials.password ?? "")
+        self._enablePassword = State(initialValue: credentials.enablePassword ?? "")
     }
 
     var body: some View {

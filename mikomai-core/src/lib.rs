@@ -1,5 +1,6 @@
 //! GUI and infrastructure independent application core.
 pub mod application;
+pub mod attachment_policy;
 pub mod desired_change;
 pub mod dispatch;
 pub mod domain;

@@ -10,6 +10,41 @@ use crate::mcp::fetch::get_state::{
 use serde::Serialize;
 use tauri::{Emitter, Manager};
 
+#[cfg(test)]
+mod tests {
+    use super::validate_collector_result;
+
+    #[test]
+    fn collector_contract_only_accepts_successful_nonblank_output() {
+        assert_eq!(
+            validate_collector_result(true, "  vlan data\n".into()).unwrap(),
+            "  vlan data\n"
+        );
+        assert_eq!(
+            validate_collector_result(true, " \n\t ".into()).unwrap_err(),
+            "The device returned no data"
+        );
+        assert_eq!(
+            validate_collector_result(false, "device command failed".into()).unwrap_err(),
+            "device command failed"
+        );
+        assert_eq!(
+            validate_collector_result(false, "".into()).unwrap_err(),
+            "The device returned no data"
+        );
+    }
+}
+
+fn validate_collector_result(success: bool, output: String) -> Result<String, String> {
+    if output.trim().is_empty() {
+        return Err("The device returned no data".to_string());
+    }
+    if !success {
+        return Err(output);
+    }
+    Ok(output)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeRefreshStarted {
@@ -33,20 +68,14 @@ async fn collect<F: McpCommandFetcher>(
 ) -> Result<(), String> {
     priority.wait_for_foreground_idle().await;
     let result = fetcher.fetch_device_info(app, device).await?;
-    if !result.success || result.output.trim().is_empty() {
-        return Err(if result.output.trim().is_empty() {
-            "The device returned no data".to_string()
-        } else {
-            result.output
-        });
-    }
+    let output = validate_collector_result(result.success, result.output)?;
     app.state::<crate::graph::SurrealDbState>()
         .ingest(crate::graph::GraphIngestInput {
             source_id: format!("settings.node_db_bulk_refresh.{}", kind.as_str()),
             collected_at: chrono::Utc::now(),
             device_name: device.to_string(),
             kind,
-            raw: result.output,
+            raw: output,
             normalized: None,
             canonical: None,
             evidence: None,

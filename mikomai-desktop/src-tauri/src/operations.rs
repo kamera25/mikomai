@@ -186,12 +186,8 @@ impl OperationStore {
             .lock()
             .map_err(|_| "Operation plan store is unavailable".to_string())?;
         let plan = plans.get_mut(&id).ok_or("Operation plan was not found")?;
-        if plan.approval_status != ApprovalStatus::Pending {
-            return Err("Only a pending operation plan can be approved".to_string());
-        }
-        if plan.plan_hash != plan_hash {
-            return Err("Change plan has changed or the approval hash is invalid".to_string());
-        }
+        let mut core_plan = core_operation_plan(plan);
+        mikomai_core::OperationGate::approve(&mut core_plan, plan_hash)?;
         plan.approval_status = ApprovalStatus::Approved;
         let updated = plan.clone();
         self.persist(&plans)?;
@@ -204,12 +200,8 @@ impl OperationStore {
             .lock()
             .map_err(|_| "Operation plan store is unavailable".to_string())?;
         let plan = plans.get_mut(&id).ok_or("Operation plan was not found")?;
-        if plan.approval_status != ApprovalStatus::Approved {
-            return Err("Operation plan has not been approved".to_string());
-        }
-        if plan.plan_hash != plan_hash {
-            return Err("Change plan hash does not match the approved plan".to_string());
-        }
+        let mut core_plan = core_operation_plan(plan);
+        mikomai_core::OperationGate::begin_execution(&mut core_plan, plan_hash)?;
         plan.approval_status = ApprovalStatus::Executing;
         let updated = plan.clone();
         self.persist(&plans)?;
@@ -221,9 +213,10 @@ impl OperationStore {
             .plans
             .lock()
             .map_err(|_| "Operation plan store is unavailable".to_string())?;
-        if let Some(plan) = plans.get_mut(&id) {
-            plan.approval_status = ApprovalStatus::Executed;
-        }
+        let plan = plans.get_mut(&id).ok_or("Operation plan was not found")?;
+        let mut core_plan = core_operation_plan(plan);
+        mikomai_core::OperationGate::finish_execution(&mut core_plan, true)?;
+        plan.approval_status = ApprovalStatus::Executed;
         self.persist(&plans)
     }
 
@@ -232,10 +225,34 @@ impl OperationStore {
             .plans
             .lock()
             .map_err(|_| "Operation plan store is unavailable".to_string())?;
-        if let Some(plan) = plans.get_mut(&id) {
-            plan.approval_status = ApprovalStatus::Failed;
-        }
+        let plan = plans.get_mut(&id).ok_or("Operation plan was not found")?;
+        let mut core_plan = core_operation_plan(plan);
+        mikomai_core::OperationGate::finish_execution(&mut core_plan, false)?;
+        plan.approval_status = ApprovalStatus::Failed;
         self.persist(&plans)
+    }
+}
+
+fn core_operation_plan(plan: &OperationPlan) -> mikomai_core::OperationPlan {
+    mikomai_core::OperationPlan {
+        id: plan.id,
+        tool_id: plan.tool_id.clone(),
+        target: plan.target.clone(),
+        args: plan.args.clone(),
+        rationale: plan.rationale.clone(),
+        plan_hash: plan.plan_hash.clone(),
+        operation_class: match plan.operation_class {
+            OperationClass::ReadOnly => mikomai_core::OperationClass::ReadOnly,
+            OperationClass::Change => mikomai_core::OperationClass::Change,
+        },
+        status: match plan.approval_status {
+            ApprovalStatus::Pending => mikomai_core::OperationStatus::Pending,
+            ApprovalStatus::Approved => mikomai_core::OperationStatus::Approved,
+            ApprovalStatus::Executing => mikomai_core::OperationStatus::Executing,
+            ApprovalStatus::Executed => mikomai_core::OperationStatus::Executed,
+            ApprovalStatus::Failed => mikomai_core::OperationStatus::Failed,
+            ApprovalStatus::Rejected => mikomai_core::OperationStatus::Rejected,
+        },
     }
 }
 
@@ -378,7 +395,10 @@ pub async fn execute_approved_operation_plan(
     }
     let result = crate::network::network_config(app, device, commands)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| {
+            let _ = store.mark_failed(id);
+            error.to_string()
+        })?;
     if result.success {
         store.mark_executed(id)?;
     } else {
@@ -454,6 +474,64 @@ mod tests {
             ApprovalStatus::Executing
         );
         assert!(store.take_approved(plan.id, &plan.plan_hash).is_err());
+    }
+
+    #[test]
+    fn completion_requires_an_existing_executing_plan() {
+        let store = OperationStore::new();
+        let plan = store
+            .insert(
+                ChangePlanner::create(
+                    "network_config".into(),
+                    Some("edge-01".into()),
+                    serde_json::json!({"commands": ["hostname edge-01"]}),
+                    "Approved maintenance window".into(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        assert!(store.mark_executed(uuid::Uuid::new_v4()).is_err());
+        assert!(store.mark_failed(uuid::Uuid::new_v4()).is_err());
+        assert!(store.mark_executed(plan.id).is_err());
+        assert!(store.mark_failed(plan.id).is_err());
+        assert_eq!(
+            store.get(plan.id).unwrap().approval_status,
+            ApprovalStatus::Pending
+        );
+
+        store.approve(plan.id, &plan.plan_hash).unwrap();
+        assert!(store.mark_executed(plan.id).is_err());
+        store.take_approved(plan.id, &plan.plan_hash).unwrap();
+        store.mark_executed(plan.id).unwrap();
+        assert_eq!(
+            store.get(plan.id).unwrap().approval_status,
+            ApprovalStatus::Executed
+        );
+        assert!(store.mark_failed(plan.id).is_err());
+
+        let failed_plan = store
+            .insert(
+                ChangePlanner::create(
+                    "network_config".into(),
+                    Some("edge-02".into()),
+                    serde_json::json!({"commands": ["hostname edge-02"]}),
+                    "Second approved maintenance window".into(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        store
+            .approve(failed_plan.id, &failed_plan.plan_hash)
+            .unwrap();
+        store
+            .take_approved(failed_plan.id, &failed_plan.plan_hash)
+            .unwrap();
+        store.mark_failed(failed_plan.id).unwrap();
+        assert_eq!(
+            store.get(failed_plan.id).unwrap().approval_status,
+            ApprovalStatus::Failed
+        );
     }
 
     #[test]

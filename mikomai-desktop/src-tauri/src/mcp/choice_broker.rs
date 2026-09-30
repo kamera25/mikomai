@@ -16,10 +16,14 @@ impl ChoiceBroker {
 
     pub fn register(&self, id: String) -> Result<oneshot::Receiver<String>, String> {
         let (sender, receiver) = oneshot::channel();
-        self.txs
+        let mut pending = self
+            .txs
             .lock()
-            .map_err(|_| "Mutex lock poisoned".to_string())?
-            .insert(id, sender);
+            .map_err(|_| "Mutex lock poisoned".to_string())?;
+        if pending.contains_key(&id) {
+            return Err("A choice request with this ID is already pending".to_string());
+        }
+        pending.insert(id, sender);
         Ok(receiver)
     }
 
@@ -46,5 +50,28 @@ mod tests {
         let receiver = broker.register("request-1".into()).unwrap();
         broker.resolve("request-1", "accept".into()).unwrap();
         assert_eq!(receiver.await.unwrap(), "accept");
+    }
+
+    #[tokio::test]
+    async fn duplicate_request_id_is_rejected_without_replacing_the_first_waiter() {
+        let broker = ChoiceBroker::new();
+        let first = broker.register("request-1".into()).unwrap();
+        assert!(broker.register("request-1".into()).is_err());
+        broker.resolve("request-1", "first answer".into()).unwrap();
+        assert_eq!(first.await.unwrap(), "first answer");
+    }
+
+    #[tokio::test]
+    async fn unknown_responses_are_ignored_and_cancelled_receivers_are_removed_on_resolve() {
+        let broker = ChoiceBroker::new();
+        broker.resolve("unknown", "late answer".into()).unwrap();
+        assert!(broker.txs.lock().unwrap().is_empty());
+
+        let receiver = broker.register("cancelled-request".into()).unwrap();
+        drop(receiver);
+        broker
+            .resolve("cancelled-request", "late answer".into())
+            .unwrap();
+        assert!(broker.txs.lock().unwrap().is_empty());
     }
 }

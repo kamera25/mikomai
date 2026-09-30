@@ -94,6 +94,32 @@ impl OperationGate {
         plan.status = OperationStatus::Approved;
         Ok(())
     }
+
+    /// Atomically claims an approved plan for one execution attempt.
+    pub fn begin_execution(plan: &mut OperationPlan, approved_hash: &str) -> Result<(), String> {
+        if plan.status != OperationStatus::Approved
+            || approved_hash != plan.plan_hash
+            || plan.operation_class != OperationClass::Change
+            || plan.tool_id.trim().is_empty()
+        {
+            return Err("operation plan is not approved".into());
+        }
+        plan.status = OperationStatus::Executing;
+        Ok(())
+    }
+
+    /// Records a terminal outcome only after an execution claim.
+    pub fn finish_execution(plan: &mut OperationPlan, succeeded: bool) -> Result<(), String> {
+        if plan.status != OperationStatus::Executing {
+            return Err("operation plan is not executing".into());
+        }
+        plan.status = if succeeded {
+            OperationStatus::Executed
+        } else {
+            OperationStatus::Failed
+        };
+        Ok(())
+    }
 }
 fn classify_tool(tool: &str) -> OperationClass {
     if ["network_config", "configure", "write_config", "reload"]
@@ -114,4 +140,46 @@ fn hash_plan(
 ) -> String {
     let bytes = serde_json::to_vec(&serde_json::json!({"id": id, "toolId": tool, "target": target, "args": args, "rationale": rationale})).unwrap_or_default();
     format!("{:x}", Sha256::digest(bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn operation_gate_claims_once_and_requires_execution_before_completion() {
+        let mut plan = ChangePlanner::create(
+            "network_config".into(),
+            Some("edge-01".into()),
+            serde_json::json!({"commands": ["hostname edge-01"]}),
+            "Approved maintenance window".into(),
+        )
+        .unwrap();
+        let hash = plan.plan_hash.clone();
+
+        assert!(OperationGate::begin_execution(&mut plan, &hash).is_err());
+        assert!(OperationGate::finish_execution(&mut plan, true).is_err());
+        assert!(OperationGate::approve(&mut plan, "incorrect").is_err());
+        OperationGate::approve(&mut plan, &hash).unwrap();
+        assert!(OperationGate::begin_execution(&mut plan, "incorrect").is_err());
+        OperationGate::begin_execution(&mut plan, &hash).unwrap();
+        assert_eq!(plan.status, OperationStatus::Executing);
+        assert!(OperationGate::begin_execution(&mut plan, &hash).is_err());
+        OperationGate::finish_execution(&mut plan, true).unwrap();
+        assert_eq!(plan.status, OperationStatus::Executed);
+        assert!(OperationGate::finish_execution(&mut plan, false).is_err());
+
+        let mut failed_plan = ChangePlanner::create(
+            "network_config".into(),
+            None,
+            serde_json::json!({"commands": ["invalid command"]}),
+            "Validate failure transition".into(),
+        )
+        .unwrap();
+        let failed_hash = failed_plan.plan_hash.clone();
+        OperationGate::approve(&mut failed_plan, &failed_hash).unwrap();
+        OperationGate::begin_execution(&mut failed_plan, &failed_hash).unwrap();
+        OperationGate::finish_execution(&mut failed_plan, false).unwrap();
+        assert_eq!(failed_plan.status, OperationStatus::Failed);
+    }
 }

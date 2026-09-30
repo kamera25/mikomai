@@ -142,11 +142,17 @@ fn watches_path(app: &AppHandle) -> PathBuf {
     p.join("watches.json")
 }
 fn persist(app: &AppHandle, watches: &[WatchDefinition]) -> Result<(), String> {
-    fs::write(
-        watches_path(app),
-        serde_json::to_string_pretty(watches).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    save_watches_to_path(&watches_path(app), watches)
+}
+fn save_watches_to_path(path: &std::path::Path, watches: &[WatchDefinition]) -> Result<(), String> {
+    let serialized = serde_json::to_string_pretty(watches).map_err(|error| error.to_string())?;
+    fs::write(path, serialized).map_err(|error| error.to_string())
+}
+fn load_watches_from_path(path: &std::path::Path) -> Vec<WatchDefinition> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|contents| serde_json::from_str(&contents).ok())
+        .unwrap_or_default()
 }
 fn every_to_cron(every: &str) -> Result<String, String> {
     let seconds = every
@@ -159,10 +165,28 @@ fn every_to_cron(every: &str) -> Result<String, String> {
         return Err("schedule.every must be greater than zero".into());
     }
     if seconds > 59 {
-        if seconds % 60 != 0 {
-            return Err("schedule.every above 59 seconds must be a whole number of minutes".into());
+        if seconds == 86_400 {
+            return Ok("0 0 0 * * *".into());
         }
-        return Ok(format!("0 */{} * * * *", seconds / 60));
+        if seconds % 3_600 == 0 {
+            let hours = seconds / 3_600;
+            if hours < 24 && 24 % hours == 0 {
+                return Ok(if hours == 1 {
+                    "0 0 * * * *".into()
+                } else {
+                    format!("0 0 */{hours} * * *")
+                });
+            }
+        }
+        if seconds % 60 == 0 {
+            let minutes = seconds / 60;
+            if minutes <= 59 {
+                return Ok(format!("0 */{minutes} * * * *"));
+            }
+        }
+        return Err(
+            "schedule.every must map to a whole-minute, supported hourly, or daily interval".into(),
+        );
     }
     Ok(format!("*/{} * * * * *", seconds))
 }
@@ -334,10 +358,7 @@ async fn rebuild_scheduler(app: &AppHandle, state: &WatchState) {
     *state.scheduler.lock().await = scheduler;
 }
 pub async fn init_watch_scheduler(app: &AppHandle) -> WatchState {
-    let watches: Vec<WatchDefinition> = fs::read_to_string(watches_path(app))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
+    let watches = load_watches_from_path(&watches_path(app));
     let scheduler = JobScheduler::new()
         .await
         .expect("watch scheduler can be created");
@@ -510,5 +531,48 @@ mod tests {
     fn compares_deterministically() {
         assert!(matches(&ComparisonOperator::Gt, 81.0, 80.0));
         assert!(!matches(&ComparisonOperator::Lte, 81.0, 80.0));
+    }
+
+    #[test]
+    fn schedule_conversion_respects_cron_field_boundaries() {
+        assert_eq!(every_to_cron("1s").unwrap(), "*/1 * * * * *");
+        assert_eq!(every_to_cron("59s").unwrap(), "*/59 * * * * *");
+        assert_eq!(every_to_cron("60s").unwrap(), "0 */1 * * * *");
+        assert_eq!(every_to_cron("3540s").unwrap(), "0 */59 * * * *");
+        assert_eq!(every_to_cron("3600s").unwrap(), "0 0 * * * *");
+        assert_eq!(every_to_cron("7200s").unwrap(), "0 0 */2 * * *");
+        assert_eq!(every_to_cron("43200s").unwrap(), "0 0 */12 * * *");
+        assert_eq!(every_to_cron("86400s").unwrap(), "0 0 0 * * *");
+        assert!(every_to_cron("0s").is_err());
+        assert!(every_to_cron("61s").is_err());
+        assert!(every_to_cron("18000s").is_err());
+        assert!(every_to_cron("172800s").is_err());
+    }
+
+    #[test]
+    fn watch_file_round_trip_preserves_definition_and_corrupt_files_load_empty() {
+        let path = std::env::temp_dir().join(format!("mikomai-watch-{}.json", Uuid::new_v4()));
+        let watch = WatchDefinition {
+            id: Uuid::new_v4(),
+            name: "CPU alert".into(),
+            status: WatchStatus::Disabled,
+            ir: ir(),
+            created_at: Utc::now(),
+            last_run_at: Some(Utc::now()),
+            last_error: Some("device unavailable".into()),
+        };
+
+        save_watches_to_path(&path, std::slice::from_ref(&watch)).unwrap();
+        let restored = load_watches_from_path(&path);
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].id, watch.id);
+        assert_eq!(restored[0].name, watch.name);
+        assert_eq!(restored[0].status, watch.status);
+        assert_eq!(restored[0].ir.schedule.every, watch.ir.schedule.every);
+        assert_eq!(restored[0].last_error, watch.last_error);
+
+        fs::write(&path, "invalid json").unwrap();
+        assert!(load_watches_from_path(&path).is_empty());
+        let _ = fs::remove_file(path);
     }
 }

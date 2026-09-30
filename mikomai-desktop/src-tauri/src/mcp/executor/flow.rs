@@ -8,6 +8,56 @@ use crate::mcp::protocol::{
     AnalysisStartedPayload, ChatEvent, SummarySavedPayload, ToolFinishedPayload, ToolStartedPayload,
 };
 
+#[cfg(test)]
+mod tests {
+    use super::{audit_outcome, dispatch_policy, result_from_executor};
+    use crate::operations::{classify_tool, OperationClass};
+
+    #[test]
+    fn dispatch_policy_allows_only_read_only_registered_tools() {
+        assert_eq!(classify_tool("self_network_ping"), OperationClass::ReadOnly);
+        assert!(dispatch_policy("self_network_ping").is_ok());
+        assert!(dispatch_policy("network_config").is_err());
+        assert!(dispatch_policy("unknown_tool_id").is_err());
+    }
+
+    #[test]
+    fn failed_execution_maps_to_failed_audit_outcome() {
+        assert_eq!(audit_outcome(true), "succeeded");
+        assert_eq!(audit_outcome(false), "failed");
+        let result = result_from_executor(Err("adapter unavailable".into()));
+        assert!(!result.success);
+        assert_eq!(result.output, "Execution failed: adapter unavailable");
+    }
+}
+
+fn dispatch_policy(tool_id: &str) -> Result<(), String> {
+    crate::operations::allow_unattended_execution(tool_id)
+}
+
+fn audit_outcome(success: bool) -> &'static str {
+    if success {
+        "succeeded"
+    } else {
+        "failed"
+    }
+}
+
+fn result_from_executor(
+    result: Result<crate::network::CommandResult, String>,
+) -> crate::network::CommandResult {
+    match result {
+        Ok(result) => result,
+        Err(error) => crate::network::CommandResult {
+            success: false,
+            output: format!("Execution failed: {error}"),
+            saved_path: None,
+            is_cached: None,
+            cache_time: None,
+        },
+    }
+}
+
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
 pub struct ToolCall {
     pub tool: String,
@@ -42,7 +92,7 @@ pub async fn execute_mcp_tool_raw(
     // dispatching to an adapter.  The approval/audit route for Change tools is
     // introduced separately; direct calls must never bypass it.
     let operation_class = crate::operations::classify_tool(&tool_id);
-    if let Err(error) = crate::operations::allow_unattended_execution(&tool_id) {
+    if let Err(error) = dispatch_policy(&tool_id) {
         crate::audit::record(
             &app,
             &tool_id,
@@ -158,16 +208,7 @@ pub async fn execute_mcp_tool_raw(
     // Run execution with timeout (bypass timeout for user choice prompts)
     let is_choice_tool = kind_opt.map_or(false, |k| k.is_choice_tool());
     let result = if is_choice_tool {
-        match execution_future.await {
-            Ok(res) => res,
-            Err(e) => crate::network::CommandResult {
-                success: false,
-                output: format!("Execution failed: {}", e),
-                saved_path: None,
-                is_cached: None,
-                cache_time: None,
-            },
-        }
+        result_from_executor(execution_future.await)
     } else {
         let is_heavy_network_tool =
             kind_opt.map_or(false, |k| k.is_heavy_network_tool()) || tool_id == "apply_config";
@@ -178,14 +219,7 @@ pub async fn execute_mcp_tool_raw(
         };
         let mcp_timeout_duration = Duration::from_secs(effective_timeout);
         match tokio::time::timeout(mcp_timeout_duration, execution_future).await {
-            Ok(Ok(res)) => res,
-            Ok(Err(e)) => crate::network::CommandResult {
-                success: false,
-                output: format!("Execution failed: {}", e),
-                saved_path: None,
-                is_cached: None,
-                cache_time: None,
-            },
+            Ok(result) => result_from_executor(result),
             Err(_) => crate::network::CommandResult {
                 success: false,
                 output: "MCP execution timed out".to_string(),
@@ -215,11 +249,7 @@ pub async fn execute_mcp_tool_raw(
         &tool_id,
         resolved_host,
         operation_class,
-        if result.success {
-            "succeeded"
-        } else {
-            "failed"
-        },
+        audit_outcome(result.success),
         &serde_json::json!({
             "args": processed_args,
             "saved_path": result.saved_path,

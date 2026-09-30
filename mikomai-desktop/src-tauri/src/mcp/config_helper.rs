@@ -25,15 +25,7 @@ pub async fn submit_user_choice(
     state: tauri::State<'_, ChoiceManager>,
 ) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
-    let mut lock = state
-        .broker
-        .txs
-        .lock()
-        .map_err(|_| "Mutex lock poisoned".to_string())?;
-    if let Some(tx) = lock.remove(&id) {
-        let _ = tx.send(choice);
-    }
-    Ok(())
+    state.broker.resolve(&id, choice)
 }
 
 #[derive(Serialize)]
@@ -137,15 +129,7 @@ pub async fn validate_cisco_config_impl(
 
             let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
             let choice_manager = app_handle.state::<ChoiceManager>();
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            {
-                let mut lock = choice_manager
-                    .broker
-                    .txs
-                    .lock()
-                    .map_err(|_| "Mutex lock poisoned".to_string())?;
-                lock.insert(id.clone(), tx);
-            }
+            let rx = choice_manager.broker.register(id.clone())?;
 
             let mut hostname = None;
             let mut ip = None;
@@ -346,15 +330,9 @@ pub async fn validate_cisco_config_impl(
                                             "line": format!("[SYSTEM] ⚠️ Dry-run検証で {} 件のエラーが検出されました。ユーザーに投入確認を要請します。", errors.len())
                                         }));
 
-                                        let (force_tx, force_rx) = tokio::sync::oneshot::channel();
                                         let force_id = format!("{}_force", id);
-                                        {
-                                            let mut lock =
-                                                choice_manager.broker.txs.lock().map_err(|_| {
-                                                    "Mutex lock poisoned".to_string()
-                                                })?;
-                                            lock.insert(force_id.clone(), force_tx);
-                                        }
+                                        let force_rx =
+                                            choice_manager.broker.register(force_id.clone())?;
 
                                         let error_items: Vec<serde_json::Value> = errors
                                             .iter()
@@ -695,15 +673,7 @@ pub async fn ask_user_choice(
     let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let choice_manager = app.state::<ChoiceManager>();
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    {
-        let mut lock = choice_manager
-            .broker
-            .txs
-            .lock()
-            .map_err(|_| "Mutex lock poisoned".to_string())?;
-        lock.insert(id.clone(), tx);
-    }
+    let rx = choice_manager.broker.register(id.clone())?;
 
     // Emit event to request user choice
     let payload = serde_json::json!({
@@ -741,15 +711,7 @@ pub async fn submit_interface_choice(
     state: tauri::State<'_, InterfaceChoiceManager>,
 ) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
-    let mut lock = state
-        .broker
-        .txs
-        .lock()
-        .map_err(|_| "Mutex lock poisoned".to_string())?;
-    if let Some(tx) = lock.remove(&id) {
-        let _ = tx.send(choice);
-    }
-    Ok(())
+    state.broker.resolve(&id, choice)
 }
 
 #[tauri::command]
@@ -765,15 +727,7 @@ pub async fn ask_interface_choice(
     let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let choice_manager = app.state::<InterfaceChoiceManager>();
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    {
-        let mut lock = choice_manager
-            .broker
-            .txs
-            .lock()
-            .map_err(|_| "Mutex lock poisoned".to_string())?;
-        lock.insert(id.clone(), tx);
-    }
+    let rx = choice_manager.broker.register(id.clone())?;
 
     // Emit event to request interface choice
     let payload = serde_json::json!({
@@ -810,15 +764,7 @@ pub async fn submit_ipaddress_choice(
     state: tauri::State<'_, IpAddressChoiceManager>,
 ) -> Result<(), String> {
     let id = id.unwrap_or_else(|| "default".to_string());
-    let mut lock = state
-        .broker
-        .txs
-        .lock()
-        .map_err(|_| "Mutex lock poisoned".to_string())?;
-    if let Some(tx) = lock.remove(&id) {
-        let _ = tx.send(choice);
-    }
-    Ok(())
+    state.broker.resolve(&id, choice)
 }
 
 #[tauri::command]
@@ -836,15 +782,7 @@ pub async fn ask_ipaddress_choice(
     let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let choice_manager = app.state::<IpAddressChoiceManager>();
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    {
-        let mut lock = choice_manager
-            .broker
-            .txs
-            .lock()
-            .map_err(|_| "Mutex lock poisoned".to_string())?;
-        lock.insert(id.clone(), tx);
-    }
+    let rx = choice_manager.broker.register(id.clone())?;
 
     // Emit event to request IP address choice
     let payload = serde_json::json!({

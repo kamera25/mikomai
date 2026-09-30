@@ -2,11 +2,15 @@ use mikomai_adapters::device::JsonDeviceRegistry;
 use mikomai_adapters::headless::{EchoToolExecutor, JsonTaskRepository, StdoutReporter};
 use mikomai_adapters::knowledge::{KnowledgePlanner, KnowledgeStore};
 use mikomai_core::application::ChatService;
+use mikomai_core::attachment_policy::validate_native_text_payload;
 use mikomai_core::TaskManager;
 use std::ffi::{c_char, CStr, CString};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+
+#[cfg(test)]
+mod approval_boundary;
 
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
@@ -207,12 +211,11 @@ pub unsafe extern "C" fn mikomai_assistant_chat(
     )
 }
 
-pub type MikomaiStreamCallback = unsafe extern "C" fn(
-    chunk: *const c_char,
-    is_done: i32,
-    context: *mut std::ffi::c_void,
-);
+pub type MikomaiStreamCallback =
+    unsafe extern "C" fn(chunk: *const c_char, is_done: i32, context: *mut std::ffi::c_void);
 
+/// Runs chat with a flattened UTF-8 text attachment payload. Image, PDF, and
+/// non-text file markers are rejected; this ABI does not perform vision inference.
 #[no_mangle]
 pub unsafe extern "C" fn mikomai_assistant_chat_with_attachments(
     message: *const c_char,
@@ -271,9 +274,7 @@ pub unsafe extern "C" fn mikomai_assistant_chat_streaming(
                 .to_str()
                 .map_err(|e| format!("attachment text is not valid UTF-8: {e}"))?
         };
-        if attachments.len() > 128 * 1024 {
-            return Err("添付ファイルの合計サイズが128 KiBを超えています。".to_string());
-        }
+        validate_native_text_payload(attachments).map_err(|error| error.to_string())?;
         let evidence = if docs.exists() && docs.is_dir() {
             chat_with_paths(question, docs, index).unwrap_or_else(|err| {
                 eprintln!("RAG lookup failed: {err}");
@@ -317,7 +318,14 @@ fn infer_streaming<F: FnMut(&str, bool)>(prompt: &str, mut on_token: F) -> Resul
     let (temperature, repetition_penalty, n_ctx, max_new) = {
         let config = inference_config_slot()
             .lock()
-            .map(|g| (g.temperature, g.repetition_penalty, g.n_ctx, g.max_new_tokens as usize))
+            .map(|g| {
+                (
+                    g.temperature,
+                    g.repetition_penalty,
+                    g.n_ctx,
+                    g.max_new_tokens as usize,
+                )
+            })
             .unwrap_or((0.2, 1.1, 8192, 2048));
         config
     };
@@ -503,7 +511,11 @@ fn test_tcp_connection_core(host: &str, port: u16, timeout_ms: u32) -> Result<St
     } else {
         format!("{}:{}", trimmed, port)
     };
-    let timeout = Duration::from_millis(if timeout_ms == 0 { 2000 } else { timeout_ms as u64 });
+    let timeout = Duration::from_millis(if timeout_ms == 0 {
+        2000
+    } else {
+        timeout_ms as u64
+    });
     let start = Instant::now();
 
     let addrs = addr_str
@@ -515,7 +527,10 @@ fn test_tcp_connection_core(host: &str, port: u16, timeout_ms: u32) -> Result<St
         match TcpStream::connect_timeout(&addr, timeout) {
             Ok(_stream) => {
                 let latency = start.elapsed().as_millis();
-                return Ok(format!("接続成功: {} (ポート {}, {} ms)", addr, port, latency));
+                return Ok(format!(
+                    "接続成功: {} (ポート {}, {} ms)",
+                    addr, port, latency
+                ));
             }
             Err(e) => {
                 last_err = Some(format!("{addr}: {e}"));
@@ -680,6 +695,96 @@ mod tests {
     }
 
     #[test]
+    fn assistant_chat_rejects_image_pdf_and_non_text_attachment_markers() {
+        let message = CString::new("添付を確認してください").unwrap();
+        let history = CString::new("").unwrap();
+        let docs = CString::new("").unwrap();
+        let index = CString::new("").unwrap();
+        for (payload, expected) in [
+            (
+                "[添付ファイル 1: diagram.png]\nimage bytes",
+                "画像添付は未対応",
+            ),
+            (
+                "[添付ファイル 1: notes.pdf]\nraw PDF bytes",
+                "PDFからテキストを抽出",
+            ),
+            (
+                "[添付ファイル 1: firmware.bin]\nbinary bytes",
+                "UTF-8テキスト形式のみ",
+            ),
+        ] {
+            let attachments = CString::new(payload).unwrap();
+            let response = unsafe {
+                mikomai_assistant_chat_with_attachments(
+                    message.as_ptr(),
+                    history.as_ptr(),
+                    docs.as_ptr(),
+                    index.as_ptr(),
+                    attachments.as_ptr(),
+                )
+            };
+            assert_eq!(response.status, 1);
+            let error = unsafe { CStr::from_ptr(response.message).to_string_lossy() };
+            assert!(
+                error.contains(expected),
+                "expected {expected:?}, got {error:?}"
+            );
+            unsafe { mikomai_result_free(response) };
+        }
+    }
+
+    #[test]
+    fn assistant_chat_keeps_supported_text_attachment_on_text_only_boundary() {
+        let message = CString::new("添付を確認してください").unwrap();
+        let history = CString::new("").unwrap();
+        let docs = CString::new("").unwrap();
+        let index = CString::new("").unwrap();
+        for payload in [
+            "[添付ファイル 1: notes.md]\nrouter config".to_owned(),
+            format!("[添付ファイル 1: notes.md]\n{}", "x".repeat(128 * 1024)),
+            "説明文に data:image/png と data:application/pdf を含みます。".to_owned(),
+        ] {
+            let attachments = CString::new(payload).unwrap();
+            let response = unsafe {
+                mikomai_assistant_chat_with_attachments(
+                    message.as_ptr(),
+                    history.as_ptr(),
+                    docs.as_ptr(),
+                    index.as_ptr(),
+                    attachments.as_ptr(),
+                )
+            };
+            assert_eq!(response.status, 1);
+            let error = unsafe { CStr::from_ptr(response.message).to_string_lossy() };
+            assert!(
+                error.contains("モデルが未ロードです"),
+                "supported text payload should reach inference, got: {error}"
+            );
+            unsafe { mikomai_result_free(response) };
+        }
+
+        let oversized = CString::new(format!(
+            "[添付ファイル 1: notes.md]\n{}",
+            "x".repeat(128 * 1024 + 1)
+        ))
+        .unwrap();
+        let response = unsafe {
+            mikomai_assistant_chat_with_attachments(
+                message.as_ptr(),
+                history.as_ptr(),
+                docs.as_ptr(),
+                index.as_ptr(),
+                oversized.as_ptr(),
+            )
+        };
+        assert_eq!(response.status, 1);
+        let error = unsafe { CStr::from_ptr(response.message).to_string_lossy() };
+        assert!(error.contains("128 KiB"), "got unexpected error: {error}");
+        unsafe { mikomai_result_free(response) };
+    }
+
+    #[test]
     fn assistant_chat_proceeds_to_model_when_docs_missing() {
         let message = CString::new("こんにちは").unwrap();
         let history = CString::new("").unwrap();
@@ -696,7 +801,10 @@ mod tests {
         // Should reach model check and report uninitialized model, NOT fail on documents missing
         assert_eq!(response.status, 1);
         let error = unsafe { CStr::from_ptr(response.message).to_string_lossy() };
-        assert!(error.contains("モデルが未ロードです"), "got unexpected error: {error}");
+        assert!(
+            error.contains("モデルが未ロードです"),
+            "got unexpected error: {error}"
+        );
         unsafe { mikomai_result_free(response) };
     }
 
@@ -941,4 +1049,3 @@ mod tests {
         }
     }
 }
-

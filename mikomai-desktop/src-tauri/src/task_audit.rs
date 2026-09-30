@@ -7,7 +7,7 @@ use crate::state::network_state::NetworkState;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, State, Window};
 
 #[derive(Debug, Clone, Serialize)]
@@ -83,13 +83,14 @@ fn summary_from_log(task_id: uuid::Uuid, log: &EventLog) -> Result<AgentTaskSumm
     })
 }
 
-fn load_log(app: &AppHandle, task_id: uuid::Uuid) -> Result<EventLog, String> {
-    EventLog::load_from_path(&event_directory(app)?.join(format!("{task_id}.json")))
+fn audit_from_log(task_id: uuid::Uuid, log: &EventLog) -> Result<AgentTaskAudit, String> {
+    Ok(AgentTaskAudit {
+        summary: summary_from_log(task_id, log)?,
+        events: log.events().to_vec(),
+    })
 }
 
-#[tauri::command]
-pub fn list_agent_tasks(app: AppHandle) -> Result<Vec<AgentTaskSummary>, String> {
-    let directory = event_directory(&app)?;
+fn summaries_from_directory(directory: &Path) -> Result<Vec<AgentTaskSummary>, String> {
     let entries = match fs::read_dir(directory) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -116,13 +117,19 @@ pub fn list_agent_tasks(app: AppHandle) -> Result<Vec<AgentTaskSummary>, String>
     Ok(tasks)
 }
 
+fn load_log(app: &AppHandle, task_id: uuid::Uuid) -> Result<EventLog, String> {
+    EventLog::load_from_path(&event_directory(app)?.join(format!("{task_id}.json")))
+}
+
+#[tauri::command]
+pub fn list_agent_tasks(app: AppHandle) -> Result<Vec<AgentTaskSummary>, String> {
+    summaries_from_directory(&event_directory(&app)?)
+}
+
 #[tauri::command]
 pub fn get_agent_task_audit(app: AppHandle, task_id: uuid::Uuid) -> Result<AgentTaskAudit, String> {
     let log = load_log(&app, task_id)?;
-    Ok(AgentTaskAudit {
-        summary: summary_from_log(task_id, &log)?,
-        events: log.events().to_vec(),
-    })
+    audit_from_log(task_id, &log)
 }
 
 /// Continues an investigation from its recorded observations. This deliberately
@@ -150,6 +157,33 @@ pub async fn resume_agent_task(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    fn write_log(directory: &Path, task_id: uuid::Uuid, log: &EventLog) {
+        log.save_to_path(&directory.join(format!("{task_id}.json")))
+            .unwrap();
+    }
+
+    fn valid_log(
+        task_id: uuid::Uuid,
+        started_at: DateTime<Utc>,
+        last_at: DateTime<Utc>,
+    ) -> EventLog {
+        let mut log = EventLog::new();
+        log.push(HarnessEvent::TaskStarted {
+            task_id,
+            timestamp: started_at,
+        });
+        log.push(HarnessEvent::GoalSet {
+            goal: format!("goal {task_id}"),
+            timestamp: started_at,
+        });
+        log.push(HarnessEvent::Finished {
+            reason: "done".into(),
+            timestamp: last_at,
+        });
+        log
+    }
 
     #[test]
     fn summarizes_a_completed_log() {
@@ -172,5 +206,87 @@ mod tests {
         assert_eq!(summary.goal, "R1 を調査");
         assert_eq!(summary.status, "finished");
         assert_eq!(summary.event_count, 3);
+    }
+
+    #[test]
+    fn rejects_empty_logs_and_logs_missing_start_or_goal() {
+        let task_id = uuid::Uuid::new_v4();
+        assert!(summary_from_log(task_id, &EventLog::new())
+            .unwrap_err()
+            .contains("no task start event"));
+
+        let time = Utc::now();
+        let mut missing_start = EventLog::new();
+        missing_start.push(HarnessEvent::GoalSet {
+            goal: "goal".into(),
+            timestamp: time,
+        });
+        assert!(summary_from_log(task_id, &missing_start)
+            .unwrap_err()
+            .contains("no task start event"));
+
+        let mut missing_goal = EventLog::new();
+        missing_goal.push(HarnessEvent::TaskStarted {
+            task_id,
+            timestamp: time,
+        });
+        assert!(summary_from_log(task_id, &missing_goal)
+            .unwrap_err()
+            .contains("no goal"));
+    }
+
+    #[test]
+    fn list_skips_corrupt_and_invalid_uuid_entries_and_sorts_by_last_event() {
+        let directory =
+            std::env::temp_dir().join(format!("mikomai-task-audit-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let older_id = uuid::Uuid::new_v4();
+        let newer_id = uuid::Uuid::new_v4();
+        let now = Utc::now();
+        write_log(
+            &directory,
+            older_id,
+            &valid_log(older_id, now - chrono::Duration::minutes(4), now),
+        );
+        write_log(
+            &directory,
+            newer_id,
+            &valid_log(
+                newer_id,
+                now - chrono::Duration::minutes(2),
+                now + chrono::Duration::minutes(1),
+            ),
+        );
+        fs::write(directory.join("not-a-uuid.json"), "{}").unwrap();
+        fs::write(
+            directory.join(format!("{}.json", uuid::Uuid::new_v4())),
+            "not-json",
+        )
+        .unwrap();
+
+        let summaries = summaries_from_directory(&directory).unwrap();
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].task_id, newer_id);
+        assert_eq!(summaries[1].task_id, older_id);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn detail_summary_matches_its_event_log() {
+        let task_id = uuid::Uuid::new_v4();
+        let now = Utc::now();
+        let log = valid_log(task_id, now, now + chrono::Duration::seconds(3));
+        let audit = audit_from_log(task_id, &log).unwrap();
+
+        assert_eq!(audit.summary.task_id, task_id);
+        assert_eq!(audit.summary.event_count, audit.events.len());
+        assert_eq!(
+            audit.summary.last_event_at,
+            event_time(audit.events.last().unwrap())
+        );
+        assert!(matches!(
+            audit.events.last(),
+            Some(HarnessEvent::Finished { .. })
+        ));
     }
 }

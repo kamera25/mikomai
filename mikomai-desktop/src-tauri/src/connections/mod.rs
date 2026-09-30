@@ -240,7 +240,7 @@ pub fn save_connections(
     for conn in &mut connections {
         let old_conn = old_connections.iter().find(|oc| oc.id == conn.id);
 
-        let password_changed = conn.password_changed.unwrap_or(old_conn.is_none());
+        let password_changed = should_update_secret(conn.password_changed, old_conn.is_some());
         if password_changed {
             if let Some(plain_password) = &conn.password {
                 if !plain_password.is_empty() {
@@ -275,7 +275,8 @@ pub fn save_connections(
             }
         }
 
-        let enable_password_changed = conn.enable_password_changed.unwrap_or(old_conn.is_none());
+        let enable_password_changed =
+            should_update_secret(conn.enable_password_changed, old_conn.is_some());
         if enable_password_changed {
             if let Some(plain_enable_password) = &conn.enable_password {
                 if !plain_enable_password.is_empty() {
@@ -310,7 +311,7 @@ pub fn save_connections(
             }
         }
 
-        let passphrase_changed = conn.passphrase_changed.unwrap_or(old_conn.is_none());
+        let passphrase_changed = should_update_secret(conn.passphrase_changed, old_conn.is_some());
         if passphrase_changed {
             if let Some(plain_passphrase) = &conn.passphrase {
                 if !plain_passphrase.is_empty() {
@@ -351,6 +352,10 @@ pub fn save_connections(
         }
     }
     Ok(())
+}
+
+fn should_update_secret(changed: Option<bool>, existing_connection: bool) -> bool {
+    changed.unwrap_or(!existing_connection)
 }
 
 fn validate_csv_text(field: &str, value: &str, max_len: usize) -> Result<(), String> {
@@ -696,6 +701,15 @@ pub fn resolve_host_with_preference<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credential_change_policy_preserves_existing_secrets_unless_marked_changed() {
+        assert!(should_update_secret(None, false));
+        assert!(!should_update_secret(None, true));
+        assert!(!should_update_secret(Some(false), true));
+        assert!(should_update_secret(Some(true), true));
+        assert!(!should_update_secret(Some(false), false));
+    }
 
     #[test]
     fn test_connection_serialization() {
