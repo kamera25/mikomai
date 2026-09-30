@@ -28,7 +28,8 @@ let package = Package(
         ),
         .executableTarget(
             name: "MikomaiDesktopMac",
-            dependencies: ["MikomaiDesktopCore", "MikomaiFFI"]
+            dependencies: ["MikomaiDesktopCore", "MikomaiFFI"],
+            resources: [.copy("Resources/AppIcon.icns")]
         ),
         .testTarget(name: "MikomaiDesktopCoreTests", dependencies: ["MikomaiDesktopCore"])
     ]

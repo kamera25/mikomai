@@ -12,6 +12,10 @@ import UniformTypeIdentifiers
 private final class DesktopAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
+        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApplication.shared.applicationIconImage = icon
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -1251,7 +1255,7 @@ private struct DesktopWindow: View {
     @State private var operationAlert = ""
     @State private var isOperationRunning = false
     @State private var operationRationale = "選択した変更案を適用する"
-    @FocusState private var isChatInputFocused: Bool
+    @State private var isChatInputFocused = false
 
     private func historyMaximumWidth(containerWidth: CGFloat) -> CGFloat {
         max(180, min(420, containerWidth - 50 - 440 - (isRightPaneOpen ? 330 : 0) - 8))
@@ -1344,9 +1348,6 @@ private struct DesktopWindow: View {
 
     private var activityBar: some View {
         VStack(spacing: 8) {
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.system(size: 19, weight: .semibold)).foregroundStyle(Color.accentColor)
-                .frame(width: 34, height: 34).padding(.bottom, 8)
             ForEach(Workspace.allCases) { item in
                 Button { model.workspace = item } label: {
                     Image(systemName: item.icon).font(.system(size: 16, weight: .medium))
@@ -1923,13 +1924,9 @@ private struct DesktopWindow: View {
                 }
                 .buttonStyle(.bordered).controlSize(.small).disabled(model.isWorking).help("テキストファイルを添付")
 
-                TextField("質問を入力… (⌘+Enter で送信)", text: $model.draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...6)
-                    .focused($isChatInputFocused)
-                    .font(.system(size: 13))
-                    .disabled(model.isWorking)
-                    .onExitCommand { suggestionVisibility.dismissForEscape() }
+                ChatComposer(text: $model.draft, isFocused: $isChatInputFocused,
+                             isEnabled: !model.isWorking, onSubmit: model.send,
+                             onEscape: { suggestionVisibility.dismissForEscape() })
                     .padding(.horizontal, 4)
                     .padding(.vertical, 4)
 
@@ -1945,9 +1942,9 @@ private struct DesktopWindow: View {
                             .foregroundStyle(.white).frame(width: 30, height: 30)
                             .background(ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) ? Color.accentColor : Color.gray.opacity(0.55), in: Circle())
                     }
-                        .buttonStyle(.plain).keyboardShortcut(.return, modifiers: [.command])
+                        .buttonStyle(.plain)
                         .disabled(!ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count))
-                        .help("送信 (⌘+Enter)")
+                        .help("送信 (Enter、Shift+Enter で改行)")
                 }
             }
         }
