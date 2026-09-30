@@ -6,8 +6,21 @@ import MikomaiFFI
 import MikomaiDesktopCore
 import UniformTypeIdentifiers
 
+// SwiftPM launches an unbundled executable. Explicitly register it as a
+// foreground app so its windows can receive keyboard and IME events.
+private final class DesktopAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.setActivationPolicy(.regular)
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+}
+
 @main
 struct MikomaiDesktopMac: App {
+    @NSApplicationDelegateAdaptor(DesktopAppDelegate.self) private var appDelegate
     @StateObject private var model = DesktopModel()
 
     var body: some Scene {
@@ -989,6 +1002,7 @@ private enum NetworkInspector {
 private struct DesktopWindow: View {
     @ObservedObject var model: DesktopModel
     @State private var suggestionVisibility = ChatSuggestionVisibilityState()
+    @FocusState private var isChatInputFocused: Bool
 
     private var hostSuggestionContext: (query: String, atIndex: String.Index)? {
         guard let atIndex = model.draft.lastIndex(of: "@") else { return nil }
@@ -1278,6 +1292,7 @@ private struct DesktopWindow: View {
                 TextField("質問を入力… (⌘+Enter で送信)", text: $model.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
+                    .focused($isChatInputFocused)
                     .font(.system(size: 13))
                     .disabled(model.isWorking)
                     .onExitCommand { suggestionVisibility.dismissForEscape() }
@@ -1301,7 +1316,13 @@ private struct DesktopWindow: View {
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
         .frame(maxWidth: 760).padding(.horizontal, 22).padding(.top, 10).padding(.bottom, 14)
         .frame(maxWidth: .infinity).background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { refreshSuggestionVisibilityForInput() }
+        .onAppear {
+            refreshSuggestionVisibilityForInput()
+            isChatInputFocused = !model.isWorking
+        }
+        .onChange(of: model.isWorking) { isWorking in
+            if !isWorking { isChatInputFocused = true }
+        }
         .onChange(of: model.draft) { _ in refreshSuggestionVisibilityForInput() }
         .onChange(of: hostSuggestions.map(\.hostname)) { _ in
             suggestionVisibility.updateCandidates(count: hostSuggestions.count)
