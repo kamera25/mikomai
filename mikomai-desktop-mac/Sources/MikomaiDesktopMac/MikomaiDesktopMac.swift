@@ -2857,54 +2857,100 @@ private struct WorkspaceTabButton: View {
 
 // MARK: - Full Settings Workspace (Complete Port of Tauri AppSettings)
 
+private struct RightAlignedSwitchStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 16) {
+            configuration.label
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Toggle(isOn: configuration.$isOn) {
+                configuration.label
+            }
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .fixedSize()
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 private struct SettingsWorkspace: View {
     @ObservedObject var model: DesktopModel
     @State private var selectedCategory = 0
     @State private var availablePorts: [String] = []
 
+    private let categories: [(title: String, icon: String, color: Color)] = [
+        ("チャット・通信", "bubble.left.and.bubble.right.fill", .blue),
+        ("LLM モデル", "cpu", .purple),
+        ("Vision (画像)", "photo.fill", .pink),
+        ("ナレッジ RAG", "books.vertical.fill", .orange),
+        ("Tauri 同期", "arrow.triangle.2.circlepath", .green)
+    ]
+
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                ForEach(Array([
-                    ("チャット・通信", "bubble.left.and.bubble.right"),
-                    ("LLM モデル", "cpu"),
-                    ("Vision (画像)", "photo"),
-                    ("ナレッジ RAG", "books.vertical"),
-                    ("Tauri 同期", "arrow.triangle.2.circlepath")
-                ].enumerated()), id: \.offset) { index, category in
-                    WorkspaceTabButton(title: category.0, icon: category.1, isSelected: selectedCategory == index) {
-                        selectedCategory = index
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("設定")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12).padding(.bottom, 8)
+                ForEach(categories.indices, id: \.self) { index in
+                    Button { selectedCategory = index } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: categories[index].icon)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.white)
+                                .frame(width: 26, height: 26)
+                                .background(categories[index].color.gradient, in: RoundedRectangle(cornerRadius: 6))
+                            Text(categories[index].title)
+                                .font(.system(size: 13, weight: selectedCategory == index ? .semibold : .regular))
+                            Spacer(minLength: 0)
+                        }
+                        .foregroundStyle(selectedCategory == index ? Color.white : Color.primary)
+                        .padding(.horizontal, 10).padding(.vertical, 8)
+                        .background(selectedCategory == index ? Color.accentColor : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
                 Spacer()
             }
-            .padding(.horizontal, 16).padding(.vertical, 8)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .padding(12)
+            .frame(width: 210)
+            .frame(maxHeight: .infinity)
+            .background(.regularMaterial)
 
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    switch selectedCategory {
-                    case 0:
-                        chatAndNetworkSection
-                    case 1:
-                        llmModelSection
-                    case 2:
-                        visionSection
-                    case 3:
-                        knowledgeSection
-                    case 4:
-                        tauriSyncSection
-                    default:
-                        EmptyView()
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(categories[selectedCategory].title)
+                        .font(.system(size: 22, weight: .bold))
+                        .padding(.bottom, 4)
+                    VStack(alignment: .leading, spacing: 20) {
+                        switch selectedCategory {
+                        case 0: chatAndNetworkSection
+                        case 1: llmModelSection
+                        case 2: visionSection
+                        case 3: knowledgeSection
+                        case 4: tauriSyncSection
+                        default: EmptyView()
+                        }
+                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
                     }
                 }
-                .padding(24)
-                .frame(maxWidth: 820, alignment: .leading)
+                .padding(28)
+                .frame(maxWidth: 880, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+            .background(Color(nsColor: .underPageBackgroundColor))
         }
+        .toggleStyle(RightAlignedSwitchStyle())
         .onAppear {
             availablePorts = SerialPortDetector.listPorts()
         }
@@ -3189,32 +3235,46 @@ private struct SettingsWorkspace: View {
                 Text("ワーカー別 KV キャッシュ・プリロード").font(.system(size: 13, weight: .medium))
                 Text("モデルロード時に各専門ワーカーのシステムプロンプトを KV キャッシュに事前展開します。").font(.system(size: 11)).foregroundStyle(.secondary)
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
                     Toggle("ナレッジワーカー", isOn: Binding(
                         get: { model.settings.preloadKnowledge },
                         set: { model.settings.preloadKnowledge = $0; model.saveTauriConfig() }
                     ))
+                    Divider()
                     Toggle("アナリストワーカー", isOn: Binding(
                         get: { model.settings.preloadAnalysis },
                         set: { model.settings.preloadAnalysis = $0; model.saveTauriConfig() }
                     ))
+                    Divider()
                     Toggle("RAG ワーカー", isOn: Binding(
                         get: { model.settings.preloadRag },
                         set: { model.settings.preloadRag = $0; model.saveTauriConfig() }
                     ))
+                    Divider()
                     Toggle("ビルダーワーカー", isOn: Binding(
                         get: { model.settings.preloadBuilder },
                         set: { model.settings.preloadBuilder = $0; model.saveTauriConfig() }
                     ))
+                    Divider()
                     Toggle("プロッターワーカー", isOn: Binding(
                         get: { model.settings.preloadPlotter },
                         set: { model.settings.preloadPlotter = $0; model.saveTauriConfig() }
                     ))
+                    Divider()
                     Toggle("要約ワーカー", isOn: Binding(
                         get: { model.settings.preloadSummarization },
                         set: { model.settings.preloadSummarization = $0; model.saveTauriConfig() }
                     ))
                 }
+                .toggleStyle(RightAlignedSwitchStyle())
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(Color(nsColor: .windowBackgroundColor).opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+                }
+
             }
         }
     }
