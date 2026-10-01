@@ -1399,7 +1399,22 @@ struct FfiAgentPlanner {
 
 impl PlannerPort for FfiAgentPlanner {
     fn plan<'a>(&'a self, task: &'a TaskSnapshot) -> PortFuture<'a, PlanDecision> {
+        self.plan_with_cancellation(task, CANCEL_INFERENCE.load(Ordering::Relaxed))
+    }
+}
+
+impl FfiAgentPlanner {
+    fn plan_with_cancellation<'a>(
+        &'a self,
+        task: &'a TaskSnapshot,
+        cancelled: bool,
+    ) -> PortFuture<'a, PlanDecision> {
         Box::pin(async move {
+            if cancelled {
+                return Ok(PlanDecision::Complete {
+                    brief: "生成を停止しました。".into(),
+                });
+            }
             if let Some(last) = task.evidence.last() {
                 if let Some(question) = last.content.strip_prefix("__ASK_HUMAN__") {
                     if let Ok(choice) = serde_json::from_str::<serde_json::Value>(question) {
@@ -2035,6 +2050,9 @@ impl ToolExecutorPort for FfiAgentExecutor {
         args: &'a serde_json::Value,
     ) -> PortFuture<'a, ToolResult> {
         Box::pin(async move {
+            if CANCEL_INFERENCE.load(Ordering::Relaxed) {
+                return Err("生成を停止しました。".into());
+            }
             if tool == "get_state"
                 && target == Some("localhost")
                 && args.get("resource").and_then(serde_json::Value::as_str) == Some("arp")
@@ -2662,6 +2680,19 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
             .to_str()
             .map_err(|e| e.to_string())?
             .to_owned();
+        CANCEL_INFERENCE.store(false, Ordering::Relaxed);
+        // Deterministic replies need neither RAG nor an agent task/status event.
+        if let Some(reply) =
+            mikomai_core::dispatch::legacy_shortcut(&incoming).and_then(|shortcut| shortcut.reply)
+        {
+            if let Some(cb) = callback {
+                let text = CString::new(reply.clone()).map_err(|e| e.to_string())?;
+                cb(text.as_ptr(), 0, context);
+                let done = CString::new("").unwrap();
+                cb(done.as_ptr(), 1, context);
+            }
+            return Ok(reply);
+        }
         let (resume_id, saved_resume_id, goal, selection) =
             if let Some(rest) = incoming.strip_prefix("__MIKOMAI_RESUME__") {
                 let (id, selection) = rest
@@ -2808,12 +2839,15 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
                 return Err(error);
             }
         };
-        if let Some(mut snapshot) = task_snapshots
-            .lock()
-            .map_err(|_| "agent task snapshot state is unavailable".to_string())?
-            .get(&task_id)
-            .cloned()
-        {
+        // Release the read guard before updating the same mutex below.
+        let snapshot = {
+            task_snapshots
+                .lock()
+                .map_err(|_| "agent task snapshot state is unavailable".to_string())?
+                .get(&task_id)
+                .cloned()
+        };
+        if let Some(mut snapshot) = snapshot {
             if response.starts_with("### ❓") {
                 snapshot.status = mikomai_core::domain::TaskStatus::AwaitingInput;
             }
@@ -2923,6 +2957,20 @@ pub unsafe extern "C" fn mikomai_assistant_chat_streaming(
                 .map_err(|e| format!("attachment text is not valid UTF-8: {e}"))?
         };
         validate_native_text_payload(attachments).map_err(|error| error.to_string())?;
+        if attachments.is_empty() {
+            if let Some(reply) = mikomai_core::dispatch::legacy_shortcut(question)
+                .and_then(|shortcut| shortcut.reply)
+            {
+                if let Some(cb) = callback {
+                    let text = CString::new(reply.clone()).map_err(|e| e.to_string())?;
+                    cb(text.as_ptr(), 0, context);
+                    let done = CString::new("").unwrap();
+                    cb(done.as_ptr(), 1, context);
+                }
+                return Ok(reply);
+            }
+        }
+
         let evidence = if docs.exists() && docs.is_dir() {
             chat_with_paths(question, docs, index).unwrap_or_else(|err| {
                 eprintln!("RAG lookup failed: {err}");
@@ -3780,9 +3828,164 @@ mod tests {
         unsafe { mikomai_result_free(response) };
     }
 
+    unsafe extern "C" fn capture_chat_chunk(
+        text: *const std::ffi::c_char,
+        done: i32,
+        context: *mut std::ffi::c_void,
+    ) {
+        let events = &mut *(context as *mut Vec<(String, i32)>);
+        events.push((CStr::from_ptr(text).to_string_lossy().into_owned(), done));
+    }
+
+    #[test]
+    fn agent_greetings_preserve_legacy_reply_without_progress_or_model() {
+        for greeting in [
+            "こんにちは",
+            "おはようございます",
+            "こんばんは",
+            "hello",
+            "hi",
+            "自己紹介",
+        ] {
+            let input = CString::new(greeting).unwrap();
+            let empty = CString::new("").unwrap();
+            let devices = CString::new("[]").unwrap();
+            let mut events: Vec<(String, i32)> = Vec::new();
+            let response = unsafe {
+                super::mikomai_agent_chat_streaming(
+                    input.as_ptr(),
+                    empty.as_ptr(),
+                    empty.as_ptr(),
+                    empty.as_ptr(),
+                    empty.as_ptr(),
+                    devices.as_ptr(),
+                    Some(capture_chat_chunk),
+                    Some(fake_watch_tool),
+                    None,
+                    &mut events as *mut _ as *mut _,
+                )
+            };
+            assert_eq!(response.status, 0);
+            let answer = unsafe { CStr::from_ptr(response.message) }
+                .to_str()
+                .unwrap();
+            let expected = mikomai_core::dispatch::legacy_shortcut(greeting)
+                .unwrap()
+                .reply
+                .unwrap();
+            assert_eq!(answer, expected);
+            assert_eq!(events, vec![(expected, 0), (String::new(), 1)]);
+            unsafe { mikomai_result_free(response) };
+        }
+    }
+
+    #[test]
+    fn worker_greeting_uses_the_same_legacy_reply_without_model_or_rag() {
+        let input = CString::new("こんにちは").unwrap();
+        let empty = CString::new("").unwrap();
+        let mut events: Vec<(String, i32)> = Vec::new();
+        let response = unsafe {
+            super::mikomai_assistant_chat_streaming(
+                input.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                Some(capture_chat_chunk),
+                &mut events as *mut _ as *mut _,
+            )
+        };
+        assert_eq!(response.status, 0);
+        let expected = mikomai_core::dispatch::legacy_shortcut("こんにちは")
+            .unwrap()
+            .reply
+            .unwrap();
+        assert_eq!(
+            unsafe { CStr::from_ptr(response.message) }
+                .to_str()
+                .unwrap(),
+            expected
+        );
+        assert_eq!(events, vec![(expected, 0), (String::new(), 1)]);
+        unsafe { mikomai_result_free(response) };
+    }
+
+    #[test]
+    fn agent_planner_stops_before_planning_another_tool() {
+        let planner = super::FfiAgentPlanner {
+            devices: vec!["router-01".into()],
+            tools: vec!["get_state".into()],
+            history: String::new(),
+            attachments: String::new(),
+            reference_material: String::new(),
+            plan_callback: None,
+            callback_context: 0,
+        };
+        let task = mikomai_core::TaskSnapshot::new("router-01 のARPを確認");
+        let decision = super::portable_runtime()
+            .unwrap()
+            .block_on(planner.plan_with_cancellation(&task, true));
+        assert!(
+            matches!(decision.unwrap(), mikomai_core::port::PlanDecision::Complete { brief }
+            if brief == "生成を停止しました。")
+        );
+    }
+
+    #[test]
+    fn agent_completion_returns_after_snapshot_update_and_can_run_again() {
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        let root =
+            std::env::temp_dir().join(format!("mikomai-chat-finish-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("MIKOMAI_DATA_DIR");
+        std::env::set_var("MIKOMAI_DATA_DIR", &root);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            // Missing ARP target deterministically asks the user, exercising
+            // post-loop snapshot updates without an LLM or a real device.
+            for _ in 0..2 {
+                let input = CString::new("ARPでMAC 00:11:22:33:44:55を確認").unwrap();
+                let empty = CString::new("").unwrap();
+                let devices = CString::new("[]").unwrap();
+                let response = unsafe {
+                    super::mikomai_agent_chat_streaming(
+                        input.as_ptr(),
+                        empty.as_ptr(),
+                        empty.as_ptr(),
+                        empty.as_ptr(),
+                        empty.as_ptr(),
+                        devices.as_ptr(),
+                        None,
+                        Some(fake_watch_tool),
+                        None,
+                        std::ptr::null_mut(),
+                    )
+                };
+                let answer = unsafe { CStr::from_ptr(response.message) }
+                    .to_string_lossy()
+                    .into_owned();
+                let status = response.status;
+                unsafe { mikomai_result_free(response) };
+                sender.send((status, answer)).unwrap();
+            }
+        });
+        for _ in 0..2 {
+            let (status, answer) = receiver
+                .recv_timeout(std::time::Duration::from_secs(15))
+                .expect("agent completion must release its snapshot lock and return");
+            assert_eq!(status, 0, "{answer}");
+            assert!(answer.contains("登録機器がありません"), "{answer}");
+        }
+        if let Some(previous) = previous {
+            std::env::set_var("MIKOMAI_DATA_DIR", previous);
+        } else {
+            std::env::remove_var("MIKOMAI_DATA_DIR");
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn assistant_chat_proceeds_to_model_when_docs_missing() {
-        let message = CString::new("こんにちは").unwrap();
+        let message = CString::new("F220のVLAN設定方法を教えて").unwrap();
         let history = CString::new("").unwrap();
         let docs = CString::new("/nonexistent/documents/dir").unwrap();
         let index = CString::new("/nonexistent/knowledge/dir").unwrap();

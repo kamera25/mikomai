@@ -19,7 +19,9 @@ final class DesktopModel: ObservableObject {
     @Published var draft = ""
     @Published var pendingAttachments: [PendingAttachment] = []
     @Published var attachmentError = ""
-    @Published var isWorking = false
+    @Published var chatResponse = ChatResponseLifecycle()
+    var isWorking: Bool { chatResponse.isWorking }
+    var isWorkingInActiveSession: Bool { chatResponse.showsProgress(in: activeSessionID) }
     @Published var connections: [SavedConnection] = [] { didSet { persistConnections(); watchCallbackBox?.update(connections: connections) } }
     @Published var editingConnection: SavedConnection?
     @Published var connectionStatuses: [UUID: ConnectionTestStatus] = [:]
@@ -57,7 +59,7 @@ final class DesktopModel: ObservableObject {
     @Published var modelPath: String = "" { didSet { defaults.set(modelPath, forKey: "mikomai.desktop.mac.modelPath") } }
     @Published var modelStatus = "モデル未ロード"
     @Published var isLoadingModel = false
-    @Published var isCancelling = false
+    var isCancelling: Bool { chatResponse.isCancelling }
 
     // Native settings
     @Published var settings: AppSettings = AppSettings()
@@ -493,7 +495,7 @@ final class DesktopModel: ObservableObject {
         pendingAttachments = []
         attachmentError = ""
         draft = ""
-        isWorking = true
+        guard let requestID = chatResponse.begin(sessionID: id) else { return }
 
         Task.detached(priority: .userInitiated) {
             // Auto-load model if configured but not yet loaded in Rust FFI
@@ -505,6 +507,20 @@ final class DesktopModel: ObservableObject {
                 }
             }
 
+            let shouldRun = await MainActor.run {
+                guard self.chatResponse.requestID == requestID else { return false }
+                if self.isCancelling {
+                    if let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
+                       let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) {
+                        self.sessions[sIdx].messages[mIdx].text = "生成を停止しました。"
+                    }
+                    self.chatResponse.finish(requestID)
+                    return false
+                }
+                return true
+            }
+            guard shouldRun else { return }
+
             let finalAnswer = Self.askRustStreaming(
                 submissionText,
                 history: history,
@@ -515,7 +531,8 @@ final class DesktopModel: ObservableObject {
                 credentialPersistence: agentCredentialPersistence,
                 onOperationPlan: { data in
                     Task { @MainActor in
-                        guard let plan = try? JSONDecoder().decode(NativeOperationPlan.self, from: data) else { return }
+                        guard self.chatResponse.acceptsChunk(for: requestID),
+                              let plan = try? JSONDecoder().decode(NativeOperationPlan.self, from: data) else { return }
                         self.operationPlan = plan
                         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            var args = object["args"] as? [String: Any] {
@@ -536,46 +553,39 @@ final class DesktopModel: ObservableObject {
                 }
             ) { chunk, _ in
                 Task { @MainActor in
-                    guard let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
+                    guard self.chatResponse.acceptsChunk(for: requestID),
+                          let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
                           let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) else { return }
                     self.sessions[sIdx].messages[mIdx].text += chunk
                     self.sessions[sIdx].updatedAt = Date()
-                    self.refreshAgentTasks()
                 }
             }
             await MainActor.run {
+                guard self.chatResponse.requestID == requestID else { return }
+                defer { self.chatResponse.finish(requestID) }
                 guard let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
                       let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) else {
-                    self.isWorking = false
                     return
                 }
                 var displayAnswer = finalAnswer
-                var receivedChoice = false
-                if finalAnswer.hasPrefix("__MIKOMAI_CHOICE__"),
+                if !self.isCancelling, finalAnswer.hasPrefix("__MIKOMAI_CHOICE__"),
                    let payload = finalAnswer.dropFirst("__MIKOMAI_CHOICE__".count).data(using: .utf8),
                    let choice = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
                    let taskID = choice["task_id"] as? String,
                    let text = choice["text"] as? String {
                     self.pendingAgentTaskIDs[id] = taskID
                     displayAnswer = text
-                    receivedChoice = true
                     if let options = choice["question"] as? [String: Any],
                        let values = options["options"] as? [String], !values.isEmpty {
                         displayAnswer += "\n\n" + values.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
                     }
                 }
-                if displayAnswer.hasPrefix("エラー:") {
-                    if self.sessions[sIdx].messages[mIdx].text.isEmpty {
-                        self.sessions[sIdx].messages[mIdx].text = displayAnswer
-                    } else {
-                        self.sessions[sIdx].messages[mIdx].text += "\n\n[\(displayAnswer)]"
-                    }
-                } else if receivedChoice || self.sessions[sIdx].messages[mIdx].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    self.sessions[sIdx].messages[mIdx].text = displayAnswer
-                }
+                // The FFI result is authoritative. Reporter status and queued
+                // chunks must never remain in the saved final answer.
+                self.sessions[sIdx].messages[mIdx].text = self.chatResponse.finalText(
+                    streamed: self.sessions[sIdx].messages[mIdx].text, answer: displayAnswer
+                )
                 self.sessions[sIdx].updatedAt = Date()
-                self.isWorking = false
-                self.isCancelling = false
                 self.refreshAgentTasks()
                 self.persistSessions()
             }
@@ -640,7 +650,7 @@ final class DesktopModel: ObservableObject {
 
     func stop() {
         guard isWorking, !isCancelling else { return }
-        isCancelling = true
+        chatResponse.cancel()
         _ = Self.callRust { mikomai_model_cancel() }
     }
 

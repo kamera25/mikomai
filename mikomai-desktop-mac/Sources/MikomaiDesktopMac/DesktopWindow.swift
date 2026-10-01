@@ -694,7 +694,7 @@ struct DesktopWindow: View {
                                 }).id(message.id)
                             }
                         }
-                        if model.isWorking {
+                        if model.isWorkingInActiveSession {
                             HStack(spacing: 8) {
                                 ProgressView().controlSize(.small)
                                 Text(model.isCancelling ? "生成を停止しています…" : "資料を検索して回答を生成しています…")
@@ -905,8 +905,11 @@ struct DesktopWindow: View {
                     .padding(.vertical, 4)
 
                 if model.isWorking {
-                    Button(action: model.stop) { Image(systemName: "stop.fill").font(.system(size: 10, weight: .semibold)).frame(width: 28, height: 28) }
-                        .buttonStyle(.bordered).controlSize(.small)
+                    Button(action: model.stop) { Image(systemName: "stop.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.white).frame(width: 30, height: 30)
+                            .background(Color(red: 0.86, green: 0.08, blue: 0.24), in: Circle()) }
+                        .buttonStyle(.plain)
                         .disabled(!ChatSubmissionPolicy.canStop(isWorking: model.isWorking, isCancelling: model.isCancelling))
                         .help("生成を停止")
                 } else {
