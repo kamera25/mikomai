@@ -848,7 +848,7 @@ final class DesktopModel: ObservableObject {
         return NetworkRunnerRequest(
             action: action, host: connection.host, username: connection.username,
             password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
-            deviceType: deviceType, port: connection.port, commands: commands
+            deviceType: connection.transportDeviceType(deviceType), port: connection.effectivePort, commands: commands
         )
     }
 
@@ -1084,8 +1084,8 @@ final class DesktopModel: ObservableObject {
             username: connection.username,
             password: credentials.password ?? "",
             secret: credentials.enablePassword ?? "",
-            deviceType: deviceType,
-            port: connection.port,
+            deviceType: connection.transportDeviceType(deviceType),
+            port: connection.effectivePort,
             commands: [command]
         )
         let result = runNetworkWrapper(request)
@@ -1229,7 +1229,7 @@ final class DesktopModel: ObservableObject {
 
     func testConnection(_ connection: SavedConnection) {
         let host = connection.host
-        let port = UInt16(connection.port) ?? 22
+        let port = UInt16(connection.effectivePort) ?? 22
         let id = connection.id
 
         Task.detached(priority: .userInitiated) {

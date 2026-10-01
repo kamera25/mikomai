@@ -4,6 +4,25 @@ import Testing
 
 @Suite
 struct ConnectionInventoryPolicyTests {
+    @Test func telnetSelectionUpdatesDefaultPortAndPreservesCustomPort() throws {
+        var connection = SavedConnection(name: "router", host: "192.0.2.1")
+        connection.selectConnectionType("Telnet")
+        #expect(connection.effectivePort == "23")
+        #expect(connection.transportDeviceType("cisco_ios") == "cisco_ios_telnet")
+        #expect(connection.transportDeviceType("cisco_ios_telnet") == "cisco_ios_telnet")
+        #expect(connection.transportDeviceType("cisco_ios_ssh") == "cisco_ios_telnet")
+        let restored = try JSONDecoder().decode(SavedConnection.self, from: JSONEncoder().encode(connection))
+        #expect(restored == connection)
+        connection.selectConnectionType("SSH")
+        #expect(connection.effectivePort == "22")
+        #expect(connection.transportDeviceType("cisco_ios") == "cisco_ios")
+        connection.port = "2323"
+        connection.selectConnectionType("Telnet")
+        #expect(connection.effectivePort == "2323")
+        connection.port = ""
+        #expect(connection.effectivePort == "23")
+    }
+
     @Test func saveAddsAndUpdatesByIDButRejectsInvalidRecords() {
         let original = SavedConnection(name: "router", host: "192.0.2.1")
         let added = SavedConnection(name: "switch", host: "192.0.2.2")

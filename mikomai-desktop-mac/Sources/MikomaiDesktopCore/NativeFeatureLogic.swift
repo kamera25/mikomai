@@ -226,6 +226,23 @@ public struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
         return nil
     }
 
+    public var defaultPort: String {
+        (connectionType ?? "SSH").lowercased() == "telnet" ? "23" : "22"
+    }
+
+    public var effectivePort: String { port.isEmpty ? defaultPort : port }
+
+    public mutating func selectConnectionType(_ type: String) {
+        let usesDefaultPort = port.isEmpty || port == defaultPort
+        connectionType = type
+        if usesDefaultPort { port = defaultPort }
+    }
+
+    public func transportDeviceType(_ base: String) -> String {
+        guard (connectionType ?? "SSH").lowercased() == "telnet", !base.hasSuffix("_telnet") else { return base }
+        return (base.hasSuffix("_ssh") ? String(base.dropLast(4)) : base) + "_telnet"
+    }
+
     private static func isSafeHostname(_ value: String) -> Bool {
         !value.isEmpty && value.count <= 255 && value.allSatisfy { $0.isLetter || $0.isNumber || ".-_".contains($0) }
     }

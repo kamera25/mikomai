@@ -70,6 +70,7 @@ def main():
     parser.add_argument("--stdin", action="store_true", help="Read arguments as JSON from stdin")
     parser.add_argument("--action", required=False, choices=["show", "config", "dry_run"])
     parser.add_argument("--host", required=False)
+    parser.add_argument("--port", required=False, type=int)
     parser.add_argument("--username", required=False)
     parser.add_argument("--password", required=False, default="")
     parser.add_argument("--secret", required=False, default="")
@@ -95,6 +96,7 @@ def main():
                 data = json.loads(input_data)
                 args.action = data.get("action")
                 args.host = data.get("host")
+                args.port = int(data["port"]) if data.get("port") else None
                 args.username = data.get("username")
                 args.password = data.get("password", "")
                 args.secret = data.get("secret", "")
@@ -108,7 +110,7 @@ def main():
                 args.allow_agent = data.get("allow_agent", False)
                 if "commands" in data:
                     args.commands = json.dumps(data["commands"]) if isinstance(data["commands"], list) else data["commands"]
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
             print(f"Error parsing stdin JSON: {str(e)}", file=sys.stderr)
             sys.exit(1)
 
@@ -147,6 +149,11 @@ def main():
             "global_delay_factor": 2.0,
             "session_log": None
         }
+        if args.port is not None:
+            if not 1 <= args.port <= 65535:
+                print("Error: port must be between 1 and 65535", file=sys.stderr)
+                sys.exit(1)
+            device["port"] = args.port
         if args.key_file:
             device["key_file"] = args.key_file
             device["use_keys"] = True

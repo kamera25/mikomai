@@ -217,9 +217,10 @@ struct ConnectionEditor: View {
                 TextField("ユーザー名", text: $connection.username)
                 Picker("接続方式", selection: Binding(
                     get: { connection.connectionType ?? "SSH" },
-                    set: { connection.connectionType = $0 }
+                    set: { connection.selectConnectionType($0) }
                 )) {
                     Text("SSH").tag("SSH")
+                    Text("Telnet").tag("Telnet")
                     Text("Console").tag("Console")
                 }
                 Picker("機器タイプ", selection: $connection.deviceType) { ForEach(deviceTypes, id: \.self) { Text($0) } }
@@ -249,4 +250,3 @@ struct ConnectionEditor: View {
         }.padding(18).frame(width: 440, height: 440)
     }
 }
-

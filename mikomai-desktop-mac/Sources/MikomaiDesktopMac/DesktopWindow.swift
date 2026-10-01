@@ -378,7 +378,7 @@ struct DesktopWindow: View {
             } else {
                 Picker("対象機器", selection: $selectedConnectionID) {
                     Text("機器を選択").tag(Optional<UUID>.none)
-                    ForEach(model.connections.filter { ($0.connectionType ?? "SSH").lowercased() == "ssh" }) { connection in
+                    ForEach(model.connections.filter { ["ssh", "telnet"].contains(($0.connectionType ?? "SSH").lowercased()) }) { connection in
                         Text("\(connection.name) (\(connection.host))").tag(Optional(connection.id))
                     }
                 }
@@ -531,7 +531,7 @@ struct DesktopWindow: View {
         let approvedRequest = NetworkRunnerRequest(
             action: "dry_run", host: target.host, username: target.username,
             password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
-            deviceType: runnerDeviceType(target.deviceType), port: target.port, commands: planCommands
+            deviceType: connection.transportDeviceType(runnerDeviceType(target.deviceType)), port: connection.effectivePort, commands: planCommands
         )
         model.operationPhase = "2/4 dry-run 検証中…"
         model.operationLogs.append("[STATUS] 2/4 dry-run 検証中")
@@ -539,7 +539,7 @@ struct DesktopWindow: View {
         let configRequest = NetworkRunnerRequest(
             action: "config", host: target.host, username: target.username,
             password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
-            deviceType: runnerDeviceType(target.deviceType), port: target.port, commands: planCommands
+            deviceType: connection.transportDeviceType(runnerDeviceType(target.deviceType)), port: connection.effectivePort, commands: planCommands
         )
         let workflow = await OperationWorkflow.execute(
             dryRun: {
@@ -579,7 +579,7 @@ struct DesktopWindow: View {
         let verifyRequest = NetworkRunnerRequest(
             action: "show", host: target.host, username: target.username,
             password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
-            deviceType: runnerDeviceType(target.deviceType), port: target.port,
+            deviceType: connection.transportDeviceType(runnerDeviceType(target.deviceType)), port: connection.effectivePort,
             commands: [showConfigCommand(for: connection)]
         )
         let verified = await Task.detached { DesktopModel.runNetworkWrapper(verifyRequest) }.value
@@ -962,5 +962,3 @@ struct DesktopWindow: View {
 
 
 }
-
-
