@@ -11,33 +11,43 @@ struct ExecutionTerminalView: View {
                 .foregroundStyle(Color.white.opacity(0.8))
                 .padding(14)
             Divider().overlay(Color.white.opacity(0.15))
-            ScrollViewReader { proxy in
-                ScrollView([.vertical, .horizontal]) {
-                    VStack(alignment: .leading, spacing: 20) {
-                        if results.isEmpty {
-                            Text("ping・tracerouteの実行結果がここに表示されます。")
-                                .foregroundStyle(Color.white.opacity(0.6))
-                        }
-                        ForEach(results) { result in
-                            VStack(alignment: .leading, spacing: 7) {
-                                Text("$ \(result.command)")
-                                    .foregroundStyle(Color(red: 0.55, green: 0.87, blue: 0.67))
-                                Text(result.output.isEmpty ? "(出力なし)" : result.output)
-                                    .foregroundStyle(Color.white.opacity(0.9))
-                                Label(result.succeeded ? "終了 · 成功" : "終了 · 失敗", systemImage: result.succeeded ? "checkmark.circle" : "exclamationmark.circle")
-                                    .foregroundStyle(result.succeeded ? Color.green : Color.orange)
+            GeometryReader { viewport in
+                ScrollViewReader { proxy in
+                    ScrollView([.vertical, .horizontal]) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            VStack(alignment: .leading, spacing: 20) {
+                                if results.isEmpty {
+                                    Text("ping・tracerouteの実行結果がここに表示されます。")
+                                        .foregroundStyle(Color.white.opacity(0.6))
+                                }
+                                ForEach(results) { result in
+                                    VStack(alignment: .leading, spacing: 7) {
+                                        Text("$ \(result.command)")
+                                            .foregroundStyle(Color(red: 0.55, green: 0.87, blue: 0.67))
+                                        Text(result.output.isEmpty ? "(出力なし)" : result.output)
+                                            .foregroundStyle(Color.white.opacity(0.9))
+                                        Label(result.succeeded ? "終了 · 成功" : "終了 · 失敗", systemImage: result.succeeded ? "checkmark.circle" : "exclamationmark.circle")
+                                            .foregroundStyle(result.succeeded ? Color.green : Color.orange)
+                                    }
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .textSelection(.enabled)
+                                    .id(result.id)
+                                }
                             }
-                            .fixedSize(horizontal: true, vertical: false)
-                            .textSelection(.enabled)
-                            .id(result.id)
+                            .font(.system(size: 11, design: .monospaced))
+                            .padding(14)
+                            .frame(minWidth: viewport.size.width, alignment: .leading)
+                            // A narrow target at x=0 avoids centering an oversized row.
+                            Color.clear.frame(width: 1, height: 1).id("terminalBottomLeft")
                         }
+                        .multilineTextAlignment(.leading)
                     }
-                    .font(.system(size: 11, design: .monospaced))
-                    .padding(14)
-                    .frame(minWidth: 220, alignment: .leading)
-                }
-                .onChange(of: results.last?.id) { id in
-                    if let id { proxy.scrollTo(id, anchor: .bottomLeading) }
+                    .onAppear {
+                        proxy.scrollTo("terminalBottomLeft", anchor: .bottomLeading)
+                    }
+                    .onChange(of: results.last?.id) { _ in
+                        proxy.scrollTo("terminalBottomLeft", anchor: .bottomLeading)
+                    }
                 }
             }
         }

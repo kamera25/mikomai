@@ -573,7 +573,7 @@ final class DesktopModel: ObservableObject {
                 connections: agentConnections,
                 credentialPersistence: agentCredentialPersistence,
                 onOperationPlan: { data in
-                    Task { @MainActor in
+                    DispatchQueue.main.async {
                         guard self.chatResponse.acceptsChunk(for: requestID),
                               let plan = try? JSONDecoder().decode(NativeOperationPlan.self, from: data) else { return }
                         if let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
@@ -594,7 +594,7 @@ final class DesktopModel: ObservableObject {
                     }
                 },
                 onToolResult: { result in
-                    Task { @MainActor in
+                    DispatchQueue.main.async {
                         guard self.sessions.contains(where: { $0.id == id }) else { return }
                         var result = result
                         result.sessionID = id
@@ -608,7 +608,7 @@ final class DesktopModel: ObservableObject {
                     }
                 }
             ) { chunk, _ in
-                Task { @MainActor in
+                DispatchQueue.main.async {
                     guard self.chatResponse.acceptsChunk(for: requestID),
                           let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
                           let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) else { return }
@@ -621,54 +621,65 @@ final class DesktopModel: ObservableObject {
                     self.sessions[sIdx].updatedAt = Date()
                 }
             }
-            await MainActor.run {
-                guard self.chatResponse.requestID == requestID else { return }
-                defer {
-                    self.chatResponse.finish(requestID)
-                    self.startNextQueuedSubmission()
-                }
-                guard let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
-                      let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) else {
-                    return
-                }
-                var displayAnswer = finalAnswer
-                if !self.isCancelling, finalAnswer.hasPrefix("__MIKOMAI_CHOICE__"),
-                   let payload = finalAnswer.dropFirst("__MIKOMAI_CHOICE__".count).data(using: .utf8),
-                   let choice = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
-                   let taskID = choice["task_id"] as? String,
-                   let text = choice["text"] as? String {
-                    self.pendingAgentTaskIDs[id] = taskID
-                    displayAnswer = text
-                    if let options = choice["question"] as? [String: Any],
-                       let values = options["options"] as? [String], !values.isEmpty {
-                        displayAnswer += "\n\n" + values.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+            // Use the same FIFO main queue as callback delivery. This both
+            // wakes AppKit and applies all reported events before finalization.
+            await withCheckedContinuation { (completion: CheckedContinuation<Void, Never>) in
+                DispatchQueue.main.async {
+                    defer { completion.resume() }
+                    guard self.chatResponse.requestID == requestID else { return }
+                    defer {
+                        self.chatResponse.finish(requestID)
+                        self.startNextQueuedSubmission()
                     }
-                }
-                if self.sessions[sIdx].messages[mIdx].agentProgress != nil {
-                    let phase: String
-                    let nextAction: String
-                    let detail: String
-                    if self.isCancelling {
-                        phase = "停止"; nextAction = "必要に応じて再開"; detail = "生成を停止しました"
-                    } else if finalAnswer.hasPrefix("エラー:") {
-                        phase = "失敗"; nextAction = "エラー内容と接続設定を確認"; detail = displayAnswer
-                    } else if self.pendingAgentTaskIDs[id] != nil || displayAnswer.hasPrefix("### ❓ 確認要求") {
-                        phase = "確認待ち"; nextAction = "確認事項に回答"; detail = "追加の情報が必要です"
-                    } else if displayAnswer.hasPrefix("### ✅ 承認待ち") {
-                        phase = "承認待ち"; nextAction = "変更計画を確認して承認"; detail = "承認後に変更を実行できます"
-                    } else {
-                        phase = "完了"; nextAction = "回答と実行結果を確認"; detail = "調査結果を回答にまとめました"
+                    guard let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
+                          let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) else {
+                        return
                     }
-                    self.sessions[sIdx].messages[mIdx].agentProgress?.append(AgentProgressEntry(phase: phase, nextAction: nextAction, detail: detail))
+                    var displayAnswer = finalAnswer
+                    if !self.isCancelling, finalAnswer.hasPrefix("__MIKOMAI_CHOICE__"),
+                       let payload = finalAnswer.dropFirst("__MIKOMAI_CHOICE__".count).data(using: .utf8),
+                       let choice = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                       let taskID = choice["task_id"] as? String,
+                       let text = choice["text"] as? String {
+                        self.pendingAgentTaskIDs[id] = taskID
+                        displayAnswer = text
+                        if let options = choice["question"] as? [String: Any],
+                           let values = options["options"] as? [String], !values.isEmpty {
+                            displayAnswer += "\n\n" + values.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+                        }
+                    }
+                    if self.sessions[sIdx].messages[mIdx].agentProgress != nil {
+                        let phase: String
+                        let nextAction: String
+                        let detail: String
+                        if self.isCancelling {
+                            phase = "停止"; nextAction = "必要に応じて再開"; detail = "生成を停止しました"
+                        } else if finalAnswer.hasPrefix("エラー:") {
+                            phase = "失敗"; nextAction = "エラー内容と接続設定を確認"; detail = displayAnswer
+                        } else if self.pendingAgentTaskIDs[id] != nil || displayAnswer.hasPrefix("### ❓ 確認要求") {
+                            phase = "確認待ち"; nextAction = "確認事項に回答"; detail = "追加の情報が必要です"
+                        } else if displayAnswer.hasPrefix("### ✅ 承認待ち") {
+                            phase = "承認待ち"; nextAction = "変更計画を確認して承認"; detail = "承認後に変更を実行できます"
+                        } else {
+                            phase = "完了"; nextAction = "回答と実行結果を確認"; detail = "調査結果を回答にまとめました"
+                        }
+                        self.sessions[sIdx].messages[mIdx].agentProgress?.append(AgentProgressEntry(phase: phase, nextAction: nextAction, detail: detail))
+                    }
+                    // The FFI result is authoritative. Reporter status and queued
+                    // chunks must never remain in the saved final answer.
+                    self.sessions[sIdx].messages[mIdx].text = self.chatResponse.finalText(
+                        streamed: self.sessions[sIdx].messages[mIdx].text, answer: displayAnswer
+                    )
+                    self.sessions[sIdx].updatedAt = Date()
+                    self.persistSessions()
                 }
-                // The FFI result is authoritative. Reporter status and queued
-                // chunks must never remain in the saved final answer.
-                self.sessions[sIdx].messages[mIdx].text = self.chatResponse.finalText(
-                    streamed: self.sessions[sIdx].messages[mIdx].text, answer: displayAnswer
-                )
-                self.sessions[sIdx].updatedAt = Date()
-                self.refreshAgentTasks()
-                self.persistSessions()
+            }
+            // Audit listing can perform disk/DB work; keep it off the UI queue
+            // and outside the response lifecycle so completion paints promptly.
+            let taskList = Self.callRust { mikomai_agent_task_list() }
+            if let data = taskList.data(using: .utf8),
+               let tasks = try? JSONDecoder().decode([NativeAgentTask].self, from: data) {
+                DispatchQueue.main.async { self.agentTasks = tasks }
             }
         }
     }

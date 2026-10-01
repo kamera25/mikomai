@@ -1387,7 +1387,112 @@ pub unsafe extern "C" fn mikomai_dispatch_mode(
     }
 }
 
+// Resolve explicit ARP reads from caller-supplied, non-secret inventory rather
+// than asking the model to invent a tool or choose an arbitrary device.
+fn registered_arp_decision(
+    task: &TaskSnapshot,
+    inventory: &[mikomai_adapters::portable_device::RegisteredDevice],
+) -> Option<PlanDecision> {
+    let goal = task.task.goal.to_lowercase();
+    if !goal.contains("arp")
+        || mikomai_core::dispatch::is_explanatory_request(&goal)
+        || ["方法", "手順", "教えて"]
+            .iter()
+            .any(|word| goal.contains(word))
+        || mikomai_core::dispatch::is_configuration_change_request(&goal)
+        || mikomai_core::dispatch::arp_mac_target(&goal).is_some()
+        || !["確認", "取得", "表示", "調べ", "check", "show", "get"]
+            .iter()
+            .any(|verb| goal.contains(verb))
+    {
+        return None;
+    }
+    let matches_alias =
+        |alias: &str, text: &str| !alias.trim().is_empty() && text.contains(&alias.to_lowercase());
+    let direct = inventory
+        .iter()
+        .filter(|device| {
+            matches_alias(&device.hostname, &goal)
+                || device
+                    .ip
+                    .as_deref()
+                    .is_some_and(|ip| matches_alias(ip, &goal))
+        })
+        .collect::<Vec<_>>();
+    let candidates = if direct.is_empty() {
+        inventory
+            .iter()
+            .filter(|device| {
+                device
+                    .device_type
+                    .as_deref()
+                    .is_some_and(|kind| matches_alias(kind, &goal))
+            })
+            .collect::<Vec<_>>()
+    } else {
+        direct
+    };
+    let selection = task
+        .evidence
+        .iter()
+        .rev()
+        .find_map(|item| item.content.strip_prefix("__USER_CHOICE__"));
+    let chosen = selection.and_then(|selection| {
+        let selection = selection.trim().to_lowercase();
+        if let Ok(index) = selection.parse::<usize>() {
+            candidates.get(index.wrapping_sub(1)).copied()
+        } else {
+            candidates.iter().copied().find(|device| {
+                device.hostname.to_lowercase() == selection
+                    || device
+                        .ip
+                        .as_deref()
+                        .is_some_and(|ip| ip.to_lowercase() == selection)
+            })
+        }
+    });
+    let target = chosen.or_else(|| (candidates.len() == 1).then(|| candidates[0]));
+    let Some(device) = target else {
+        let message = if candidates.is_empty() {
+            "ARP確認の対象を登録機器から特定できません。機器を登録し、機器名またはIPアドレスを指定してください。".to_string()
+        } else {
+            format!(
+                "ARP確認の対象が複数あります。番号、機器名またはIPアドレスを指定してください。\n{}",
+                candidates
+                    .iter()
+                    .enumerate()
+                    .map(|(index, device)| format!("{}. {}", index + 1, device.hostname))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        };
+        return Some(PlanDecision::AskUser { message });
+    };
+    if let Some(observation) = task.evidence.iter().rev().find(|item| {
+        item.source.tool.as_deref() == Some("get_state")
+            && item.source.target.as_deref() == Some(device.hostname.as_str())
+            && item.source.request.as_deref().is_some_and(|request| {
+                serde_json::from_str::<serde_json::Value>(request)
+                    .ok()
+                    .is_some_and(|args| args["resource"] == "arp")
+            })
+    }) {
+        return Some(PlanDecision::Complete {
+            brief: format!(
+                "{} のARP確認結果です。\n\n```text\n{}\n```",
+                device.hostname, observation.content
+            ),
+        });
+    }
+    Some(PlanDecision::Observe {
+        tool: "get_state".into(),
+        target: Some(device.hostname.clone()),
+        args: serde_json::json!({"device":device.hostname,"resource":"arp"}),
+    })
+}
+
 struct FfiAgentPlanner {
+    inventory: Vec<mikomai_adapters::portable_device::RegisteredDevice>,
     devices: Vec<String>,
     tools: Vec<String>,
     history: String,
@@ -1537,6 +1642,9 @@ impl FfiAgentPlanner {
                     target: Some(target.clone()),
                     args: serde_json::json!({"device":target,"resource":"arp","mac":mac}),
                 });
+            }
+            if let Some(decision) = registered_arp_decision(task, &self.inventory) {
+                return Ok(decision);
             }
             let mode = mikomai_core::dispatch::select_dispatch_mode_for_devices(
                 &task.task.goal,
@@ -2783,6 +2891,7 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
             ])
             .collect::<Vec<_>>();
         let planner = FfiAgentPlanner {
+            inventory: registry.devices().to_vec(),
             devices,
             tools,
             history,
@@ -3651,6 +3760,7 @@ mod tests {
         );
 
         let planner = super::FfiAgentPlanner {
+            inventory: Vec::new(),
             devices: Vec::new(),
             tools: vec!["network_packet_safety".into()],
             history: String::new(),
@@ -3942,9 +4052,127 @@ mod tests {
         unsafe { mikomai_result_free(response) };
     }
 
+    use mikomai_core::{port::PlanDecision, TaskSnapshot};
+    use std::ffi::c_char;
+
+    fn arp_inventory(names: &[&str]) -> Vec<mikomai_adapters::portable_device::RegisteredDevice> {
+        names
+            .iter()
+            .map(|name| mikomai_adapters::portable_device::RegisteredDevice {
+                id: None,
+                hostname: (*name).into(),
+                ip: Some("192.0.2.1".into()),
+                device_type: Some("F220".into()),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn registered_arp_resolves_name_or_unique_model_and_asks_on_ambiguity() {
+        let task = TaskSnapshot::new("F220 のARPを確認して");
+        for inventory in [arp_inventory(&["F220"]), arp_inventory(&["branch-router"])] {
+            let decision = super::registered_arp_decision(&task, &inventory).unwrap();
+            assert!(
+                matches!(decision, PlanDecision::Observe { tool, target, args }
+                if tool == "get_state" && target == Some(inventory[0].hostname.clone())
+                && args["device"] == inventory[0].hostname && args["resource"] == "arp")
+            );
+        }
+        let inventory = arp_inventory(&["branch-a", "branch-b"]);
+        assert!(matches!(
+            super::registered_arp_decision(&task, &inventory),
+            Some(PlanDecision::AskUser { .. })
+        ));
+        assert!(matches!(
+            super::registered_arp_decision(&task, &[]),
+            Some(PlanDecision::AskUser { .. })
+        ));
+        let mut resumed = task.clone();
+        resumed.evidence.push(mikomai_core::Evidence::from_tool(
+            "__USER_CHOICE__2",
+            None,
+            None,
+        ));
+        assert!(
+            matches!(super::registered_arp_decision(&resumed, &inventory), Some(PlanDecision::Observe { target, .. }) if target.as_deref() == Some("branch-b"))
+        );
+        assert!(super::registered_arp_decision(
+            &TaskSnapshot::new("F220 のARP確認方法を教えて"),
+            &inventory
+        )
+        .is_none());
+    }
+
+    unsafe extern "C" fn fake_arp_read(
+        tool: *const c_char,
+        target: *const c_char,
+        args: *const c_char,
+        output: *mut c_char,
+        capacity: usize,
+        context: *mut std::ffi::c_void,
+    ) -> i32 {
+        let calls = &mut *(context as *mut Vec<(String, serde_json::Value, serde_json::Value)>);
+        calls.push((
+            CStr::from_ptr(tool).to_string_lossy().into_owned(),
+            serde_json::from_str(CStr::from_ptr(target).to_str().unwrap()).unwrap(),
+            serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap(),
+        ));
+        let response = serde_json::json!({"success":true,"output":"192.0.2.10 aa:bb:cc:dd:ee:ff GigaEthernet 1/1"}).to_string();
+        if capacity <= response.len() {
+            return 1;
+        }
+        std::ptr::copy_nonoverlapping(response.as_ptr(), output.cast::<u8>(), response.len());
+        *output.add(response.len()) = 0;
+        0
+    }
+
+    #[test]
+    fn registered_arp_agent_runs_one_read_and_completes_without_llm() {
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!("mikomai-arp-test-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("MIKOMAI_DATA_DIR");
+        std::env::set_var("MIKOMAI_DATA_DIR", &root);
+        let input = CString::new("F220 のARPを確認して").unwrap();
+        let empty = CString::new("").unwrap();
+        let devices =
+            CString::new(serde_json::to_string(&arp_inventory(&["branch-router"])).unwrap())
+                .unwrap();
+        let mut calls: Vec<(String, serde_json::Value, serde_json::Value)> = Vec::new();
+        let response = unsafe {
+            super::mikomai_agent_chat_streaming(
+                input.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                devices.as_ptr(),
+                None,
+                Some(fake_arp_read),
+                None,
+                (&mut calls as *mut Vec<_>).cast(),
+            )
+        };
+        let answer = unsafe { CStr::from_ptr(response.message) }
+            .to_string_lossy()
+            .into_owned();
+        let status = response.status;
+        unsafe { mikomai_result_free(response) };
+        match previous {
+            Some(value) => std::env::set_var("MIKOMAI_DATA_DIR", value),
+            None => std::env::remove_var("MIKOMAI_DATA_DIR"),
+        }
+        assert_eq!(status, 0, "{answer}");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "get_state");
+        assert_eq!(calls[0].1["hostname"], "branch-router");
+        assert_eq!(calls[0].2["resource"], "arp");
+        assert!(answer.contains("branch-router のARP確認結果") && answer.contains("192.0.2.10"));
+    }
+
     #[test]
     fn agent_planner_stops_before_planning_another_tool() {
         let planner = super::FfiAgentPlanner {
+            inventory: Vec::new(),
             devices: vec!["router-01".into()],
             tools: vec!["get_state".into()],
             history: String::new(),

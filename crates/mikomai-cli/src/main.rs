@@ -7,6 +7,11 @@ use mikomai_core::TaskManager;
 use std::path::PathBuf;
 
 fn main() {
+    // Embedded RocksDB cannot be shared with the desktop process. Keep the
+    // CLI's rebuildable RAG index separate; an explicit override still wins.
+    if let Some(path) = cli_graph_path(std::env::var_os("MIKOMAI_GRAPH_DB_PATH"), std::env::var_os("HOME")) {
+        std::env::set_var("MIKOMAI_GRAPH_DB_PATH", path);
+    }
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let json = args.iter().any(|arg| arg == "--json" || arg == "-j");
     match run(args, json) {
@@ -19,6 +24,46 @@ fn main() {
             eprintln!("mikomai-cli: {error}");
             std::process::exit(1);
         }
+    }
+}
+
+fn cli_graph_path(explicit: Option<std::ffi::OsString>, home: Option<std::ffi::OsString>) -> Option<PathBuf> {
+    explicit.map(PathBuf::from).or_else(|| home.map(|home| {
+        PathBuf::from(home).join("Library/Application Support/MikomaiCLI/surrealdb")
+    }))
+}
+
+#[cfg(test)]
+mod graph_path_tests {
+    use super::*;
+
+    #[test]
+    fn cli_does_not_claim_the_desktop_database() {
+        let home = PathBuf::from("/tmp/mikomai-path-test");
+        let cli = cli_graph_path(None, Some(home.clone().into_os_string())).unwrap();
+        assert_ne!(cli, home.join("Library/Application Support/com.mikomai.agent/surrealdb"));
+        assert_ne!(cli, home.join("Library/Application Support/MikomaiDesktopMac/surrealdb"));
+        assert_eq!(cli, home.join("Library/Application Support/MikomaiCLI/surrealdb"));
+    }
+
+    #[test]
+    fn explicit_database_override_is_preserved_without_home() {
+        let path = PathBuf::from("/tmp/explicit-graph");
+        assert_eq!(cli_graph_path(Some(path.clone().into_os_string()), None), Some(path));
+        assert_eq!(cli_graph_path(None, None), None);
+    }
+
+    #[tokio::test]
+    async fn cli_can_open_its_index_while_desktop_holds_a_lock() {
+        use mikomai_adapters::portable_graph::PortableGraph;
+        let home = std::env::temp_dir().join(format!("mikomai-cli-lock-test-{}", std::process::id()));
+        let desktop_path = home.join("Library/Application Support/com.mikomai.agent/surrealdb");
+        let _desktop = PortableGraph::initialize_at(&desktop_path).await.unwrap();
+        // Reproduce the original conflict before checking the separated path.
+        let duplicate = PortableGraph::initialize_at(&desktop_path).await;
+        assert!(matches!(duplicate, Err(ref error) if error.contains("lock") || error.contains("LOCK")));
+        let cli_path = cli_graph_path(None, Some(home.into_os_string())).unwrap();
+        let _cli = PortableGraph::initialize_at(&cli_path).await.unwrap();
     }
 }
 

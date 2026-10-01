@@ -297,14 +297,14 @@ struct DesktopWindow: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
-            if model.workspace == .chat {
-                Button { withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen.toggle() } } label: {
+            if model.workspace == .chat && !isRightPaneOpen {
+                Button { withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen = true } } label: {
                     Image(systemName: "sidebar.right")
                         .font(.system(size: 13, weight: .medium))
                         .frame(width: 28, height: 26)
-                        .background(isRightPaneOpen ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 5))
                 }
-                .buttonStyle(.plain).help(isRightPaneOpen ? "右ペインを閉じる" : "差分とログを表示")
+                .buttonStyle(.plain).help("作業タブを表示")
+                .accessibilityLabel("作業タブを表示")
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
@@ -314,13 +314,6 @@ struct DesktopWindow: View {
 
     private var rightSidePane: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("作業パネル").font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Button { isRightPaneOpen = false } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).help("右ペインを閉じる")
-            }.padding(.horizontal, 14).padding(.vertical, 12)
-            Divider()
             HStack(spacing: 12) {
                 WorkspaceTabButton(title: "Diff", icon: "arrow.left.arrow.right", isSelected: rightPaneTab == "diff") {
                     rightPaneTab = "diff"
@@ -332,6 +325,16 @@ struct DesktopWindow: View {
                     rightPaneTab = "logs"
                 }
                 Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen = false }
+                } label: {
+                    Image(systemName: "sidebar.right")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 28, height: 26)
+                        .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain).help("作業タブを閉じる")
+                .accessibilityLabel("作業タブを閉じる")
             }
             .padding(.horizontal, 16).padding(.vertical, 8)
             .background(Color(nsColor: .controlBackgroundColor))

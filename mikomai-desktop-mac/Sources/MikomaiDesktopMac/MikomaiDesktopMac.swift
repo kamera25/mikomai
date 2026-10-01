@@ -5,6 +5,14 @@ import AppKit
 // foreground app so its windows can receive keyboard and IME events.
 private final class DesktopAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // A second embedded database owner would prevent Agent startup.
+        if let bundleID = Bundle.main.bundleIdentifier,
+           let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier && !$0.isTerminated }) {
+            running.activate(options: [.activateAllWindows])
+            NSApplication.shared.terminate(nil)
+            return
+        }
         NSApplication.shared.setActivationPolicy(.regular)
         if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {

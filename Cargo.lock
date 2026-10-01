@@ -2863,6 +2863,7 @@ dependencies = [
  "mikomai-core",
  "mikomai-ffi",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

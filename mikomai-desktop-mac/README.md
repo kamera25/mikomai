@@ -20,6 +20,8 @@ React/Tauri UI/runtimeとIPC、専用MCP server process群を削除しました�
 
 CLIは同じFFI推論器を使います。`MIKOMAI_MODEL_PATH` を指定するか、Swift-native/既存設定にGGUF pathを設定して、`npm run cli -- chat "F220のVLAN設定方法を教えて"` のように実行します。モデルが見つからない時は非生成ナレッジ応答を行うため、LLM回答を検証する場合はモデルを設定してください。
 
+CLIのSurrealDB/RAGインデックスは `~/Library/Application Support/MikomaiCLI/surrealdb` に保存します。Swift版の既存データベースとは分け、CLI検証中もAgentを起動できるようにしています。`MIKOMAI_GRAPH_DB_PATH` による明示的な指定は優先されますが、別プロセスで使用中のデータベースは同時に開けません。Swift版を再度起動すると、既に起動している同じアプリを前面に表示します。
+
 ## 検証
 
 ```bash

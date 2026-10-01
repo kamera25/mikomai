@@ -166,7 +166,8 @@ impl<'a, P: PlannerPort, E: ToolExecutorPort, R: ReporterPort> ChatService<'a, P
                     if !result.success {
                         return Err(format!("read-only tool `{tool}` failed: {}", result.output));
                     }
-                    let evidence = Evidence::from_tool(result.output.clone(), target, Some(tool));
+                    let mut evidence = Evidence::from_tool(result.output.clone(), target, Some(tool));
+                    evidence.source.request = Some(args.to_string());
                     task.evidence.push(evidence.clone());
                     self.reporter.report(ReportEvent::Evidence {
                         task_id: task.task.id,

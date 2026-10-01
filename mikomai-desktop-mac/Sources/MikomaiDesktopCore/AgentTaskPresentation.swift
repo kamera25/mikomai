@@ -1,7 +1,7 @@
 import Foundation
 
 /// Agent task list row sent by the native FFI layer.
-public struct NativeAgentTask: Decodable, Identifiable, Equatable {
+public struct NativeAgentTask: Decodable, Identifiable, Equatable, Sendable {
     public var taskId: String
     public var goal: String
     public var status: String
