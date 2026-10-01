@@ -1,0 +1,81 @@
+import Foundation
+
+/// Agent task list row sent by the native FFI layer.
+public struct NativeAgentTask: Decodable, Identifiable, Equatable {
+    public var taskId: String
+    public var goal: String
+    public var status: String
+    public var startedAt: String
+    public var lastEventAt: String
+    public var eventCount: Int
+    public var id: String { taskId }
+
+    public init(taskId: String, goal: String, status: String, startedAt: String, lastEventAt: String, eventCount: Int) {
+        self.taskId = taskId
+        self.goal = goal
+        self.status = status
+        self.startedAt = startedAt
+        self.lastEventAt = lastEventAt
+        self.eventCount = eventCount
+    }
+}
+
+/// A bounded result shown in the conversation sidebar after a native tool call.
+public struct AgentToolResult: Identifiable, Equatable {
+    public var id: UUID
+    public var tool: String
+    public var output: String
+    public var succeeded: Bool
+
+    public init(id: UUID = UUID(), tool: String, output: String, succeeded: Bool) {
+        self.id = id
+        self.tool = tool
+        self.output = output
+        self.succeeded = succeeded
+    }
+}
+
+/// Converts persisted Rust Agent events into short, readable progress entries.
+public enum AgentTaskHistoryPresentation {
+    public static func lines(from json: String, fallbackGoal: String) -> [String] {
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let events = root["events"] as? [[String: Any]] else {
+            return json.isEmpty ? [] : [json]
+        }
+
+        return events.compactMap { event in
+            switch event["event_type"] as? String {
+            case "task_started":
+                return "開始: \(event["goal"] as? String ?? fallbackGoal)"
+            case "observation":
+                let evidence = event["evidence"] as? [String: Any] ?? [:]
+                let output = evidence["content"] as? String
+                    ?? evidence["raw"] as? String
+                    ?? Self.prettyJSON(evidence.isEmpty ? event : evidence)
+                return "観測結果:\n\(output)"
+            case "state_updated":
+                return "状態: \(Self.stringValue(event["status"]) ?? "更新中")"
+            case "approval_required":
+                return "承認待ち: \(event["message"] as? String ?? "提案を確認してください")"
+            case "finished":
+                return "完了:\n\(event["answer"] as? String ?? "回答を記録しました")"
+            default:
+                return nil
+            }
+        }
+    }
+
+    private static func stringValue(_ value: Any?) -> String? {
+        guard let value else { return nil }
+        if let text = value as? String { return text }
+        return prettyJSON(value)
+    }
+
+    private static func prettyJSON(_ value: Any) -> String {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else { return "観測結果を記録しました" }
+        return text
+    }
+}

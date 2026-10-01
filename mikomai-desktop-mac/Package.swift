@@ -14,6 +14,11 @@ let package = Package(
     products: [
         .executable(name: "MikomaiDesktopMac", targets: ["MikomaiDesktopMac"])
     ],
+    dependencies: [
+        // Supply the Swift Testing macro plugin explicitly. Some Command Line
+        // Tools installations ship the runtime module without TestingMacros.
+        .package(url: "https://github.com/swiftlang/swift-testing.git", from: "6.2.0")
+    ],
     targets: [
         .target(name: "MikomaiDesktopCore", path: "Sources/MikomaiDesktopCore"),
         .target(
@@ -31,6 +36,12 @@ let package = Package(
             dependencies: ["MikomaiDesktopCore", "MikomaiFFI"],
             resources: [.copy("Resources/AppIcon.icns")]
         ),
-        .testTarget(name: "MikomaiDesktopCoreTests", dependencies: ["MikomaiDesktopCore"])
+        .testTarget(
+            name: "MikomaiDesktopCoreTests",
+            dependencies: [
+                "MikomaiDesktopCore",
+                .product(name: "Testing", package: "swift-testing")
+            ]
+        )
     ]
 )

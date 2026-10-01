@@ -124,7 +124,7 @@ final class ChatComposerTextView: NSTextView {
     }
 }
 
-private final class ChatComposerScrollView: NSScrollView {
+final class ChatComposerScrollView: NSScrollView {
     var focusOnAttachment = false
 
     override func viewDidMoveToWindow() {
