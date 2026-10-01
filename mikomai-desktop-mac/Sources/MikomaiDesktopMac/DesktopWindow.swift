@@ -199,6 +199,11 @@ struct DesktopWindow: View {
             rightPaneTab = "diff"
             isRightPaneOpen = true
         }
+        .onChange(of: model.executionResultsInActiveSession.last?.id) { id in
+            guard id != nil else { return }
+            rightPaneTab = "execution"
+            isRightPaneOpen = true
+        }
         .onAppear { model.startWatchService() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in model.stopWatchService() }
         .alert(item: $model.watchAlert) { alert in
@@ -320,6 +325,9 @@ struct DesktopWindow: View {
                 WorkspaceTabButton(title: "Diff", icon: "arrow.left.arrow.right", isSelected: rightPaneTab == "diff") {
                     rightPaneTab = "diff"
                 }
+                WorkspaceTabButton(title: "実行", icon: "terminal", isSelected: rightPaneTab == "execution") {
+                    rightPaneTab = "execution"
+                }
                 WorkspaceTabButton(title: "ログ", icon: "text.alignleft", isSelected: rightPaneTab == "logs") {
                     rightPaneTab = "logs"
                 }
@@ -330,6 +338,8 @@ struct DesktopWindow: View {
             Divider()
             if rightPaneTab == "diff" {
                 operationDiffPane
+            } else if rightPaneTab == "execution" {
+                ExecutionTerminalView(results: model.executionResultsInActiveSession)
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("投入ログ", systemImage: "text.alignleft").font(.system(size: 12, weight: .semibold))
@@ -702,6 +712,11 @@ struct DesktopWindow: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        ForEach(model.queuedSubmissionsInActiveSession) { submission in
+                            QueuedSubmissionView(submission: submission) {
+                                model.removeQueuedSubmission(submission.id)
+                            }
+                        }
                         GeometryReader { bottomProxy in
                             Color.clear.preference(key: ChatBottomPreferenceKey.self,
                                                    value: bottomProxy.frame(in: .named("chatScroll")).maxY)
@@ -727,6 +742,9 @@ struct DesktopWindow: View {
                         if chatScrollFollow.followsOutput { proxy.scrollTo("chatBottom", anchor: .bottom) }
                     }
                     .onChange(of: model.activeSession?.messages.count ?? 0) { _ in
+                        if chatScrollFollow.followsOutput { proxy.scrollTo("chatBottom", anchor: .bottom) }
+                    }
+                    .onChange(of: model.queuedSubmissionsInActiveSession.last?.id) { _ in
                         if chatScrollFollow.followsOutput { proxy.scrollTo("chatBottom", anchor: .bottom) }
                     }
                     .onChange(of: model.activeSessionID) { _ in
@@ -792,7 +810,6 @@ struct DesktopWindow: View {
 
     private func suggestion(_ title: String, icon: String, prompt: String) -> some View {
         Button {
-            guard !model.isWorking else { return }
             mentionPresentation.dismiss()
             model.draft = prompt
             model.send()
@@ -814,7 +831,6 @@ struct DesktopWindow: View {
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
-        .disabled(model.isWorking)
         .help("クリックして実行")
     }
 
@@ -889,10 +905,10 @@ struct DesktopWindow: View {
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).disabled(model.isWorking).help("テキストファイルを添付")
+                .buttonStyle(.plain).help("テキストファイルを添付")
 
                 ChatComposer(text: $model.draft, isFocused: $isChatInputFocused,
-                             isEnabled: !model.isWorking, onSubmit: model.send,
+                             isEnabled: true, onSubmit: model.send,
                              onEscape: { mentionPresentation.dismiss() },
                              onSuggestionKey: handleSuggestionKey,
                              onMentionContextChanged: { context in
@@ -911,9 +927,9 @@ struct DesktopWindow: View {
                             .background(Color(red: 0.86, green: 0.08, blue: 0.24), in: Circle()) }
                         .buttonStyle(.plain)
                         .disabled(!ChatSubmissionPolicy.canStop(isWorking: model.isWorking, isCancelling: model.isCancelling))
-                        .help("生成を停止")
-                } else {
-                    Button(action: model.send) {
+                        .help(model.isCancelling ? "停止処理中" : "生成を停止")
+                }
+                Button(action: model.send) {
                         Image(systemName: ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) ? "paperplane.fill" : "arrow.up")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.white).frame(width: 30, height: 30)
@@ -921,8 +937,7 @@ struct DesktopWindow: View {
                     }
                         .buttonStyle(.plain)
                         .disabled(!ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count))
-                        .help("送信 (Enter、Shift+Enter で改行)")
-                }
+                        .help(model.isWorking ? "次回送信予定に追加 (Enter)" : "送信 (Enter、Shift+Enter で改行)")
             }
         }
         .padding(10).background(Color(nsColor: .textBackgroundColor)).clipShape(RoundedRectangle(cornerRadius: 7))
@@ -931,7 +946,7 @@ struct DesktopWindow: View {
         .frame(maxWidth: .infinity).background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             model.reloadCompletionHosts()
-            isChatInputFocused = !model.isWorking
+            isChatInputFocused = true
         }
         .onChange(of: model.isWorking) { isWorking in
             if !isWorking { isChatInputFocused = true }

@@ -105,7 +105,7 @@ public enum ChatSubmissionPolicy {
     }
 
     public static func shouldSubmit(prompt: String, attachmentCount: Int, isWorking: Bool) -> Bool {
-        !isWorking && hasContent(prompt: prompt, attachmentCount: attachmentCount)
+        hasContent(prompt: prompt, attachmentCount: attachmentCount)
     }
 
     public static func canStop(isWorking: Bool, isCancelling: Bool) -> Bool {

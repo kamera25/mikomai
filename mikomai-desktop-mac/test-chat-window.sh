@@ -17,6 +17,7 @@ swiftc -suppress-warnings -sdk "$SDK" -module-cache-path "$CHECK_DIR/cache" \
  -L "$ROOT/target/debug" -lmikomai_ffi -Xlinker -rpath -Xlinker "$ROOT/target/debug" \
  "$SCRATCH/out/Products/Debug/MikomaiDesktopCore.o" "$CHECK_DIR/full.swift" \
  "$APP/Sources/MikomaiDesktopMac/AgentProgressView.swift" \
+ "$APP/Sources/MikomaiDesktopMac/ExecutionTerminalView.swift" \
  "$APP/Sources/MikomaiDesktopMac/AgentTaskWorkspace.swift" \
  "$APP/Sources/MikomaiDesktopMac/ChatComposer.swift" \
  "$APP/Sources/MikomaiDesktopMac/ConnectionsWorkspace.swift" \

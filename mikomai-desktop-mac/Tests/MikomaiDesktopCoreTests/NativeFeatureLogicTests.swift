@@ -45,7 +45,7 @@ struct NativeFeatureLogicTests {
         #expect(ChatSubmissionPolicy.shouldSubmit(prompt: "hello", attachmentCount: 0, isWorking: false))
         #expect(ChatSubmissionPolicy.shouldSubmit(prompt: "  ", attachmentCount: 1, isWorking: false))
         #expect(!ChatSubmissionPolicy.shouldSubmit(prompt: "  ", attachmentCount: 0, isWorking: false))
-        #expect(!ChatSubmissionPolicy.shouldSubmit(prompt: "hello", attachmentCount: 0, isWorking: true))
+        #expect(ChatSubmissionPolicy.shouldSubmit(prompt: "hello", attachmentCount: 0, isWorking: true))
     }
 
     @Test func attachmentAcceptsTheExactPerFileAndAggregateLimits() throws {

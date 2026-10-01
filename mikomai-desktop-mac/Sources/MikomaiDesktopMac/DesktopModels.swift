@@ -220,6 +220,7 @@ struct NetworkOperationOutput: Sendable {
     let success: Bool
     let stdout: String
     let stderr: String
+    var command: String? = nil
 }
 
 // MARK: - Keychain Helper

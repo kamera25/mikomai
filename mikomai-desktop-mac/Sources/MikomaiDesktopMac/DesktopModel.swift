@@ -43,6 +43,14 @@ final class DesktopModel: ObservableObject {
     @Published var watchEditingID: String?
     @Published var agentTasks: [NativeAgentTask] = []
     @Published var selectedTaskHistory = ""
+    @Published var chatQueue = ChatSubmissionQueue()
+    @Published var executionResults: [AgentToolResult] = []
+    var queuedSubmissionsInActiveSession: [QueuedChatSubmission] {
+        chatQueue.submissions.filter { $0.sessionID == activeSessionID }
+    }
+    var executionResultsInActiveSession: [AgentToolResult] {
+        executionResults.filter { $0.sessionID == activeSessionID }
+    }
     @Published var recentToolResults: [AgentToolResult] = []
     @Published var operationAuditText = ""
     @Published var selectedAgentTaskID: String?
@@ -86,13 +94,14 @@ final class DesktopModel: ObservableObject {
     @Published var tcpTestSuccess: Bool?
     @Published var recentTcpTests: [String] = []
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let credentialPersistence = ConnectionCredentialPersistence(store: KeychainCredentialAdapter())
     private let sessionsKey = "mikomai.desktop.mac.sessions.v1"
     private let activeKey = "mikomai.desktop.mac.activeSession.v1"
     private let connectionsKey = "mikomai.desktop.mac.connections.v1"
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         let bundledDocuments = Bundle.main.resourceURL?.appendingPathComponent("nw-docs", isDirectory: true).path
         let repoRootDocuments = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("nw-docs").path
         let defaultDocuments: String = {
@@ -316,6 +325,10 @@ final class DesktopModel: ObservableObject {
     }
 
     func deleteSession(_ id: UUID) {
+        chatQueue.remove(sessionID: id)
+        executionResults.removeAll { $0.sessionID == id }
+        pendingAgentTaskIDs.removeValue(forKey: id)
+        pendingSavedAgentTaskIDs.removeValue(forKey: id)
         var state = ChatSessionState(sessions: sessions, activeSessionID: activeSessionID)
         state.delete(id)
         sessions = state.sessions
@@ -446,6 +459,29 @@ final class DesktopModel: ObservableObject {
             attachmentCount: pendingAttachments.count,
             isWorking: isWorking
         ) else { return }
+        if activeSessionID == nil || !sessions.contains(where: { $0.id == activeSessionID }) {
+            createSession()
+        }
+        guard let id = activeSessionID else { return }
+        chatQueue.enqueue(QueuedChatSubmission(sessionID: id, prompt: prompt, attachments: pendingAttachments))
+        pendingAttachments = []
+        attachmentError = ""
+        draft = ""
+        startNextQueuedSubmission()
+    }
+
+    func removeQueuedSubmission(_ id: UUID) { chatQueue.remove(id: id) }
+
+    private func startNextQueuedSubmission() {
+        guard let submission = chatQueue.takeNext(isWorking: isWorking, validSessionIDs: Set(sessions.map(\.id))) else { return }
+        submit(submission)
+    }
+
+    private func submit(_ submission: QueuedChatSubmission) {
+        let id = submission.sessionID
+        let prompt = submission.prompt
+        let attachments = submission.attachments
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         let recentHostCandidates = Self.recentHostCandidates(in: prompt)
         if !recentHostCandidates.isEmpty {
             let updated = HostSuggestionPolicy.updateRecentHosts(recentHostCandidates, current: settings.recentIps)
@@ -454,10 +490,6 @@ final class DesktopModel: ObservableObject {
                 saveSettings()
             }
         }
-        if activeSessionID == nil || !sessions.contains(where: { $0.id == activeSessionID }) {
-            createSession()
-        }
-        guard let id = activeSessionID, let index = sessions.firstIndex(where: { $0.id == id }) else { return }
 
         // Context limit derived from settings.historyLimit
         let maxHistoryTurns = max(2, settings.historyLimit * 2)
@@ -465,7 +497,7 @@ final class DesktopModel: ObservableObject {
             "\(message.role == .user ? "ユーザー" : "MIKOMAI"): \(message.text)"
         }.joined(separator: "\n")
 
-        let attachedNames = pendingAttachments.map(\.name)
+        let attachedNames = attachments.map(\.name)
         let userText = prompt.isEmpty ? "添付ファイルを確認してください。" : prompt
         let submissionText: String
         if let taskID = pendingSavedAgentTaskIDs.removeValue(forKey: id) {
@@ -475,7 +507,7 @@ final class DesktopModel: ObservableObject {
         } else {
             submissionText = userText
         }
-        let attachmentText = pendingAttachments.enumerated().map { offset, attachment in
+        let attachmentText = attachments.enumerated().map { offset, attachment in
             "[添付ファイル \(offset + 1): \(attachment.name)]\n\(attachment.text)"
         }.joined(separator: "\n\n")
 
@@ -492,9 +524,6 @@ final class DesktopModel: ObservableObject {
         let modelP = (modelPath as NSString).expandingTildeInPath
         let agentConnections = connections
         let agentCredentialPersistence = credentialPersistence
-        pendingAttachments = []
-        attachmentError = ""
-        draft = ""
         guard let requestID = chatResponse.begin(sessionID: id) else { return }
         let isAgentRequest = Self.dispatchMode(submissionText, connections: agentConnections) == "agent"
         if isAgentRequest, let messageIndex = sessions[index].messages.firstIndex(where: { $0.id == assistantID }) {
@@ -528,6 +557,7 @@ final class DesktopModel: ObservableObject {
                         self.sessions[sIdx].messages[mIdx].text = "生成を停止しました。"
                     }
                     self.chatResponse.finish(requestID)
+                    self.startNextQueuedSubmission()
                     return false
                 }
                 return true
@@ -563,10 +593,18 @@ final class DesktopModel: ObservableObject {
                         self.operationLogs = []
                     }
                 },
-                onToolResult: { tool, output, succeeded in
+                onToolResult: { result in
                     Task { @MainActor in
-                        self.recentToolResults.insert(AgentToolResult(tool: tool, output: output, succeeded: succeeded), at: 0)
-                        self.recentToolResults = Array(self.recentToolResults.prefix(8))
+                        guard self.sessions.contains(where: { $0.id == id }) else { return }
+                        var result = result
+                        result.sessionID = id
+                        if result.isLocalProbe {
+                            self.executionResults.append(result)
+                            self.executionResults = Array(self.executionResults.suffix(40))
+                        } else {
+                            self.recentToolResults.insert(result, at: 0)
+                            self.recentToolResults = Array(self.recentToolResults.prefix(8))
+                        }
                     }
                 }
             ) { chunk, _ in
@@ -585,7 +623,10 @@ final class DesktopModel: ObservableObject {
             }
             await MainActor.run {
                 guard self.chatResponse.requestID == requestID else { return }
-                defer { self.chatResponse.finish(requestID) }
+                defer {
+                    self.chatResponse.finish(requestID)
+                    self.startNextQueuedSubmission()
+                }
                 guard let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
                       let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) else {
                     return
@@ -646,7 +687,6 @@ final class DesktopModel: ObservableObject {
     }
 
     func selectAttachments() {
-        guard !isWorking else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [
             .plainText, .commaSeparatedText, .json, .yaml, .xml,
@@ -957,14 +997,15 @@ final class DesktopModel: ObservableObject {
                     process.executableURL = URL(fileURLWithPath: "/usr/sbin/traceroute")
                     process.arguments = ["-w", "2", "-m", "15", host]
                 }
+                let commandText = ([process.executableURL!.path] + (process.arguments ?? [])).joined(separator: " ")
                 let out = Pipe(); let err = Pipe()
                 process.standardOutput = out; process.standardError = err
                 do {
                     try process.run(); process.waitUntilExit()
                     let stdout = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
                     let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                    return NetworkOperationOutput(success: process.terminationStatus == 0, stdout: stdout, stderr: stderr)
-                } catch { return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription) }
+                    return NetworkOperationOutput(success: process.terminationStatus == 0, stdout: stdout, stderr: stderr, command: commandText)
+                } catch { return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription, command: commandText) }
             case "self_network_test_connection", "self_network_test_net_connection":
                 guard let host = arguments["host"] as? String, let rawPort = arguments["port"] as? Int,
                       (1...65535).contains(rawPort) else {
@@ -1263,7 +1304,7 @@ final class DesktopModel: ObservableObject {
         connections: [SavedConnection],
         credentialPersistence: ConnectionCredentialPersistence,
         onOperationPlan: @escaping (Data) -> Void,
-        onToolResult: @escaping (String, String, Bool) -> Void,
+        onToolResult: @escaping (AgentToolResult) -> Void,
         onChunk: @escaping (String, Bool) -> Void
     ) -> String {
         let box = ChatCallbackBox(stream: StreamBox(onChunk: onChunk), connections: connections, credentialPersistence: credentialPersistence, onOperationPlan: onOperationPlan, onToolResult: onToolResult)

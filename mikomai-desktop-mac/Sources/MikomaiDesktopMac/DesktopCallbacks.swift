@@ -22,9 +22,9 @@ final class ChatCallbackBox: @unchecked Sendable {
     let connections: [SavedConnection]
     let credentialPersistence: ConnectionCredentialPersistence
     let onOperationPlan: (Data) -> Void
-    let onToolResult: (String, String, Bool) -> Void
+    let onToolResult: (AgentToolResult) -> Void
 
-    init(stream: StreamBox, connections: [SavedConnection], credentialPersistence: ConnectionCredentialPersistence, onOperationPlan: @escaping (Data) -> Void, onToolResult: @escaping (String, String, Bool) -> Void) {
+    init(stream: StreamBox, connections: [SavedConnection], credentialPersistence: ConnectionCredentialPersistence, onOperationPlan: @escaping (Data) -> Void, onToolResult: @escaping (AgentToolResult) -> Void) {
         self.stream = stream
         self.connections = connections
         self.credentialPersistence = credentialPersistence
@@ -168,10 +168,13 @@ func agentToolBridge(
             connections: box.connections,
             credentialPersistence: box.credentialPersistence
         )
-        if tool == "get_state" || tool == "query_db" {
-            box.onToolResult(tool, result.success ? result.stdout : result.stderr, result.success)
+        let toolOutput = AgentToolResult.isLocalProbe(tool: tool)
+            ? AgentToolResult.terminalOutput(stdout: result.stdout, stderr: result.stderr)
+            : result.success ? result.stdout : result.stderr
+        if tool == "get_state" || tool == "query_db" || AgentToolResult.isLocalProbe(tool: tool) {
+            box.onToolResult(AgentToolResult(tool: tool, output: toolOutput, succeeded: result.success, command: result.command))
         }
-        let payload = try JSONSerialization.data(withJSONObject: ["success": result.success, "output": result.success ? result.stdout : result.stderr])
+        let payload = try JSONSerialization.data(withJSONObject: ["success": result.success, "output": toolOutput])
         let text = String(decoding: payload, as: UTF8.self)
         let copied = text.withCString { strlcpy(output, $0, capacity) }
         return copied < capacity ? 0 : 1

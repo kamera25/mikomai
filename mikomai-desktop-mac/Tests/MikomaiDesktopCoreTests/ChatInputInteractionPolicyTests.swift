@@ -35,7 +35,7 @@ struct ChatInputInteractionPolicyTests {
         #expect(ChatSubmissionPolicy.hasContent(prompt: " \n", attachmentCount: 1))
         #expect(!ChatSubmissionPolicy.hasContent(prompt: " \n", attachmentCount: 0))
         #expect(ChatSubmissionPolicy.shouldSubmit(prompt: "hello", attachmentCount: 0, isWorking: false))
-        #expect(!ChatSubmissionPolicy.shouldSubmit(prompt: "hello", attachmentCount: 0, isWorking: true))
+        #expect(ChatSubmissionPolicy.shouldSubmit(prompt: "hello", attachmentCount: 0, isWorking: true))
         #expect(ChatSubmissionPolicy.canStop(isWorking: true, isCancelling: false))
         #expect(!ChatSubmissionPolicy.canStop(isWorking: false, isCancelling: false))
         #expect(!ChatSubmissionPolicy.canStop(isWorking: true, isCancelling: true))

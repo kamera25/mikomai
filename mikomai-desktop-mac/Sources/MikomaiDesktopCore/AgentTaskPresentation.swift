@@ -21,17 +21,28 @@ public struct NativeAgentTask: Decodable, Identifiable, Equatable {
 }
 
 /// A bounded result shown in the conversation sidebar after a native tool call.
-public struct AgentToolResult: Identifiable, Equatable {
+public struct AgentToolResult: Identifiable, Equatable, Sendable {
     public var id: UUID
     public var tool: String
     public var output: String
     public var succeeded: Bool
+    public var command: String
+    public var sessionID: UUID?
+    public var isLocalProbe: Bool { Self.isLocalProbe(tool: tool) }
+    public static func isLocalProbe(tool: String) -> Bool {
+        ["self_network_ping", "self_network_traceroute", "self_ping", "self_trace"].contains(tool)
+    }
+    public static func terminalOutput(stdout: String, stderr: String) -> String {
+        [stdout, stderr].filter { !$0.isEmpty }.joined(separator: stdout.hasSuffix("\n") ? "" : "\n")
+    }
 
-    public init(id: UUID = UUID(), tool: String, output: String, succeeded: Bool) {
+    public init(id: UUID = UUID(), tool: String, output: String, succeeded: Bool, command: String? = nil, sessionID: UUID? = nil) {
         self.id = id
         self.tool = tool
         self.output = output
         self.succeeded = succeeded
+        self.command = command ?? tool
+        self.sessionID = sessionID
     }
 }
 
