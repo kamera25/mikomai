@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>ja</string>
 	<key>CFBundleExecutable</key>
-	<string>MikomaiDesktopMac</string>
+	<string>Mikomai-Desktop-Mac</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,9 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Mikomai Desktop</string>
+	<string>Mikomai-Desktop-Mac</string>
+	<key>CFBundleDisplayName</key>
+	<string>Mikomai</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

@@ -116,7 +116,7 @@ final class ChatComposerTextView: NSTextView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         if string.isEmpty, !hasMarkedText() {
-            let placeholder = "質問を入力… (Enter で送信、Shift+Enter で改行)"
+            let placeholder = "Markdownで質問を入力… (Enter で送信、Shift+Enter で改行)"
             placeholder.draw(at: NSPoint(x: textContainerInset.width, y: textContainerInset.height),
                              withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 13),
                                               .foregroundColor: NSColor.placeholderTextColor])

@@ -346,12 +346,14 @@ private final class ChatCallbackBox: @unchecked Sendable {
     let connections: [SavedConnection]
     let credentialPersistence: ConnectionCredentialPersistence
     let onOperationPlan: (Data) -> Void
+    let onToolResult: (String, String, Bool) -> Void
 
-    init(stream: StreamBox, connections: [SavedConnection], credentialPersistence: ConnectionCredentialPersistence, onOperationPlan: @escaping (Data) -> Void) {
+    init(stream: StreamBox, connections: [SavedConnection], credentialPersistence: ConnectionCredentialPersistence, onOperationPlan: @escaping (Data) -> Void, onToolResult: @escaping (String, String, Bool) -> Void) {
         self.stream = stream
         self.connections = connections
         self.credentialPersistence = credentialPersistence
         self.onOperationPlan = onOperationPlan
+        self.onToolResult = onToolResult
     }
 }
 
@@ -500,6 +502,9 @@ private func agentToolBridge(
             connections: box.connections,
             credentialPersistence: box.credentialPersistence
         )
+        if tool == "get_state" || tool == "query_db" {
+            box.onToolResult(tool, result.success ? result.stdout : result.stderr, result.success)
+        }
         let payload = try JSONSerialization.data(withJSONObject: ["success": result.success, "output": result.success ? result.stdout : result.stderr])
         let text = String(decoding: payload, as: UTF8.self)
         let copied = text.withCString { strlcpy(output, $0, capacity) }
@@ -588,6 +593,7 @@ private final class DesktopModel: ObservableObject {
     @Published var watchEditingID: String?
     @Published var agentTasks: [NativeAgentTask] = []
     @Published var selectedTaskHistory = ""
+    @Published var recentToolResults: [(id: UUID, tool: String, output: String, succeeded: Bool)] = []
     @Published var operationAuditText = ""
     @Published var selectedAgentTaskID: String?
     private var watchCallbackBox: WatchCallbackBox?
@@ -840,7 +846,25 @@ private final class DesktopModel: ObservableObject {
         selectedAgentTaskID = task.id
         let response = task.id.withCString { mikomai_agent_task_history($0) }
         defer { mikomai_result_free(response) }
-        selectedTaskHistory = response.message.map { String(cString: $0) } ?? "タスク履歴を読み込めませんでした"
+        let raw = response.message.map { String(cString: $0) } ?? "タスク履歴を読み込めませんでした"
+        if let data = raw.data(using: .utf8),
+           let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let events = root["events"] as? [[String: Any]] {
+            selectedTaskHistory = events.compactMap { event -> String? in
+                let type = event["event_type"] as? String ?? ""
+                switch type {
+                case "task_started": return "開始: \(event["goal"] as? String ?? task.goal)"
+                case "observation":
+                    let evidence = event["evidence"] as? [String: Any]
+                    let output = evidence?["raw"] as? String ?? evidence?["content"] as? String ?? (try? String(data: JSONSerialization.data(withJSONObject: evidence ?? event, options: [.prettyPrinted, .sortedKeys]), encoding: .utf8)) ?? "観測結果を記録しました"
+                    return "観測結果:\n\(output)"
+                case "state_updated": return "状態: \(String(describing: event["status"] ?? "更新中"))"
+                case "approval_required": return "承認待ち: \(event["message"] as? String ?? "提案を確認してください")"
+                case "finished": return "完了:\n\(event["answer"] as? String ?? "回答を記録しました")"
+                default: return nil
+                }
+            }.joined(separator: "\n\n")
+        } else { selectedTaskHistory = raw }
     }
 
     func resumeAgentTask(_ task: NativeAgentTask) {
@@ -1072,6 +1096,12 @@ private final class DesktopModel: ObservableObject {
                         self.operationPhase = "エージェント提案を確認中"
                         self.operationLogs = []
                     }
+                },
+                onToolResult: { tool, output, succeeded in
+                    Task { @MainActor in
+                        self.recentToolResults.insert((UUID(), tool, output, succeeded), at: 0)
+                        self.recentToolResults = Array(self.recentToolResults.prefix(8))
+                    }
                 }
             ) { chunk, _ in
                 Task { @MainActor in
@@ -1079,6 +1109,7 @@ private final class DesktopModel: ObservableObject {
                           let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) else { return }
                     self.sessions[sIdx].messages[mIdx].text += chunk
                     self.sessions[sIdx].updatedAt = Date()
+                    self.refreshAgentTasks()
                 }
             }
             await MainActor.run {
@@ -1114,6 +1145,7 @@ private final class DesktopModel: ObservableObject {
                 self.sessions[sIdx].updatedAt = Date()
                 self.isWorking = false
                 self.isCancelling = false
+                self.refreshAgentTasks()
                 self.persistSessions()
             }
         }
@@ -1732,9 +1764,10 @@ private final class DesktopModel: ObservableObject {
         connections: [SavedConnection],
         credentialPersistence: ConnectionCredentialPersistence,
         onOperationPlan: @escaping (Data) -> Void,
+        onToolResult: @escaping (String, String, Bool) -> Void,
         onChunk: @escaping (String, Bool) -> Void
     ) -> String {
-        let box = ChatCallbackBox(stream: StreamBox(onChunk: onChunk), connections: connections, credentialPersistence: credentialPersistence, onOperationPlan: onOperationPlan)
+        let box = ChatCallbackBox(stream: StreamBox(onChunk: onChunk), connections: connections, credentialPersistence: credentialPersistence, onOperationPlan: onOperationPlan, onToolResult: onToolResult)
         let context = Unmanaged.passUnretained(box).toOpaque()
         let publicDevices = connections.map { connection in
             ["id": connection.id.uuidString, "hostname": connection.name, "ip": connection.host, "deviceType": connection.deviceType]
@@ -2216,6 +2249,22 @@ private struct DesktopWindow: View {
                     }
                 }.padding(8)
             }
+            if !model.recentToolResults.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("取得した状態・DB検索").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    ForEach(model.recentToolResults, id: \.id) { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(item.tool, systemImage: item.succeeded ? "checkmark.circle" : "exclamationmark.circle")
+                                .font(.system(size: 10, weight: .medium)).foregroundStyle(item.succeeded ? Color.secondary : Color.red)
+                            Text(item.output.isEmpty ? "結果は空です" : item.output)
+                                .font(.system(size: 10, design: .monospaced)).lineLimit(5).textSelection(.enabled)
+                        }
+                        .padding(7).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                    }
+                }.padding(10)
+            }
             Spacer(minLength: 0)
             Divider()
             HStack(spacing: 8) {
@@ -2235,7 +2284,7 @@ private struct DesktopWindow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.workspace == .chat ? (model.activeSession?.title ?? "mikomai") : model.workspace.rawValue)
                     .font(.system(size: 14, weight: .semibold))
-                Text(model.workspace == .chat ? "ネットワークアシスタント" : "mikomai desktop")
+                Text(model.workspace == .chat ? "ネットワークアシスタント" : "Mikomai-Desktop-Mac")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
@@ -3679,6 +3728,15 @@ private struct MonitoringWorkspace: View {
                     if let selected = model.agentTasks.first(where: { $0.id == model.selectedAgentTaskID }) {
                         Button("調査を再開") { model.resumeAgentTask(selected) }
                     }
+                }
+                if let selected = model.agentTasks.first(where: { $0.id == model.selectedAgentTaskID }) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("ゴール").font(.caption).foregroundStyle(.secondary)
+                        Text(selected.goal).font(.system(size: 13, weight: .medium)).textSelection(.enabled)
+                        Text("実施状況: \(selected.status) · 更新 \(selected.lastEventAt)")
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
                 }
                 ScrollView { Text(model.selectedTaskHistory).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                     .padding(8).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
