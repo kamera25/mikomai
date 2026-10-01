@@ -1,15 +1,46 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 import MikomaiDesktopCore
 
 struct ExecutionTerminalView: View {
     let results: [AgentToolResult]
+    @State private var showsCopyConfirmation = false
+    @State private var saveError: String?
+
+    private var logText: String {
+        results.map { result in
+            "$ \(result.command)\n\(result.output.isEmpty ? "(出力なし)" : result.output)\n\(result.succeeded ? "終了 · 成功" : "終了 · 失敗")"
+        }.joined(separator: "\n\n")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Label("Ping / Traceroute", systemImage: "terminal")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.8))
-                .padding(14)
+            HStack {
+                Label("Ping / Traceroute", systemImage: "terminal")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Button {
+                    showsCopyConfirmation = ChatMessageClipboard.copy(text: logText)
+                } label: {
+                    Image(systemName: showsCopyConfirmation ? "checkmark" : "doc.on.doc")
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
+                }
+                .help(showsCopyConfirmation ? "コピーしました" : "ログをコピー")
+                .accessibilityLabel("ログをコピー")
+                Button(action: saveLog) {
+                    Image(systemName: "arrow.down.to.line")
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
+                }
+                .help("ログをファイルに保存")
+                .accessibilityLabel("ログをファイルに保存")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.white.opacity(0.8))
+            .disabled(results.isEmpty)
+            .padding(14)
             Divider().overlay(Color.white.opacity(0.15))
             GeometryReader { viewport in
                 ScrollViewReader { proxy in
@@ -53,6 +84,33 @@ struct ExecutionTerminalView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(red: 0.07, green: 0.09, blue: 0.12))
+        .onChange(of: logText) { _ in showsCopyConfirmation = false }
+        .task(id: showsCopyConfirmation) {
+            guard showsCopyConfirmation else { return }
+            do { try await Task.sleep(for: .milliseconds(1200)) }
+            catch { return }
+            showsCopyConfirmation = false
+        }
+        .alert("ログを保存できませんでした", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK") { saveError = nil }
+        } message: {
+            Text(saveError ?? "")
+        }
+    }
+
+    private func saveLog() {
+        let text = logText
+        guard !text.isEmpty else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "ping-trace-log.txt"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try text.write(to: url, atomically: true, encoding: .utf8) }
+        catch { saveError = error.localizedDescription }
     }
 }
 

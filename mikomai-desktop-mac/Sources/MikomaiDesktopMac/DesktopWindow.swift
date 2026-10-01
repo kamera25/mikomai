@@ -923,7 +923,7 @@ struct DesktopWindow: View {
                     .padding(.horizontal, 4)
                     .padding(.vertical, 4)
 
-                if model.isWorking {
+                if model.isWorking && !ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) {
                     Button(action: model.stop) { Image(systemName: "stop.fill")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.white).frame(width: 30, height: 30)
@@ -931,8 +931,8 @@ struct DesktopWindow: View {
                         .buttonStyle(.plain)
                         .disabled(!ChatSubmissionPolicy.canStop(isWorking: model.isWorking, isCancelling: model.isCancelling))
                         .help(model.isCancelling ? "停止処理中" : "生成を停止")
-                }
-                Button(action: model.send) {
+                } else {
+                    Button(action: model.send) {
                         Image(systemName: ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) ? "paperplane.fill" : "arrow.up")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.white).frame(width: 30, height: 30)
@@ -941,6 +941,7 @@ struct DesktopWindow: View {
                         .buttonStyle(.plain)
                         .disabled(!ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count))
                         .help(model.isWorking ? "次回送信予定に追加 (Enter)" : "送信 (Enter、Shift+Enter で改行)")
+                }
             }
         }
         .padding(10).background(Color(nsColor: .textBackgroundColor)).clipShape(RoundedRectangle(cornerRadius: 7))
