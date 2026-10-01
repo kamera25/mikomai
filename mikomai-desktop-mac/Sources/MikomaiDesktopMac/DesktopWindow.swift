@@ -679,7 +679,7 @@ struct DesktopWindow: View {
                         if model.activeSession?.messages.isEmpty ?? true { emptyState }
                         if let session = model.activeSession {
                             ForEach(session.messages) { message in
-                                MessageRow(message: message, onSelectConfig: { config in
+                                MessageRow(message: message, isRunning: model.isWorkingInActiveSession && session.messages.last?.id == message.id, onSelectConfig: { config in
                                     guard !isOperationRunning else { return }
                                     model.operationProposal = config
                                     model.operationPlan = nil
@@ -694,7 +694,7 @@ struct DesktopWindow: View {
                                 }).id(message.id)
                             }
                         }
-                        if model.isWorkingInActiveSession {
+                        if model.isWorkingInActiveSession && model.activeSession?.messages.last?.agentProgress == nil {
                             HStack(spacing: 8) {
                                 ProgressView().controlSize(.small)
                                 Text(model.isCancelling ? "生成を停止しています…" : "資料を検索して回答を生成しています…")

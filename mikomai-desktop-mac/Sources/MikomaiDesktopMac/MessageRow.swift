@@ -3,6 +3,7 @@ import MikomaiDesktopCore
 
 struct MessageRow: View {
     let message: ChatMessage
+    var isRunning = false
     var onSelectConfig: (String) -> Void = { _ in }
     @State private var showsCopyConfirmation = false
     @State private var copyFeedbackGeneration = 0
@@ -23,6 +24,9 @@ struct MessageRow: View {
                         .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
                     }
                 } else {
+                    if let entries = message.agentProgress, !entries.isEmpty {
+                        AgentProgressView(goal: message.agentGoal ?? "", entries: entries, isRunning: isRunning)
+                    }
                     MarkdownMessage(text: message.text, onSelectConfig: onSelectConfig)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

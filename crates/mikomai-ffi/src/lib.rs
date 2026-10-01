@@ -2628,16 +2628,22 @@ impl ReporterPort for FfiAgentReporter {
         };
         let text = match event {
             ReportEvent::TaskStarted { .. } => {
-                "ネットワーク機器の状態を確認しています…\n".to_string()
+                format!(
+                    "__MIKOMAI_AGENT_PROGRESS__{}",
+                    serde_json::json!({"phase":"開始", "nextAction":"調査計画を作成", "detail":"目的と対象を確認しています"})
+                )
             }
-            ReportEvent::Evidence { .. } => "観測結果を整理しています…\n".to_string(),
+            ReportEvent::Evidence { evidence, .. } => format!(
+                "__MIKOMAI_AGENT_PROGRESS__{}",
+                serde_json::json!({"phase":"結果整理", "nextAction":"追加調査または回答を判断", "detail":mikomai_core::audit::redact(&serde_json::json!({"output":evidence.content}))["output"].as_str().unwrap_or("").chars().take(12000).collect::<String>()})
+            ),
             ReportEvent::ApprovalRequired { plan, message, .. } => format!(
                 "__MIKOMAI_APPROVAL_PLAN__{}\n{}",
                 serde_json::to_string(&plan).unwrap_or_default(),
                 message
             ),
             ReportEvent::Status { status, .. } if status.starts_with("dispatch:") => String::new(),
-            ReportEvent::Status { .. } => String::new(),
+            ReportEvent::Status { status, .. } => format!("__MIKOMAI_AGENT_PROGRESS__{status}"),
             ReportEvent::Completed { answer, .. } => answer,
         };
         if let Ok(text) = CString::new(text.replace('\0', "")) {
@@ -3835,6 +3841,32 @@ mod tests {
     ) {
         let events = &mut *(context as *mut Vec<(String, i32)>);
         events.push((CStr::from_ptr(text).to_string_lossy().into_owned(), done));
+    }
+
+    #[test]
+    fn agent_reporter_streams_structured_phases_separately_from_answer() {
+        use mikomai_core::port::{ReportEvent, ReporterPort};
+        let mut chunks: Vec<(String, i32)> = Vec::new();
+        let reporter = super::FfiAgentReporter {
+            callback: Some(capture_chat_chunk),
+            context: &mut chunks as *mut _ as usize,
+            snapshots: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        };
+        let task_id = uuid::Uuid::new_v4();
+        reporter.report(ReportEvent::TaskStarted { task_id });
+        reporter.report(ReportEvent::Status { task_id, status: serde_json::json!({"phase":"実行", "nextAction":"結果を確認", "detail":"get_state · sw1"}).to_string() });
+        reporter.report(ReportEvent::Completed {
+            task_id,
+            answer: "診断完了".into(),
+        });
+        let prefix = "__MIKOMAI_AGENT_PROGRESS__";
+        let start: serde_json::Value =
+            serde_json::from_str(chunks[0].0.strip_prefix(prefix).unwrap()).unwrap();
+        let executing: serde_json::Value =
+            serde_json::from_str(chunks[1].0.strip_prefix(prefix).unwrap()).unwrap();
+        assert_eq!(start["phase"], "開始");
+        assert_eq!(executing["detail"], "get_state · sw1");
+        assert_eq!(chunks[2].0, "診断完了");
     }
 
     #[test]

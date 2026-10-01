@@ -496,11 +496,24 @@ final class DesktopModel: ObservableObject {
         attachmentError = ""
         draft = ""
         guard let requestID = chatResponse.begin(sessionID: id) else { return }
+        let isAgentRequest = Self.dispatchMode(submissionText, connections: agentConnections) == "agent"
+        if isAgentRequest, let messageIndex = sessions[index].messages.firstIndex(where: { $0.id == assistantID }) {
+            sessions[index].messages[messageIndex].agentGoal = userText
+            sessions[index].messages[messageIndex].agentProgress = [AgentProgressEntry(phase: "準備", nextAction: "実行環境を確認して計画を作成", detail: "Agentを起動しています")]
+        }
 
         Task.detached(priority: .userInitiated) {
             // Auto-load model if configured but not yet loaded in Rust FFI
             let currentLoaded = Self.callRust { mikomai_model_status() }
             if currentLoaded.isEmpty && !modelP.isEmpty && FileManager.default.fileExists(atPath: modelP) {
+                if isAgentRequest {
+                    await MainActor.run {
+                        guard self.chatResponse.acceptsChunk(for: requestID),
+                              let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
+                              let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) else { return }
+                        self.sessions[sIdx].messages[mIdx].agentProgress?.append(AgentProgressEntry(phase: "モデル準備", nextAction: "モデルを読み込んで調査を開始", detail: "ローカルモデルを読み込んでいます"))
+                    }
+                }
                 _ = Self.callRust { modelP.withCString { mikomai_model_load($0) } }
                 await MainActor.run {
                     self.refreshModelStatus()
@@ -533,6 +546,11 @@ final class DesktopModel: ObservableObject {
                     Task { @MainActor in
                         guard self.chatResponse.acceptsChunk(for: requestID),
                               let plan = try? JSONDecoder().decode(NativeOperationPlan.self, from: data) else { return }
+                        if let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
+                           let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) {
+                            self.sessions[sIdx].messages[mIdx].agentGoal = userText
+                            self.sessions[sIdx].messages[mIdx].agentProgress = (self.sessions[sIdx].messages[mIdx].agentProgress ?? []) + [AgentProgressEntry(phase: "承認待ち", nextAction: "変更計画を確認して承認", detail: plan.rationale)]
+                        }
                         self.operationPlan = plan
                         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            var args = object["args"] as? [String: Any] {
@@ -556,7 +574,12 @@ final class DesktopModel: ObservableObject {
                     guard self.chatResponse.acceptsChunk(for: requestID),
                           let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
                           let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) else { return }
-                    self.sessions[sIdx].messages[mIdx].text += chunk
+                    if let progress = AgentProgressEntry.parse(chunk) {
+                        self.sessions[sIdx].messages[mIdx].agentGoal = userText
+                        self.sessions[sIdx].messages[mIdx].agentProgress = (self.sessions[sIdx].messages[mIdx].agentProgress ?? []) + [progress]
+                    } else if !chunk.hasPrefix(AgentProgressEntry.streamPrefix) {
+                        self.sessions[sIdx].messages[mIdx].text += chunk
+                    }
                     self.sessions[sIdx].updatedAt = Date()
                 }
             }
@@ -579,6 +602,23 @@ final class DesktopModel: ObservableObject {
                        let values = options["options"] as? [String], !values.isEmpty {
                         displayAnswer += "\n\n" + values.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
                     }
+                }
+                if self.sessions[sIdx].messages[mIdx].agentProgress != nil {
+                    let phase: String
+                    let nextAction: String
+                    let detail: String
+                    if self.isCancelling {
+                        phase = "停止"; nextAction = "必要に応じて再開"; detail = "生成を停止しました"
+                    } else if finalAnswer.hasPrefix("エラー:") {
+                        phase = "失敗"; nextAction = "エラー内容と接続設定を確認"; detail = displayAnswer
+                    } else if self.pendingAgentTaskIDs[id] != nil || displayAnswer.hasPrefix("### ❓ 確認要求") {
+                        phase = "確認待ち"; nextAction = "確認事項に回答"; detail = "追加の情報が必要です"
+                    } else if displayAnswer.hasPrefix("### ✅ 承認待ち") {
+                        phase = "承認待ち"; nextAction = "変更計画を確認して承認"; detail = "承認後に変更を実行できます"
+                    } else {
+                        phase = "完了"; nextAction = "回答と実行結果を確認"; detail = "調査結果を回答にまとめました"
+                    }
+                    self.sessions[sIdx].messages[mIdx].agentProgress?.append(AgentProgressEntry(phase: phase, nextAction: nextAction, detail: detail))
                 }
                 // The FFI result is authoritative. Reporter status and queued
                 // chunks must never remain in the saved final answer.
@@ -1196,6 +1236,24 @@ final class DesktopModel: ObservableObject {
 
     // MARK: - Rust FFI Calls
 
+    private nonisolated static func publicDevicesJSON(_ connections: [SavedConnection]) -> String {
+        let devices = connections.map { connection in
+            ["id": connection.id.uuidString, "hostname": connection.name, "ip": connection.host, "deviceType": connection.deviceType]
+        }
+        return (try? JSONSerialization.data(withJSONObject: devices)).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
+    }
+
+    private nonisolated static func dispatchMode(_ prompt: String, connections: [SavedConnection]) -> String {
+        let devices = publicDevicesJSON(connections)
+        return prompt.withCString { message in
+            devices.withCString { targets in
+                let result = mikomai_dispatch_mode(message, targets)
+                defer { mikomai_result_free(result) }
+                return result.message.map { String(cString: $0) } ?? "worker"
+            }
+        }
+    }
+
     private nonisolated static func askRustStreaming(
         _ prompt: String,
         history: String,
@@ -1210,15 +1268,10 @@ final class DesktopModel: ObservableObject {
     ) -> String {
         let box = ChatCallbackBox(stream: StreamBox(onChunk: onChunk), connections: connections, credentialPersistence: credentialPersistence, onOperationPlan: onOperationPlan, onToolResult: onToolResult)
         let context = Unmanaged.passUnretained(box).toOpaque()
-        let publicDevices = connections.map { connection in
-            ["id": connection.id.uuidString, "hostname": connection.name, "ip": connection.host, "deviceType": connection.deviceType]
-        }
-        let devicesJSON = (try? JSONSerialization.data(withJSONObject: publicDevices)).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
+        let devicesJSON = Self.publicDevicesJSON(connections)
+        let mode = Self.dispatchMode(prompt, connections: connections)
         let response = prompt.withCString { message in
             devicesJSON.withCString { devices in
-                let routeResult = mikomai_dispatch_mode(message, devices)
-                let mode = routeResult.message.map { String(cString: $0) } ?? "worker"
-                mikomai_result_free(routeResult)
                 if mode == "agent" {
                     return history.withCString { historyText in
                         documents.withCString { documentsPath in

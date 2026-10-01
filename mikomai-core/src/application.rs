@@ -119,6 +119,10 @@ impl<'a, P: PlannerPort, E: ToolExecutorPort, R: ReporterPort> ChatService<'a, P
         machine.transition(HarnessState::Observing)?;
         loop {
             machine.transition(HarnessState::Deciding)?;
+            self.reporter.report(ReportEvent::Status {
+                task_id: task.task.id,
+                status: serde_json::json!({"phase":"計画", "nextAction":"観測結果から次の操作を選択", "detail":"目的と収集済みの情報を確認しています"}).to_string(),
+            });
             match self.planner.plan(&task).await? {
                 PlanDecision::Complete { brief } => {
                     machine.transition(HarnessState::Finished)?;
@@ -151,6 +155,10 @@ impl<'a, P: PlannerPort, E: ToolExecutorPort, R: ReporterPort> ChatService<'a, P
                 }
                 PlanDecision::Observe { tool, target, args } => {
                     machine.transition(HarnessState::Validating)?;
+                    self.reporter.report(ReportEvent::Status {
+                        task_id: task.task.id,
+                        status: serde_json::json!({"phase":"実行", "nextAction":"実行結果を確認", "detail":format!("{} · {}", tool, target.as_deref().unwrap_or("ローカル"))}).to_string(),
+                    });
                     let result = self
                         .executor
                         .execute(task.task.id, &tool, target.as_deref(), &args)
@@ -392,7 +400,26 @@ mod tests {
         .unwrap();
         assert_eq!(answer, "診断完了");
         assert_eq!(*executor.0.lock().unwrap(), 1);
-        assert_eq!(reporter.0.lock().unwrap().len(), 4);
+        let events = reporter.0.lock().unwrap();
+        let phases: Vec<serde_json::Value> = events
+            .iter()
+            .filter_map(|event| match event {
+                ReportEvent::Status { status, .. } => serde_json::from_str(status).ok(),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            phases
+                .iter()
+                .map(|value| value["phase"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["計画", "実行", "計画"]
+        );
+        assert!(phases[1]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("show_state · sw1"));
+        assert!(matches!(events.last(), Some(ReportEvent::Completed { .. })));
     }
 
     #[test]

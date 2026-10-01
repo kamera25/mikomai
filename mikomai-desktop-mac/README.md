@@ -25,8 +25,10 @@ CLIは同じFFI推論器を使います。`MIKOMAI_MODEL_PATH` を指定する�
 ```bash
 cargo test --workspace
 cargo build -p mikomai-ffi
-swift test --package-path mikomai-desktop-mac
+./mikomai-desktop-mac/test-core.sh
 npm run cli -- chat "F220のVLAN設定方法を教えて"
 ```
+
+Swiftテストは `test-core.sh` から標準の `swift test` ランナーを実行します。アプリと同じmacOS SDK・キャッシュを使い、Testing 6.2系を固定して、対応Command Line Toolsに存在しない `_TestingInterop` への依存を避けます。特定のテストだけ実行する場合は `./mikomai-desktop-mac/test-core.sh --filter AgentProgressTests` のように指定できます。
 
 Swift unit testsおよびRust fake transportで承認・planner・tool結果を検証します。実機SSH、モデルごとの生成品質、物理装置に対する変更適用はそれぞれの利用環境で追加確認してください。

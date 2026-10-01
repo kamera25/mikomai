@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import MikomaiDesktopCore
 
@@ -22,5 +23,27 @@ struct AgentTaskPresentationTests {
 
         #expect(lines.first == "開始: router statusを調べる")
         #expect(lines.last == "完了:\nCPU使用率は91%です。")
+    }
+}
+
+@Suite struct AgentProgressTests {
+    @Test func progressTransportIsSeparateFromAnswerAndPersistsAcrossReload() throws {
+        let chunk = AgentProgressEntry.streamPrefix + #"{"phase":"実行","nextAction":"結果を確認","detail":"get_state · sw1"}"#
+        let entry = try #require(AgentProgressEntry.parse(chunk))
+        var message = ChatMessage(role: .assistant, text: "診断完了")
+        message.agentGoal = "sw1を診断"
+        message.agentProgress = [entry]
+        let restored = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(message))
+        #expect(restored == message)
+        #expect(restored.text == "診断完了")
+        #expect(restored.agentProgress?.first?.detail == "get_state · sw1")
+        #expect(AgentProgressEntry.parse("通常の回答") == nil)
+        #expect(AgentProgressEntry.parse(AgentProgressEntry.streamPrefix + "broken") == nil)
+    }
+
+    @Test func legacyMessagesRemainReadableWithoutProgress() throws {
+        let message = try JSONDecoder().decode(ChatMessage.self, from: Data(#"{"role":"assistant","text":"以前の回答"}"#.utf8))
+        #expect(message.agentProgress == nil)
+        #expect(message.text == "以前の回答")
     }
 }

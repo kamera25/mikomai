@@ -79,3 +79,28 @@ public enum AgentTaskHistoryPresentation {
         return text
     }
 }
+
+/// Structured progress is kept apart from the final answer and persisted per message.
+public struct AgentProgressEntry: Codable, Equatable, Identifiable {
+    public var id = UUID()
+    public var phase: String
+    public var nextAction: String
+    public var detail: String
+
+    public init(phase: String, nextAction: String, detail: String) {
+        self.phase = phase
+        self.nextAction = nextAction
+        self.detail = detail
+    }
+
+    public static let streamPrefix = "__MIKOMAI_AGENT_PROGRESS__"
+    public static func parse(_ chunk: String) -> Self? {
+        guard chunk.hasPrefix(streamPrefix),
+              let data = String(chunk.dropFirst(streamPrefix.count)).data(using: .utf8),
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let phase = value["phase"] as? String,
+              let next = value["nextAction"] as? String,
+              let detail = value["detail"] as? String else { return nil }
+        return Self(phase: phase, nextAction: next, detail: detail)
+    }
+}

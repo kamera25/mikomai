@@ -15,9 +15,9 @@ let package = Package(
         .executable(name: "MikomaiDesktopMac", targets: ["MikomaiDesktopMac"])
     ],
     dependencies: [
-        // Supply the Swift Testing macro plugin explicitly. Some Command Line
-        // Tools installations ship the runtime module without TestingMacros.
-        .package(url: "https://github.com/swiftlang/swift-testing.git", from: "6.2.0")
+        // Supply the Testing macros explicitly and stay on 6.2: Testing 6.3
+        // requires _TestingInterop, absent from the supported macOS 26.5 CLT.
+        .package(url: "https://github.com/swiftlang/swift-testing.git", .upToNextMinor(from: "6.2.0"))
     ],
     targets: [
         .target(name: "MikomaiDesktopCore", path: "Sources/MikomaiDesktopCore"),

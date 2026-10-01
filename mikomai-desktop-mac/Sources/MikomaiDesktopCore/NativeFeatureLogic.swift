@@ -7,6 +7,8 @@ public struct ChatMessage: Identifiable, Codable, Equatable {
     public var id: UUID
     public var role: Role
     public var text: String
+    public var agentGoal: String?
+    public var agentProgress: [AgentProgressEntry]?
     public var attachments: [String]
 
     public init(id: UUID = UUID(), role: Role, text: String, attachments: [String] = []) {
@@ -16,13 +18,15 @@ public struct ChatMessage: Identifiable, Codable, Equatable {
         self.attachments = attachments
     }
 
-    private enum CodingKeys: String, CodingKey { case id, role, text, attachments }
+    private enum CodingKeys: String, CodingKey { case id, role, text, attachments, agentGoal, agentProgress }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         role = try values.decode(Role.self, forKey: .role)
         text = try values.decode(String.self, forKey: .text)
+        agentGoal = try values.decodeIfPresent(String.self, forKey: .agentGoal)
+        agentProgress = try values.decodeIfPresent([AgentProgressEntry].self, forKey: .agentProgress)
         attachments = try values.decodeIfPresent([String].self, forKey: .attachments) ?? []
     }
 }
