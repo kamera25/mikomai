@@ -2696,11 +2696,19 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
                 .map_err(|e| e.to_string())?
         };
         let attachments = prepare_attachments(&goal, attachments)?;
-        let reference_material = if documents.is_dir() {
+        let fetch_references = !attachments.is_empty()
+            || mikomai_core::reference_context::needs_selected_references(&goal);
+        let reference_start = std::time::Instant::now();
+        let reference_material = if fetch_references && documents.is_dir() {
             chat_with_paths(&goal, documents.clone(), knowledge.clone()).unwrap_or_default()
         } else {
             String::new()
         };
+        debug_trace::emit("reference_context", serde_json::json!({
+            "policy": if fetch_references { "deduplicate" } else { "direct_probe_without_references" },
+            "prefetch":fetch_references, "characters":reference_material.chars().count(),
+            "elapsed_ms":reference_start.elapsed().as_millis(),
+        }));
         if reference_material.trim().is_empty()
             && mikomai_core::dispatch::select_dispatch_mode(&goal) == DispatchMode::Worker {
             debug_trace::emit("worker_fallback", serde_json::json!({
@@ -3257,7 +3265,13 @@ fn chat_with_paths(
         }
     });
     match retrieval {
-        Ok(Some(retrieved)) => return Ok(retrieved),
+        Ok(Some(retrieved)) => {
+            let compact = mikomai_core::reference_context::deduplicate_selected_references(&retrieved);
+            debug_trace::emit("reference_context_compaction", serde_json::json!({
+                "before_characters":retrieved.chars().count(), "after_characters":compact.chars().count(),
+            }));
+            return Ok(compact);
+        },
         Ok(None) => return Ok(String::new()),
         Err(error) => eprintln!("Semantic RAG unavailable; using lexical search: {error}"),
     }

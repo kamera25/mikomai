@@ -13,6 +13,7 @@ pub mod nwdiag;
 pub mod planner;
 pub mod port;
 pub mod redaction;
+pub mod reference_context;
 pub mod response;
 pub mod schema;
 pub mod tool_kind;

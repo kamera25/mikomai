@@ -62,7 +62,7 @@ pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
 /// A single explicit TCP check. Anchoring keeps compound investigations in Agent.
 pub fn port_check_shortcut(message: &str) -> Option<LegacyShortcut> {
     let pattern = regex::Regex::new(
-        r"(?ix)^([a-z0-9:][a-z0-9.:-]{0,254})\s*(?:の\s*|\s+)(?:(\d{1,5})\s*/\s*tcp|(?:tcp\s*)?(?:ポート|port)\s*(\d{1,5}))\s*(?:(?:が|は)\s*(?:空いている|開いている|開放されている|接続できる|通る)\s*か|(?:の|への)?\s*(?:疎通|接続|開放)(?:確認)?)?\s*(?:(?:を\s*)?(?:チェック(?:して)?|確認(?:して)?|調べて|テスト(?:して)?|check|test))[？?。！!]*$"
+        r"(?ix)^([a-z0-9:][a-z0-9.:-]{0,254})\s*(?:の\s*|\s+)(?:(\d{1,5})\s*/\s*tcp|(?:tcp\s*)?(?:ポート|port)\s*(\d{1,5}))\s*(?:(?:(?:が|は)\s*(?:空いている|開いている|開放されている|接続できる|通る)\s*か|(?:の|への)?\s*(?:疎通|接続|開放)(?:確認)?)?\s*(?:(?:を\s*)?(?:チェック(?:して)?|確認(?:して)?|調べて|テスト(?:して)?|check|test))|(?:って|は|が)?\s*(?:空いて(?:います|ます|いる)?|開いて(?:います|ます|いる)?|開放されて(?:います|いる)?|接続でき(?:ます|る)?|通る)\s*(?:か|でしょうか))[？?。！!]*$"
     ).ok()?;
     let captures = pattern.captures(message.trim())?;
     let host = captures.get(1)?.as_str();
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn port_checks_are_complete_tcp_requests_only() {
-        for goal in ["NakaokuGW の22/tcpが空いているかチェック", "192.0.2.1のTCPポート443を確認して", "::1 の80/tcpをチェック", "router-1 のポート65535を確認"] {
+        for goal in ["NakaokuGW の22/tcpが空いているかチェック", "NakaokuGW  の22/tcpって空いてますか？", "NakaokuGWの22/tcpは開いていますか？", "192.0.2.1のTCPポート443を確認して", "::1 の80/tcpをチェック", "router-1 のポート65535を確認"] {
             let route = super::fast_route(goal).expect(goal);
             assert_eq!(route.tool.as_deref(), Some("self_network_test_connection"));
             assert_eq!(super::select_dispatch_mode(goal), super::DispatchMode::FastRouter);
