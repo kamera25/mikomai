@@ -150,6 +150,9 @@ extension DesktopModel {
                         self.operationLogs = []
                     }
                 },
+                onDebug: { json in
+                    DispatchQueue.main.async { self.debugRecords.append(CoreDebugRecord(json: json)) }
+                },
                 onToolResult: { result in
                     DispatchQueue.main.async {
                         guard self.sessions.contains(where: { $0.id == id }) else { return }

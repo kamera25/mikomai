@@ -26,6 +26,7 @@ struct RightPaneTabHeader: View {
             WorkspaceTabButton(title: "ログ", icon: "text.alignleft", isSelected: selectedTab == "logs", showsTitle: showsTitles) {
                 onSelect("logs")
             }
+            WorkspaceTabButton(title: "デバッグ", icon: "ladybug", isSelected: selectedTab == "debug", showsTitle: showsTitles) { onSelect("debug") }
             Spacer(minLength: 0)
             Button(action: onClose) {
                 Image(systemName: "sidebar.right")

@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class DesktopModel: ObservableObject {
+    @Published var debugRecords: [CoreDebugRecord] = []
     @Published var workspace: Workspace = .chat
     @Published var selectedToolTab: ToolTab = .tcpTest
     @Published var sessions: [ChatSession] = [] { didSet { persistSessions() } }
@@ -386,13 +387,15 @@ final class DesktopModel: ObservableObject {
         connections: [SavedConnection],
         credentialPersistence: ConnectionCredentialPersistence,
         onOperationPlan: @escaping (Data) -> Void,
+        onDebug: @escaping (String) -> Void,
         onToolResult: @escaping (AgentToolResult) -> Void,
         onChunk: @escaping (String, Bool) -> Void
     ) -> String {
-        let box = ChatCallbackBox(stream: StreamBox(onChunk: onChunk), connections: connections, credentialPersistence: credentialPersistence, onOperationPlan: onOperationPlan, onToolResult: onToolResult)
+        let box = ChatCallbackBox(stream: StreamBox(onChunk: onChunk), connections: connections, credentialPersistence: credentialPersistence, onOperationPlan: onOperationPlan, onToolResult: onToolResult, onDebug: onDebug)
         let context = Unmanaged.passUnretained(box).toOpaque()
         let devicesJSON = Self.publicDevicesJSON(connections)
         let mode = Self.dispatchMode(prompt, connections: connections)
+        onDebug(CoreDebugRecord.encode(kind: "swift_request", payload: ["query":prompt, "history":history, "attachments":attachments, "devices_json":devicesJSON, "mode":mode, "documents":documents, "knowledge":knowledge]))
         let response = prompt.withCString { message in
             devicesJSON.withCString { devices in
                 if mode == "agent" {
@@ -420,6 +423,7 @@ final class DesktopModel: ObservableObject {
         defer { mikomai_result_free(response) }
         guard let message = response.message else { return "Rust 側から応答がありませんでした。" }
         let text = String(cString: message)
+        onDebug(CoreDebugRecord.encode(kind: "core_response", payload: ["status":response.status, "text":text]))
         return response.status == 0 ? text : "エラー: \(text)"
     }
 

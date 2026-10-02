@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(test)]
 mod approval_boundary;
 
+mod debug_trace;
 mod llm_runtime;
 use llm_runtime::infer;
 use mikomai_adapters::local_llama::CANCEL_INFERENCE;
@@ -1380,6 +1381,10 @@ impl FfiAgentPlanner {
                 worker: &worker,
                 approval: &approval,
             };
+            debug_trace::emit(
+                "agent_query",
+                serde_json::json!({"task":task, "history":self.history, "attachments":self.attachments, "references":self.reference_material}),
+            );
             planner.plan_with_cancellation(task, cancelled).await
         })
     }
@@ -2393,6 +2398,7 @@ impl ReporterPort for FfiAgentReporter {
                     "timestamp":timestamp
                 }),
             };
+            debug_trace::emit("agent_event", record.clone());
             let safe_record = mikomai_core::audit::redact(&record);
             if let Err(error) = persist_agent_audit(&snapshot, safe_record) {
                 eprintln!("agent audit persistence failed: {error}");
@@ -2456,6 +2462,7 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
                 .into(),
         );
     }
+    let _debug_scope = debug_trace::Scope::enter(callback, context);
     let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let incoming = CStr::from_ptr(message)
             .to_str()
@@ -2718,6 +2725,7 @@ pub unsafe extern "C" fn mikomai_assistant_chat_streaming(
     {
         return error_result("message, history and directories must not be null".into());
     }
+    let _debug_scope = debug_trace::Scope::enter(callback, context);
     let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         llm_runtime::reset_cancellation();
         let question = CStr::from_ptr(message)

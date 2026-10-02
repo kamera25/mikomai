@@ -248,11 +248,13 @@ struct DesktopWindow: View {
                   let id = UUID(uuidString: plan.args.deviceSnapshot.id) else { return }
             selectedConnectionID = id
             model.workspace = .chat
-            rightPaneTab = "diff"
-            isRightPaneOpen = true
+            if rightPaneTab != "debug" {
+                rightPaneTab = "diff"
+                isRightPaneOpen = true
+            }
         }
         .onChange(of: model.executionResultsInActiveSession.last?.id) { id in
-            guard id != nil else { return }
+            guard id != nil, !(isRightPaneOpen && rightPaneTab == "debug") else { return }
             rightPaneTab = "execution"
             isRightPaneOpen = true
         }
@@ -519,6 +521,8 @@ struct DesktopWindow: View {
             Divider()
             if rightPaneTab == "diff" {
                 operationDiffPane
+            } else if rightPaneTab == "debug" {
+                CoreDebugView(model: model)
             } else if rightPaneTab == "execution" {
                 ExecutionTerminalView(results: model.executionResultsInActiveSession)
             } else {

@@ -23,13 +23,15 @@ final class ChatCallbackBox: @unchecked Sendable {
     let credentialPersistence: ConnectionCredentialPersistence
     let onOperationPlan: (Data) -> Void
     let onToolResult: (AgentToolResult) -> Void
+    let onDebug: (String) -> Void
 
-    init(stream: StreamBox, connections: [SavedConnection], credentialPersistence: ConnectionCredentialPersistence, onOperationPlan: @escaping (Data) -> Void, onToolResult: @escaping (AgentToolResult) -> Void) {
+    init(stream: StreamBox, connections: [SavedConnection], credentialPersistence: ConnectionCredentialPersistence, onOperationPlan: @escaping (Data) -> Void, onToolResult: @escaping (AgentToolResult) -> Void, onDebug: @escaping (String) -> Void) {
         self.stream = stream
         self.connections = connections
         self.credentialPersistence = credentialPersistence
         self.onOperationPlan = onOperationPlan
         self.onToolResult = onToolResult
+        self.onDebug = onDebug
     }
 }
 
@@ -37,6 +39,11 @@ func streamBridge(chunk: UnsafePointer<CChar>?, isDone: Int32, context: UnsafeMu
     guard let context else { return }
     let box = Unmanaged<ChatCallbackBox>.fromOpaque(context).takeUnretainedValue()
     let text = chunk.flatMap { String(cString: $0) } ?? ""
+    if text.hasPrefix("__MIKOMAI_DEBUG__") {
+        box.onDebug(String(text.dropFirst("__MIKOMAI_DEBUG__".count)))
+        return
+    }
+    box.onDebug(CoreDebugRecord.encode(kind: "core_stream", payload: ["text": text, "done": isDone != 0]))
     let approvalPrefix = "__MIKOMAI_APPROVAL_PLAN__"
     if text.hasPrefix(approvalPrefix) {
         let json = String(text.dropFirst(approvalPrefix.count)).components(separatedBy: "\n").first ?? ""
@@ -158,6 +165,7 @@ func agentToolBridge(
     }
     let box = Unmanaged<ChatCallbackBox>.fromOpaque(context).takeUnretainedValue()
     let tool = String(cString: toolID)
+    box.onDebug(CoreDebugRecord.encode(kind: "tool_request", payload: ["tool":tool, "target_json":String(cString: targetJSON), "args_json":String(cString: argsJSON)]))
     do {
         let target = try JSONDecoder().decode(PortableDeviceTarget.self, from: Data(String(cString: targetJSON).utf8))
         let arguments = try JSONSerialization.jsonObject(with: Data(String(cString: argsJSON).utf8)) as? [String: Any] ?? [:]
@@ -168,6 +176,7 @@ func agentToolBridge(
             connections: box.connections,
             credentialPersistence: box.credentialPersistence
         )
+        box.onDebug(CoreDebugRecord.encode(kind: "tool_response", payload: ["tool":tool, "success":result.success, "stdout":result.stdout, "stderr":result.stderr]))
         let toolOutput = AgentToolResult.isLocalProbe(tool: tool)
             ? AgentToolResult.terminalOutput(stdout: result.stdout, stderr: result.stderr)
             : result.success ? result.stdout : result.stderr

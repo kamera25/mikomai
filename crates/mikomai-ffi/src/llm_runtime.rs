@@ -64,6 +64,16 @@ pub fn status() -> Result<String, String> {
 }
 
 pub fn infer(prompt: &str) -> Result<String, String> {
+    crate::debug_trace::emit(
+        "llm_request",
+        serde_json::json!({"backend":if apple_selected() { "apple" } else { "llamacpp" }, "prompt":prompt}),
+    );
+    let result = infer_untraced(prompt);
+    crate::debug_trace::emit("llm_response", serde_json::json!({"result":result}));
+    result
+}
+
+fn infer_untraced(prompt: &str) -> Result<String, String> {
     if apple_selected() {
         #[cfg(target_os = "macos")]
         return futures_lite::future::block_on(
@@ -80,7 +90,7 @@ pub fn answer_streaming(
     callback: &mut dyn FnMut(&str, bool),
 ) -> Result<String, String> {
     if !apple_selected() {
-        return response.answer_streaming(&mikomai_adapters::local_llama::LocalInference, callback);
+        return response.answer_streaming(&crate::debug_trace::StreamingInference, callback);
     }
     #[cfg(target_os = "macos")]
     {
@@ -106,8 +116,17 @@ pub fn answer_streaming(
         if !response.history.trim().is_empty() {
             optional.push(history.as_str());
         }
-        let answer = mikomai_adapters::apple::AppleInference::default()
-            .complete_with_context(&required, &optional)?;
+        crate::debug_trace::emit(
+            "llm_context_request",
+            serde_json::json!({"backend":"apple", "required":required, "optional":optional}),
+        );
+        let prompt = optional
+            .iter()
+            .copied()
+            .chain(std::iter::once(required.as_str()))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let answer = infer(&prompt)?;
         callback(&answer, false);
         callback("", true);
         Ok(answer)
