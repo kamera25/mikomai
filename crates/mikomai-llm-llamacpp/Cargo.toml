@@ -1,0 +1,10 @@
+[package]
+name = "mikomai-llm-llamacpp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mikomai-core = { path = "../../mikomai-core" }
+mikomai-llm = { path = "../mikomai-llm" }
+llama-cpp-2 = { version = "0.1.156", features = ["mtmd"] }
+llama-cpp-sys-2 = "0.1.156"

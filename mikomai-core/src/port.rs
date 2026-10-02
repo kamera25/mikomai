@@ -20,8 +20,53 @@ pub trait ToolExecutorPort: Send + Sync {
 pub trait ReporterPort: Send + Sync {
     fn report(&self, event: ReportEvent);
 }
+/// Capabilities exposed by the integration, not everything the model might do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InferenceCapabilities {
+    pub text_generation: bool,
+    pub structured_output: bool,
+    pub tool_calling: bool,
+    pub token_limits: TokenLimits,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TokenLimits {
+    /// Total prompt and generated response budget. None means unknown.
+    pub context_window: Option<u32>,
+    /// Configured generation cap, if the transport enforces one.
+    pub max_output_tokens: Option<u32>,
+}
+
+impl Default for InferenceCapabilities {
+    fn default() -> Self {
+        Self {
+            text_generation: true,
+            structured_output: false,
+            tool_calling: false,
+            token_limits: TokenLimits::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelAvailability {
+    Available,
+    Unavailable {
+        reason: String,
+    },
+    /// Legacy or callback integrations may not have a preflight check.
+    Unknown,
+}
+
 pub trait InferencePort: Send + Sync {
     fn complete<'a>(&'a self, prompt: &'a str) -> PortFuture<'a, String>;
+    fn capabilities(&self) -> InferenceCapabilities {
+        InferenceCapabilities::default()
+    }
+    /// Runtime status, independent of whether the backend was compiled.
+    fn availability(&self) -> ModelAvailability {
+        ModelAvailability::Unknown
+    }
     fn cancel(&self) {}
 }
 pub trait SearchPort: Send + Sync {

@@ -5,4 +5,9 @@ members = [
   "crates/mikomai-adapters",
   "crates/mikomai-cli",
   "crates/mikomai-ffi",
+  "crates/mikomai-llm",
+  "crates/mikomai-llm-llamacpp",
 ]
+# Enter the build graph only through macOS target dependencies. In particular,
+# --workspace on Linux/Windows must not build even an empty Apple crate.
+exclude = ["crates/mikomai-llm-apple"]

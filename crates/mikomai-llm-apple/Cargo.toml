@@ -1,0 +1,10 @@
+[package]
+name = "mikomai-llm-apple"
+version = "0.1.0"
+edition = "2021"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+mikomai-llm = { path = "../mikomai-llm" }
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+futures-lite = "2"

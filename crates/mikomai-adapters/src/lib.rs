@@ -19,3 +19,6 @@ pub mod transfer;
 
 pub mod attachments;
 pub mod local_llama;
+
+#[cfg(target_os = "macos")]
+pub use mikomai_llm_apple as apple;

@@ -2845,8 +2845,9 @@ dependencies = [
  "chrono",
  "fastembed",
  "futures-lite",
- "llama-cpp-2",
  "mikomai-core",
+ "mikomai-llm-apple",
+ "mikomai-llm-llamacpp",
  "serde",
  "serde_json",
  "serialport",
@@ -2861,10 +2862,10 @@ name = "mikomai-cli"
 version = "0.1.0"
 dependencies = [
  "futures-lite",
- "llama-cpp-sys-2",
  "mikomai-adapters",
  "mikomai-core",
  "mikomai-ffi",
+ "mikomai-llm-llamacpp",
  "serde_json",
  "tokio",
 ]
@@ -2898,6 +2899,30 @@ dependencies = [
  "serde_json",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "mikomai-llm"
+version = "0.1.0"
+dependencies = [
+ "mikomai-core",
+]
+
+[[package]]
+name = "mikomai-llm-apple"
+version = "0.1.0"
+dependencies = [
+ "mikomai-llm",
+]
+
+[[package]]
+name = "mikomai-llm-llamacpp"
+version = "0.1.0"
+dependencies = [
+ "llama-cpp-2",
+ "llama-cpp-sys-2",
+ "mikomai-core",
+ "mikomai-llm",
 ]
 
 [[package]]

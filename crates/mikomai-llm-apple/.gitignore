@@ -1,0 +1,3 @@
+# Standalone library checks use a separate lockfile; applications use the root lock.
+/Cargo.lock
+/target/
