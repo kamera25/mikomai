@@ -256,7 +256,11 @@ struct DesktopWindow: View {
                     HStack(spacing: 5) {
                         Text(historyTabTitle).font(.system(size: 14, weight: .semibold))
                         Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
-                    }.foregroundStyle(.primary)
+                        Spacer(minLength: 8)
+                    }
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .menuStyle(.borderlessButton)
                 .help("表示する履歴を選択")
@@ -381,8 +385,10 @@ struct DesktopWindow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(headerTitle)
                     .font(.system(size: 16, weight: .semibold))
-                Text(model.workspace == .chat ? "ネットワークアシスタント" : "Mikomai-Desktop-Mac")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                if model.workspace != .chat {
+                    Text("Mikomai-Desktop-Mac")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                }
             }
             Spacer()
             if model.workspace == .chat && historyTab == "conversation" && !isRightPaneOpen {
@@ -411,30 +417,13 @@ struct DesktopWindow: View {
 
     private var rightSidePane: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                WorkspaceTabButton(title: "Diff", icon: "arrow.left.arrow.right", isSelected: rightPaneTab == "diff") {
-                    rightPaneTab = "diff"
-                }
-                WorkspaceTabButton(title: "実行", icon: "terminal", isSelected: rightPaneTab == "execution") {
-                    rightPaneTab = "execution"
-                }
-                WorkspaceTabButton(title: "ログ", icon: "text.alignleft", isSelected: rightPaneTab == "logs") {
-                    rightPaneTab = "logs"
-                }
-                Spacer()
-                Button {
+            RightPaneTabHeader(
+                selectedTab: rightPaneTab,
+                onSelect: { rightPaneTab = $0 },
+                onClose: {
                     withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen = false }
-                } label: {
-                    Image(systemName: "sidebar.right")
-                        .font(.system(size: 15, weight: .medium))
-                        .frame(width: 28, height: 26)
-                        .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
                 }
-                .buttonStyle(.plain).help("作業タブを閉じる")
-                .accessibilityLabel("作業タブを閉じる")
-            }
-            .padding(.horizontal, 16).padding(.vertical, 8)
-            .background(Color(nsColor: .controlBackgroundColor))
+            )
             Divider()
             if rightPaneTab == "diff" {
                 operationDiffPane

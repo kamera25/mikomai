@@ -32,6 +32,7 @@ swiftc -suppress-warnings -sdk "$SDK" -module-cache-path "$CHECK_DIR/cache" \
  "$APP/Sources/MikomaiDesktopMac/NetworkToolsWorkspace.swift" \
  "$APP/Sources/MikomaiDesktopMac/SettingsWorkspace.swift" \
  "$APP/Sources/MikomaiDesktopMac/SessionRow.swift" \
+ "$APP/Sources/MikomaiDesktopMac/WorkspaceTabHeader.swift" \
  "$SCRATCH/out/Intermediates.noindex/MikomaiDesktopMac.build/Debug/MikomaiDesktopMac-p.build/DerivedSources/resource_bundle_accessor.swift" \
  -o "$CHECK_DIR/check"
 cp -R "$SCRATCH/out/Products/Debug/MikomaiDesktopMac_MikomaiDesktopMac.bundle" "$CHECK_DIR/"

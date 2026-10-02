@@ -36,7 +36,7 @@ struct MessageRow: View {
                 showsCopyConfirmation = true
                 copyFeedbackGeneration += 1
             } label: {
-                Image(systemName: showsCopyConfirmation ? "checkmark.square" : "doc.on.doc")
+                Image(systemName: showsCopyConfirmation ? "checkmark" : "doc.on.doc")
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 26)

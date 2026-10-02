@@ -398,25 +398,3 @@ struct NetworkToolsWorkspace: View {
         }
     }
 }
-
-struct WorkspaceTabButton: View {
-    let title: String
-    let icon: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                Text(title)
-            }
-            .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
-            .padding(.horizontal, 12).padding(.vertical, 7)
-            .background(isSelected ? Color(nsColor: .selectedControlColor).opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 6))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
