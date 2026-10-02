@@ -1,6 +1,6 @@
 # mikomai-cli chat
 
-`chat` はヘッドレスCLIから質問に回答するコマンドです。現在のCLIは `mikomai-core` のアプリケーションサービスとローカルMarkdown用知識ストアを使います。SwiftアプリのLLM設定、会話履歴、Keychain、実機接続状態を共有するものではありません。
+`chat` はヘッドレスCLIから質問に回答するコマンドです。`MIKOMAI_MODEL_PATH` または保存済みアプリ設定から有効なGGUFモデルを取得できる場合、Swift版と共通のFFIでローカルLLMと資料検索を使います。モデル未設定時は `mikomai-core` のアプリケーションサービスとローカルMarkdown用知識ストアへフォールバックします。会話履歴、Keychain、実機接続状態は共有しません。
 
 ```bash
 npm run cli -- chat "FITELnet F220 の VLAN 設定方法を教えて"
@@ -9,6 +9,18 @@ npm run cli -- chat "FITELnet F220 の VLAN 設定方法を教えて" --debug
 ```
 
 モデルのテンソル読み込み・モデル情報・読み込み進捗などのログは、`--debug` または `-d` を指定した場合だけ標準エラー出力に表示します。モデル読み込み時の `control-looking token`、`special_eog_ids contains '<|tool_response>'`、`using full-size SWA cache` の通知もデバッグ時だけ表示します。それ以外の警告やエラーは通常実行でも表示します。
+
+`--debug-jsonl` は、Swift版のデバッグ記録と同じ `timestamp`・`kind`・`payload` 形式で、1行につき1レコードを標準出力へ出します。npmのバナーを混ぜないよう、保存時は `--silent` を指定してください。
+
+```bash
+npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --debug-jsonl > mikomai-debug.jsonl
+# 標準エラー出力の詳細ログも取得する場合
+npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --debug-jsonl --debug > mikomai-debug.jsonl 2> mikomai-debug.log
+```
+
+入力は `cli_request`、ストリームは `core_stream`、最終応答は `core_response`（`payload.status` が成功時 `0`、失敗時 `1`、回答またはエラーは `payload.text`）に入ります。ローカルモデル使用時は、Swiftと共通のFFIから `llm_request`・`llm_response` などの内部記録も受け取り、そのまま出力します。モデル未設定時はMarkdown検索へフォールバックし、処理後に `agent_event` を出力します。`cli_request.payload.backend` で `local_model` / `markdown` を判別できます。
+
+このオプションでは通常の回答テキストを別途標準出力へ追加しません。`--json` / `-j` との同時指定、および `chat` 以外での指定はエラーになります。Rustから返された実行時エラーもJSONLへ記録し、標準エラー出力と終了コード `1` で通知します。引数エラーやネイティブライブラリの強制終了では最終レコードが出ない場合があります。記録には入力、プロンプト、資料、回答が含まれます。
 
 `nw-docs/` が存在する場合、実行時に資料を取り込み、検索結果を回答に利用します。保存先は `MIKOMAI_KNOWLEDGE_DIR` で変更できます。
 

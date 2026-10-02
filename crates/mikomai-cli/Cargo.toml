@@ -10,6 +10,7 @@ mikomai-ffi = { path = "../mikomai-ffi" }
 mikomai-llm-llamacpp = { path = "../mikomai-llm-llamacpp" }
 futures-lite = "2"
 serde_json = "1"
+chrono = { version = "0.4.44", features = ["serde"] }
 
 [dev-dependencies]
 tokio = { version = "1.52.1", features = ["rt-multi-thread", "macros"] }

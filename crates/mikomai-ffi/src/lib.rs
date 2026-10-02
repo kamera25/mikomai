@@ -2929,6 +2929,53 @@ pub fn local_model_chat(
     documents_dir: &str,
     knowledge_dir: &str,
 ) -> Result<String, String> {
+    local_model_chat_impl(
+        message,
+        history,
+        documents_dir,
+        knowledge_dir,
+        None,
+        std::ptr::null_mut(),
+    )
+}
+
+/// Streams answer chunks and the same `__MIKOMAI_DEBUG__` records used by Swift.
+/// The callback runs synchronously on the calling thread and must not panic.
+pub fn local_model_chat_with_callback<F: FnMut(&str, bool)>(
+    message: &str,
+    history: &str,
+    documents_dir: &str,
+    knowledge_dir: &str,
+    mut callback: F,
+) -> Result<String, String> {
+    unsafe extern "C" fn bridge<F: FnMut(&str, bool)>(
+        text: *const c_char,
+        done: i32,
+        context: *mut std::ffi::c_void,
+    ) {
+        if !text.is_null() {
+            let callback = &mut *(context as *mut F);
+            callback(&CStr::from_ptr(text).to_string_lossy(), done != 0);
+        }
+    }
+    local_model_chat_impl(
+        message,
+        history,
+        documents_dir,
+        knowledge_dir,
+        Some(bridge::<F>),
+        &mut callback as *mut F as *mut std::ffi::c_void,
+    )
+}
+
+fn local_model_chat_impl(
+    message: &str,
+    history: &str,
+    documents_dir: &str,
+    knowledge_dir: &str,
+    callback: Option<MikomaiStreamCallback>,
+    context: *mut std::ffi::c_void,
+) -> Result<String, String> {
     let message = CString::new(message).map_err(|error| error.to_string())?;
     let history = CString::new(history).map_err(|error| error.to_string())?;
     let documents = CString::new(documents_dir).map_err(|error| error.to_string())?;
@@ -2941,8 +2988,8 @@ pub fn local_model_chat(
             documents.as_ptr(),
             knowledge.as_ptr(),
             empty_attachments.as_ptr(),
-            None,
-            std::ptr::null_mut(),
+            callback,
+            context,
         )
     };
     consume_result(response)
@@ -3445,6 +3492,39 @@ mod tests {
     ) {
         let events = &mut *(context as *mut Vec<(String, i32)>);
         events.push((CStr::from_ptr(text).to_string_lossy().into_owned(), done));
+    }
+
+    #[test]
+    fn rust_chat_callback_streams_answer_and_does_not_outlive_request() {
+        let mut events = Vec::new();
+        let answer = super::local_model_chat_with_callback(
+            "こんにちは",
+            "",
+            "/nonexistent-mikomai-docs",
+            "/nonexistent-mikomai-index",
+            |text, done| events.push((text.to_owned(), done)),
+        )
+        .unwrap();
+        let streamed: String = events
+            .iter()
+            .filter(|(text, _)| !text.starts_with("__MIKOMAI_DEBUG__"))
+            .map(|(text, _)| text.as_str())
+            .collect();
+        assert_eq!(streamed, answer);
+        assert!(events.last().unwrap().1);
+        let before = events.len();
+        super::debug_trace::emit("after_request", serde_json::json!({}));
+        assert_eq!(events.len(), before);
+        assert_eq!(
+            super::local_model_chat(
+                "こんにちは",
+                "",
+                "/nonexistent-mikomai-docs",
+                "/nonexistent-mikomai-index"
+            )
+            .unwrap(),
+            answer
+        );
     }
 
     #[test]

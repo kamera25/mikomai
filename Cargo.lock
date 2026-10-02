@@ -2861,6 +2861,7 @@ dependencies = [
 name = "mikomai-cli"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures-lite",
  "mikomai-adapters",
  "mikomai-core",

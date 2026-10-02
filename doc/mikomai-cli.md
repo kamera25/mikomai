@@ -14,6 +14,8 @@ npm run cli -- chat "FITELnet F220 の VLAN 設定方法を教えて"
 
 利用できるサブコマンドとオプションは `--help` を参照してください。JSON形式が必要な場合は `--json` を指定できます。
 
+`chat --debug-jsonl` を指定すると、Swift版と同じ形式のデバッグ記録を標準出力へJSONLで出力できます。使い方とレコード形式は [Chatコマンド仕様](mikomai-cli-chat.md) を参照してください。
+
 ## 知識文書
 
 Markdown資料は `nw-docs/` から取り込み・検索できます。

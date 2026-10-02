@@ -7,6 +7,7 @@ use mikomai_core::TaskManager;
 use std::path::PathBuf;
 
 mod logging;
+mod debug_trace;
 
 fn main() {
     // Embedded RocksDB cannot be shared with the desktop process. Keep the
@@ -71,9 +72,16 @@ mod graph_path_tests {
 
 pub fn run(mut args: Vec<String>, json: bool) -> Result<String, String> {
     logging::configure(args.iter().any(|arg| matches!(arg.as_str(), "--debug" | "-d")));
-    args.retain(|arg| !matches!(arg.as_str(), "--json" | "-j" | "--debug" | "-d"));
+    let debug_jsonl = args.iter().any(|arg| arg == "--debug-jsonl");
+    args.retain(|arg| !matches!(arg.as_str(), "--json" | "-j" | "--debug" | "-d" | "--debug-jsonl"));
+    if debug_jsonl && json {
+        return Err("--debug-jsonl cannot be combined with --json/-j".into());
+    }
+    if debug_jsonl && args.first().map(String::as_str) != Some("chat") {
+        return Err("--debug-jsonl is only supported for chat".into());
+    }
     match args.first().map(String::as_str) {
-        Some("chat") => chat(args.into_iter().skip(1).collect::<Vec<_>>().join(" "), json),
+        Some("chat") => chat(args.into_iter().skip(1).collect::<Vec<_>>().join(" "), json, debug_jsonl),
         Some("rag-ingest") => { let path = args.get(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("nw-docs")); let store = knowledge_store(); let chunks = store.ingest(path)?; Ok(if json { serde_json::json!({"ok": true, "data": {"chunks": chunks}}).to_string() } else { format!("Ingested {chunks} knowledge documents.") }) }
         Some("rag-search") => { let query = args.get(1..).unwrap_or(&[]).join(" "); if query.trim().is_empty() { return Err("rag-search query is required".into()); } let hits = futures_lite::future::block_on(knowledge_store().search(&query, 8))?; Ok(if json { serde_json::json!({"ok": true, "data": hits}).to_string() } else { hits.into_iter().map(|hit| format!("## {}\n{}", hit.title, hit.content)).collect::<Vec<_>>().join("\n\n") }) }
         Some("devices") => {
@@ -99,11 +107,11 @@ pub fn run(mut args: Vec<String>, json: bool) -> Result<String, String> {
         }
         Some("resources") => { let resources = ["interfaces", "routes", "arp", "mac-table", "config", "system"]; Ok(if json { serde_json::json!({"ok": true, "data": resources}).to_string() } else { resources.join("\n") }) }
         Some("get-state") => { let device = args.get(1).cloned().ok_or("get-state device is required")?; let resource = args.get(2).cloned().ok_or("get-state resource is required")?; let output = serde_json::json!({"device": device, "resource": resource, "success": false, "error": "No device transport is configured in the standalone CLI"}); if json { Ok(serde_json::json!({"ok": false, "data": output}).to_string()) } else { Err(output["error"].as_str().unwrap_or("get-state failed").into()) } }
-        _ => Err("usage: mikomai-cli [--json] [--debug|-d] <chat|rag-ingest|rag-search|devices|resources|get-state> ...".into()),
+        _ => Err("usage: mikomai-cli [--json] [--debug|-d] [--debug-jsonl] <chat|rag-ingest|rag-search|devices|resources|get-state> ...".into()),
     }
 }
 
-fn chat(goal: String, json: bool) -> Result<String, String> {
+fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
     if goal.trim().is_empty() {
         return Err("chat message is required".into());
     }
@@ -111,35 +119,81 @@ fn chat(goal: String, json: bool) -> Result<String, String> {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("nw-docs"));
     let model_path = configured_model_path();
-    let answer = if let Some(path) = model_path {
-        mikomai_ffi::load_local_model(&path)?;
-        let knowledge = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| std::env::temp_dir().join("mikomai-knowledge"));
-        mikomai_ffi::local_model_chat(
-            &goal,
-            "",
-            &docs.to_string_lossy(),
-            &knowledge.to_string_lossy(),
-        )?
-    } else {
-        // Keep a deterministic, explicitly non-generative fallback for headless
-        // installations without a local model configured.
-        let manager = TaskManager::new(JsonTaskRepository::default());
-        let task = manager
-            .start(goal.clone())
-            .map_err(|error| error.to_string())?;
-        let store = knowledge_store();
-        if docs.exists() {
-            store.ingest(&docs)?;
-        }
-        let planner = KnowledgePlanner::new(&store);
-        let executor = EchoToolExecutor;
-        let reporter = StdoutReporter::default();
-        let service = ChatService::new(&planner, &executor, &reporter);
-        futures_lite::future::block_on(manager.run_chat(&service, task))?
-    };
-    Ok(if json {
+    let knowledge = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("mikomai-knowledge"));
+    let mut trace = debug_trace::Trace::new(std::io::stdout(), debug_jsonl);
+    trace.emit(
+        "cli_request",
+        serde_json::json!({
+            "query": goal, "history": "", "attachments": "", "devices_json": "[]",
+            "mode": "worker", "documents": docs, "knowledge": knowledge,
+            "backend": if model_path.is_some() { "local_model" } else { "markdown" }
+        }),
+    );
+    let result = (|| {
+        let answer = if let Some(path) = model_path {
+            mikomai_ffi::load_local_model(&path)?;
+            if debug_jsonl {
+                mikomai_ffi::local_model_chat_with_callback(
+                    &goal,
+                    "",
+                    &docs.to_string_lossy(),
+                    &knowledge.to_string_lossy(),
+                    |text, done| trace.stream(text, done),
+                )?
+            } else {
+                mikomai_ffi::local_model_chat(
+                    &goal,
+                    "",
+                    &docs.to_string_lossy(),
+                    &knowledge.to_string_lossy(),
+                )?
+            }
+        } else {
+            // Keep a deterministic, explicitly non-generative fallback for headless
+            // installations without a local model configured.
+            let manager = TaskManager::new(JsonTaskRepository::default());
+            let task = manager
+                .start(goal.clone())
+                .map_err(|error| error.to_string())?;
+            let store = knowledge_store();
+            if docs.exists() {
+                store.ingest(&docs)?;
+            }
+            let planner = KnowledgePlanner::new(&store);
+            let executor = EchoToolExecutor;
+            let reporter = StdoutReporter::default();
+            let service = ChatService::new(&planner, &executor, &reporter);
+            let answer = futures_lite::future::block_on(manager.run_chat(&service, task));
+            if debug_jsonl {
+                if let Ok(events) = reporter.events.lock() {
+                    for event in events.iter() {
+                        trace.report(event);
+                    }
+                }
+            }
+            let answer = answer?;
+            trace.stream(&answer, true);
+            answer
+        };
+        Ok::<_, String>(answer)
+    })();
+    match &result {
+        Ok(answer) => trace.emit(
+            "core_response",
+            serde_json::json!({"status": 0, "text": answer}),
+        ),
+        Err(error) => trace.emit(
+            "core_response",
+            serde_json::json!({"status": 1, "text": error}),
+        ),
+    }
+    trace.finish()?;
+    let answer = result?;
+    Ok(if debug_jsonl {
+        String::new()
+    } else if json {
         serde_json::json!({"ok": true, "data": {"response": answer}}).to_string()
     } else {
         answer
