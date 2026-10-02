@@ -44,6 +44,37 @@ struct ChatPresentationPolicyTests {
         #expect(PaneResizePolicy.shouldClose(startWidth: 200, translation: 21, isHistoryPane: false))
     }
 
+    @Test func responsiveTilingDetectsCompactWidthAndSideSnapping() {
+        #expect(PaneResizePolicy.isCompactWidth(960))
+        #expect(PaneResizePolicy.isCompactWidth(720))
+        #expect(!PaneResizePolicy.isCompactWidth(961))
+
+        let screen = CGRect(x: 0, y: 25, width: 1440, height: 875)
+        let leftTiled = CGRect(x: 0, y: 25, width: 720, height: 875)
+        let rightTiled = CGRect(x: 720, y: 25, width: 720, height: 875)
+        let leftTiledWithMargin = CGRect(x: 12, y: 35, width: 708, height: 855)
+        let fullScreen = CGRect(x: 0, y: 25, width: 1440, height: 875)
+        let centeredWindow = CGRect(x: 200, y: 100, width: 1040, height: 700)
+
+        #expect(PaneResizePolicy.isWindowTiledToSide(windowFrame: leftTiled, screenVisibleFrame: screen))
+        #expect(PaneResizePolicy.isWindowTiledToSide(windowFrame: rightTiled, screenVisibleFrame: screen))
+        #expect(PaneResizePolicy.isWindowTiledToSide(windowFrame: leftTiledWithMargin, screenVisibleFrame: screen))
+        #expect(!PaneResizePolicy.isWindowTiledToSide(windowFrame: fullScreen, screenVisibleFrame: screen))
+        #expect(!PaneResizePolicy.isWindowTiledToSide(windowFrame: centeredWindow, screenVisibleFrame: screen))
+
+        // Large 2560x1440 display test
+        let largeScreen = CGRect(x: 0, y: 25, width: 2560, height: 1415)
+        let largeLeftTiled = CGRect(x: 0, y: 25, width: 1280, height: 1415)
+        #expect(PaneResizePolicy.isWindowTiledToSide(windowFrame: largeLeftTiled, screenVisibleFrame: largeScreen))
+        #expect(PaneResizePolicy.shouldCollapsePanesForTiling(containerWidth: 1280, windowFrame: largeLeftTiled, screenVisibleFrame: largeScreen))
+
+        // Compact width collapses even without window frame
+        #expect(PaneResizePolicy.shouldCollapsePanesForTiling(containerWidth: 800))
+        // Wide centered window does not collapse
+        #expect(!PaneResizePolicy.shouldCollapsePanesForTiling(containerWidth: 1200, windowFrame: centeredWindow, screenVisibleFrame: screen))
+    }
+
+
     @Test func markdownParserProducesExpectedChatBlocks() {
         let blocks = ChatMarkdownParser.parse("""
         # 見出し

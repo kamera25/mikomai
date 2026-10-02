@@ -28,6 +28,42 @@ private struct PaneResizeCursor: NSViewRepresentable {
     }
 }
 
+private struct WindowAccessor: NSViewRepresentable {
+    @Binding var window: NSWindow?
+
+    final class ObserverView: NSView {
+        var onWindowChange: ((NSWindow?) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            onWindowChange?(window)
+        }
+    }
+
+    func makeNSView(context: Context) -> ObserverView {
+        let view = ObserverView()
+        view.onWindowChange = { newWindow in
+            DispatchQueue.main.async {
+                self.window = newWindow
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: ObserverView, context: Context) {
+        nsView.onWindowChange = { newWindow in
+            DispatchQueue.main.async {
+                self.window = newWindow
+            }
+        }
+        if window != nsView.window && nsView.window != nil {
+            DispatchQueue.main.async {
+                self.window = nsView.window
+            }
+        }
+    }
+}
+
 private struct ChatTopPreferenceKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
@@ -42,6 +78,11 @@ struct DesktopWindow: View {
     @State private var hostSuggestionIndex = 0
     @State private var mentionCompletion: ChatMentionCompletion?
 
+    @State private var window: NSWindow?
+    @State private var isTiled = false
+    @State private var wasHistoryOpenBeforeTiling = true
+    @State private var wasRightPaneOpenBeforeTiling = false
+    @State private var currentContainerWidth: CGFloat = 1120
 
     @AppStorage("mikomai.desktop.mac.historyWidth") private var historyWidth = 248.0
     @State private var historyDragStart: CGFloat?
@@ -57,6 +98,7 @@ struct DesktopWindow: View {
     @State private var operationAlert = ""
     @State private var isOperationRunning = false
     @State private var operationRationale = "選択した変更案を適用する"
+
 
     private func historyMaximumWidth(containerWidth: CGFloat) -> CGFloat {
         CGFloat(PaneResizePolicy.maximumWidth(
@@ -186,6 +228,15 @@ struct DesktopWindow: View {
             }
         }
         .background(Color(nsColor: .underPageBackgroundColor))
+        .background(WindowAccessor(window: $window))
+        .onAppear {
+            currentContainerWidth = geometry.size.width
+            evaluateTiling(containerWidth: geometry.size.width)
+        }
+        .onChange(of: geometry.size.width) { newWidth in
+            currentContainerWidth = newWidth
+            evaluateTiling(containerWidth: newWidth)
+        }
         }
         .sheet(item: $model.editingConnection) { connection in
             ConnectionEditor(connection: connection) { saved, pwd, enPwd in
@@ -207,10 +258,49 @@ struct DesktopWindow: View {
         }
         .onAppear { model.startWatchService() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in model.stopWatchService() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { notif in
+            if let w = notif.object as? NSWindow, window == nil || w == window {
+                if window == nil { window = w }
+                evaluateTiling(containerWidth: currentContainerWidth)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didMoveNotification)) { notif in
+            if let w = notif.object as? NSWindow, window == nil || w == window {
+                if window == nil { window = w }
+                evaluateTiling(containerWidth: currentContainerWidth)
+            }
+        }
         .alert(item: $model.watchAlert) { alert in
             Alert(title: Text("ネットワーク監視"), message: Text(alert.message), dismissButton: .default(Text("閉じる")))
         }
     }
+
+    private func evaluateTiling(containerWidth: CGFloat) {
+        let targetWindow = window ?? NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeKey })
+        let windowFrame = targetWindow?.frame
+        let screenFrame = targetWindow?.screen?.visibleFrame
+        let newIsTiled = PaneResizePolicy.shouldCollapsePanesForTiling(
+            containerWidth: Double(containerWidth),
+            windowFrame: windowFrame,
+            screenVisibleFrame: screenFrame
+        )
+        guard newIsTiled != isTiled else { return }
+        isTiled = newIsTiled
+        if newIsTiled {
+            wasHistoryOpenBeforeTiling = isHistoryOpen
+            wasRightPaneOpenBeforeTiling = isRightPaneOpen
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isHistoryOpen = false
+                isRightPaneOpen = false
+            }
+        } else {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isHistoryOpen = wasHistoryOpenBeforeTiling
+                isRightPaneOpen = wasRightPaneOpenBeforeTiling
+            }
+        }
+    }
+
 
     private var activityBar: some View {
         VStack(spacing: 8) {
@@ -228,7 +318,7 @@ struct DesktopWindow: View {
     private func activityButton(_ item: Workspace) -> some View {
         Button {
             model.workspace = item
-            if item == .chat { isHistoryOpen = true }
+            if item == .chat && !isTiled { isHistoryOpen = true }
         } label: {
             Image(systemName: item.icon).font(.system(size: 16, weight: .medium))
                 .foregroundStyle(model.workspace == item ? .primary : .secondary)
@@ -365,7 +455,24 @@ struct DesktopWindow: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 10) {
+            if model.workspace == .chat {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isHistoryOpen.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.left")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(isHistoryOpen ? Color.accentColor : Color.primary)
+                        .frame(width: 28, height: 26)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(isHistoryOpen ? "会話履歴を非表示" : "会話履歴を表示")
+                .accessibilityLabel(isHistoryOpen ? "会話履歴を非表示" : "会話履歴を表示")
+            }
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(headerTitle)
                     .font(.system(size: 16, weight: .semibold))
@@ -375,14 +482,21 @@ struct DesktopWindow: View {
                 }
             }
             Spacer()
-            if model.workspace == .chat && historyTab == "conversation" && !isRightPaneOpen {
-                Button { withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen = true } } label: {
+            if model.workspace == .chat && historyTab == "conversation" {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isRightPaneOpen.toggle()
+                    }
+                } label: {
                     Image(systemName: "sidebar.right")
                         .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(isRightPaneOpen ? Color.accentColor : Color.primary)
                         .frame(width: 28, height: 26)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).help("作業タブを表示")
-                .accessibilityLabel("作業タブを表示")
+                .buttonStyle(.plain)
+                .help(isRightPaneOpen ? "作業タブを非表示" : "作業タブを表示")
+                .accessibilityLabel(isRightPaneOpen ? "作業タブを非表示" : "作業タブを表示")
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
@@ -584,18 +698,20 @@ struct DesktopWindow: View {
 
             Spacer()
 
-            HStack(spacing: 4) {
-                Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 10)).foregroundStyle(.secondary)
-                Text("登録機器: \(model.connections.count)台")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-            }
+            if !isTiled {
+                HStack(spacing: 4) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text("登録機器: \(model.connections.count)台")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
 
-            if model.workspace == .chat, let count = model.activeSession?.messages.count {
-                Divider().frame(height: 12)
-                Text("メッセージ: \(count)件")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                if model.workspace == .chat, let count = model.activeSession?.messages.count {
+                    Divider().frame(height: 12)
+                    Text("メッセージ: \(count)件")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.horizontal, 14)
@@ -715,7 +831,7 @@ struct DesktopWindow: View {
             Text("インフラについて何を行いますか？")
                 .font(.system(size: 23, weight: .semibold))
                 .multilineTextAlignment(.center)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 380))], spacing: 12) {
                 suggestion("VLANの設定方法を調べる", icon: "network",
                     prompt: "F220のVLAN設定方法を、設定例と確認コマンドを含めて教えてください。")
                 suggestion("MACアドレスを確認する", icon: "desktopcomputer",

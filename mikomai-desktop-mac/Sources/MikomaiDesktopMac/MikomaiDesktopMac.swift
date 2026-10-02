@@ -32,7 +32,7 @@ struct MikomaiDesktopMac: App {
     var body: some Scene {
         WindowGroup {
             DesktopWindow(model: model)
-                .frame(minWidth: 1020, minHeight: 680)
+                .frame(minWidth: 520, idealWidth: 1120, minHeight: 560, idealHeight: 760)
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
