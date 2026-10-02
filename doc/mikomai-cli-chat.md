@@ -31,3 +31,9 @@ JSON出力では回答は `data.response` に入ります。
 ```
 
 CLIとmacOSアプリは別々の実行経路です。CLIでの動作確認は、Swift UI、アプリ内LLM設定、実機MCP操作の検証にはなりません。
+
+### 自機のルーティング照会
+
+`chat "localhost のデフォルトルートはどこ？" --debug-jsonl` は自機のデフォルト経路を取得し、日本語の説明と取得した経路情報を応答として返します。`chat "自機のルーティングを確認して" --debug-jsonl` はルーティングテーブル全体を取得します。macOSではそれぞれ `route -n get default` と `netstat -rn`、Linuxでは `ip route show default` と `ip route show table all` を使用します。LLMや資料検索は不要です。取得失敗や空の結果を一般論で補完せずエラーとして返します。デスクトップもcoreの同じ判定と `self_network_route` の `scope` (`default` / `table`) を使用します。
+
+自機の経路照会への応答はcoreの共通フォーマッターで日本語化します。デフォルト経路の出力にgateway/interfaceが明示されている場合は、「デフォルトゲートウェイ」「使用インターフェース」として表示します。元の経路情報も残し、未取得の値は推測しません。

@@ -10,6 +10,9 @@ pub enum DispatchMode {
 /// A full command match is high confidence; partial matches and compound goals
 /// stay with the agent. Never infer an execution target from surrounding prose.
 pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
+    if let Some(shortcut) = local_route_shortcut(message) {
+        return Some(shortcut);
+    }
     let command = message.trim();
     // Scoped IPv6 hosts are not supported by the legacy extractor.
     if command.contains('%') {
@@ -53,6 +56,29 @@ pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
     }
     Some(shortcut)
 }
+/// Match only a complete, read-only request for this computer's routes.
+/// `scope` is shared by desktop and CLI; absent scope retains the legacy default.
+pub fn local_route_shortcut(message: &str) -> Option<LegacyShortcut> {
+    let pattern = regex::Regex::new(
+        r"(?ix)^(?:localhost|127\.0\.0\.1|::1|local|ローカル|自機|このpc|このコンピュータ|この端末)\s*(?:の\s*|\s+)(?:(?:ipv4\s*)?(?:デフォルトルート|デフォルトゲートウェイ|default\s+(?:route|gateway))|ルーティング(?:テーブル)?|経路(?:表|テーブル)?|routing\s+table|routes?)\s*(?:(?:を\s*)?(?:確認(?:して)?|取得(?:して)?|表示(?:して)?|見せて|教えて|調べて)|は\s*(?:どこ|何|なに)(?:ですか)?|一覧|show|list)?[？?。！!]*$",
+    ).ok()?;
+    if !pattern.is_match(message.trim()) {
+        return None;
+    }
+    let lower = message.to_ascii_lowercase();
+    let scope = if lower.contains("デフォルト") || lower.contains("default") {
+        "default"
+    } else {
+        "table"
+    };
+    Some(LegacyShortcut {
+        tool: Some("self_network_route".into()),
+        target: Some("localhost".into()),
+        args: serde_json::json!({"scope": scope}),
+        reply: None,
+    })
+}
+
 pub fn is_explanatory_request(message: &str) -> bool {
     [
         "とは",
@@ -265,12 +291,8 @@ pub fn legacy_shortcut(goal: &str) -> Option<LegacyShortcut> {
             serde_json::json!({"device":"localhost","resource":"arp"}),
         ));
     }
-    if (lower.contains("route") || lower.contains("ルーティング"))
-        && ["localhost", "ローカル", "自機", "このpc", "local"]
-            .iter()
-            .any(|marker| lower.contains(marker))
-    {
-        return Some(shortcut("self_network_route", None, serde_json::json!({})));
+    if let Some(route) = local_route_shortcut(goal) {
+        return Some(route);
     }
     if (lower.contains("console") || lower.contains("コンソール") || lower.contains("シリアル"))
         && ["list", "一覧", "ポート", "リスト"]
@@ -422,6 +444,36 @@ pub fn select_dispatch_mode_for_devices(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn local_routes_use_live_results_with_explicit_scope() {
+        for (goal, scope) in [
+            ("localhost のデフォルトルートはどこ？", "default"),
+            ("localhost のデフォルトルートを教えて", "default"),
+            ("自機のデフォルトゲートウェイを教えて", "default"),
+            ("このPCのルーティングを確認して", "table"),
+            ("localhost routes", "table"),
+            ("127.0.0.1 の経路表を表示して", "table"),
+        ] {
+            let shortcut = fast_route(goal).unwrap();
+            assert_eq!(shortcut.tool.as_deref(), Some("self_network_route"));
+            assert_eq!(shortcut.target.as_deref(), Some("localhost"));
+            assert_eq!(shortcut.args["scope"], scope);
+            assert_eq!(select_dispatch_mode(goal), DispatchMode::FastRouter);
+        }
+        for goal in [
+            "localhost のデフォルトルートを変更して",
+            "localhost のデフォルトルートとは",
+            "localhost のデフォルトルートの設定例",
+            "localhost のデフォルトルートを確認して ping 8.8.8.8",
+            "router-local のデフォルトルートはどこ？",
+            "localhost.example.com routes",
+            "R1のルーティングを確認して",
+        ] {
+            assert!(local_route_shortcut(goal).is_none(), "{goal}");
+            assert!(fast_route(goal).is_none(), "{goal}");
+        }
+    }
+
     #[test]
     fn fast_router_requires_a_complete_unambiguous_command() {
         for command in ["traceroute 8.8.8.8", "trace route example.com", "trace 8.8.8.8", "TRACE 192.0.2.1", "ping 127.0.0.1 count 3 size 64 df", "tnc example.com -port 443"] {

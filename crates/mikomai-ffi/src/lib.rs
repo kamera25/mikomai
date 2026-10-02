@@ -2607,14 +2607,27 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
             debug_trace::emit("fast_route_result", serde_json::json!({
                 "tool":shortcut.tool, "success":outcome.success, "output":outcome.output,
             }));
+            if shortcut.tool.as_deref() == Some("self_network_route")
+                && (!outcome.success || outcome.output.trim().is_empty())
+            {
+                return Err(format!("自機の経路の取得に失敗しました: {}",
+                    if outcome.output.trim().is_empty() { "取得結果が空です。" } else { &outcome.output }));
+            }
             if outcome.success {
+                let answer = if shortcut.tool.as_deref() == Some("self_network_route") {
+                    mikomai_core::network::route::local_route_answer(
+                        shortcut.args["scope"].as_str().unwrap_or("default"), &outcome.output,
+                    )
+                } else {
+                    outcome.output
+                };
                 if let Some(cb) = callback {
-                    let text = CString::new(outcome.output.replace('\0', "")).map_err(|e| e.to_string())?;
+                    let text = CString::new(answer.replace('\0', "")).map_err(|e| e.to_string())?;
                     cb(text.as_ptr(), 0, context);
                     let done = CString::new("").unwrap();
                     cb(done.as_ptr(), 1, context);
                 }
-                return Ok(outcome.output);
+                return Ok(answer);
             }
             let mut evidence = mikomai_core::Evidence::from_tool(
                 format!("FastRouter execution failed: {}", outcome.output),
@@ -3819,6 +3832,77 @@ mod tests {
         assert!(debug.iter().any(|event| event["kind"] == "fast_route"));
         assert!(debug.iter().any(|event| event["kind"] == "fast_route_result" && event["payload"]["success"] == true));
         assert!(!debug.iter().any(|event| matches!(event["kind"].as_str(), Some("agent_event" | "agent_query" | "llm_request"))));
+    }
+
+    #[test]
+    fn local_routing_streams_observed_result_without_model_or_rag() {
+        unsafe extern "C" fn route_tool(
+            tool: *const c_char, target: *const c_char, args: *const c_char,
+            output: *mut c_char, capacity: usize, _context: *mut std::ffi::c_void,
+        ) -> i32 {
+            assert_eq!(CStr::from_ptr(tool).to_str().unwrap(), "self_network_route");
+            let target: serde_json::Value = serde_json::from_str(CStr::from_ptr(target).to_str().unwrap()).unwrap();
+            let args: serde_json::Value = serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap();
+            assert_eq!(target["hostname"], "localhost");
+            assert!(matches!(args["scope"].as_str(), Some("default" | "table")));
+            let payload = b"{\"success\":true,\"output\":\"gateway: 192.0.2.1\\ninterface: en0\\n\"}\0";
+            assert!(payload.len() <= capacity);
+            std::ptr::copy_nonoverlapping(payload.as_ptr().cast(), output, payload.len());
+            0
+        }
+        for goal in ["localhost のデフォルトルートはどこ？", "自機のルーティングを確認して"] {
+            let input = CString::new(goal).unwrap();
+            // Invalid directories ensure success cannot depend on reference search.
+            let path = CString::new("/nonexistent-mikomai-fast-route").unwrap();
+            let empty = CString::new("").unwrap();
+            let devices = CString::new("[]").unwrap();
+            let mut events: Vec<(String, i32)> = Vec::new();
+            let response = unsafe { super::mikomai_agent_chat_streaming(
+                input.as_ptr(), empty.as_ptr(), path.as_ptr(), path.as_ptr(), empty.as_ptr(),
+                devices.as_ptr(), Some(capture_chat_chunk), Some(route_tool), None,
+                &mut events as *mut _ as *mut _,
+            ) };
+            assert_eq!(response.status, 0);
+            let expected = mikomai_core::network::route::local_route_answer(
+                if goal.contains("デフォルト") { "default" } else { "table" },
+                "gateway: 192.0.2.1\ninterface: en0",
+            );
+            assert_eq!(unsafe { CStr::from_ptr(response.message).to_str().unwrap() }, expected);
+            unsafe { mikomai_result_free(response) };
+            let visible: Vec<_> = events.iter().filter(|(text, _)| !text.starts_with("__MIKOMAI_DEBUG__")).cloned().collect();
+            assert_eq!(visible, vec![(expected.into(), 0), (String::new(), 1)]);
+            let debug: Vec<serde_json::Value> = events.iter().filter_map(|(text, _)| text.strip_prefix("__MIKOMAI_DEBUG__")).map(|json| serde_json::from_str(json).unwrap()).collect();
+            assert!(debug.iter().any(|event| event["kind"] == "fast_route"));
+            assert!(debug.iter().any(|event| event["kind"] == "fast_route_result" && event["payload"]["success"] == true));
+            assert!(!debug.iter().any(|event| matches!(event["kind"].as_str(), Some("agent_event" | "agent_query" | "llm_request"))));
+        }
+    }
+
+    #[test]
+    fn local_routing_failure_never_generates_an_answer() {
+        unsafe extern "C" fn failed_route(
+            _tool: *const c_char, _target: *const c_char, _args: *const c_char,
+            output: *mut c_char, capacity: usize, _context: *mut std::ffi::c_void,
+        ) -> i32 {
+            let payload = b"{\"success\":false,\"output\":\"route: not in table\"}\0";
+            assert!(payload.len() <= capacity);
+            std::ptr::copy_nonoverlapping(payload.as_ptr().cast(), output, payload.len());
+            0
+        }
+        let input = CString::new("localhost のデフォルトルートはどこ？").unwrap();
+        let empty = CString::new("").unwrap();
+        let devices = CString::new("[]").unwrap();
+        let mut events: Vec<(String, i32)> = Vec::new();
+        let response = unsafe { super::mikomai_agent_chat_streaming(
+            input.as_ptr(), empty.as_ptr(), empty.as_ptr(), empty.as_ptr(), empty.as_ptr(),
+            devices.as_ptr(), Some(capture_chat_chunk), Some(failed_route), None,
+            &mut events as *mut _ as *mut _,
+        ) };
+        assert_ne!(response.status, 0);
+        assert!(unsafe { CStr::from_ptr(response.message).to_str().unwrap() }.contains("route: not in table"));
+        unsafe { mikomai_result_free(response) };
+        assert!(events.iter().all(|(text, _)| text.starts_with("__MIKOMAI_DEBUG__")));
+        assert!(!events.iter().any(|(text, _)| text.contains("llm_request")));
     }
 
     #[test]

@@ -177,7 +177,8 @@ extension DesktopModel {
                 let result = testTCP(host: host, port: UInt16(rawPort), timeoutMs: 3000)
                 return NetworkOperationOutput(success: result.success, stdout: result.success ? result.message : "", stderr: result.success ? "" : result.message)
             case "self_network_route":
-                return runAgentUtility("/sbin/route", ["-n", "get", "default"])
+                let result = LocalRoutingUtility.read(scope: arguments["scope"] as? String ?? "default")
+                return NetworkOperationOutput(success: result.success, stdout: result.stdout, stderr: result.stderr)
             case "network_get_ip_info":
                 return runAgentUtility("/sbin/ifconfig", ["-a"])
             default:
@@ -290,9 +291,11 @@ extension DesktopModel {
         let out = Pipe(); let err = Pipe()
         process.standardOutput = out; process.standardError = err
         do {
-            try process.run(); process.waitUntilExit()
+            try process.run()
+            // Drain routing tables while the process runs, before waiting for exit.
             let stdout = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            process.waitUntilExit()
             return NetworkOperationOutput(success: process.terminationStatus == 0, stdout: stdout, stderr: stderr)
         } catch { return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription) }
     }

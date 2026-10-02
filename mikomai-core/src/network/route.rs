@@ -393,3 +393,54 @@ mod tests {
         assert_eq!(table.routes[0].destination, "default");
     }
 }
+
+/// Describe observed local routes in Japanese while retaining the OS evidence.
+/// Only macOS's explicit gateway/interface fields are summarized; unfamiliar
+/// formats stay intact rather than inventing a gateway.
+pub fn local_route_answer(scope: &str, raw: &str) -> String {
+    let raw = raw.trim();
+    let mut answer = if scope == "table" {
+        "自機のルーティングテーブルの取得結果です。".to_string()
+    } else {
+        "自機のデフォルトルートの取得結果です。".to_string()
+    };
+    if scope == "default" {
+        for (key, label) in [("gateway", "デフォルトゲートウェイ"), ("interface", "使用インターフェース")] {
+            let values: Vec<_> = raw.lines().filter_map(|line| {
+                let (name, value) = line.trim().split_once(':')?;
+                (name == key && !value.trim().is_empty()).then_some(value.trim())
+            }).collect();
+            if let [value] = values.as_slice() {
+                answer.push_str(&format!("\n\n{label}: `{value}`"));
+            }
+        }
+    }
+    answer.push_str(&format!("\n\n取得した経路情報:\n```text\n{raw}\n```"));
+    answer
+}
+
+#[cfg(test)]
+mod local_answer_tests {
+    use super::local_route_answer;
+
+    #[test]
+    fn japanese_default_reply_uses_observed_fields_and_keeps_evidence() {
+        let raw = "destination: default\ngateway: 192.0.2.1\ninterface: en0\n";
+        let answer = local_route_answer("default", raw);
+        assert!(answer.contains("デフォルトゲートウェイ: `192.0.2.1`"));
+        assert!(answer.contains("使用インターフェース: `en0`"));
+        assert!(answer.contains(raw.trim()));
+    }
+
+    #[test]
+    fn table_and_other_formats_keep_evidence_without_inventing_a_gateway() {
+        let raw = "default dev eth0 scope link";
+        let answer = local_route_answer("default", raw);
+        assert!(answer.starts_with("自機のデフォルトルートの取得結果です。"));
+        assert!(answer.contains(raw));
+        assert!(!answer.contains("デフォルトゲートウェイ:"));
+        let table = local_route_answer("table", "Routing tables\nInternet:");
+        assert!(table.starts_with("自機のルーティングテーブルの取得結果です。"));
+        assert!(table.contains("Routing tables\nInternet:"));
+    }
+}
