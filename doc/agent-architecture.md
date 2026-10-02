@@ -50,6 +50,22 @@ Event-sourced NetworkState <- Tool executor port -> MCP / device
 順序だけを管理する。各ポートはフェイク実装に置換できるため、LLM・Tauri・実機なしで
 シナリオテストを実行できる。
 
+## Core・推論adapter・FFIの責務
+
+- `mikomai-core::agent::AgentPlanner` がショートカット、対象選択、Plannerプロンプト、Decision検証、完了・質問・承認要求の判断を管理します。
+- `mikomai-core::response` が通常回答のプロンプトと完了事実からの報告生成を管理します。報告生成が失敗しても機器操作を再実行せず、完了事実を返します。
+- Coreの `InferencePort` / `StreamingInferencePort` / `VisionPort` / `OperationProposalPort` は外部実装への契約です。`ReporterPort` は生成担当ではなく、進捗と結果の通知担当です。
+- `mikomai-adapters::local_llama` がGGUFモデルの寿命、サンプリング、キャンセル、llama.cpp MTMDによる画像エンコード・推論を所有します。Coreはllama.cppやモデルの実体に依存しません。
+- FFIの推論・Planner入口はC引数の変換、ポートの組立て、Core呼出、Swift callback変換を担当します。LLMの判断・回答生成プロンプトはFFIに置きません。既存の機器ツール・監査・保存先の入口処理は引き続きFFIにあります。
+
+### Vision
+
+Swiftの画像添付は `__MIKOMAI_ATTACHMENTS_V1__` を先頭につけたJSONで、UTF-8の `text` と、`name` / `mimeType` / `base64` を持つ `images` を渡します。従来のテキスト添付ABIも利用できます。PNG/JPEGのみ、1ファイル8 MiB・合計16 MiB・4画像・各画像16,777,216画素を上限とします。
+
+Coreは画像の形式・サイズを検査し、`VisionPort`へ実際の画像bytesを渡します。解析結果は「添付画像からの推定・非信頼資料」として回答とPlannerへ渡し、実機から得た確認済み状態とは区別します。不正画像、未設定mmproj、非対応モデル、画像解析失敗はエラーにし、画像を見たような代替文章は生成しません。画像とテキストがコンテキスト長を超える場合は画像を捨てず、縮小等を求めるエラーを返します。
+
+設定の `visionEnabled` / `mmprojPath` は `mikomai_configure_vision` からadapterへ渡します。現在のローカルadapterはGemma 4のチャット形式に対応し、画像対応GGUFと、そのモデルに対応したmmprojの両方が必要です。解析済み添付資料は推論由来のevidenceとしてtask snapshotに保持し、ユーザー選択からの再開時にも引き継ぎます。`MIKOMAI_N_GPU_LAYERS=0` の場合はGPU deviceも明示的に除外してCPUを使用します。
+
 ## 安全上の不変条件
 
 1. `CONFIGURE` と `ROLLBACK` は承認済みの Operation Plan なしに ToolExecutor へ渡さない。

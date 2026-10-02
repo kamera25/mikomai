@@ -1,4 +1,5 @@
 //! GUI and infrastructure independent application core.
+pub mod agent;
 pub mod application;
 pub mod attachment_policy;
 pub mod audit;
@@ -12,8 +13,10 @@ pub mod nwdiag;
 pub mod planner;
 pub mod port;
 pub mod redaction;
+pub mod response;
 pub mod schema;
 pub mod tool_kind;
+pub mod vision;
 pub use application::{ApplicationError, ApplicationResult, TaskManager};
 pub use application::{ChangeService, ChatService, DiagnoseService};
 pub use dispatch::{select_dispatch_mode, DispatchMode};

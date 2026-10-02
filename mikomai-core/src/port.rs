@@ -101,3 +101,27 @@ pub enum ReportEvent {
         answer: String,
     },
 }
+
+/// Creates a reviewable operation proposal; this port never authorizes execution.
+pub trait OperationProposalPort: Send + Sync {
+    fn propose<'a>(
+        &'a self,
+        target: &'a str,
+        tool: &'a str,
+        args: &'a serde_json::Value,
+        rationale: &'a str,
+    ) -> PortFuture<'a, OperationPlan>;
+}
+
+pub trait StreamingInferencePort: Send + Sync {
+    fn complete_streaming(
+        &self,
+        prompt: &str,
+        on_chunk: &mut dyn FnMut(&str, bool),
+    ) -> Result<String, String>;
+}
+
+/// Receives actual image bytes, never a fabricated text substitute for vision.
+pub trait VisionPort: Send + Sync {
+    fn analyze<'a>(&'a self, request: &'a crate::vision::VisionRequest) -> PortFuture<'a, String>;
+}

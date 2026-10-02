@@ -9,18 +9,7 @@ use serde_json::Value;
 use std::fmt;
 use zeroize::Zeroize;
 
-/// Non-secret target data supplied by the caller's connection inventory.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct RegisteredDevice {
-    #[serde(default)]
-    pub id: Option<String>,
-    pub hostname: String,
-    #[serde(default)]
-    pub ip: Option<String>,
-    #[serde(default)]
-    pub device_type: Option<String>,
-}
+pub use mikomai_core::agent::RegisteredDevice;
 
 /// Credentials are deliberately neither serializable nor cloneable. Keep the
 /// keychain boundary at the caller and pass these only to a transport call.

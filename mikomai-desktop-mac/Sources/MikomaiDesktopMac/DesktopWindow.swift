@@ -939,7 +939,7 @@ struct DesktopWindow: View {
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).help("テキストファイルを添付")
+                .buttonStyle(.plain).help("テキスト・PNG/JPEG画像を添付")
 
                 ChatComposer(text: $model.draft, isFocused: $isChatInputFocused,
                              isEnabled: true, onSubmit: model.send,

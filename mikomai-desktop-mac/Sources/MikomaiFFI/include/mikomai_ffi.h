@@ -32,9 +32,10 @@ MikomaiResult mikomai_chat_with_paths(const char *message, const char *documents
 MikomaiResult mikomai_model_load(const char *path);
 MikomaiResult mikomai_model_status(void);
 MikomaiResult mikomai_model_cancel(void);
+MikomaiResult mikomai_configure_vision(int32_t enabled, const char *projector_path);
 MikomaiResult mikomai_device_registry_read(const char *path);
 MikomaiResult mikomai_assistant_chat(const char *message, const char *history, const char *documents_dir, const char *knowledge_dir);
-/* Text attachments only. Image, PDF, and non-text file markers are rejected; vision inference is not supported. */
+/* Legacy text or __MIKOMAI_ATTACHMENTS_V1__ JSON with text and PNG/JPEG images. */
 MikomaiResult mikomai_assistant_chat_with_attachments(const char *message, const char *history, const char *documents_dir, const char *knowledge_dir, const char *attachments);
 MikomaiResult mikomai_assistant_chat_streaming(const char *message, const char *history, const char *documents_dir, const char *knowledge_dir, const char *attachments, MikomaiStreamCallback callback, void *context);
 MikomaiResult mikomai_test_tcp_connection(const char *host, uint16_t port, uint32_t timeout_ms);

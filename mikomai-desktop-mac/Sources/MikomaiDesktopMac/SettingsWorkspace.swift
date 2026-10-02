@@ -439,13 +439,9 @@ struct SettingsWorkspace: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 8) {
                 Text("Vision (画像・マルチモーダル) 設定").font(.system(size: 17, weight: .semibold))
-                Text("バックエンド準備中")
-                    .font(.system(size: 12, weight: .medium))
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Color.orange.opacity(0.2), in: Capsule())
-                    .foregroundStyle(.orange)
+
             }
-            Text("現在の Rust 推論エンジンはテキスト/コード推論に特化しており、mmproj マルチモーダル推論機能は将来のアップデートで提供予定です。").font(.system(size: 13)).foregroundStyle(.secondary)
+            Text("画像入力に対応したGemma 4 GGUFモデルと、そのモデルに対応するmmprojを設定してください。PNG/JPEG画像をチャットに添付して解析できます。").font(.system(size: 13)).foregroundStyle(.secondary)
 
             Toggle(isOn: Binding(
                 get: { model.settings.visionEnabled },

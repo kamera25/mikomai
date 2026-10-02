@@ -78,6 +78,11 @@ extension DesktopModel {
         _ = Self.callRust {
             mikomai_set_inference_params(temp, rep, nCtx, maxGen)
         }
+        let projector = ((settings.mmprojPath ?? "") as NSString).expandingTildeInPath
+        let visionStatus = Self.callRust {
+            projector.withCString { mikomai_configure_vision(settings.visionEnabled ? 1 : 0, $0) }
+        }
+        if visionStatus.hasPrefix("エラー") { settingsStatusMessage = visionStatus }
     }
 
     func selectPreset(_ presetId: String) {

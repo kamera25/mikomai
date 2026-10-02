@@ -16,3 +16,6 @@ pub mod reporter;
 pub mod search;
 pub mod storage;
 pub mod transfer;
+
+pub mod attachments;
+pub mod local_llama;

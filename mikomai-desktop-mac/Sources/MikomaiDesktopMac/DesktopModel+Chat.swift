@@ -62,9 +62,9 @@ extension DesktopModel {
         } else {
             submissionText = userText
         }
-        let attachmentText = attachments.enumerated().map { offset, attachment in
-            "[添付ファイル \(offset + 1): \(attachment.name)]\n\(attachment.text)"
-        }.joined(separator: "\n\n")
+        let attachmentText: String
+        do { attachmentText = try NativeAttachmentPayload.encode(attachments) }
+        catch { attachmentError = error.localizedDescription; return }
 
         sessions[index].messages.append(ChatMessage(role: .user, text: userText, attachments: attachedNames))
         if sessions[index].messages.count == 1 { sessions[index].title = String(userText.prefix(36)) }
@@ -255,7 +255,7 @@ extension DesktopModel {
     func selectAttachments() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [
-            .plainText, .commaSeparatedText, .json, .yaml, .xml,
+            .plainText, .commaSeparatedText, .json, .yaml, .xml, .png, .jpeg,
             UTType(filenameExtension: "md") ?? .plainText,
             UTType(filenameExtension: "log") ?? .plainText
         ]
@@ -265,7 +265,7 @@ extension DesktopModel {
         guard panel.runModal() == .OK else { return }
 
         var loaded = pendingAttachments
-        var totalBytes = loaded.reduce(0) { $0 + $1.byteCount }
+        var totalBytes = loaded.filter { $0.imageData == nil }.reduce(0) { $0 + $1.byteCount }
         for url in panel.urls {
             guard !loaded.contains(where: { $0.name == url.lastPathComponent }) else { continue }
             let hasScope = url.startAccessingSecurityScopedResource()
@@ -273,15 +273,19 @@ extension DesktopModel {
             do {
                 let handle = try FileHandle(forReadingFrom: url)
                 defer { try? handle.close() }
-                let data = try handle.read(upToCount: TextAttachmentPolicy.maxFileBytes + 1) ?? Data()
-                let attachment = try TextAttachmentPolicy.prepare(
-                    name: url.lastPathComponent,
-                    data: data,
-                    existingNames: Set(loaded.map(\.name)),
-                    currentTotalBytes: totalBytes
-                )
+                let isImage = ImageAttachmentPolicy.isImage(name: url.lastPathComponent)
+                let limit = isImage ? ImageAttachmentPolicy.maxFileBytes : TextAttachmentPolicy.maxFileBytes
+                let data = try handle.read(upToCount: limit + 1) ?? Data()
+                let attachment: PendingAttachment
+                if isImage {
+                    attachment = try ImageAttachmentPolicy.prepare(name: url.lastPathComponent, data: data, existing: loaded,
+                        visionEnabled: settings.visionEnabled && !(settings.mmprojPath ?? "").isEmpty)
+                } else {
+                    attachment = try TextAttachmentPolicy.prepare(name: url.lastPathComponent, data: data,
+                        existingNames: Set(loaded.map(\.name)), currentTotalBytes: totalBytes)
+                    totalBytes += attachment.byteCount
+                }
                 loaded.append(attachment)
-                totalBytes += attachment.byteCount
             } catch {
                 attachmentError = "\(url.lastPathComponent): \(error.localizedDescription)"
                 pendingAttachments = loaded

@@ -1,6 +1,10 @@
 # Mikomai for macOS
 
-SwiftUIデスクトップアプリはRustの `mikomai-core` / `mikomai-adapters` をC FFI経由で利用します。SwiftチャットはローカルGGUFによるWorker回答と、LLM planner・device tools・複数stepのportable AgentLoopを使用します。Plannerには会話履歴、添付テキスト、検索資料を渡し、Agentの内部イベントや生の機器出力は通常の回答として表示しません。
+SwiftUIデスクトップアプリはRustの `mikomai-core` / `mikomai-adapters` をC FFI経由で利用します。SwiftチャットはローカルGGUFによるWorker回答と、LLM planner・device tools・複数stepのportable AgentLoopを使用します。CoreのPlannerには会話履歴、添付テキスト・画像解析結果、検索資料を渡し、Agentの内部イベントや生の機器出力は通常の回答として表示しません。
+
+CoreがLLMの判断と回答生成を管理し、モデル読み込み・実推論は `mikomai-adapters::local_llama` に分離しています。FFIはその入口とSwift callbackの変換を担当します。
+
+設定でVisionを有効にし、画像対応Gemma 4 GGUFと対応するmmprojを指定すると、PNG/JPEGをチャットに添付できます。画像は4ファイルまで、各8 MiB・合計16 MiB・各16,777,216画素以下です。画像の解析結果を非信頼の参考資料としてCoreへ渡します。テキストのみのモデルや不正な画像はエラーになります。
 
 ## Agentとネットワーク操作
 

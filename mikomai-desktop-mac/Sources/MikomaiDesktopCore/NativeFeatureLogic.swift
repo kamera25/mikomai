@@ -86,12 +86,16 @@ public struct PendingAttachment: Identifiable, Equatable {
     public let id: UUID
     public let name: String
     public let text: String
-    public var byteCount: Int { text.utf8.count }
+    public let imageData: Data?
+    public let mimeType: String?
+    public var byteCount: Int { imageData?.count ?? text.utf8.count }
 
-    public init(id: UUID = UUID(), name: String, text: String) {
+    public init(id: UUID = UUID(), name: String, text: String, imageData: Data? = nil, mimeType: String? = nil) {
         self.id = id
         self.name = name
         self.text = text
+        self.imageData = imageData
+        self.mimeType = mimeType
     }
 }
 
@@ -692,5 +696,53 @@ public enum ConnectionCSVCodec {
             records.append(row)
         }
         return records
+    }
+}
+
+
+public enum ImageAttachmentError: LocalizedError {
+    case disabled, invalidImage, tooLarge, tooMany, totalTooLarge
+    public var errorDescription: String? {
+        switch self {
+        case .disabled: "画像を添付するには設定でVisionを有効にし、対応するmmprojを指定してください。"
+        case .invalidImage: "PNGまたはJPEGの画像を選択してください。"
+        case .tooLarge: "画像は1ファイル8 MiB以下にしてください。"
+        case .tooMany: "画像は4ファイル以下にしてください。"
+        case .totalTooLarge: "画像の合計は16 MiB以下にしてください。"
+        }
+    }
+}
+public enum ImageAttachmentPolicy {
+    public static let maxFileBytes = 8 * 1024 * 1024
+    public static let maxTotalBytes = 16 * 1024 * 1024
+    public static func isImage(name: String) -> Bool { ["png", "jpg", "jpeg"].contains(URL(fileURLWithPath: name).pathExtension.lowercased()) }
+    public static func prepare(name: String, data: Data, existing: [PendingAttachment], visionEnabled: Bool) throws -> PendingAttachment {
+        guard visionEnabled else { throw ImageAttachmentError.disabled }
+        guard !existing.contains(where: { $0.name == name }) else { throw AttachmentReadError.duplicate }
+        guard data.count <= maxFileBytes else { throw ImageAttachmentError.tooLarge }
+        let images = existing.filter { $0.imageData != nil }
+        guard images.count < 4 else { throw ImageAttachmentError.tooMany }
+        guard images.reduce(0, { $0 + $1.byteCount }) + data.count <= maxTotalBytes else { throw ImageAttachmentError.totalTooLarge }
+        let ext = URL(fileURLWithPath: name).pathExtension.lowercased()
+        let mime: String
+        if ext == "png" && data.starts(with: [0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]) { mime = "image/png" }
+        else if ["jpg", "jpeg"].contains(ext) && data.starts(with: [0xff,0xd8]) { mime = "image/jpeg" }
+        else { throw ImageAttachmentError.invalidImage }
+        return PendingAttachment(name: name, text: "", imageData: data, mimeType: mime)
+    }
+}
+public enum NativeAttachmentPayload {
+    private struct Image: Encodable { let name: String; let mimeType: String; let base64: String }
+    private struct Payload: Encodable { let text: String; let images: [Image] }
+    public static func encode(_ attachments: [PendingAttachment]) throws -> String {
+        let text = attachments.filter { $0.imageData == nil }.enumerated().map { offset, attachment in
+            "[添付ファイル \(offset + 1): \(attachment.name)]\n\(attachment.text)"
+        }.joined(separator: "\n\n")
+        let images = attachments.compactMap { attachment -> Image? in
+            guard let data = attachment.imageData else { return nil }
+            return Image(name: attachment.name, mimeType: attachment.mimeType ?? "", base64: data.base64EncodedString())
+        }
+        if images.isEmpty { return text }
+        return "__MIKOMAI_ATTACHMENTS_V1__" + String(decoding: try JSONEncoder().encode(Payload(text: text, images: images)), as: UTF8.self)
     }
 }
