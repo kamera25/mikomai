@@ -14,9 +14,9 @@ struct MessageRow: View {
                     HStack {
                         Spacer(minLength: 48)
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(message.text).font(.system(size: 13)).textSelection(.enabled)
+                            Text(message.text).font(.system(size: 15)).textSelection(.enabled)
                             ForEach(message.attachments, id: \.self) { name in
-                                Label(name, systemImage: "doc.text").font(.system(size: 11))
+                                Label(name, systemImage: "doc.text").font(.system(size: 13))
                             }
                         }
                         .foregroundStyle(.white)
@@ -37,7 +37,7 @@ struct MessageRow: View {
                 copyFeedbackGeneration += 1
             } label: {
                 Image(systemName: showsCopyConfirmation ? "checkmark.square" : "doc.on.doc")
-                    .font(.system(size: 12))
+                    .font(.system(size: 14))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 26)
                     .contentShape(Rectangle())
@@ -50,7 +50,7 @@ struct MessageRow: View {
                 if showsCopyConfirmation {
                     VStack(spacing: 0) {
                         Text("コピーしました")
-                            .font(.system(size: 11))
+                            .font(.system(size: 13))
                             .foregroundStyle(.primary)
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 7))

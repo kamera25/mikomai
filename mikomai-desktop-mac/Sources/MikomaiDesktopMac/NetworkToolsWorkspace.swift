@@ -69,14 +69,14 @@ struct NetworkToolsWorkspace: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("TCP ポート接続テスト")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
 
                 Text("指定したホストおよびポートへの TCP ハンドシェイクを行い、到達可能性とレイテンシ（RTT）を計測します。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(.system(size: 14)).foregroundStyle(.secondary)
 
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("ターゲット ホスト / IP").font(.system(size: 11, weight: .medium))
+                        Text("ターゲット ホスト / IP").font(.system(size: 13, weight: .medium))
                         HStack {
                             TextField("192.168.1.1 または router.local", text: $model.tcpTestHost)
                                 .textFieldStyle(.roundedBorder)
@@ -100,21 +100,21 @@ struct NetworkToolsWorkspace: View {
                     .frame(maxWidth: .infinity)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("ポート").font(.system(size: 11, weight: .medium))
+                        Text("ポート").font(.system(size: 13, weight: .medium))
                         TextField("22", text: $model.tcpTestPort)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 80)
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("タイムアウト (ms)").font(.system(size: 11, weight: .medium))
+                        Text("タイムアウト (ms)").font(.system(size: 13, weight: .medium))
                         TextField("2000", text: $model.tcpTestTimeout)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 90)
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(" ").font(.system(size: 11))
+                        Text(" ").font(.system(size: 13))
                         Button(action: model.testTcpDirect) {
                             HStack(spacing: 4) {
                                 if model.isTestingTcp {
@@ -132,7 +132,7 @@ struct NetworkToolsWorkspace: View {
 
                 // Quick Port Presets
                 HStack(spacing: 6) {
-                    Text("プリセット:").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("プリセット:").font(.system(size: 13)).foregroundStyle(.secondary)
                     ForEach([("SSH", "22"), ("HTTP", "80"), ("HTTPS", "443"), ("Telnet", "23"), ("SNMP", "161"), ("Web (8080)", "8080")], id: \.1) { name, port in
                         Button("\(name) (\(port))") {
                             model.tcpTestPort = port
@@ -149,12 +149,12 @@ struct NetworkToolsWorkspace: View {
                                 .fill((model.tcpTestSuccess ?? false) ? Color.green : Color.red)
                                 .frame(width: 10, height: 10)
                             Text((model.tcpTestSuccess ?? false) ? "接続成功" : "接続失敗")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle((model.tcpTestSuccess ?? false) ? Color.green : Color.red)
                             Spacer()
                         }
                         Text(result)
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(.system(size: 14, design: .monospaced))
                             .textSelection(.enabled)
                     }
                     .padding(12)
@@ -165,11 +165,11 @@ struct NetworkToolsWorkspace: View {
                 // Recent tests log
                 if !model.recentTcpTests.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("最近のテスト結果").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                        Text("最近のテスト結果").font(.system(size: 14, weight: .semibold)).foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 4) {
                             ForEach(model.recentTcpTests, id: \.self) { entry in
                                 Text(entry)
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .font(.system(size: 13, design: .monospaced))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -252,7 +252,7 @@ struct NetworkToolsWorkspace: View {
             ScrollViewReader { _ in
                 ScrollView {
                     Text(diagnosticsRunner.output.isEmpty ? "Ping または Traceroute の実行結果がここにリアルタイムで表示されます。" : diagnosticsRunner.output)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.system(size: 14, design: .monospaced))
                         .foregroundStyle(diagnosticsRunner.output.isEmpty ? .secondary : .primary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -299,8 +299,8 @@ struct NetworkToolsWorkspace: View {
 
             if arpRecords.isEmpty {
                 VStack(spacing: 8) {
-                    Text("ARP テーブル未読み込み").font(.system(size: 13, weight: .semibold))
-                    Text("上の「ARP テーブルを更新」ボタンをクリックして、ローカルマシンの ARP キャッシュを取得してください。").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("ARP テーブル未読み込み").font(.system(size: 15, weight: .semibold))
+                    Text("上の「ARP テーブルを更新」ボタンをクリックして、ローカルマシンの ARP キャッシュを取得してください。").font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -310,7 +310,7 @@ struct NetworkToolsWorkspace: View {
                     TableColumn("インターフェース", value: \.interface).width(80)
                     TableColumn("種別") { rec in
                         Text(rec.isPermanent ? "Permanent" : rec.isIncomplete ? "Incomplete" : "Dynamic")
-                            .font(.system(size: 11))
+                            .font(.system(size: 13))
                             .foregroundStyle(rec.isPermanent ? .blue : rec.isIncomplete ? .red : .secondary)
                     }.width(90)
                     TableColumn("アクション") { rec in
@@ -319,7 +319,7 @@ struct NetworkToolsWorkspace: View {
                                 model.editingConnection = SavedConnection(name: rec.ip, host: rec.ip)
                             }
                             .buttonStyle(.borderless)
-                            .font(.system(size: 11))
+                            .font(.system(size: 13))
 
                             Button {
                                 model.tcpTestHost = rec.ip
@@ -378,8 +378,8 @@ struct NetworkToolsWorkspace: View {
 
             if routeRecords.isEmpty {
                 VStack(spacing: 8) {
-                    Text("ルーティングテーブル未読み込み").font(.system(size: 13, weight: .semibold))
-                    Text("上の「ルーティングテーブルを更新」ボタンをクリックして、ローカルマシンの経路情報を取得してください。").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("ルーティングテーブル未読み込み").font(.system(size: 15, weight: .semibold))
+                    Text("上の「ルーティングテーブルを更新」ボタンをクリックして、ローカルマシンの経路情報を取得してください。").font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -411,7 +411,7 @@ struct WorkspaceTabButton: View {
                 Image(systemName: icon)
                 Text(title)
             }
-            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+            .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
             .padding(.horizontal, 12).padding(.vertical, 7)
             .background(isSelected ? Color(nsColor: .selectedControlColor).opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 6))
             .contentShape(Rectangle())

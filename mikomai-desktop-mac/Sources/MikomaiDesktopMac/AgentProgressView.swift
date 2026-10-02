@@ -12,26 +12,26 @@ struct AgentProgressView: View {
                 HStack(spacing: 8) {
                     if isRunning { ProgressView().controlSize(.small) }
                     Label(current.phase, systemImage: icon(for: current.phase))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.system(size: 17, weight: .semibold))
                     Spacer()
-                    Text("Agent").font(.caption).foregroundStyle(.secondary)
+                    Text("Agent").font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 field("目的", text: goal)
                 field("次のアクション", text: current.nextAction)
-                Text(current.detail).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+                Text(current.detail).font(.system(size: 15)).foregroundStyle(.secondary).lineLimit(3)
                 DisclosureGroup("実行内容 · \(entries.count)件") {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                             VStack(alignment: .leading, spacing: 4) {
                                 Label("\(index + 1). \(entry.phase)", systemImage: icon(for: entry.phase))
-                                    .font(.caption.weight(.semibold))
-                                Text(entry.detail).font(.callout).textSelection(.enabled)
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(entry.detail).font(.system(size: 15)).textSelection(.enabled)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }.padding(.top, 8)
                 }
-                .font(.callout)
+                .font(.system(size: 15))
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -42,8 +42,8 @@ struct AgentProgressView: View {
 
     private func field(_ title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(text).font(.callout).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            Text(title).font(.system(size: 13)).foregroundStyle(.secondary)
+            Text(text).font(.system(size: 15)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
         }
     }
 

@@ -14,7 +14,7 @@ enum Workspace: String, CaseIterable, Identifiable {
     case chat = "チャット"
     case connections = "機器情報一覧"
     case tools = "ネットワークツール"
-    case monitoring = "監視・タスク履歴"
+    case monitoring = "CPU監視"
     case settings = "設定"
 
     var id: String { rawValue }

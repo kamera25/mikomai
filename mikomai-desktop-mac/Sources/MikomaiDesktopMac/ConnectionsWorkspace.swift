@@ -18,10 +18,8 @@ struct ConnectionsWorkspace: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("機器情報一覧").font(.system(size: 13, weight: .semibold))
+                Text("機器情報一覧").font(.system(size: 15, weight: .semibold))
                 Spacer()
-                Button("旧形式 JSON から取り込む") { importLegacyRegistry() }
-                    .buttonStyle(.bordered).controlSize(.small)
                 Button { model.editingConnection = SavedConnection(name: "", host: "") } label: { Label("機器を追加", systemImage: "plus") }
                     .buttonStyle(.borderedProminent).controlSize(.small)
             }.padding(16)
@@ -29,15 +27,15 @@ struct ConnectionsWorkspace: View {
             if model.connections.isEmpty {
                 VStack(spacing: 9) {
                     Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 24)).foregroundStyle(.secondary)
-                    Text("登録した機器はありません").font(.system(size: 14, weight: .semibold))
-                    Text("ネットワーク機器の接続情報を登録できます。Keychain による資格情報の安全な保存、Ping や接続テストを実行できます。").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text("登録した機器はありません").font(.system(size: 16, weight: .semibold))
+                    Text("ネットワーク機器の接続情報を登録できます。Keychain による資格情報の安全な保存、Ping や接続テストを実行できます。").font(.system(size: 14)).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Table(model.connections) {
                     TableColumn("名前", value: \.name)
                     TableColumn("登録元") { connection in
                         Text(connection.sourceID == nil ? "Mac 内" : "Imported")
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                            .font(.system(size: 13)).foregroundStyle(.secondary)
                     }.width(62)
                     TableColumn("ホスト", value: \.host)
                     TableColumn("ポート", value: \.port).width(50)
@@ -49,9 +47,9 @@ struct ConnectionsWorkspace: View {
                                 connection.hasPassword && connection.hasEnablePassword ? "Key + Enable" :
                                     (connection.hasEnablePassword ? "Enable" : "Key"),
                                 systemImage: "key.fill"
-                            ).font(.system(size: 11)).foregroundStyle(.green)
+                            ).font(.system(size: 13)).foregroundStyle(.green)
                         } else {
-                            Text("未設定").font(.system(size: 11)).foregroundStyle(.secondary)
+                            Text("未設定").font(.system(size: 13)).foregroundStyle(.secondary)
                         }
                     }.width(90)
                     TableColumn("ステータス") { connection in
@@ -59,13 +57,13 @@ struct ConnectionsWorkspace: View {
                             HStack(spacing: 4) {
                                 Circle().fill(status.success ? Color.green : Color.red).frame(width: 7, height: 7)
                                 if let lat = status.latencyMs {
-                                    Text("\(lat) ms").font(.system(size: 11))
+                                    Text("\(lat) ms").font(.system(size: 13))
                                 } else {
-                                    Text(status.success ? "OK" : "NG").font(.system(size: 11))
+                                    Text(status.success ? "OK" : "NG").font(.system(size: 13))
                                 }
                             }
                         } else {
-                            Text("未テスト").font(.system(size: 11)).foregroundStyle(.secondary)
+                            Text("未テスト").font(.system(size: 13)).foregroundStyle(.secondary)
                         }
                     }.width(75)
                     TableColumn("操作") { connection in
@@ -106,8 +104,8 @@ struct ConnectionsWorkspace: View {
             }
             Spacer(minLength: 0)
             HStack {
-                Text("資格情報は macOS Keychain に暗号化保存されます。CSV 形式での入出力や 旧形式の機器メタデータ取り込みに対応しています。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("資格情報は macOS Keychain に暗号化保存されます。CSV 形式での入出力に対応しています。")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
                 Spacer()
                 Button("CSV を読み込む") { importCSV() }
                 Button("CSV を書き出す") { exportCSV() }.disabled(model.connections.isEmpty)
@@ -209,7 +207,7 @@ struct ConnectionEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(connection.name.isEmpty ? "機器を追加" : "機器情報を編集").font(.system(size: 16, weight: .semibold))
+            Text(connection.name.isEmpty ? "機器を追加" : "機器情報を編集").font(.system(size: 18, weight: .semibold))
             Form {
                 TextField("名前", text: $connection.name)
                 TextField("ホスト名または IP", text: $connection.host)
@@ -229,12 +227,12 @@ struct ConnectionEditor: View {
                     SecureField("パスワード", text: $password)
                     SecureField("Enable パスワード", text: $enablePassword)
                     Text("パスワードは macOS Keychain に暗号化されて安全に保管されます。平文ファイルには保存されません。")
-                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)
             if let validationError = connection.validationError {
-                Text(validationError).font(.system(size: 11)).foregroundStyle(.red)
+                Text(validationError).font(.system(size: 13)).foregroundStyle(.red)
             }
             HStack {
                 Spacer()

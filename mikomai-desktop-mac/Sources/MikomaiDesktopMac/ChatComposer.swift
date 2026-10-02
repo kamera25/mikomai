@@ -118,7 +118,7 @@ final class ChatComposerTextView: NSTextView {
         if string.isEmpty, !hasMarkedText() {
             let placeholder = "Markdownで質問を入力… (Enter で送信、Shift+Enter で改行)"
             placeholder.draw(at: NSPoint(x: textContainerInset.width, y: textContainerInset.height),
-                             withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 13),
+                             withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 15),
                                               .foregroundColor: NSColor.placeholderTextColor])
         }
     }
@@ -159,7 +159,7 @@ struct ChatComposer: NSViewRepresentable {
         editor.isRichText = false
         editor.allowsUndo = true
         editor.drawsBackground = false
-        editor.font = .systemFont(ofSize: 13)
+        editor.font = .systemFont(ofSize: 15)
         editor.textColor = .textColor
         editor.insertionPointColor = .textColor
         editor.textContainerInset = NSSize(width: 4, height: 4)
@@ -217,7 +217,7 @@ struct ChatComposer: NSViewRepresentable {
         let width = proposal.width ?? 300
         container.containerSize = NSSize(width: max(1, width - 8), height: CGFloat.greatestFiniteMagnitude)
         layout.ensureLayout(for: container)
-        let lineHeight = layout.defaultLineHeight(for: editor.font ?? .systemFont(ofSize: 13))
+        let lineHeight = layout.defaultLineHeight(for: editor.font ?? .systemFont(ofSize: 15))
         let contentHeight = layout.usedRect(for: container).height + layout.extraLineFragmentRect.height
         return CGSize(width: width, height: min(lineHeight * 6 + 8, max(lineHeight + 8, contentHeight + 8)))
     }

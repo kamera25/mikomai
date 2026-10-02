@@ -12,13 +12,12 @@ struct SessionRow: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(systemName: "bubble.left").font(.system(size: 11)).foregroundStyle(.secondary)
             if isRenaming {
                 TextField("会話名", text: $title, onCommit: { onRename(title); isRenaming = false })
-                    .textFieldStyle(.plain).font(.system(size: 12))
+                    .textFieldStyle(.plain).font(.system(size: 14))
             } else {
                 Button(action: onSelect) {
-                    Text(session.title).font(.system(size: 12)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(session.title).font(.system(size: 14)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 }.buttonStyle(.plain)
             }
         }

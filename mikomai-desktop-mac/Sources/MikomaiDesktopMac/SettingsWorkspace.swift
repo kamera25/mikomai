@@ -37,19 +37,19 @@ struct SettingsWorkspace: View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("設定")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12).padding(.bottom, 8)
                 ForEach(categories.indices, id: \.self) { index in
                     Button { selectedCategory = index } label: {
                         HStack(spacing: 10) {
                             Image(systemName: categories[index].icon)
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(.white)
                                 .frame(width: 26, height: 26)
                                 .background(categories[index].color.gradient, in: RoundedRectangle(cornerRadius: 6))
                             Text(categories[index].title)
-                                .font(.system(size: 13, weight: selectedCategory == index ? .semibold : .regular))
+                                .font(.system(size: 15, weight: selectedCategory == index ? .semibold : .regular))
                             Spacer(minLength: 0)
                         }
                         .foregroundStyle(selectedCategory == index ? Color.white : Color.primary)
@@ -71,7 +71,7 @@ struct SettingsWorkspace: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Text(categories[selectedCategory].title)
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 24, weight: .bold))
                         .padding(.bottom, 4)
                     VStack(alignment: .leading, spacing: 20) {
                         switch selectedCategory {
@@ -107,20 +107,20 @@ struct SettingsWorkspace: View {
 
     private var chatAndNetworkSection: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("チャット・通信設定").font(.system(size: 15, weight: .semibold))
+            Text("チャット・通信設定").font(.system(size: 17, weight: .semibold))
 
             // History Limit
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("会話履歴の上限 (ターン数)")
                     Spacer()
-                    Text("\(model.settings.historyLimit)").font(.system(size: 12, design: .monospaced)).bold()
+                    Text("\(model.settings.historyLimit)").font(.system(size: 14, design: .monospaced)).bold()
                 }
                 Slider(value: Binding(
                     get: { Double(model.settings.historyLimit) },
                     set: { model.settings.historyLimit = Int($0); model.saveSettings() }
                 ), in: 0...20, step: 1)
-                Text("モデルに送信する直近の会話履歴の最大往復数です (0〜20)。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("モデルに送信する直近の会話履歴の最大往復数です (0〜20)。").font(.system(size: 13)).foregroundStyle(.secondary)
             }
 
             Divider()
@@ -130,13 +130,13 @@ struct SettingsWorkspace: View {
                 HStack {
                     Text("サンプリング温度 (Temperature)")
                     Spacer()
-                    Text(String(format: "%.1f", model.settings.temperature)).font(.system(size: 12, design: .monospaced)).bold()
+                    Text(String(format: "%.1f", model.settings.temperature)).font(.system(size: 14, design: .monospaced)).bold()
                 }
                 Slider(value: Binding(
                     get: { model.settings.temperature },
                     set: { model.settings.temperature = $0; model.saveSettings() }
                 ), in: 0.0...2.0, step: 0.1)
-                Text("生成される回答のランダム性を調整します。ネットワーク設定には 0.0〜0.2 の決定的な値が推奨されます。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("生成される回答のランダム性を調整します。ネットワーク設定には 0.0〜0.2 の決定的な値が推奨されます。").font(.system(size: 13)).foregroundStyle(.secondary)
             }
 
             Divider()
@@ -146,13 +146,13 @@ struct SettingsWorkspace: View {
                 HStack {
                     Text("繰り返しペナルティ (Repetition Penalty)")
                     Spacer()
-                    Text(String(format: "%.2f", model.settings.repetitionPenalty)).font(.system(size: 12, design: .monospaced)).bold()
+                    Text(String(format: "%.2f", model.settings.repetitionPenalty)).font(.system(size: 14, design: .monospaced)).bold()
                 }
                 Slider(value: Binding(
                     get: { model.settings.repetitionPenalty },
                     set: { model.settings.repetitionPenalty = $0; model.saveSettings() }
                 ), in: 1.0...2.0, step: 0.05)
-                Text("同じ単語や句の重複を抑えるペナルティ係数です (1.0〜2.0、デフォルト: 1.10)。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("同じ単語や句の重複を抑えるペナルティ係数です (1.0〜2.0、デフォルト: 1.10)。").font(.system(size: 13)).foregroundStyle(.secondary)
             }
 
             Divider()
@@ -162,13 +162,13 @@ struct SettingsWorkspace: View {
                 HStack {
                     Text("MCP / ツール実行タイムアウト (秒)")
                     Spacer()
-                    Text("\(model.settings.mcpTimeout ?? 30) 秒").font(.system(size: 12, design: .monospaced)).bold()
+                    Text("\(model.settings.mcpTimeout ?? 30) 秒").font(.system(size: 14, design: .monospaced)).bold()
                 }
                 Slider(value: Binding(
                     get: { Double(model.settings.mcpTimeout ?? 30) },
                     set: { model.settings.mcpTimeout = Int($0); model.saveSettings() }
                 ), in: 5...120, step: 5)
-                Text("ネットワークツールやコマンド実行の待機タイムアウト時間です。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("ネットワークツールやコマンド実行の待機タイムアウト時間です。").font(.system(size: 13)).foregroundStyle(.secondary)
             }
 
             Divider()
@@ -178,13 +178,13 @@ struct SettingsWorkspace: View {
                 HStack {
                     Text("事実グラフ・キャッシュ有効期限 (分)")
                     Spacer()
-                    Text("\(model.settings.cacheExpiryMinutes ?? 10) 分").font(.system(size: 12, design: .monospaced)).bold()
+                    Text("\(model.settings.cacheExpiryMinutes ?? 10) 分").font(.system(size: 14, design: .monospaced)).bold()
                 }
                 Slider(value: Binding(
                     get: { Double(model.settings.cacheExpiryMinutes ?? 10) },
                     set: { model.settings.cacheExpiryMinutes = Int($0); model.saveSettings() }
                 ), in: 0...60, step: 1)
-                Text("ネットワークトポロジ事実キャッシュの保持時間です (0 = キャッシュ無効)。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("ネットワークトポロジ事実キャッシュの保持時間です (0 = キャッシュ無効)。").font(.system(size: 13)).foregroundStyle(.secondary)
             }
 
             Divider()
@@ -192,8 +192,8 @@ struct SettingsWorkspace: View {
             // IP Version
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("優先 IP バージョン").font(.system(size: 13, weight: .medium))
-                    Text("Ping や接続テスト時に優先する IP プロトコルを指定します。").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("優先 IP バージョン").font(.system(size: 15, weight: .medium))
+                    Text("Ping や接続テスト時に優先する IP プロトコルを指定します。").font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Picker("", selection: Binding(
@@ -215,8 +215,8 @@ struct SettingsWorkspace: View {
                 set: { model.settings.autoDryRun = $0; model.saveSettings() }
             )) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("自動 Dry-Run 検証").font(.system(size: 13, weight: .medium))
-                    Text("設定投入前に自動的にドライラン構文チェックを行います。").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("自動 Dry-Run 検証").font(.system(size: 15, weight: .medium))
+                    Text("設定投入前に自動的にドライラン構文チェックを行います。").font(.system(size: 13)).foregroundStyle(.secondary)
                 }
             }
 
@@ -224,7 +224,7 @@ struct SettingsWorkspace: View {
 
             // Console Port & Baud Rate
             VStack(alignment: .leading, spacing: 10) {
-                Text("シリアルコンソール設定").font(.system(size: 13, weight: .medium))
+                Text("シリアルコンソール設定").font(.system(size: 15, weight: .medium))
                 HStack(spacing: 12) {
                     Picker("ポート", selection: Binding(
                         get: { model.settings.consolePort ?? "" },
@@ -257,11 +257,11 @@ struct SettingsWorkspace: View {
 
     private var llmModelSection: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("ローカル LLM モデル設定").font(.system(size: 15, weight: .semibold))
+            Text("ローカル LLM モデル設定").font(.system(size: 17, weight: .semibold))
 
             // Presets
             VStack(alignment: .leading, spacing: 6) {
-                Text("モデルプリセット").font(.system(size: 12, weight: .medium))
+                Text("モデルプリセット").font(.system(size: 14, weight: .medium))
                 Picker("", selection: Binding(
                     get: { model.selectedPresetId },
                     set: { model.selectPreset($0) }
@@ -279,14 +279,14 @@ struct SettingsWorkspace: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Hugging Face リポジトリ").font(.system(size: 11, weight: .medium))
+                        Text("Hugging Face リポジトリ").font(.system(size: 13, weight: .medium))
                         TextField("unsloth/gemma-4-E4B-it-GGUF", text: $model.repoPath)
                             .textFieldStyle(.roundedBorder)
                             .disabled(model.selectedPresetId != "custom")
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("GGUF ファイル名").font(.system(size: 11, weight: .medium))
+                        Text("GGUF ファイル名").font(.system(size: 13, weight: .medium))
                         TextField("gemma-4-E4B-it-UD-Q4_K_XL.gguf", text: $model.modelFilename)
                             .textFieldStyle(.roundedBorder)
                             .disabled(model.selectedPresetId != "custom")
@@ -298,7 +298,7 @@ struct SettingsWorkspace: View {
                 HStack(spacing: 6) {
                     Circle().fill(exists ? Color.green : Color.secondary).frame(width: 8, height: 8)
                     Text(exists ? "HuggingFace キャッシュに配置済みです" : "HuggingFace キャッシュに未ダウンロードです")
-                        .font(.system(size: 11))
+                        .font(.system(size: 13))
                         .foregroundStyle(exists ? Color.green : Color.secondary)
                     Spacer()
                     if exists {
@@ -323,7 +323,7 @@ struct SettingsWorkspace: View {
 
             // Direct local GGUF file path
             VStack(alignment: .leading, spacing: 6) {
-                Text("現在ロード対象の GGUF ファイルパス").font(.system(size: 12, weight: .medium))
+                Text("現在ロード対象の GGUF ファイルパス").font(.system(size: 14, weight: .medium))
                 HStack(spacing: 8) {
                     TextField("ローカル GGUF パス", text: $model.modelPath)
                         .textFieldStyle(.roundedBorder)
@@ -332,7 +332,7 @@ struct SettingsWorkspace: View {
                         .disabled(model.modelPath.isEmpty || model.isLoadingModel)
                 }
                 Text(model.modelStatus)
-                    .font(.system(size: 11))
+                    .font(.system(size: 13))
                     .foregroundStyle(model.modelStatus.hasPrefix("エラー") ? .red : .secondary)
             }
 
@@ -340,11 +340,11 @@ struct SettingsWorkspace: View {
 
             // Advanced context & generation parameters
             VStack(alignment: .leading, spacing: 12) {
-                Text("詳細コンテキスト & 生成パラメータ").font(.system(size: 13, weight: .medium))
+                Text("詳細コンテキスト & 生成パラメータ").font(.system(size: 15, weight: .medium))
 
                 HStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("コンテキスト長 (n_ctx)").font(.system(size: 11))
+                        Text("コンテキスト長 (n_ctx)").font(.system(size: 13))
                         TextField("8192", value: Binding(
                             get: { model.settings.nCtx },
                             set: { model.settings.nCtx = $0; model.saveSettings() }
@@ -354,7 +354,7 @@ struct SettingsWorkspace: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("最大生成トークン (max_gen)").font(.system(size: 11))
+                        Text("最大生成トークン (max_gen)").font(.system(size: 13))
                         TextField("2048", value: Binding(
                             get: { model.settings.maxGen },
                             set: { model.settings.maxGen = $0; model.saveSettings() }
@@ -364,7 +364,7 @@ struct SettingsWorkspace: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("保持トークン数 (prompt_keep)").font(.system(size: 11))
+                        Text("保持トークン数 (prompt_keep)").font(.system(size: 13))
                         TextField("500", value: Binding(
                             get: { model.settings.promptKeepTokens },
                             set: { model.settings.promptKeepTokens = $0; model.saveSettings() }
@@ -379,8 +379,8 @@ struct SettingsWorkspace: View {
 
             // KV Cache Preload options
             VStack(alignment: .leading, spacing: 8) {
-                Text("ワーカー別 KV キャッシュ・プリロード").font(.system(size: 13, weight: .medium))
-                Text("モデルロード時に各専門ワーカーのシステムプロンプトを KV キャッシュに事前展開します。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("ワーカー別 KV キャッシュ・プリロード").font(.system(size: 15, weight: .medium))
+                Text("モデルロード時に各専門ワーカーのシステムプロンプトを KV キャッシュに事前展開します。").font(.system(size: 13)).foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("ナレッジワーカー", isOn: Binding(
@@ -430,23 +430,23 @@ struct SettingsWorkspace: View {
 
     private var visionSection: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Vision (画像・マルチモーダル) 設定").font(.system(size: 15, weight: .semibold))
+            Text("Vision (画像・マルチモーダル) 設定").font(.system(size: 17, weight: .semibold))
 
             Toggle(isOn: Binding(
                 get: { model.settings.visionEnabled },
                 set: { model.settings.visionEnabled = $0; model.saveSettings() }
             )) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Vision 機能を有効化").font(.system(size: 13, weight: .medium))
-                    Text("トポロジ図や機器外観の画像を読み取って分析するマルチモーダル機能を有効化します。").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("Vision 機能を有効化").font(.system(size: 15, weight: .medium))
+                    Text("トポロジ図や機器外観の画像を読み取って分析するマルチモーダル機能を有効化します。").font(.system(size: 13)).foregroundStyle(.secondary)
                 }
             }
 
             Divider()
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("マルチモーダルプロジェクター (mmproj)").font(.system(size: 12, weight: .medium))
-                Text("GGUF マルチモーダルプロジェクターファイル (例: mmproj-F16.gguf) のパスを指定します。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("マルチモーダルプロジェクター (mmproj)").font(.system(size: 14, weight: .medium))
+                Text("GGUF マルチモーダルプロジェクターファイル (例: mmproj-F16.gguf) のパスを指定します。").font(.system(size: 13)).foregroundStyle(.secondary)
                 HStack(spacing: 8) {
                     TextField("mmproj ファイルパス", text: Binding(
                         get: { model.settings.mmprojPath ?? "" },
@@ -474,15 +474,15 @@ struct SettingsWorkspace: View {
 
     private var knowledgeSection: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("ナレッジベース (RAG) 設定").font(.system(size: 15, weight: .semibold))
+            Text("ナレッジベース (RAG) 設定").font(.system(size: 17, weight: .semibold))
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("埋め込みモデル").font(.system(size: 12, weight: .medium))
+                Text("埋め込みモデル").font(.system(size: 14, weight: .medium))
                 HStack {
                     Text("MultilingualE5Large (多言語対応ベクトル埋め込み)")
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.system(size: 14, design: .monospaced))
                     Spacer()
-                    Text("固定").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("固定").font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 .padding(10)
                 .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
@@ -491,12 +491,12 @@ struct SettingsWorkspace: View {
             Divider()
 
             FolderPickerRow(title: "技術資料フォルダ (Markdown コーパス)", path: $model.documentsDirectory)
-            Text("Cisco、Yamaha、Fitelnet などの Markdown ドキュメントが配置されたディレクトリです。").font(.system(size: 11)).foregroundStyle(.secondary)
+            Text("Cisco、Yamaha、Fitelnet などの Markdown ドキュメントが配置されたディレクトリです。").font(.system(size: 13)).foregroundStyle(.secondary)
 
             Divider()
 
             FolderPickerRow(title: "検索インデックス保存先", path: $model.knowledgeDirectory)
-            Text("ベクトルインデックスやメタデータキャッシュが保存されるローカルディレクトリです。").font(.system(size: 11)).foregroundStyle(.secondary)
+            Text("ベクトルインデックスやメタデータキャッシュが保存されるローカルディレクトリです。").font(.system(size: 13)).foregroundStyle(.secondary)
         }
     }
 
@@ -504,19 +504,19 @@ struct SettingsWorkspace: View {
 
     private var nativeSettingsSection: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Swift版設定").font(.system(size: 15, weight: .semibold))
+            Text("Swift版設定").font(.system(size: 17, weight: .semibold))
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Circle().fill(model.isSettingsLoaded ? Color.green : Color.orange).frame(width: 10, height: 10)
                     Text(model.isSettingsLoaded ? "設定を読み込み済み" : "デフォルト設定を使用中")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(model.isSettingsLoaded ? Color.green : Color.orange)
                     Spacer()
                 }
 
                 Text(model.settingsStatusMessage)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(size: 14, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .padding(10)
@@ -552,9 +552,9 @@ struct SettingsWorkspace: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("同期される項目一覧").font(.system(size: 13, weight: .medium))
+                Text("同期される項目一覧").font(.system(size: 15, weight: .medium))
                 Text("設定は Swift版のApplication Support配下へ保存され、起動時に読み込まれます。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("• 会話履歴数 (`historyLimit`), サンプリング温度 (`temperature`), 繰り返しペナルティ (`repetitionPenalty`)")
@@ -565,7 +565,7 @@ struct SettingsWorkspace: View {
                     Text("• 6種のワーカー別 KV プリロード (`preloadKnowledge`, `preloadAnalysis` など)")
                     Text("• Vision 有効化 (`visionEnabled`) およびプロジェクターパス (`mmprojPath`)")
                 }
-                .font(.system(size: 11, design: .monospaced))
+                .font(.system(size: 13, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .padding(12)
                 .background(Color(nsColor: .controlBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
@@ -580,7 +580,7 @@ private struct FolderPickerRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title).font(.system(size: 12, weight: .medium))
+            Text(title).font(.system(size: 14, weight: .medium))
             HStack(spacing: 8) {
                 TextField("フォルダのパス", text: $path).textFieldStyle(.roundedBorder)
                 Button("選択…") {

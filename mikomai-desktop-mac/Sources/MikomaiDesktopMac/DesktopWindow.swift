@@ -46,6 +46,7 @@ struct DesktopWindow: View {
     @AppStorage("mikomai.desktop.mac.historyWidth") private var historyWidth = 248.0
     @State private var historyDragStart: CGFloat?
     @State private var isHistoryOpen = true
+    @State private var historyTab = "conversation"
     @AppStorage("mikomai.desktop.mac.rightPaneWidth") private var rightPaneWidth = 330.0
     @State private var rightPaneDragStart: CGFloat?
     @State private var isRightPaneOpen = false
@@ -164,7 +165,7 @@ struct DesktopWindow: View {
                     header
                     Group {
                         switch model.workspace {
-                        case .chat: chatWorkspace
+                        case .chat: selectedHistoryWorkspace
                         case .connections: ConnectionsWorkspace(model: model)
                         case .tools: NetworkToolsWorkspace(model: model)
                         case .monitoring: MonitoringWorkspace(model: model)
@@ -174,7 +175,7 @@ struct DesktopWindow: View {
                     statusBar
                 }
                 .background(Color(nsColor: .windowBackgroundColor))
-                if model.workspace == .chat && isRightPaneOpen {
+                if model.workspace == .chat && historyTab == "conversation" && isRightPaneOpen {
                     paneResizeDivider(isHistory: false,
                         currentWidth: min(CGFloat(rightPaneWidth), rightPaneMaximumWidth(containerWidth: geometry.size.width)),
                         maximumWidth: rightPaneMaximumWidth(containerWidth: geometry.size.width))
@@ -241,33 +242,76 @@ struct DesktopWindow: View {
     private var historySidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("会話").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                Menu {
+                    Button("会話") { historyTab = "conversation" }
+                    Button("エージェント履歴") {
+                        historyTab = "agents"
+                        model.refreshAgentTasks()
+                    }
+                    Button("操作監査") {
+                        historyTab = "audit"
+                        model.refreshOperationAudit()
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(historyTabTitle).font(.system(size: 14, weight: .semibold))
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                    }.foregroundStyle(.primary)
+                }
+                .menuStyle(.borderlessButton)
+                .help("表示する履歴を選択")
                 Spacer()
-                Button { model.createSession() } label: { Image(systemName: "square.and.pencil") }
-                    .buttonStyle(.plain).help("新しい会話")
+                if historyTab == "conversation" {
+                    Button { model.createSession() } label: { Image(systemName: "square.and.pencil") }
+                        .buttonStyle(.plain).help("新しい会話")
+                }
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
             Divider()
             ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(model.sessions) { session in
-                        SessionRow(session: session, isSelected: session.id == model.activeSessionID,
-                                   onSelect: { model.select(session.id) },
-                                   onRename: { model.renameSession(session.id, title: $0) },
-                                   onDelete: { model.deleteSession(session.id) })
+                VStack(alignment: .leading, spacing: 2) {
+                    if historyTab == "conversation" {
+                        ForEach(model.sessions) { session in
+                            SessionRow(session: session, isSelected: session.id == model.activeSessionID,
+                                       onSelect: { model.select(session.id) },
+                                       onRename: { model.renameSession(session.id, title: $0) },
+                                       onDelete: { model.deleteSession(session.id) })
+                        }
+                    } else if historyTab == "agents" {
+                        ForEach(model.agentTasks) { task in
+                            Button {
+                                model.selectedAgentTaskID = task.id
+                                model.loadAgentTaskHistory(task)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(task.goal).font(.system(size: 15)).lineLimit(2)
+                                    Text("\(task.status) · \(task.eventCount)件 · \(task.lastEventAt)")
+                                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 8).padding(.vertical, 7)
+                                .background(task.id == model.selectedAgentTaskID ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if model.agentTasks.isEmpty {
+                            Text("エージェント履歴はありません").font(.system(size: 14)).foregroundStyle(.secondary).padding(8)
+                        }
+                    } else {
+                        Text("承認済み操作の監査記録").font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary).padding(8)
                     }
                 }.padding(8)
             }
-            if !model.recentToolResults.isEmpty {
+            if historyTab == "conversation" && !model.recentToolResults.isEmpty {
                 Divider()
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("取得した状態・DB検索").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    Text("取得した状態・DB検索").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
                     ForEach(model.recentToolResults, id: \.id) { item in
                         VStack(alignment: .leading, spacing: 4) {
                             Label(item.tool, systemImage: item.succeeded ? "checkmark.circle" : "exclamationmark.circle")
-                                .font(.system(size: 10, weight: .medium)).foregroundStyle(item.succeeded ? Color.secondary : Color.red)
+                                .font(.system(size: 12, weight: .medium)).foregroundStyle(item.succeeded ? Color.secondary : Color.red)
                             Text(item.output.isEmpty ? "結果は空です" : item.output)
-                                .font(.system(size: 10, design: .monospaced)).lineLimit(5).textSelection(.enabled)
+                                .font(.system(size: 12, design: .monospaced)).lineLimit(5).textSelection(.enabled)
                         }
                         .padding(7).frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
@@ -279,8 +323,8 @@ struct DesktopWindow: View {
             HStack(spacing: 8) {
                 Image(systemName: "books.vertical").foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("ローカルナレッジ").font(.system(size: 11, weight: .medium))
-                    Text(URL(fileURLWithPath: model.documentsDirectory).lastPathComponent).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                    Text("ローカルナレッジ").font(.system(size: 13, weight: .medium))
+                    Text(URL(fileURLWithPath: model.documentsDirectory).lastPathComponent).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
                 }
             }.padding(12)
         }
@@ -288,19 +332,63 @@ struct DesktopWindow: View {
         .overlay(alignment: .trailing) { Divider() }
     }
 
+    private var historyTabTitle: String {
+        switch historyTab {
+        case "agents": "エージェント履歴"
+        case "audit": "操作監査"
+        default: "会話"
+        }
+    }
+
+    @ViewBuilder
+    private var selectedHistoryWorkspace: some View {
+        switch historyTab {
+        case "agents":
+            AgentTaskWorkspace(
+                tasks: model.agentTasks,
+                selectedTaskID: $model.selectedAgentTaskID,
+                selectedHistory: model.selectedTaskHistory,
+                onResumeTask: { task in
+                    historyTab = "conversation"
+                    model.resumeAgentTask(task)
+                }
+            )
+            .padding(20)
+            .onAppear { model.refreshAgentTasks() }
+        case "audit":
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("承認済み操作の監査記録").font(.system(size: 16, weight: .semibold))
+                    Spacer()
+                    Button("更新") { model.refreshOperationAudit() }
+                }
+                ScrollView {
+                    Text(model.operationAuditText.isEmpty ? "記録はありません" : model.operationAuditText)
+                        .font(.system(size: 13, design: .monospaced)).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                }.background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear { model.refreshOperationAudit() }
+        default:
+            chatWorkspace
+        }
+    }
+
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(model.workspace == .chat ? (model.activeSession?.title ?? "mikomai") : model.workspace.rawValue)
-                    .font(.system(size: 14, weight: .semibold))
+                Text(headerTitle)
+                    .font(.system(size: 16, weight: .semibold))
                 Text(model.workspace == .chat ? "ネットワークアシスタント" : "Mikomai-Desktop-Mac")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
             }
             Spacer()
-            if model.workspace == .chat && !isRightPaneOpen {
+            if model.workspace == .chat && historyTab == "conversation" && !isRightPaneOpen {
                 Button { withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen = true } } label: {
                     Image(systemName: "sidebar.right")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .frame(width: 28, height: 26)
                 }
                 .buttonStyle(.plain).help("作業タブを表示")
@@ -310,6 +398,15 @@ struct DesktopWindow: View {
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var headerTitle: String {
+        guard model.workspace == .chat else { return model.workspace.rawValue }
+        switch historyTab {
+        case "agents": return "エージェント履歴"
+        case "audit": return "操作監査"
+        default: return model.activeSession?.title ?? "mikomai"
+        }
     }
 
     private var rightSidePane: some View {
@@ -329,7 +426,7 @@ struct DesktopWindow: View {
                     withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen = false }
                 } label: {
                     Image(systemName: "sidebar.right")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .frame(width: 28, height: 26)
                         .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
                 }
@@ -345,15 +442,15 @@ struct DesktopWindow: View {
                 ExecutionTerminalView(results: model.executionResultsInActiveSession)
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("投入ログ", systemImage: "text.alignleft").font(.system(size: 12, weight: .semibold))
+                    Label("投入ログ", systemImage: "text.alignleft").font(.system(size: 14, weight: .semibold))
                     if model.operationLogs.isEmpty {
                         Text("変更案の確認と投入を行うと、各手順の結果がここに表示されます。")
-                            .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     } else {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 5) {
                                 ForEach(Array(model.operationLogs.enumerated()), id: \.offset) { _, line in
-                                    Text(line).font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
+                                    Text(line).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             }
@@ -370,10 +467,10 @@ struct DesktopWindow: View {
     private var operationDiffPane: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("変更計画", systemImage: "doc.text.magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
             if model.operationProposal.isEmpty {
                 Text("回答の設定コマンドを右クリックし、「変更計画として確認」を選ぶと、ここで現状との差分を確認できます。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Spacer()
             } else {
                 Picker("対象機器", selection: $selectedConnectionID) {
@@ -384,24 +481,24 @@ struct DesktopWindow: View {
                 }
                 .disabled(model.operationPlan != nil || isOperationRunning)
                 TextEditor(text: $model.operationProposal)
-                    .font(.system(size: 10, design: .monospaced)).frame(minHeight: 95, maxHeight: 170)
+                    .font(.system(size: 12, design: .monospaced)).frame(minHeight: 95, maxHeight: 170)
                     .disabled(model.operationPlan != nil || isOperationRunning)
                 DisclosureGroup("取得した現状のConfig") {
                     ScrollView {
                         Text(model.operationBeforeConfig.isEmpty ? "まだ取得していません。" : model.operationBeforeConfig)
-                            .font(.system(size: 9, design: .monospaced)).textSelection(.enabled)
+                            .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }.frame(maxHeight: 110)
                 }
                 TextField("変更の理由", text: $operationRationale)
-                    .textFieldStyle(.roundedBorder).font(.system(size: 11))
+                    .textFieldStyle(.roundedBorder).font(.system(size: 13))
                     .disabled(model.operationPlan != nil || isOperationRunning)
                 if !model.operationBeforeConfig.isEmpty {
-                    Text(model.operationAfterConfig.isEmpty ? "提案コマンド" : "投入後の実機差分").font(.system(size: 11, weight: .semibold))
+                    Text(model.operationAfterConfig.isEmpty ? "提案コマンド" : "投入後の実機差分").font(.system(size: 13, weight: .semibold))
                     ScrollView {
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(Array(operationPreviewLines.enumerated()), id: \.offset) { _, item in
-                                Text(item).font(.system(size: 10, design: .monospaced))
+                                Text(item).font(.system(size: 12, design: .monospaced))
                                     .foregroundStyle(item.hasPrefix("+") ? Color.green : Color.secondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -410,19 +507,19 @@ struct DesktopWindow: View {
                 }
                 if let plan = model.operationPlan {
                     Text("状態: \(operationStatusLabel(plan.status))")
-                        .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
                     DisclosureGroup("計画の照合情報") {
                         Text("ID: \(plan.id)\nSHA-256: \(plan.planHash)")
-                            .font(.system(size: 9, design: .monospaced)).textSelection(.enabled)
+                            .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
                             .foregroundStyle(.secondary).lineLimit(4)
                     }
                 }
                 if !operationAlert.isEmpty {
-                    Text(operationAlert).font(.system(size: 10)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    Text(operationAlert).font(.system(size: 12)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
                 if isOperationRunning {
-                    HStack(spacing: 7) { ProgressView().controlSize(.small); Text(model.operationPhase).font(.system(size: 11)) }
+                    HStack(spacing: 7) { ProgressView().controlSize(.small); Text(model.operationPhase).font(.system(size: 13)) }
                 } else if model.operationPlan == nil {
                     Button("現状を取得して差分を確認") { Task { await prepareOperationPlan() } }
                         .buttonStyle(.borderedProminent).disabled(selectedConnectionID == nil || model.connections.isEmpty)
@@ -647,7 +744,7 @@ struct DesktopWindow: View {
                     .fill(model.modelStatus.hasPrefix("読み込み済み") ? Color.green : Color.orange)
                     .frame(width: 7, height: 7)
                 Text(model.modelStatus)
-                    .font(.system(size: 11))
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -657,7 +754,7 @@ struct DesktopWindow: View {
             HStack(spacing: 4) {
                 Image(systemName: "books.vertical").font(.system(size: 10)).foregroundStyle(.secondary)
                 Text(URL(fileURLWithPath: model.documentsDirectory).lastPathComponent)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
 
@@ -666,14 +763,14 @@ struct DesktopWindow: View {
             HStack(spacing: 4) {
                 Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 10)).foregroundStyle(.secondary)
                 Text("登録機器: \(model.connections.count)台")
-                    .font(.system(size: 11))
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
 
             if model.workspace == .chat, let count = model.activeSession?.messages.count {
                 Divider().frame(height: 12)
                 Text("メッセージ: \(count)件")
-                    .font(.system(size: 11))
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
         }
@@ -711,7 +808,7 @@ struct DesktopWindow: View {
                             HStack(spacing: 8) {
                                 ProgressView().controlSize(.small)
                                 Text(model.isCancelling ? "生成を停止しています…" : "資料を検索して回答を生成しています…")
-                                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                                    .font(.system(size: 14)).foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -762,7 +859,7 @@ struct DesktopWindow: View {
                                 proxy.scrollTo("chatBottom", anchor: .bottom)
                             } label: {
                                 Label("一番下に移動", systemImage: "arrow.down")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.system(size: 14, weight: .medium))
                                     .padding(.horizontal, 14).padding(.vertical, 8)
                                     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
                                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
@@ -787,12 +884,12 @@ struct DesktopWindow: View {
                     .accessibilityHidden(true)
             } else {
                 Image(systemName: "network")
-                    .font(.system(size: 48))
+                    .font(.system(size: 50))
                     .foregroundStyle(Color.accentColor)
                     .accessibilityHidden(true)
             }
             Text("インフラについて何を行いますか？")
-                .font(.system(size: 21, weight: .semibold))
+                .font(.system(size: 23, weight: .semibold))
                 .multilineTextAlignment(.center)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 suggestion("VLANの設定方法を調べる", icon: "network",
@@ -819,10 +916,10 @@ struct DesktopWindow: View {
         } label: {
             VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 18))
+                    .font(.system(size: 20))
                     .foregroundStyle(Color.accentColor)
                 Text(title)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -857,8 +954,8 @@ struct DesktopWindow: View {
                         } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: icon).font(.system(size: 11)).foregroundStyle(.secondary)
-                                Text(suggestion.hostname).font(.system(size: 12, weight: .medium))
-                                Text(suggestion.ip).font(.system(size: 11)).foregroundStyle(.secondary)
+                                Text(suggestion.hostname).font(.system(size: 14, weight: .medium))
+                                Text(suggestion.ip).font(.system(size: 13)).foregroundStyle(.secondary)
                                 Spacer(minLength: 0)
                             }
                             .contentShape(Rectangle())
@@ -891,19 +988,19 @@ struct DesktopWindow: View {
                                     Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
                                 }.buttonStyle(.plain).help("添付を削除")
                             }
-                            .font(.system(size: 11)).padding(.horizontal, 8).padding(.vertical, 5)
+                            .font(.system(size: 13)).padding(.horizontal, 8).padding(.vertical, 5)
                             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
                         }
                     }
                 }.scrollIndicators(.hidden)
             }
             if !model.attachmentError.isEmpty {
-                Text(model.attachmentError).font(.system(size: 11)).foregroundStyle(.red)
+                Text(model.attachmentError).font(.system(size: 13)).foregroundStyle(.red)
             }
             HStack(alignment: .bottom, spacing: 10) {
                 Button(action: model.selectAttachments) {
                     Image(systemName: "paperclip")
-                        .font(.system(size: 13))
+                        .font(.system(size: 15))
                         .foregroundStyle(.secondary)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
@@ -925,7 +1022,7 @@ struct DesktopWindow: View {
 
                 if model.isWorking && !ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) {
                     Button(action: model.stop) { Image(systemName: "stop.fill")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.white).frame(width: 30, height: 30)
                             .background(Color(red: 0.86, green: 0.08, blue: 0.24), in: Circle()) }
                         .buttonStyle(.plain)
@@ -934,7 +1031,7 @@ struct DesktopWindow: View {
                 } else {
                     Button(action: model.send) {
                         Image(systemName: ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) ? "paperplane.fill" : "arrow.up")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.white).frame(width: 30, height: 30)
                             .background(ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) ? Color.accentColor : Color.gray.opacity(0.55), in: Circle())
                     }

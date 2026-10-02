@@ -18,7 +18,7 @@ struct ExecutionTerminalView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Label("Ping / Traceroute", systemImage: "terminal")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
                 Button {
                     showsCopyConfirmation = ChatMessageClipboard.copy(text: logText)
@@ -65,7 +65,7 @@ struct ExecutionTerminalView: View {
                                     .id(result.id)
                                 }
                             }
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.system(size: 13, design: .monospaced))
                             .padding(14)
                             .frame(minWidth: viewport.size.width, alignment: .leading)
                             // A narrow target at x=0 avoids centering an oversized row.
@@ -130,9 +130,9 @@ struct QueuedSubmissionView: View {
                     .accessibilityLabel("送信予定を取り消す")
             }
             Text(submission.prompt.isEmpty ? "添付ファイルを確認してください。" : submission.prompt)
-                .font(.callout).textSelection(.enabled)
+                .font(.system(size: 15)).textSelection(.enabled)
             ForEach(submission.attachments) { attachment in
-                Label(attachment.name, systemImage: "doc.text").font(.caption)
+                Label(attachment.name, systemImage: "doc.text").font(.system(size: 13))
             }
         }
         .padding(12)
