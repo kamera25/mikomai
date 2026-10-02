@@ -5,7 +5,10 @@
 ```bash
 npm run cli -- chat "FITELnet F220 の VLAN 設定方法を教えて"
 npm run cli -- --json chat "ルーティングの基本を説明して"
+npm run cli -- chat "FITELnet F220 の VLAN 設定方法を教えて" --debug
 ```
+
+モデルのテンソル読み込み・モデル情報・読み込み進捗などのログは、`--debug` または `-d` を指定した場合だけ標準エラー出力に表示します。通常実行ではモデルの警告やエラーだけを表示します。
 
 `nw-docs/` が存在する場合、実行時に資料を取り込み、検索結果を回答に利用します。保存先は `MIKOMAI_KNOWLEDGE_DIR` で変更できます。
 

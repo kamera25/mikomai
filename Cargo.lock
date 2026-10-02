@@ -2859,6 +2859,7 @@ name = "mikomai-cli"
 version = "0.1.0"
 dependencies = [
  "futures-lite",
+ "llama-cpp-sys-2",
  "mikomai-adapters",
  "mikomai-core",
  "mikomai-ffi",
