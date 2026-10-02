@@ -3420,6 +3420,7 @@ mod tests {
             ("R1の状態を確認して", "agent"),
             ("router-aの現在状態", "agent"),
             ("traceroute 8.8.8.8", "fast_router"),
+            ("trace 8.8.8.8", "fast_router"),
         ] {
             let message = CString::new(message_text).unwrap();
             let devices =

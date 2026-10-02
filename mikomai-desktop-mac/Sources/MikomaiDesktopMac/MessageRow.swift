@@ -33,13 +33,21 @@ struct MessageRow: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if message.hasProbeResults {
-                        Button(action: onShowTraceResults) {
-                            Label("Traceの結果", systemImage: "terminal")
-                                .font(.system(size: 13))
-                                .contentShape(Rectangle())
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(message.probeResults ?? []) { result in
+                                if let name = result.probeDisplayName {
+                                    Text("\(name)を実行しました。")
+                                        .font(.system(size: 15))
+                                    Button(action: onShowTraceResults) {
+                                        Label("\(name)の結果", systemImage: "terminal")
+                                            .font(.system(size: 13))
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.link)
+                                    .accessibilityLabel("\(name)の結果を右ペインに表示")
+                                }
+                            }
                         }
-                        .buttonStyle(.link)
-                        .accessibilityLabel("Traceの結果を右ペインに表示")
                     }
                 }
             }

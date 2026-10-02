@@ -31,6 +31,13 @@ public struct AgentToolResult: Identifiable, Codable, Equatable, Sendable {
     public var messageID: UUID?
     public var isHistorical: Bool?
     public var isLocalProbe: Bool { Self.isLocalProbe(tool: tool) }
+    public var probeDisplayName: String? {
+        switch tool {
+        case "self_network_ping", "self_ping": return "Ping"
+        case "self_network_traceroute", "self_trace": return "Trace"
+        default: return nil
+        }
+    }
     public static func isLocalProbe(tool: String) -> Bool {
         ["self_network_ping", "self_network_traceroute", "self_ping", "self_trace"].contains(tool)
     }

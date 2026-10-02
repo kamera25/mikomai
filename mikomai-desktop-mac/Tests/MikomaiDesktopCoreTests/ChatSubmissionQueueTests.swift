@@ -62,6 +62,8 @@ struct ExecutionTerminalPresentationTests {
         for tool in ["self_network_ping", "self_network_traceroute", "self_ping", "self_trace"] {
             #expect(AgentToolResult.isLocalProbe(tool: tool))
         }
+        #expect(AgentToolResult(tool: "self_network_ping", output: "", succeeded: true).probeDisplayName == "Ping")
+        #expect(AgentToolResult(tool: "self_network_traceroute", output: "", succeeded: true).probeDisplayName == "Trace")
         #expect(!AgentToolResult.isLocalProbe(tool: "get_state"))
         let output = AgentToolResult.terminalOutput(stdout: "10 packets transmitted, 0 packets received\n", stderr: "ping: timeout\n")
         #expect(output == "10 packets transmitted, 0 packets received\nping: timeout\n")

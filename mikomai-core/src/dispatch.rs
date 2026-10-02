@@ -16,7 +16,7 @@ pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
         return None;
     }
     let pattern = regex::Regex::new(
-        r"(?ix)^(?:(?:traceroute|trace\s+route|トレースルート)\s+[a-z0-9][a-z0-9.:%-]*|(?:ping|ピング|ピン)\s+[a-z0-9][a-z0-9.:%-]*(?:\s+(?:count|回数|回|size|サイズ)\s*\d+)*(?:\s+df)?|(?:tnc\s+|test-netconnection\s+-computername\s+)[a-z0-9][a-z0-9.:%-]*\s+-port\s+\d+)$",
+        r"(?ix)^(?:(?:traceroute|trace(?:\s+route)?|トレースルート)\s+[a-z0-9][a-z0-9.:%-]*|(?:ping|ピング|ピン)\s+[a-z0-9][a-z0-9.:%-]*(?:\s+(?:count|回数|回|size|サイズ)\s*\d+)*(?:\s+df)?|(?:tnc\s+|test-netconnection\s+-computername\s+)[a-z0-9][a-z0-9.:%-]*\s+-port\s+\d+)$",
     ).ok()?;
     if !pattern.is_match(command) {
         return None;
@@ -203,11 +203,11 @@ pub fn legacy_shortcut(goal: &str) -> Option<LegacyShortcut> {
         ));
     }
     if lower.contains("traceroute")
-        || lower.contains("trace route")
+        || lower.contains("trace")
         || lower.contains("トレースルート")
     {
         let host = regex::Regex::new(
-            r"(?i)(?:traceroute|trace\s*route|トレースルート)\s*(?::|=|：)?\s*([a-z0-9_.:-]+)",
+            r"(?i)(?:traceroute|trace\s+route|trace|トレースルート)\s*(?::|=|：)?\s*([a-z0-9_.:-]+)",
         )
         .ok()?
         .captures(normalized)?
@@ -424,7 +424,7 @@ mod tests {
     use super::*;
     #[test]
     fn fast_router_requires_a_complete_unambiguous_command() {
-        for command in ["traceroute 8.8.8.8", "trace route example.com", "ping 127.0.0.1 count 3 size 64 df", "tnc example.com -port 443"] {
+        for command in ["traceroute 8.8.8.8", "trace route example.com", "trace 8.8.8.8", "TRACE 192.0.2.1", "ping 127.0.0.1 count 3 size 64 df", "tnc example.com -port 443"] {
             assert!(fast_route(command).is_some(), "{command}");
             assert_eq!(select_dispatch_mode_for_devices(command, &["8.8.8.8".into()]), DispatchMode::FastRouter);
         }
