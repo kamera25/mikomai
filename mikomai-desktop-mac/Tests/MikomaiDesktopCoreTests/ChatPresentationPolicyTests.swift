@@ -107,6 +107,40 @@ struct ChatPresentationPolicyTests {
         #expect(pasteboard.contents == message)
         #expect(pasteboard.clearCount == 1)
     }
+
+    @Test func hoverScrollPolicyDetectsTruncationAndCalculatesOffsets() {
+        // Fits within container
+        #expect(!HoverScrollPolicy.isTruncated(textWidth: 100, containerWidth: 150))
+        #expect(HoverScrollPolicy.maxScrollOffset(textWidth: 100, containerWidth: 150) == 0)
+        #expect(HoverScrollPolicy.scrollDuration(overflow: 0) == 0)
+
+        // Tolerance boundary
+        #expect(!HoverScrollPolicy.isTruncated(textWidth: 150.4, containerWidth: 150))
+        #expect(HoverScrollPolicy.isTruncated(textWidth: 150.6, containerWidth: 150))
+
+        // Overflowing text
+        #expect(HoverScrollPolicy.isTruncated(textWidth: 250, containerWidth: 200))
+        #expect(HoverScrollPolicy.maxScrollOffset(textWidth: 250, containerWidth: 200) == -50)
+
+        // Duration calculation with min clamp (35 / 70 = 0.5 -> clamped to 0.8)
+        #expect(HoverScrollPolicy.scrollDuration(overflow: 35) == 0.8)
+
+        // Duration calculation without clamp (140 / 70 = 2.0)
+        #expect(HoverScrollPolicy.scrollDuration(overflow: 140) == 2.0)
+
+        // Duration calculation with max clamp (420 / 70 = 6.0 -> clamped to 5.0)
+        #expect(HoverScrollPolicy.scrollDuration(overflow: 420) == 5.0)
+
+        // Zero or negative container width does not report truncated
+        #expect(!HoverScrollPolicy.isTruncated(textWidth: 100, containerWidth: 0))
+        #expect(!HoverScrollPolicy.isTruncated(textWidth: 100, containerWidth: -10))
+
+        // System font text measurement
+        let shortWidth = HoverScrollPolicy.textWidth(for: "短い")
+        let longWidth = HoverScrollPolicy.textWidth(for: "非常に長いチャットセッションのタイトルです。F220のVLAN設定方法を詳しく教えてください。")
+        #expect(longWidth > shortWidth)
+        #expect(shortWidth > 0)
+    }
 }
 
 @MainActor

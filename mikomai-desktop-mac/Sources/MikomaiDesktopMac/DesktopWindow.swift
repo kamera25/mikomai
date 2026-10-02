@@ -473,14 +473,8 @@ struct DesktopWindow: View {
                 .accessibilityLabel(isHistoryOpen ? "会話履歴を非表示" : "会話履歴を表示")
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(headerTitle)
-                    .font(.system(size: 16, weight: .semibold))
-                if model.workspace != .chat {
-                    Text("Mikomai-Desktop-Mac")
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
-                }
-            }
+            Text(headerTitle)
+                .font(.system(size: 16, weight: .semibold))
             Spacer()
             if model.workspace == .chat && historyTab == "conversation" {
                 Button {

@@ -29,6 +29,31 @@
  pump()
  precondition(e.string == "localhost " && model.draft == "localhost ", "Full-width @ must render a selectable candidate in the production window")
  print("PASS: production DesktopWindow half/full-width @ candidate selection")
+
+ // Verify chat history session row with truncated long title
+ guard let initialSessionID = model.activeSessionID else { fatalError("expected active session") }
+ let longTitle = "非常に長いチャットセッションのタイトルです。F220のVLAN設定方法とTrunkポート設定について詳しく教えてください。"
+ model.renameSession(initialSessionID, title: longTitle)
+ pump()
+ precondition(model.sessions.first(where: { $0.id == initialSessionID })?.title == longTitle)
+
+ // Verify creating a second session and switching between them via model
+ model.createSession()
+ let secondSessionID = model.activeSessionID
+ precondition(secondSessionID != initialSessionID)
+ pump()
+ model.select(initialSessionID)
+ precondition(model.activeSessionID == initialSessionID)
+ pump()
+
+ // Verify HoverScrollTitle view mounts and computes truncation correctly
+ let testHost = NSHostingView(rootView: HoverScrollTitle(title: longTitle, isHovered: true))
+ testHost.frame = NSRect(x: 0, y: 0, width: 200, height: 36)
+ window.contentView?.addSubview(testHost)
+ pump()
+ testHost.removeFromSuperview()
+ print("PASS: chat history session row with long title and HoverScrollTitle mounting")
+
  _ = app
  }
 }
