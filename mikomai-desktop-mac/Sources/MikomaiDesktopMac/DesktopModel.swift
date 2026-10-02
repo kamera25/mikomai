@@ -46,12 +46,17 @@ final class DesktopModel: ObservableObject {
     @Published var agentTasks: [NativeAgentTask] = []
     @Published var selectedTaskHistory: [AgentTaskHistoryItem] = []
     @Published var chatQueue = ChatSubmissionQueue()
-    @Published var executionResults: [AgentToolResult] = []
+    @Published var selectedExecutionMessageID: UUID?
     var queuedSubmissionsInActiveSession: [QueuedChatSubmission] {
         chatQueue.submissions.filter { $0.sessionID == activeSessionID }
     }
     var executionResultsInActiveSession: [AgentToolResult] {
-        executionResults.filter { $0.sessionID == activeSessionID }
+        Array((activeSession?.messages.flatMap { $0.probeResults ?? [] } ?? []).suffix(40))
+    }
+    var displayedExecutionResults: [AgentToolResult] {
+        let results = executionResultsInActiveSession
+        let selected = results.filter { $0.messageID == selectedExecutionMessageID }
+        return selected.isEmpty ? results : selected
     }
     @Published var recentToolResults: [AgentToolResult] = []
     @Published var operationAuditText = ""
@@ -231,7 +236,6 @@ final class DesktopModel: ObservableObject {
 
     func deleteSession(_ id: UUID) {
         chatQueue.remove(sessionID: id)
-        executionResults.removeAll { $0.sessionID == id }
         pendingAgentTaskIDs.removeValue(forKey: id)
         pendingSavedAgentTaskIDs.removeValue(forKey: id)
         var state = ChatSessionState(sessions: sessions, activeSessionID: activeSessionID)

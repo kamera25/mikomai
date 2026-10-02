@@ -12,6 +12,11 @@ private struct ExecutionCheckView: View {
                 ForEach(model.queuedSubmissionsInActiveSession) { submission in
                     QueuedSubmissionView(submission: submission) { model.removeQueuedSubmission(submission.id) }
                 }
+                ScrollView {
+                    ForEach(Array((model.activeSession?.messages ?? []).suffix(5))) { message in
+                        MessageRow(message: message)
+                    }
+                }
                 Spacer()
                 ChatComposer(text: $model.draft, isFocused: .constant(true), isEnabled: true,
                              onSubmit: model.send, onEscape: {})
@@ -57,10 +62,10 @@ private struct ExecutionCheckView: View {
         let model = DesktopModel(defaults: defaults)
         let a = model.activeSessionID!
         _ = NSApplication.shared
-        var paintedTerminalPhases = Set<UUID>()
+        var paintedProbeMessages = Set<UUID>()
         let host = NSHostingView(rootView: ExecutionCheckView(model: model, onMessageChanged: { message in
-            if let message, ["完了", "失敗", "停止"].contains(message.agentProgress?.last?.phase ?? "") {
-                paintedTerminalPhases.insert(message.id)
+            if let message, message.hasProbeResults && message.conversationText.isEmpty {
+                paintedProbeMessages.insert(message.id)
             }
         }))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
@@ -138,10 +143,8 @@ private struct ExecutionCheckView: View {
         model.send()
         try await waitForResponse()
         try await Task.sleep(nanoseconds: 200_000_000)
-        // This isolated harness has no model: ping succeeds and planner
-        // finalization fails. The final phase must still paint automatically.
-        precondition(model.activeSession!.messages.last!.agentProgress?.last?.phase == "失敗")
-        precondition(paintedTerminalPhases.contains(model.activeSession!.messages.last!.id), "ping final phase must render without another Send or forced layout")
+        precondition(model.activeSession!.messages.last!.hasProbeResults, "ping callback must attach the result to its response")
+        precondition(paintedProbeMessages.contains(model.activeSession!.messages.last!.id), "result link must render without another Send or forced layout")
         model.draft = "traceroute 127.0.0.1"
         model.send()
         try await waitForResponse()
@@ -153,6 +156,19 @@ private struct ExecutionCheckView: View {
         precondition(results[0].output.contains("1 packets transmitted"))
         precondition(results[1].tool == "self_network_traceroute" && results[1].succeeded)
         precondition(results[1].output.contains("traceroute to"), "stderr header must remain visible")
+
+        let probeMessages = model.activeSession!.messages.filter { $0.hasProbeResults }
+        precondition(probeMessages.count == 2)
+        precondition(probeMessages.allSatisfy { $0.conversationText.isEmpty }, "terminal output must never be conversation prose")
+        precondition(probeMessages[0].probeResults?.first?.messageID == probeMessages[0].id)
+        let restored = try JSONDecoder().decode(ChatSession.self, from: JSONEncoder().encode(model.activeSession!))
+        precondition(restored.messages.filter { $0.hasProbeResults }.count == 2, "links and results must survive reopening")
+        model.draft = "こんにちは"
+        model.send()
+        try await waitForResponse()
+        precondition(!model.activeSession!.messages.last!.hasProbeResults, "greeting must never inherit a probe link")
+        precondition(model.activeSession!.messages.last!.agentProgress == nil)
+        precondition(!model.activeSession!.messages.last!.conversationText.isEmpty)
 
         // A pane opened after wide output arrives must begin at its left edge.
         let narrow = NSHostingView(rootView: ExecutionTerminalView(results: results))
@@ -183,6 +199,6 @@ private struct ExecutionCheckView: View {
         for submission in model.chatQueue.submissions { model.removeQueuedSubmission(submission.id) }
         model.chatResponse.finish(previewRequest)
         window.close()
-        print("PASS: automatic completion without Send/forced layout, x=0 in a narrow pane, editable input and Enter during generation/cancellation, FIFO cleanup, preserved conversation/attachment/draft, real loopback ping/traceroute callbacks, terminal rendering")
+        print("PASS: automatic completion without Send/forced layout, x=0 in a narrow pane, editable input and Enter during generation/cancellation, FIFO cleanup, preserved conversation/attachment/draft, real loopback ping/traceroute callbacks, terminal rendering, persisted probe links only in conversation, greeting without inherited link or Agent card")
     }
 }

@@ -10,7 +10,7 @@ struct ExecutionTerminalView: View {
 
     private var logText: String {
         results.map { result in
-            "$ \(result.command)\n\(result.output.isEmpty ? "(出力なし)" : result.output)\n\(result.succeeded ? "終了 · 成功" : "終了 · 失敗")"
+            "$ \(result.command)\n\(result.output.isEmpty ? "(出力なし)" : result.output)\n\(result.isHistorical == true ? "保存済みの結果（終了状態不明）" : result.succeeded ? "終了 · 成功" : "終了 · 失敗")"
         }.joined(separator: "\n\n")
     }
 
@@ -57,8 +57,8 @@ struct ExecutionTerminalView: View {
                                             .foregroundStyle(Color(red: 0.55, green: 0.87, blue: 0.67))
                                         Text(result.output.isEmpty ? "(出力なし)" : result.output)
                                             .foregroundStyle(Color.white.opacity(0.9))
-                                        Label(result.succeeded ? "終了 · 成功" : "終了 · 失敗", systemImage: result.succeeded ? "checkmark.circle" : "exclamationmark.circle")
-                                            .foregroundStyle(result.succeeded ? Color.green : Color.orange)
+                                        Label(result.isHistorical == true ? "保存済みの結果（終了状態不明）" : result.succeeded ? "終了 · 成功" : "終了 · 失敗", systemImage: result.isHistorical == true ? "clock" : result.succeeded ? "checkmark.circle" : "exclamationmark.circle")
+                                            .foregroundStyle(result.isHistorical == true ? Color.gray : result.succeeded ? Color.green : Color.orange)
                                     }
                                     .fixedSize(horizontal: true, vertical: false)
                                     .textSelection(.enabled)

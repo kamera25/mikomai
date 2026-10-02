@@ -68,4 +68,41 @@ struct ExecutionTerminalPresentationTests {
         #expect(AgentToolResult.terminalOutput(stdout: "", stderr: "traceroute: host unknown") == "traceroute: host unknown")
         #expect(AgentToolResult.terminalOutput(stdout: "reply", stderr: "warning") == "reply\nwarning")
     }
+
+    @Test func keepsResultSeparateEvenWhenAnswerIsReformattedAndSurvivesReload() throws {
+        var message = ChatMessage(role: .assistant, text: "PING 8.8.8.8: 64 bytes ttl=120 time=12 ms")
+        let result = AgentToolResult(tool: "self_network_ping", output: "PING 8.8.8.8:\n64 bytes ttl=120 time=12 ms\n",
+                                     succeeded: true, messageID: message.id)
+        message.probeResults = [result]
+        #expect(message.conversationText.isEmpty)
+        #expect(message.hasProbeResults)
+        let reloaded = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(message))
+        #expect(reloaded.probeResults == [result])
+        #expect(reloaded.conversationText.isEmpty)
+        #expect(!ChatMessage(role: .assistant, text: "こんにちは！").hasProbeResults)
+    }
+
+    @Test func recoversSavedPingAndTracerouteWithoutMatchingGreetingOrExplanation() throws {
+        for output in ["PING 8.8.8.8: 56 data bytes 4 packets transmitted, 4 packets received",
+                       "1 router 3 ms\ntraceroute to 8.8.8.8, 15 hops max, 40 byte packets"] {
+            let old = ChatMessage(role: .assistant, text: output)
+            let migrated = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(old))
+            #expect(migrated.conversationText.isEmpty)
+            #expect(migrated.probeResults?.first?.output == output)
+            #expect(migrated.probeResults?.first?.isHistorical == true)
+        }
+        #expect(ProbeResultPresentation.legacyResult(from: "こんにちは！PingやTracerouteを支援します。", messageID: UUID()) == nil)
+        #expect(ProbeResultPresentation.legacyResult(from: "Pingの使い方：\nPING localhost\n1 packets transmitted", messageID: UUID()) == nil)
+    }
+
+}
+
+struct GreetingPresentationTests {
+    @Test func keepsGreetingsAsPlainAssistantReplies() {
+        for greeting in ["こんにちは", " こんにちは！\n", "こんばんは", "おはようございます", "Hello!", "Hi"] {
+            #expect(GreetingPresentation.isGreeting(greeting))
+        }
+        #expect(!GreetingPresentation.isGreeting("こんにちは、Pingを実行して"))
+        #expect(!GreetingPresentation.isGreeting("F220のVLAN設定を教えて"))
+    }
 }

@@ -21,13 +21,15 @@ public struct NativeAgentTask: Decodable, Identifiable, Equatable, Sendable {
 }
 
 /// A bounded result shown in the conversation sidebar after a native tool call.
-public struct AgentToolResult: Identifiable, Equatable, Sendable {
+public struct AgentToolResult: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var tool: String
     public var output: String
     public var succeeded: Bool
     public var command: String
     public var sessionID: UUID?
+    public var messageID: UUID?
+    public var isHistorical: Bool?
     public var isLocalProbe: Bool { Self.isLocalProbe(tool: tool) }
     public static func isLocalProbe(tool: String) -> Bool {
         ["self_network_ping", "self_network_traceroute", "self_ping", "self_trace"].contains(tool)
@@ -36,14 +38,36 @@ public struct AgentToolResult: Identifiable, Equatable, Sendable {
         [stdout, stderr].filter { !$0.isEmpty }.joined(separator: stdout.hasSuffix("\n") ? "" : "\n")
     }
 
-    public init(id: UUID = UUID(), tool: String, output: String, succeeded: Bool, command: String? = nil, sessionID: UUID? = nil) {
+    public init(id: UUID = UUID(), tool: String, output: String, succeeded: Bool, command: String? = nil, sessionID: UUID? = nil, messageID: UUID? = nil) {
         self.id = id
         self.tool = tool
         self.output = output
         self.succeeded = succeeded
         self.command = command ?? tool
         self.sessionID = sessionID
+        self.messageID = messageID
     }
+}
+
+public enum ProbeResultPresentation {
+    /// Older sessions stored terminal output as assistant prose. Recover that
+    /// output without classifying ordinary explanations or greetings as probes.
+    public static func legacyResult(from text: String, messageID: UUID) -> AgentToolResult? {
+        let output = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tool: String
+        if output.hasPrefix("PING ") && output.contains("packets transmitted") {
+            tool = "self_network_ping"
+        } else if output.contains("traceroute to ") && output.contains("hops max") {
+            tool = "self_network_traceroute"
+        } else {
+            return nil
+        }
+        var result = AgentToolResult(tool: tool, output: output, succeeded: false,
+                                     command: "保存済みの実行結果", messageID: messageID)
+        result.isHistorical = true // The old transcript has no reliable exit status.
+        return result
+    }
+
 }
 
 /// Converts persisted Rust Agent events into short, readable progress entries.

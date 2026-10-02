@@ -82,7 +82,8 @@ extension DesktopModel {
         guard let requestID = chatResponse.begin(sessionID: id) else { return }
         let dispatchMode = Self.dispatchMode(submissionText, connections: agentConnections)
         let isAgentRequest = dispatchMode == "agent"
-        if isAgentRequest, let messageIndex = sessions[index].messages.firstIndex(where: { $0.id == assistantID }) {
+        let showsAgentProgress = isAgentRequest && !GreetingPresentation.isGreeting(userText)
+        if showsAgentProgress, let messageIndex = sessions[index].messages.firstIndex(where: { $0.id == assistantID }) {
             sessions[index].messages[messageIndex].agentGoal = userText
             sessions[index].messages[messageIndex].agentProgress = [AgentProgressEntry(phase: "準備", nextAction: "実行環境を確認して計画を作成", detail: "Agentを起動しています")]
         }
@@ -91,7 +92,7 @@ extension DesktopModel {
             // Auto-load model if configured but not yet loaded in Rust FFI
             let currentLoaded = Self.callRust { mikomai_model_status() }
             if !usesAppleModel && currentLoaded.isEmpty && !modelP.isEmpty && FileManager.default.fileExists(atPath: modelP) {
-                if isAgentRequest {
+                if showsAgentProgress {
                     await MainActor.run {
                         guard self.chatResponse.acceptsChunk(for: requestID),
                               let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
@@ -157,9 +158,14 @@ extension DesktopModel {
                         guard self.sessions.contains(where: { $0.id == id }) else { return }
                         var result = result
                         result.sessionID = id
+                        result.messageID = assistantID
                         if result.isLocalProbe {
-                            self.executionResults.append(result)
-                            self.executionResults = Array(self.executionResults.suffix(40))
+                            if let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
+                               let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) {
+                                self.sessions[sIdx].messages[mIdx].probeResults =
+                                    (self.sessions[sIdx].messages[mIdx].probeResults ?? []) + [result]
+                            }
+                            self.selectedExecutionMessageID = assistantID
                         } else {
                             self.recentToolResults.insert(result, at: 0)
                             self.recentToolResults = Array(self.recentToolResults.prefix(8))
@@ -172,8 +178,10 @@ extension DesktopModel {
                           let sIdx = self.sessions.firstIndex(where: { $0.id == id }),
                           let mIdx = self.sessions[sIdx].messages.firstIndex(where: { $0.id == assistantID }) else { return }
                     if let progress = AgentProgressEntry.parse(chunk) {
-                        self.sessions[sIdx].messages[mIdx].agentGoal = userText
-                        self.sessions[sIdx].messages[mIdx].agentProgress = (self.sessions[sIdx].messages[mIdx].agentProgress ?? []) + [progress]
+                        if self.sessions[sIdx].messages[mIdx].agentProgress != nil {
+                            self.sessions[sIdx].messages[mIdx].agentGoal = userText
+                            self.sessions[sIdx].messages[mIdx].agentProgress?.append(progress)
+                        }
                     } else if !chunk.hasPrefix(AgentProgressEntry.streamPrefix) {
                         self.sessions[sIdx].messages[mIdx].text += chunk
                     }

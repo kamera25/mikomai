@@ -22,6 +22,13 @@ run_case() {
 
 run_case "Rust workspace suite" cargo test --workspace
 
+run_case "Greeting and Ping/Traceroute presentation" bash -c '
+  ./mikomai-desktop-mac/test-core.sh --filter GreetingPresentationTests &&
+  ./mikomai-desktop-mac/test-core.sh --filter ExecutionTerminalPresentationTests
+'
+
+run_case "Native probe results and greeting rendering" ./mikomai-desktop-mac/test-execution-queue.sh
+
 run_case "Current F220 RAG-backed CLI answer" bash -c '
   output="$(npm run --silent cli -- chat "F220のVLAN設定方法を教えて")" || exit 1
   printf "%s\n" "$output" | rg -q "Fitelnet"

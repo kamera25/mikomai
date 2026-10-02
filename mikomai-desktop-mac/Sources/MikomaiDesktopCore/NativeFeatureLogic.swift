@@ -10,6 +10,10 @@ public struct ChatMessage: Identifiable, Codable, Equatable {
     public var agentGoal: String?
     public var agentProgress: [AgentProgressEntry]?
     public var attachments: [String]
+    public var probeResults: [AgentToolResult]?
+
+    public var hasProbeResults: Bool { !(probeResults ?? []).isEmpty }
+    public var conversationText: String { hasProbeResults ? "" : text }
 
     public init(id: UUID = UUID(), role: Role, text: String, attachments: [String] = []) {
         self.id = id
@@ -18,7 +22,7 @@ public struct ChatMessage: Identifiable, Codable, Equatable {
         self.attachments = attachments
     }
 
-    private enum CodingKeys: String, CodingKey { case id, role, text, attachments, agentGoal, agentProgress }
+    private enum CodingKeys: String, CodingKey { case id, role, text, attachments, agentGoal, agentProgress, probeResults }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -28,6 +32,20 @@ public struct ChatMessage: Identifiable, Codable, Equatable {
         agentGoal = try values.decodeIfPresent(String.self, forKey: .agentGoal)
         agentProgress = try values.decodeIfPresent([AgentProgressEntry].self, forKey: .agentProgress)
         attachments = try values.decodeIfPresent([String].self, forKey: .attachments) ?? []
+        probeResults = try values.decodeIfPresent([AgentToolResult].self, forKey: .probeResults)
+        if role == .assistant, probeResults == nil,
+           let legacy = ProbeResultPresentation.legacyResult(from: text, messageID: id) {
+            probeResults = [legacy]
+        }
+    }
+}
+
+public enum GreetingPresentation {
+    public static func isGreeting(_ text: String) -> Bool {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: "!！?？。、,. "))
+        return ["こんにちは", "こんばんは", "おはよう", "おはようございます", "やあ", "hello", "hi", "hey"].contains(normalized)
     }
 }
 

@@ -5,6 +5,7 @@ struct MessageRow: View {
     let message: ChatMessage
     var isRunning = false
     var onSelectConfig: (String) -> Void = { _ in }
+    var onShowTraceResults: () -> Void = {}
     @State private var showsCopyConfirmation = false
     @State private var copyFeedbackGeneration = 0
     var body: some View {
@@ -24,15 +25,26 @@ struct MessageRow: View {
                         .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
                     }
                 } else {
-                    if let entries = message.agentProgress, !entries.isEmpty {
+                    if !message.hasProbeResults, let entries = message.agentProgress, !entries.isEmpty {
                         AgentProgressView(goal: message.agentGoal ?? "", entries: entries, isRunning: isRunning)
                     }
-                    MarkdownMessage(text: message.text, onSelectConfig: onSelectConfig)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !message.conversationText.isEmpty {
+                        MarkdownMessage(text: message.conversationText, onSelectConfig: onSelectConfig)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if message.hasProbeResults {
+                        Button(action: onShowTraceResults) {
+                            Label("Traceの結果", systemImage: "terminal")
+                                .font(.system(size: 13))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.link)
+                        .accessibilityLabel("Traceの結果を右ペインに表示")
+                    }
                 }
             }
             Button {
-                guard ChatMessageClipboard.copy(text: message.text) else { return }
+                guard ChatMessageClipboard.copy(text: message.conversationText) else { return }
                 showsCopyConfirmation = true
                 copyFeedbackGeneration += 1
             } label: {
@@ -45,7 +57,7 @@ struct MessageRow: View {
             .buttonStyle(.plain)
             .help("メッセージをコピー")
             .accessibilityLabel("メッセージをコピー")
-            .disabled(message.text.isEmpty)
+            .disabled(message.conversationText.isEmpty)
             .overlay(alignment: message.role == .user ? .topTrailing : .topLeading) {
                 if showsCopyConfirmation {
                     VStack(spacing: 0) {

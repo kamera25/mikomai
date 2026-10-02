@@ -518,6 +518,34 @@ struct DesktopWindow: View {
         }
     }
 
+    private func handleSelectedConfig(_ config: String) {
+        guard !isOperationRunning else { return }
+        model.operationProposal = config
+        model.operationPlan = nil
+        model.operationBeforeConfig = ""
+        model.operationAfterConfig = ""
+        model.operationDiffLines = []
+        model.operationLogs = []
+        model.operationPhase = "変更案を確認中"
+        operationRationale = "選択した変更案を適用する"
+        isRightPaneOpen = true
+        rightPaneTab = "diff"
+    }
+
+    private func messageRow(_ message: ChatMessage, in session: ChatSession) -> some View {
+        MessageRow(
+            message: message,
+            isRunning: model.isWorkingInActiveSession && session.messages.last?.id == message.id,
+            onSelectConfig: handleSelectedConfig,
+            onShowTraceResults: {
+                model.selectedExecutionMessageID = message.id
+                model.workspace = .chat
+                rightPaneTab = "execution"
+                isRightPaneOpen = true
+            }
+        )
+    }
+
     private var rightSidePane: some View {
         VStack(spacing: 0) {
             RightPaneTabHeader(
@@ -533,7 +561,7 @@ struct DesktopWindow: View {
             } else if rightPaneTab == "debug" {
                 CoreDebugView(model: model)
             } else if rightPaneTab == "execution" {
-                ExecutionTerminalView(results: model.executionResultsInActiveSession)
+                ExecutionTerminalView(results: model.displayedExecutionResults)
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("投入ログ", systemImage: "text.alignleft").font(.system(size: 14, weight: .semibold))
@@ -736,19 +764,7 @@ struct DesktopWindow: View {
                         if model.activeSession?.messages.isEmpty ?? true { emptyState }
                         if let session = model.activeSession {
                             ForEach(session.messages) { message in
-                                MessageRow(message: message, isRunning: model.isWorkingInActiveSession && session.messages.last?.id == message.id, onSelectConfig: { config in
-                                    guard !isOperationRunning else { return }
-                                    model.operationProposal = config
-                                    model.operationPlan = nil
-                                    model.operationBeforeConfig = ""
-                                    model.operationAfterConfig = ""
-                                    model.operationDiffLines = []
-                                    model.operationLogs = []
-                                    model.operationPhase = "変更案を確認中"
-                                    operationRationale = "選択した変更案を適用する"
-                                    isRightPaneOpen = true
-                                    rightPaneTab = "diff"
-                                }).id(message.id)
+                                messageRow(message, in: session).id(message.id)
                             }
                         }
                         if model.isWorkingInActiveSession && model.activeSession?.messages.last?.agentProgress == nil {
