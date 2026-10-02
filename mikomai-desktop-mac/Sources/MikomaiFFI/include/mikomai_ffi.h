@@ -17,6 +17,8 @@ MikomaiResult mikomai_dispatch_mode(const char *message, const char *devices_jso
 MikomaiResult mikomai_agent_chat_streaming(const char *message, const char *history, const char *documents_dir, const char *knowledge_dir, const char *attachments, const char *devices_json, MikomaiStreamCallback callback, MikomaiToolCallback tool_callback, MikomaiPlanCallback plan_callback, void *context);
 MikomaiResult mikomai_agent_task_list(void);
 MikomaiResult mikomai_agent_task_history(const char *id);
+MikomaiResult mikomai_agent_task_delete(const char *id);
+MikomaiResult mikomai_agent_task_delete_all(void);
 MikomaiResult mikomai_watch_start(const char *storage_path, MikomaiToolCallback tool_callback, MikomaiWatchNotificationCallback notification_callback, void *context);
 MikomaiResult mikomai_watch_stop(void);
 MikomaiResult mikomai_watch_list(void);

@@ -237,7 +237,13 @@ extension DesktopModel {
             let taskList = Self.callRust { mikomai_agent_task_list() }
             if let data = taskList.data(using: .utf8),
                let tasks = try? JSONDecoder().decode([NativeAgentTask].self, from: data) {
-                DispatchQueue.main.async { self.agentTasks = tasks }
+                DispatchQueue.main.async {
+                    self.agentTasks = tasks
+                    if let selectedID = self.selectedAgentTaskID,
+                       let selected = tasks.first(where: { $0.id == selectedID }) {
+                        self.loadAgentTaskHistory(selected)
+                    }
+                }
             }
         }
     }

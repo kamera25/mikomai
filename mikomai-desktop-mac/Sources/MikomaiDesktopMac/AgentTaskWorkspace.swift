@@ -31,6 +31,7 @@ struct AgentTaskHistoryList: View {
     let tasks: [NativeAgentTask]
     @Binding var selectedTaskID: String?
     let onSelect: (NativeAgentTask) -> Void
+    var onDelete: ((NativeAgentTask) -> Void)? = nil
 
     var body: some View {
         if tasks.isEmpty {
@@ -41,16 +42,25 @@ struct AgentTaskHistoryList: View {
                 VStack(alignment: .leading, spacing: 2) {
                     historyDayDivider(group.date.map { AgentTaskHistoryPresentation.dateLabel($0) } ?? "日時不明")
                     ForEach(group.tasks) { task in
-                        HistorySelectionRow(isSelected: task.id == selectedTaskID, action: {
-                            selectedTaskID = task.id
-                            onSelect(task)
-                        }) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(task.goal).font(.system(size: 15)).lineLimit(2)
-                                HStack(spacing: 8) {
-                                    AgentTaskStatusLabel(status: task.status, updatedAt: task.lastEventAt, showsUnknownTime: true)
-                                    Text("\(task.eventCount)件")
-                                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                        HStack(spacing: 0) {
+                            HistorySelectionRow(isSelected: task.id == selectedTaskID, action: {
+                                selectedTaskID = task.id
+                                onSelect(task)
+                            }) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(task.goal).font(.system(size: 14, weight: .medium)).lineLimit(2)
+                                    HStack(spacing: 8) {
+                                        AgentTaskStatusLabel(status: task.status, updatedAt: task.lastEventAt, showsUnknownTime: true)
+                                        Text("\(task.eventCount)件")
+                                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .contextMenu {
+                                if let onDelete {
+                                    Button("削除", role: .destructive) {
+                                        onDelete(task)
+                                    }
                                 }
                             }
                         }
@@ -79,51 +89,115 @@ struct AgentTaskWorkspace: View {
     let tasks: [NativeAgentTask]
     @Binding var selectedTaskID: String?
     let selectedHistory: [AgentTaskHistoryItem]
+    let onRefresh: () -> Void
     let onResumeTask: (NativeAgentTask) -> Void
+    let onDeleteTask: (NativeAgentTask) -> Void
+    let onDeleteAllTasks: () -> Void
 
+    @State private var showingDeleteAllConfirm = false
     private var selectedTask: NativeAgentTask? { tasks.first(where: { $0.id == selectedTaskID }) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("選択したタスクの記録").font(.system(size: 16, weight: .semibold))
+                Text("エージェント実行履歴").font(.system(size: 16, weight: .semibold))
                 Spacer()
-                if let selectedTask {
-                    Button("調査を再開") { onResumeTask(selectedTask) }
+                Button {
+                    onRefresh()
+                } label: {
+                    Label("更新", systemImage: "arrow.clockwise")
+                }
+                .help("エージェント履歴を再読込")
+
+                if !tasks.isEmpty {
+                    Button(role: .destructive) {
+                        showingDeleteAllConfirm = true
+                    } label: {
+                        Label("全履歴を削除", systemImage: "trash")
+                    }
+                    .confirmationDialog("エージェント実行履歴をすべて削除しますか？", isPresented: $showingDeleteAllConfirm) {
+                        Button("すべての履歴を削除", role: .destructive) {
+                            onDeleteAllTasks()
+                        }
+                    } message: {
+                        Text("保存されているすべてのエージェント実行履歴ファイルを削除します。この操作は取り消せません。")
+                    }
                 }
             }
+
             if let selectedTask {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("ゴール").font(.system(size: 14)).foregroundStyle(.secondary)
-                    Text(selectedTask.goal).font(.system(size: 15, weight: .medium)).textSelection(.enabled)
-                    AgentTaskStatusLabel(status: selectedTask.status, updatedAt: selectedTask.lastEventAt, showsStatusName: true)
-                }
-                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-            } else {
-                Text("左側の一覧からタスクを選ぶと、記録を表示します。")
-                    .font(.system(size: 16)).foregroundStyle(.secondary)
-            }
-            ScrollView {
-                if selectedHistory.isEmpty {
-                    Text("選択したタスクの記録はありません")
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(selectedHistory.enumerated()), id: \.element.id) { index, item in
-                            if let date = item.timestamp,
-                               AgentTaskHistoryPresentation.startsNewDay(at: index, in: selectedHistory) {
-                                dayDivider(for: date)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("ゴール").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                            Text(selectedTask.goal).font(.system(size: 15, weight: .semibold)).textSelection(.enabled)
+                        }
+                        Spacer()
+                        HStack(spacing: 8) {
+                            Button("調査を再開") { onResumeTask(selectedTask) }
+                                .buttonStyle(.borderedProminent)
+                            Button(role: .destructive) {
+                                onDeleteTask(selectedTask)
+                            } label: {
+                                Image(systemName: "trash")
                             }
-                            historyRow(item)
+                            .help("この履歴を削除")
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack(spacing: 16) {
+                        AgentTaskStatusLabel(status: selectedTask.status, updatedAt: selectedTask.lastEventAt, showsStatusName: true)
+                        if let start = AgentTaskHistoryPresentation.parseTimestamp(selectedTask.startedAt) {
+                            Text("開始: \(AgentTaskHistoryPresentation.dateLabel(start)) \(AgentTaskHistoryPresentation.timeLabel(start))")
+                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
+                        Text("\(selectedTask.eventCount)件のイベント")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
+
+                    Text("再開すると、過去の観測結果を引き継いだ新しい調査として実行します。元の記録は変更しません。")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
+                .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+
+                Text("実行タイムライン (\(selectedHistory.count) 件)")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                    .padding(.top, 4)
+
+                ScrollView {
+                    if selectedHistory.isEmpty {
+                        Text("選択したタスクの記録はありません")
+                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(selectedHistory.enumerated()), id: \.element.id) { index, item in
+                                if let date = item.timestamp,
+                                   AgentTaskHistoryPresentation.startsNewDay(at: index, in: selectedHistory) {
+                                    dayDivider(for: date)
+                                }
+                                historyRow(item)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(10)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            } else {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 40)).foregroundStyle(.secondary)
+                    Text("左側の一覧から実行履歴を選択してください。")
+                        .font(.system(size: 15)).foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
             }
-            .padding(10)
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -142,10 +216,10 @@ struct AgentTaskWorkspace: View {
     private func historyRow(_ item: AgentTaskHistoryItem) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: item.icon.systemImage)
-                .font(.system(size: 17, weight: .medium))
+                .font(.system(size: 16, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(iconColor(for: item.icon))
-                .frame(width: 24, height: 24)
+                .frame(width: 22, height: 22)
                 .accessibilityLabel(item.icon.accessibilityLabel)
                 .help(item.icon.accessibilityLabel)
             VStack(alignment: .leading, spacing: 4) {
@@ -155,16 +229,18 @@ struct AgentTaskWorkspace: View {
                     Text(item.timestamp.map { AgentTaskHistoryPresentation.timeLabel($0) } ?? "時刻不明")
                         .font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
                 }
-                if item.eventType != "state_updated" {
+                if !item.detail.isEmpty {
                     Text(item.detail)
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.system(size: 12, design: .monospaced))
                         .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5), in: RoundedRectangle(cornerRadius: 4))
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
     }
 
     private func iconColor(for icon: AgentTaskHistoryIcon) -> Color {

@@ -164,6 +164,32 @@ final class DesktopModel: ObservableObject {
         guard response.status == 0, let text = response.message,
               let decoded = try? JSONDecoder().decode([NativeAgentTask].self, from: Data(String(cString: text).utf8)) else { return }
         agentTasks = decoded
+        if let selectedID = selectedAgentTaskID {
+            if let selected = agentTasks.first(where: { $0.id == selectedID }) {
+                loadAgentTaskHistory(selected)
+            } else {
+                selectedAgentTaskID = nil
+                selectedTaskHistory = []
+            }
+        }
+    }
+
+    func deleteAgentTask(_ task: NativeAgentTask) {
+        let response = task.id.withCString { mikomai_agent_task_delete($0) }
+        defer { mikomai_result_free(response) }
+        agentTasks.removeAll { $0.id == task.id }
+        if selectedAgentTaskID == task.id {
+            selectedAgentTaskID = nil
+            selectedTaskHistory = []
+        }
+    }
+
+    func deleteAllAgentTasks() {
+        let response = mikomai_agent_task_delete_all()
+        defer { mikomai_result_free(response) }
+        agentTasks.removeAll()
+        selectedAgentTaskID = nil
+        selectedTaskHistory = []
     }
 
     func refreshOperationAudit() {

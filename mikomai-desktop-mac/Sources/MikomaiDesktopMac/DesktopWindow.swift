@@ -360,6 +360,9 @@ struct DesktopWindow: View {
                 if historyTab == "conversation" {
                     Button { model.createSession() } label: { Image(systemName: "square.and.pencil") }
                         .buttonStyle(.plain).help("新しい会話")
+                } else if historyTab == "agents" {
+                    Button { model.refreshAgentTasks() } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.plain).help("エージェント履歴を更新")
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
@@ -374,9 +377,12 @@ struct DesktopWindow: View {
                                        onDelete: { model.deleteSession(session.id) })
                         }
                     } else if historyTab == "agents" {
-                        AgentTaskHistoryList(tasks: model.agentTasks, selectedTaskID: $model.selectedAgentTaskID) { task in
-                            model.loadAgentTaskHistory(task)
-                        }
+                        AgentTaskHistoryList(
+                            tasks: model.agentTasks,
+                            selectedTaskID: $model.selectedAgentTaskID,
+                            onSelect: { task in model.loadAgentTaskHistory(task) },
+                            onDelete: { task in model.deleteAgentTask(task) }
+                        )
                     } else {
                         Text("承認済み操作の監査記録").font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary).padding(8)
                     }
@@ -428,10 +434,13 @@ struct DesktopWindow: View {
                 tasks: model.agentTasks,
                 selectedTaskID: $model.selectedAgentTaskID,
                 selectedHistory: model.selectedTaskHistory,
+                onRefresh: { model.refreshAgentTasks() },
                 onResumeTask: { task in
                     historyTab = "conversation"
                     model.resumeAgentTask(task)
-                }
+                },
+                onDeleteTask: { task in model.deleteAgentTask(task) },
+                onDeleteAllTasks: { model.deleteAllAgentTasks() }
             )
             .padding(20)
             .onAppear { model.refreshAgentTasks() }

@@ -93,18 +93,99 @@ public enum AgentTaskHistoryPresentation {
             let timestamp = timestamp(in: event)
             switch eventType {
             case "task_started":
+                let goal = event["goal"] as? String ?? fallbackGoal
                 return AgentTaskHistoryItem(
                     id: index,
                     eventType: eventType,
                     timestamp: timestamp,
                     icon: .started,
                     title: "開始",
-                    detail: event["goal"] as? String ?? fallbackGoal
+                    detail: goal
+                )
+            case "goal_set":
+                let goal = event["goal"] as? String ?? fallbackGoal
+                return AgentTaskHistoryItem(
+                    id: index,
+                    eventType: eventType,
+                    timestamp: timestamp,
+                    icon: .started,
+                    title: "目標設定",
+                    detail: goal
+                )
+            case "decision":
+                let actionType = event["action_type"] as? String
+                let title = actionType.map { "判断: \($0)" } ?? "判断"
+                var details: [String] = []
+                if let objective = event["objective"] as? String, !objective.isEmpty {
+                    details.append(objective)
+                }
+                if let reason = event["reason"] as? [String], !reason.isEmpty {
+                    details.append(reason.joined(separator: "\n"))
+                } else if let reasonStr = event["reason"] as? String, !reasonStr.isEmpty {
+                    details.append(reasonStr)
+                }
+                if let params = event["parameters"] {
+                    details.append(prettyJSON(params))
+                }
+                let detail = details.isEmpty ? (event["goal"] as? String ?? "判断を実行") : details.joined(separator: "\n")
+                return AgentTaskHistoryItem(
+                    id: index,
+                    eventType: eventType,
+                    timestamp: timestamp,
+                    icon: .running,
+                    title: title,
+                    detail: detail
+                )
+            case "action":
+                let tool = event["tool"] as? String ?? ""
+                let title = tool.isEmpty ? "実行" : "実行: \(tool)"
+                let target = event["target"] as? String
+                var parts: [String] = []
+                if let target, !target.isEmpty { parts.append(target) }
+                if !tool.isEmpty { parts.append(tool) }
+                if let params = event["parameters"] {
+                    parts.append(prettyJSON(params))
+                }
+                let detail = parts.isEmpty ? "ツールを実行" : parts.joined(separator: " / ")
+                return AgentTaskHistoryItem(
+                    id: index,
+                    eventType: eventType,
+                    timestamp: timestamp,
+                    icon: .running,
+                    title: title,
+                    detail: detail
+                )
+            case "result":
+                let observation = event["observation"] as? [String: Any]
+                let source = observation?["source"] as? [String: Any]
+                let tool = source?["tool_name"] as? String ?? event["tool"] as? String ?? "ツール"
+                let success = event["success"] as? Bool
+                let error = stringValue(event["error"])
+                let title: String
+                if let error, !error.isEmpty {
+                    title = "失敗 (\(error)): \(tool)"
+                } else if success == false {
+                    title = "失敗: \(tool)"
+                } else {
+                    title = "成功: \(tool)"
+                }
+                let raw = observation?["raw"] as? String
+                    ?? observation?["content"] as? String
+                    ?? error
+                    ?? (observation.map(prettyJSON) ?? prettyJSON(event))
+                return AgentTaskHistoryItem(
+                    id: index,
+                    eventType: eventType,
+                    timestamp: timestamp,
+                    icon: (error != nil || success == false) ? .failed : .completed,
+                    title: title,
+                    detail: raw
                 )
             case "observation":
                 let evidence = event["evidence"] as? [String: Any] ?? [:]
                 let output = evidence["content"] as? String
                     ?? evidence["raw"] as? String
+                    ?? event["raw"] as? String
                     ?? prettyJSON(evidence.isEmpty ? event : evidence)
                 return AgentTaskHistoryItem(
                     id: index,
@@ -115,15 +196,31 @@ public enum AgentTaskHistoryPresentation {
                     detail: output
                 )
             case "state_updated":
-                let status = stringValue(event["status"]) ?? "更新中"
+                let statusRaw = stringValue(event["status"]) ?? "更新中"
+                var displayTitle = "状態"
+                var displayDetail = statusRaw
+                var rawStatus = statusRaw
+                if let statusData = statusRaw.data(using: .utf8),
+                   let statusObj = try? JSONSerialization.jsonObject(with: statusData) as? [String: Any] {
+                    if let phase = statusObj["phase"] as? String {
+                        displayTitle = "状態 (\(phase))"
+                    }
+                    var parts: [String] = []
+                    if let d = statusObj["detail"] as? String, !d.isEmpty { parts.append(d) }
+                    if let n = statusObj["nextAction"] as? String, !n.isEmpty { parts.append("次: \(n)") }
+                    if !parts.isEmpty {
+                        displayDetail = parts.joined(separator: "\n")
+                    }
+                    rawStatus = statusObj["status"] as? String ?? statusRaw
+                }
                 return AgentTaskHistoryItem(
                     id: index,
                     eventType: eventType,
                     timestamp: timestamp,
-                    icon: AgentTaskHistoryIcon(status: status),
-                    title: "状態",
-                    detail: AgentTaskHistoryIcon(status: status).accessibilityLabel,
-                    rawStatus: status
+                    icon: AgentTaskHistoryIcon(status: rawStatus),
+                    title: displayTitle,
+                    detail: displayDetail,
+                    rawStatus: rawStatus
                 )
             case "approval_required":
                 return AgentTaskHistoryItem(
@@ -145,16 +242,25 @@ public enum AgentTaskHistoryPresentation {
                         detail: error
                     )
                 }
+                let answer = event["answer"] as? String ?? event["reason"] as? String ?? "回答を記録しました"
                 return AgentTaskHistoryItem(
                     id: index,
                     eventType: eventType,
                     timestamp: timestamp,
                     icon: .completed,
                     title: "完了",
-                    detail: event["answer"] as? String ?? "回答を記録しました"
+                    detail: answer
                 )
             default:
-                return nil
+                let detail = event["detail"] as? String ?? event["reason"] as? String ?? prettyJSON(event)
+                return AgentTaskHistoryItem(
+                    id: index,
+                    eventType: eventType,
+                    timestamp: timestamp,
+                    icon: .unknown,
+                    title: eventType,
+                    detail: detail
+                )
             }
         }
     }

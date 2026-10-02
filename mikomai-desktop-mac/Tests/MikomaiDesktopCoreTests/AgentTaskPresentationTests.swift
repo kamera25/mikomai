@@ -43,6 +43,98 @@ struct AgentTaskPresentationTests {
         #expect(items[5].detail == "agent failed")
     }
 
+    @Test func parsesTauriLegacyEventTypesWithProperLabelsAndIcons() throws {
+        let tauriResponse = """
+        {
+          "events": [
+            {"event_type": "task_started", "timestamp": "2026-09-05T06:34:41.176Z"},
+            {"event_type": "goal_set", "goal": "F220のVLAN設定方法を教えて", "timestamp": "2026-09-05T06:34:41.176Z"},
+            {"event_type": "decision", "action_type": "OBSERVE", "objective": "F220のVLAN設定を検索", "reason": ["NW-DBを検索する必要がある"], "timestamp": "2026-09-05T06:34:58.971Z"},
+            {"event_type": "action", "tool": "query_nw_db", "target": "DB", "parameters": {"query": "vlan"}, "timestamp": "2026-09-05T06:34:59.000Z"},
+            {"event_type": "result", "tool": "query_nw_db", "success": true, "observation": {"raw": "vlan database", "source": {"tool_name": "query_nw_db"}}, "timestamp": "2026-09-05T06:35:09.909Z"},
+            {"event_type": "result", "tool": "netmiko", "success": false, "error": "ConnectionFailed", "timestamp": "2026-09-05T06:35:15.000Z"},
+            {"event_type": "finished", "reason": "調査完了", "timestamp": "2026-09-05T06:35:20.000Z"}
+          ]
+        }
+        """
+
+        let items = AgentTaskHistoryPresentation.items(from: tauriResponse, fallbackGoal: "fallback")
+        #expect(items.count == 7)
+
+        #expect(items[0].eventType == "task_started")
+        #expect(items[0].title == "開始")
+        #expect(items[0].detail == "fallback")
+
+        #expect(items[1].eventType == "goal_set")
+        #expect(items[1].title == "目標設定")
+        #expect(items[1].detail == "F220のVLAN設定方法を教えて")
+
+        #expect(items[2].eventType == "decision")
+        #expect(items[2].title == "判断: OBSERVE")
+        #expect(items[2].detail.contains("F220のVLAN設定を検索"))
+        #expect(items[2].detail.contains("NW-DBを検索する必要がある"))
+
+        #expect(items[3].eventType == "action")
+        #expect(items[3].title == "実行: query_nw_db")
+        #expect(items[3].detail.contains("DB"))
+        #expect(items[3].detail.contains("query_nw_db"))
+
+        #expect(items[4].eventType == "result")
+        #expect(items[4].title == "成功: query_nw_db")
+        #expect(items[4].icon == .completed)
+        #expect(items[4].detail == "vlan database")
+
+        #expect(items[5].eventType == "result")
+        #expect(items[5].title.contains("失敗"))
+        #expect(items[5].icon == .failed)
+        #expect(items[5].detail == "ConnectionFailed")
+
+        #expect(items[6].eventType == "finished")
+        #expect(items[6].title == "完了")
+        #expect(items[6].icon == .completed)
+        #expect(items[6].detail == "調査完了")
+    }
+
+    @Test func formatsStructuredStateUpdatedJSONWithPhaseAndNextAction() throws {
+        let json = """
+        {
+          "events": [
+            {
+              "event_type": "state_updated",
+              "status": "{\\"detail\\":\\"目的と収集済みの情報を確認しています\\",\\"nextAction\\":\\"観測結果から次の操作を選択\\",\\"phase\\":\\"計画\\"}",
+              "timestamp": "2026-10-02T07:30:52.691Z"
+            }
+          ]
+        }
+        """
+
+        let items = AgentTaskHistoryPresentation.items(from: json, fallbackGoal: "fallback")
+        #expect(items.count == 1)
+        #expect(items[0].title == "状態 (計画)")
+        #expect(items[0].detail.contains("目的と収集済みの情報を確認しています"))
+        #expect(items[0].detail.contains("次: 観測結果から次の操作を選択"))
+    }
+
+    @Test func preservesUnknownEventTypeInsteadOfDropping() throws {
+        let json = """
+        {
+          "events": [
+            {
+              "event_type": "custom_extension_event",
+              "detail": "カスタムログメッセージ",
+              "timestamp": "2026-10-02T07:30:52Z"
+            }
+          ]
+        }
+        """
+
+        let items = AgentTaskHistoryPresentation.items(from: json, fallbackGoal: "fallback")
+        #expect(items.count == 1)
+        #expect(items[0].title == "custom_extension_event")
+        #expect(items[0].detail == "カスタムログメッセージ")
+        #expect(items[0].icon == .unknown)
+    }
+
     @Test func dateLabelsAndDayBoundariesUseTheCalendarTimezone() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(identifier: "Asia/Tokyo"))

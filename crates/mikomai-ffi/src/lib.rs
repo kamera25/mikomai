@@ -140,17 +140,38 @@ fn legacy_task_snapshot(value: &serde_json::Value) -> Option<PersistedAgentAudit
                 None
             }
         })
-        .and_then(|text| uuid::Uuid::parse_str(text).ok())?;
-    let goal = events.iter().rev().find_map(|event| {
-        (event.get("event_type")?.as_str()? == "goal_set")
-            .then(|| {
+        .and_then(|text| uuid::Uuid::parse_str(text).ok())
+        .or_else(|| {
+            value
+                .get("snapshot")
+                .and_then(|s| s.get("task"))
+                .and_then(|t| t.get("id"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(|text| uuid::Uuid::parse_str(text).ok())
+        })?;
+    let goal = events
+        .iter()
+        .rev()
+        .find_map(|event| {
+            let event_type = event.get("event_type")?.as_str()?;
+            if event_type == "goal_set" || event_type == "task_started" {
                 event
                     .get("goal")
                     .and_then(serde_json::Value::as_str)
                     .map(str::to_owned)
-            })
-            .flatten()
-    })?;
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            value
+                .get("snapshot")
+                .and_then(|s| s.get("task"))
+                .and_then(|t| t.get("goal"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "エージェントタスク".to_string());
     let mut snapshot = TaskSnapshot::new(goal);
     snapshot.task.id = task_id;
     for event in &events {
@@ -167,6 +188,7 @@ fn legacy_task_snapshot(value: &serde_json::Value) -> Option<PersistedAgentAudit
             let content = observation
                 .get("raw")
                 .and_then(serde_json::Value::as_str)
+                .or_else(|| observation.get("content").and_then(serde_json::Value::as_str))
                 .unwrap_or_default();
             let source = observation.get("source");
             let target = source
@@ -186,18 +208,68 @@ fn legacy_task_snapshot(value: &serde_json::Value) -> Option<PersistedAgentAudit
     let started_at = events
         .iter()
         .find_map(|event| {
-            (event.get("event_type")?.as_str()? == "task_started")
-                .then(|| event.get("timestamp").and_then(serde_json::Value::as_str))
-                .flatten()
+            let is_start = event
+                .get("event_type")
+                .and_then(serde_json::Value::as_str)
+                == Some("task_started");
+            if is_start {
+                event
+                    .get("timestamp")
+                    .or_else(|| event.get("created_at"))
+                    .and_then(serde_json::Value::as_str)
+            } else {
+                None
+            }
+        })
+        .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
+        .map(|time| time.with_timezone(&chrono::Utc))
+        .unwrap_or(now);
+    let last_event_at = events
+        .iter()
+        .rev()
+        .find_map(|event| {
+            event
+                .get("timestamp")
+                .or_else(|| event.get("created_at"))
+                .or_else(|| event.get("occurred_at"))
+                .and_then(serde_json::Value::as_str)
                 .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
                 .map(|time| time.with_timezone(&chrono::Utc))
         })
-        .unwrap_or(now);
+        .unwrap_or(started_at);
+
+    // Resolve snapshot status
+    if let Some(last_event) = events.last() {
+        let last_type = last_event.get("event_type").and_then(serde_json::Value::as_str);
+        if last_type == Some("finished") {
+            if last_event.get("error").is_some() {
+                snapshot.status = mikomai_core::TaskStatus::Failed;
+            } else {
+                snapshot.status = mikomai_core::TaskStatus::Completed;
+            }
+        } else if last_type == Some("approval_required") {
+            snapshot.status = mikomai_core::TaskStatus::AwaitingApproval;
+        } else if last_type == Some("state_updated") {
+            let status_text = last_event.get("status").and_then(serde_json::Value::as_str).unwrap_or("");
+            if status_text.contains("awaiting_input") || status_text.contains("AwaitingInput") {
+                snapshot.status = mikomai_core::TaskStatus::AwaitingInput;
+            } else if status_text.contains("failed") || status_text.contains("Failed") {
+                snapshot.status = mikomai_core::TaskStatus::Failed;
+            } else if status_text.contains("completed") || status_text.contains("Completed") {
+                snapshot.status = mikomai_core::TaskStatus::Completed;
+            } else {
+                snapshot.status = mikomai_core::TaskStatus::Running;
+            }
+        } else {
+            snapshot.status = mikomai_core::TaskStatus::Failed; // stopped
+        }
+    }
+
     Some(PersistedAgentAudit {
         snapshot,
         events,
         started_at,
-        last_event_at: now,
+        last_event_at,
     })
 }
 
@@ -213,7 +285,31 @@ fn read_agent_audit(task_id: uuid::Uuid) -> Result<Option<PersistedAgentAudit>, 
     }
     let value: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("agent task audit is malformed: {error}"))?;
+    if let Ok(audit) = serde_json::from_value::<PersistedAgentAudit>(value.clone()) {
+        return Ok(Some(audit));
+    }
     Ok(legacy_task_snapshot(&value))
+}
+
+fn delete_agent_audit(task_id: uuid::Uuid) -> Result<(), String> {
+    let path = agent_task_path(task_id)?;
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| format!("cannot delete agent audit: {e}"))?;
+    }
+    Ok(())
+}
+
+fn delete_all_agent_audits() -> Result<(), String> {
+    let directory = agent_event_directory()?;
+    if directory.is_dir() {
+        for entry in std::fs::read_dir(&directory).map_err(|e| e.to_string())?.flatten() {
+            let path = entry.path();
+            if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn persist_agent_audit(snapshot: &TaskSnapshot, event: serde_json::Value) -> Result<(), String> {
@@ -816,6 +912,33 @@ pub unsafe extern "C" fn mikomai_agent_task_history(id: *const c_char) -> Mikoma
         Ok(Ok(value)) => result(0, value),
         Ok(Err(error)) => error_result(error),
         Err(_) => error_result("agent task audit lookup failed unexpectedly".into()),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_agent_task_delete(id: *const c_char) -> MikomaiResult {
+    if id.is_null() {
+        return error_result("agent task id must not be null".into());
+    }
+    let caught = std::panic::catch_unwind(|| {
+        let id = CStr::from_ptr(id)
+            .to_str()
+            .map_err(|error| error.to_string())?;
+        let id = uuid::Uuid::parse_str(id).map_err(|error| error.to_string())?;
+        delete_agent_audit(id)
+    });
+    match caught {
+        Ok(Ok(())) => result(0, "success".into()),
+        Ok(Err(error)) => error_result(error),
+        Err(_) => error_result("agent task deletion failed unexpectedly".into()),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mikomai_agent_task_delete_all() -> MikomaiResult {
+    match delete_all_agent_audits() {
+        Ok(()) => result(0, "success".into()),
+        Err(error) => error_result(error),
     }
 }
 
@@ -3321,6 +3444,77 @@ mod tests {
             .iter()
             .any(|item| item.content == "CPU usage 91%"));
         assert!(resumed.evidence.last().unwrap().content.contains("resumed"));
+        if let Some(previous) = previous {
+            std::env::set_var("MIKOMAI_DATA_DIR", previous);
+        } else {
+            std::env::remove_var("MIKOMAI_DATA_DIR");
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn legacy_agent_audit_snapshot_restores_status_and_timestamps() {
+        let old_id = uuid::Uuid::new_v4();
+        let legacy = serde_json::json!({"events":[
+            {"event_type":"task_started","task_id":old_id.to_string(),"timestamp":"2026-10-01T01:00:00Z"},
+            {"event_type":"goal_set","goal":"inspect VLAN setup","timestamp":"2026-10-01T01:00:01Z"},
+            {"event_type":"decision","action_type":"OBSERVE","timestamp":"2026-10-01T01:00:05Z"},
+            {"event_type":"action","tool":"get_state","timestamp":"2026-10-01T01:00:06Z"},
+            {"event_type":"result","success":true,"observation":{"raw":"vlan 10 active"},"timestamp":"2026-10-01T01:00:10Z"},
+            {"event_type":"finished","answer":"VLAN 10 is configured","timestamp":"2026-10-01T01:00:15Z"}
+        ]});
+        let converted = super::legacy_task_snapshot(&legacy).expect("legacy audit should convert");
+        assert_eq!(converted.snapshot.task.goal, "inspect VLAN setup");
+        assert_eq!(converted.snapshot.status, mikomai_core::TaskStatus::Completed);
+        assert_eq!(
+            converted.started_at,
+            chrono::DateTime::parse_from_rfc3339("2026-10-01T01:00:00Z").unwrap().with_timezone(&chrono::Utc)
+        );
+        assert_eq!(
+            converted.last_event_at,
+            chrono::DateTime::parse_from_rfc3339("2026-10-01T01:00:15Z").unwrap().with_timezone(&chrono::Utc)
+        );
+        let summary = super::summarize_agent_audit(&converted);
+        assert_eq!(summary.status, "completed");
+        assert_eq!(summary.event_count, 6);
+    }
+
+    #[test]
+    fn agent_task_deletion_removes_single_and_all_audits() {
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!("mikomai-agent-del-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("MIKOMAI_DATA_DIR");
+        std::env::set_var("MIKOMAI_DATA_DIR", &root);
+
+        let id1 = uuid::Uuid::new_v4();
+        let id2 = uuid::Uuid::new_v4();
+        let mut snap1 = mikomai_core::TaskSnapshot::new("task 1");
+        snap1.task.id = id1;
+        let mut snap2 = mikomai_core::TaskSnapshot::new("task 2");
+        snap2.task.id = id2;
+
+        super::persist_agent_audit(&snap1, serde_json::json!({"event_type":"task_started"})).unwrap();
+        super::persist_agent_audit(&snap2, serde_json::json!({"event_type":"task_started"})).unwrap();
+
+        assert_eq!(super::list_agent_audits().unwrap().len(), 2);
+
+        // Delete single task
+        let c_id1 = CString::new(id1.to_string()).unwrap();
+        let res = unsafe { super::mikomai_agent_task_delete(c_id1.as_ptr()) };
+        assert_eq!(res.status, 0);
+        unsafe { super::mikomai_result_free(res) };
+
+        let listed = super::list_agent_audits().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].snapshot.task.id, id2);
+
+        // Delete all tasks
+        let res_all = super::mikomai_agent_task_delete_all();
+        assert_eq!(res_all.status, 0);
+        unsafe { super::mikomai_result_free(res_all) };
+
+        assert_eq!(super::list_agent_audits().unwrap().len(), 0);
+
         if let Some(previous) = previous {
             std::env::set_var("MIKOMAI_DATA_DIR", previous);
         } else {
