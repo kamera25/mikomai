@@ -250,6 +250,7 @@ pub fn retain_attachment_context(task: &mut crate::TaskSnapshot, context: &str) 
         id: uuid::Uuid::new_v4(),
         content,
         source: crate::ObservationSource {
+            success: None,
             target: None,
             tool: None,
             request: None,

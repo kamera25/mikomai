@@ -158,6 +158,12 @@ impl<'a, P: PlannerPort, E: ToolExecutorPort, R: ReporterPort> ChatService<'a, P
                     return Err(message);
                 }
                 PlanDecision::Observe { tool, target, args } => {
+                    if let Some(observation) = crate::agent::observed_request(&task, &tool, target.as_deref(), &args, &[]) {
+                        if observation.source.success != Some(false) && !observation.content.starts_with("FastRouter execution failed:") {
+                            machine.transition(HarnessState::AskingHuman)?;
+                            return Ok(format!("### ❓ 確認要求\n同じ操作の再実行を停止しました。取得済みの結果:\n{}\n依頼全体の完了は未確認です。追加で確認する対象・条件を指定してください。", observation.content));
+                        }
+                    }
                     machine.transition(HarnessState::Validating)?;
                     self.reporter.report(ReportEvent::Status {
                         task_id: task.task.id,
@@ -333,6 +339,21 @@ mod tests {
     use super::*;
     use crate::port::{PlanDecision, PortFuture};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn execution_boundary_never_runs_the_same_successful_request_twice() {
+        struct Repeating;
+        impl PlannerPort for Repeating {
+            fn plan<'a>(&'a self, _: &'a TaskSnapshot) -> PortFuture<'a, PlanDecision> {
+                Box::pin(async { Ok(PlanDecision::Observe { tool: "show_state".into(), target: Some("sw1".into()), args: serde_json::json!({"resource":"interfaces"}) }) })
+            }
+        }
+        let calls = Arc::new(Mutex::new(0));
+        let answer = futures_lite::future::block_on(ChatService::new(&Repeating, &FakeExecutor(calls.clone()), &Events::default()).answer(TaskSnapshot::new("状態とログを確認"))).unwrap();
+        assert_eq!(*calls.lock().unwrap(), 1);
+        assert!(answer.contains("再実行を停止"));
+        assert!(answer.contains("完了は未確認"));
+    }
 
     struct ScriptedPlanner(Mutex<usize>);
     impl PlannerPort for ScriptedPlanner {

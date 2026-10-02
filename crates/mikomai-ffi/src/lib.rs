@@ -2634,6 +2634,7 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
                 format!("FastRouter execution failed: {}", outcome.output),
                 shortcut.target, shortcut.tool,
             );
+            evidence.source.success = Some(false);
             evidence.source.request = Some(shortcut.args.to_string());
             fast_failure = Some(evidence);
         }

@@ -17,6 +17,8 @@ pub struct ObservationSource {
     pub target: Option<String>,
     pub tool: Option<String>,
     pub request: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub success: Option<bool>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Evidence {
@@ -38,6 +40,7 @@ impl Evidence {
                 target,
                 tool,
                 request: None,
+                success: Some(true),
             },
             provenance: Provenance {
                 origin: ProvenanceOrigin::Tool,
