@@ -7,6 +7,7 @@ edition = "2021"
 mikomai-core = { path = "../../mikomai-core" }
 mikomai-adapters = { path = "../mikomai-adapters" }
 mikomai-ffi = { path = "../mikomai-ffi" }
+llama-cpp-sys-2 = "0.1.156"
 futures-lite = "2"
 serde_json = "1"
 

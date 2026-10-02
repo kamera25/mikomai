@@ -6,6 +6,8 @@ use mikomai_core::port::SearchPort;
 use mikomai_core::TaskManager;
 use std::path::PathBuf;
 
+mod logging;
+
 fn main() {
     // Embedded RocksDB cannot be shared with the desktop process. Keep the
     // CLI's rebuildable RAG index separate; an explicit override still wins.
@@ -68,6 +70,7 @@ mod graph_path_tests {
 }
 
 pub fn run(mut args: Vec<String>, json: bool) -> Result<String, String> {
+    logging::configure(args.iter().any(|arg| matches!(arg.as_str(), "--debug" | "-d")));
     args.retain(|arg| !matches!(arg.as_str(), "--json" | "-j" | "--debug" | "-d"));
     match args.first().map(String::as_str) {
         Some("chat") => chat(args.into_iter().skip(1).collect::<Vec<_>>().join(" "), json),
@@ -96,7 +99,7 @@ pub fn run(mut args: Vec<String>, json: bool) -> Result<String, String> {
         }
         Some("resources") => { let resources = ["interfaces", "routes", "arp", "mac-table", "config", "system"]; Ok(if json { serde_json::json!({"ok": true, "data": resources}).to_string() } else { resources.join("\n") }) }
         Some("get-state") => { let device = args.get(1).cloned().ok_or("get-state device is required")?; let resource = args.get(2).cloned().ok_or("get-state resource is required")?; let output = serde_json::json!({"device": device, "resource": resource, "success": false, "error": "No device transport is configured in the standalone CLI"}); if json { Ok(serde_json::json!({"ok": false, "data": output}).to_string()) } else { Err(output["error"].as_str().unwrap_or("get-state failed").into()) } }
-        _ => Err("usage: mikomai-cli [--json] <chat|rag-ingest|rag-search|devices|resources|get-state> ...".into()),
+        _ => Err("usage: mikomai-cli [--json] [--debug|-d] <chat|rag-ingest|rag-search|devices|resources|get-state> ...".into()),
     }
 }
 
