@@ -108,6 +108,7 @@ struct ConnectionsWorkspace: View {
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                 Spacer()
                 Button("CSV を読み込む") { importCSV() }
+                Button("旧 JSON を読み込む") { importLegacyRegistry() }
                 Button("CSV を書き出す") { exportCSV() }.disabled(model.connections.isEmpty)
             }.padding(12).background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         }

@@ -59,4 +59,19 @@ struct NetworkUtilityPolicyTests {
         #expect(CPUUsagePolicy.parse("CPU utilization: 101%") == nil)
         #expect(CPUUsagePolicy.parse("no CPU data") == nil)
     }
+
+    @Test func detectsNetworkDeviceErrorsInOutput() {
+        #expect(NetworkCommandOutputPolicy.hasError(in: "% Invalid input detected at '^' marker."))
+        #expect(NetworkCommandOutputPolicy.hasError(in: "% Incomplete command."))
+        #expect(NetworkCommandOutputPolicy.hasError(in: "% Ambiguous command: \"sh\""))
+        #expect(NetworkCommandOutputPolicy.hasError(in: "syntax error, unexpected end of line"))
+        #expect(NetworkCommandOutputPolicy.hasError(in: "Netmiko error: connection timed out"))
+        #expect(NetworkCommandOutputPolicy.hasError(in: "error: device not reachable"))
+        #expect(!NetworkCommandOutputPolicy.hasError(in: "Building configuration...\n[OK]"))
+        #expect(!NetworkCommandOutputPolicy.hasError(in: "hostname switch-01"))
+        
+        #expect(NetworkCommandOutputPolicy.detectError(in: "test % invalid input here") == .invalidInput("% invalid input"))
+        #expect(NetworkCommandOutputPolicy.detectError(in: "test syntax error here") == .syntaxError("syntax error"))
+    }
 }
+

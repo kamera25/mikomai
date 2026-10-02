@@ -109,3 +109,53 @@ public enum PingCommandParser {
         return String(value[range])
     }
 }
+
+public enum NetworkDeviceError: Error, Equatable, Sendable {
+    case invalidInput(String)
+    case incompleteCommand(String)
+    case ambiguousCommand(String)
+    case syntaxError(String)
+    case netmikoError(String)
+    case deviceError(String)
+
+    public var localizedDescription: String {
+        switch self {
+        case .invalidInput(let detail): return "無効なコマンド入力: \(detail)"
+        case .incompleteCommand(let detail): return "不完全なコマンド: \(detail)"
+        case .ambiguousCommand(let detail): return "曖昧なコマンド: \(detail)"
+        case .syntaxError(let detail): return "構文エラー: \(detail)"
+        case .netmikoError(let detail): return "Netmiko 実行エラー: \(detail)"
+        case .deviceError(let detail): return "機器エラー: \(detail)"
+        }
+    }
+}
+
+public enum NetworkCommandOutputPolicy {
+    public static func detectError(in output: String) -> NetworkDeviceError? {
+        let lower = output.lowercased()
+        if lower.contains("% invalid input") {
+            return .invalidInput("% invalid input")
+        }
+        if lower.contains("% incomplete command") {
+            return .incompleteCommand("% incomplete command")
+        }
+        if lower.contains("% ambiguous command") {
+            return .ambiguousCommand("% ambiguous command")
+        }
+        if lower.contains("syntax error") {
+            return .syntaxError("syntax error")
+        }
+        if lower.contains("netmiko error:") {
+            return .netmikoError("netmiko error:")
+        }
+        if lower.contains("error: device") {
+            return .deviceError("error: device")
+        }
+        return nil
+    }
+
+    public static func hasError(in output: String) -> Bool {
+        detectError(in: output) != nil
+    }
+}
+

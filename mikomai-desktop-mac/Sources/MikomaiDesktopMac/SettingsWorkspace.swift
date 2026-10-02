@@ -379,8 +379,15 @@ struct SettingsWorkspace: View {
 
             // KV Cache Preload options
             VStack(alignment: .leading, spacing: 8) {
-                Text("ワーカー別 KV キャッシュ・プリロード").font(.system(size: 15, weight: .medium))
-                Text("モデルロード時に各専門ワーカーのシステムプロンプトを KV キャッシュに事前展開します。").font(.system(size: 13)).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Text("ワーカー別 KV キャッシュ・プリロード").font(.system(size: 15, weight: .medium))
+                    Text("準備中")
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.2), in: Capsule())
+                        .foregroundStyle(.secondary)
+                }
+                Text("モデルロード時に各専門ワーカーのシステムプロンプトを KV キャッシュに事前展開する機能です（今後の推論エンジン更新で有効化予定）。").font(.system(size: 13)).foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("ナレッジワーカー", isOn: Binding(
@@ -430,7 +437,15 @@ struct SettingsWorkspace: View {
 
     private var visionSection: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Vision (画像・マルチモーダル) 設定").font(.system(size: 17, weight: .semibold))
+            HStack(spacing: 8) {
+                Text("Vision (画像・マルチモーダル) 設定").font(.system(size: 17, weight: .semibold))
+                Text("バックエンド準備中")
+                    .font(.system(size: 12, weight: .medium))
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.2), in: Capsule())
+                    .foregroundStyle(.orange)
+            }
+            Text("現在の Rust 推論エンジンはテキスト/コード推論に特化しており、mmproj マルチモーダル推論機能は将来のアップデートで提供予定です。").font(.system(size: 13)).foregroundStyle(.secondary)
 
             Toggle(isOn: Binding(
                 get: { model.settings.visionEnabled },
@@ -469,6 +484,7 @@ struct SettingsWorkspace: View {
             }
         }
     }
+
 
     // MARK: Category 3: Knowledge Base RAG
 

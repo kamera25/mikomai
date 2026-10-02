@@ -526,158 +526,26 @@ struct DesktopWindow: View {
     }
 
     private func prepareOperationPlan() async {
-        guard !isOperationRunning, let id = selectedConnectionID,
-              let connection = model.connections.first(where: { $0.id == id }) else { return }
-        guard let request = model.networkRequest(action: "show", connection: connection, commands: [showConfigCommand(for: connection)]) else {
-            operationAlert = "現在、Console 接続の変更計画には対応していません。SSH 接続の機器を選んでください。"
-            return
-        }
+        guard !isOperationRunning, let id = selectedConnectionID else { return }
         isOperationRunning = true
         operationAlert = ""
-        model.operationLogs.append("[STATUS] 1/4 現状のConfigを取得中")
-        model.operationPhase = "現状のConfigを取得中…"
-        let output = await Task.detached { DesktopModel.runNetworkWrapper(request) }.value
-        if !output.stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            model.operationLogs.append(contentsOf: output.stderr.split(whereSeparator: \.isNewline).map(String.init))
-        }
-        guard output.success, !output.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !networkOutputHasError(output.stdout) else {
-            model.operationLogs.append("[ERROR] 現状Config取得に失敗しました。変更計画は作成していません。")
-            operationAlert = "現状のConfigを取得できませんでした。機器情報と接続を確認してください。"
-            model.operationPhase = "現状取得失敗"
-            isOperationRunning = false
-            return
-        }
-        model.operationBeforeConfig = output.stdout
-        if let error = model.createOperationPlan(target: connection, proposal: model.operationProposal, rationale: operationRationale) {
+        if let error = await model.operationCoordinator.preparePlan(connectionID: id, rationale: operationRationale) {
             operationAlert = error
-            model.operationPhase = "計画作成失敗"
-            isOperationRunning = false
-            return
         }
-        model.operationLogs.append("[STATUS] 現状取得後、機器・コマンドに固定した変更計画を作成しました")
         isOperationRunning = false
     }
 
     private func approveAndExecutePlan() async {
-        guard !isOperationRunning, let plan = model.operationPlan,
-              plan.status == "pending", let (connection, credentials) = model.resolveOperationTarget(for: plan) else {
-            operationAlert = "計画作成後に対象機器の情報が変わりました。変更計画を作り直してください。"
-            return
-        }
+        guard !isOperationRunning else { return }
         isOperationRunning = true
         operationAlert = ""
-        guard model.approveOperationPlan() == nil, model.beginOperationPlan() == nil else {
-            operationAlert = "変更計画を承認できませんでした。"
-            model.operationLogs.append("[ERROR] ハッシュ照合による承認に失敗しました")
-            model.operationPhase = "承認失敗"
-            isOperationRunning = false
-            return
-        }
-        if plan.toolId != "network_config" {
-            model.operationPhase = "承認済み操作を実行中…"
-            model.operationLogs.append("[STATUS] 承認済み操作を実行中")
-            rightPaneTab = "logs"
-            let output = await Task.detached {
-                DesktopModel.executeApprovedAgentOperation(planID: plan.id, planHash: plan.planHash, password: credentials.password)
-            }.value
-            model.operationLogs.append(contentsOf: output.stdout.split(whereSeparator: \.isNewline).map(String.init))
-            if !output.stderr.isEmpty { model.operationLogs.append(contentsOf: output.stderr.split(whereSeparator: \.isNewline).map(String.init)) }
-            model.finishOperationPlan(succeeded: output.success)
-            model.operationPhase = output.success ? "承認済み操作が完了しました" : "承認済み操作が失敗しました"
-            if !output.success { operationAlert = "操作に失敗しました。ログを確認してください。" }
-            isOperationRunning = false
-            return
-        }
-        let planCommands = plan.args.commands ?? []
-        guard !planCommands.isEmpty else {
-            model.finishOperationPlan(succeeded: false)
-            operationAlert = "この操作はSwift側の承認済み実行経路がまだ接続されていません。"
-            model.operationPhase = "実行経路未接続"
-            isOperationRunning = false
-            return
-        }
-        let target = plan.args.deviceSnapshot
-        let approvedRequest = NetworkRunnerRequest(
-            action: "dry_run", host: target.host, username: target.username,
-            password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
-            deviceType: connection.transportDeviceType(runnerDeviceType(target.deviceType)), port: connection.effectivePort, commands: planCommands
-        )
-        model.operationPhase = "2/4 dry-run 検証中…"
-        model.operationLogs.append("[STATUS] 2/4 dry-run 検証中")
         rightPaneTab = "logs"
-        let configRequest = NetworkRunnerRequest(
-            action: "config", host: target.host, username: target.username,
-            password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
-            deviceType: connection.transportDeviceType(runnerDeviceType(target.deviceType)), port: connection.effectivePort, commands: planCommands
-        )
-        let workflow = await OperationWorkflow.execute(
-            dryRun: {
-                let output = await Task.detached { DesktopModel.runNetworkWrapper(approvedRequest) }.value
-                return OperationCommandOutput(processSucceeded: output.success, stdout: output.stdout, stderr: output.stderr)
-            },
-            configure: {
-                await MainActor.run {
-                    model.operationPhase = "3/4 Config 投入中…"
-                    model.operationLogs.append("[STATUS] 3/4 Configを投入中")
-                }
-                let output = await Task.detached { DesktopModel.runNetworkWrapper(configRequest) }.value
-                return OperationCommandOutput(processSucceeded: output.success, stdout: output.stdout, stderr: output.stderr)
-            }
-        )
-        let dryRun = workflow.dryRun
-        model.operationLogs.append(contentsOf: dryRun.stderr.split(whereSeparator: \.isNewline).map(String.init))
-        guard workflow.dryRunPassed, let deployed = workflow.configuration else {
-            model.operationLogs.append("[ERROR] dry-runに失敗したためConfig投入を中止しました")
-            model.operationPhase = "dry-run失敗"
-            model.finishOperationPlan(succeeded: false)
-            operationAlert = "dry-runでエラーが見つかったため、機器への投入を中止しました。"
-            isOperationRunning = false
-            return
+        if let error = await model.operationCoordinator.approveAndExecutePlan() {
+            operationAlert = error
+        } else if model.operationPlan?.status == "executed" || model.operationPhase.contains("差分を確認") {
+            rightPaneTab = "diff"
         }
-        model.operationLogs.append(contentsOf: deployed.stderr.split(whereSeparator: \.isNewline).map(String.init))
-        guard deployed.processSucceeded else {
-            model.operationLogs.append("[ERROR] Config投入に失敗しました")
-            model.operationPhase = "投入失敗"
-            model.finishOperationPlan(succeeded: false)
-            operationAlert = "Configを投入できませんでした。ログを確認してください。"
-            isOperationRunning = false
-            return
-        }
-        model.operationPhase = "4/4 投入後のConfigを検証中…"
-        model.operationLogs.append("[STATUS] 4/4 投入後のConfigを取得して差分を検証中")
-        let verifyRequest = NetworkRunnerRequest(
-            action: "show", host: target.host, username: target.username,
-            password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
-            deviceType: connection.transportDeviceType(runnerDeviceType(target.deviceType)), port: connection.effectivePort,
-            commands: [showConfigCommand(for: connection)]
-        )
-        let verified = await Task.detached { DesktopModel.runNetworkWrapper(verifyRequest) }.value
-        model.operationLogs.append(contentsOf: verified.stderr.split(whereSeparator: \.isNewline).map(String.init))
-        guard verified.success, !verified.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !networkOutputHasError(verified.stdout) else {
-            model.operationLogs.append("[ERROR] 投入後Configの取得に失敗しました")
-            model.operationPhase = "検証失敗"
-            model.finishOperationPlan(succeeded: false)
-            operationAlert = "Configは投入されましたが、投入後の状態を確認できませんでした。"
-            isOperationRunning = false
-            return
-        }
-        let before = model.operationBeforeConfig
-        let after = verified.stdout
-        let diff = await Task.detached { Self.lineDiff(old: before, new: after) }.value
-        model.operationAfterConfig = after
-        model.operationDiffLines = diff
-        model.finishOperationPlan(succeeded: true)
-        model.operationPhase = "投入後Configを取得しました。差分を確認してください"
-        model.operationLogs.append("[STATUS] Config投入が成功し、投入後Configを取得しました。差分を確認してください")
-        rightPaneTab = "diff"
         isOperationRunning = false
-    }
-
-    private func networkOutputHasError(_ output: String) -> Bool {
-        let lower = output.lowercased()
-        return ["% invalid input", "% incomplete command", "% ambiguous command", "syntax error", "netmiko error:", "error: device"].contains { lower.contains($0) }
     }
 
     private func operationStatusLabel(_ status: String) -> String {
@@ -692,23 +560,6 @@ struct DesktopWindow: View {
         }
     }
 
-    private func showConfigCommand(for connection: SavedConnection) -> String {
-        let device = runnerDeviceType(connection.deviceType)
-        if device == "juniper_junos" { return "show configuration" }
-        if device == "yamaha" { return "show config" }
-        return "show running-config"
-    }
-
-    private func runnerDeviceType(_ value: String) -> String {
-        let lower = value.lowercased()
-        if lower.contains("juniper") { return "juniper_junos" }
-        if lower.contains("nx-os") || lower.contains("nxos") { return "cisco_nxos" }
-        if lower.contains("arista") { return "arista_eos" }
-        if lower.contains("yamaha") { return "yamaha" }
-        if lower.contains("furukawa") || lower.contains("fitel") { return "furukawa_fitelnet" }
-        if lower.contains("cisco") { return "cisco_ios" }
-        return lower.replacingOccurrences(of: " ", with: "_")
-    }
 
     private var statusBar: some View {
         HStack(spacing: 14) {
