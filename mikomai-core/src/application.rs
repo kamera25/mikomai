@@ -164,9 +164,10 @@ impl<'a, P: PlannerPort, E: ToolExecutorPort, R: ReporterPort> ChatService<'a, P
                         .execute(task.task.id, &tool, target.as_deref(), &args)
                         .await?;
                     if !result.success {
-                        return Err(format!("read-only tool `{tool}` failed: {}", result.output));
+                        return Err(read_only_tool_error(&tool, &result.output));
                     }
-                    let mut evidence = Evidence::from_tool(result.output.clone(), target, Some(tool));
+                    let mut evidence =
+                        Evidence::from_tool(result.output.clone(), target, Some(tool));
                     evidence.source.request = Some(args.to_string());
                     task.evidence.push(evidence.clone());
                     self.reporter.report(ReportEvent::Evidence {
@@ -179,6 +180,17 @@ impl<'a, P: PlannerPort, E: ToolExecutorPort, R: ReporterPort> ChatService<'a, P
             }
         }
     }
+}
+
+fn read_only_tool_error(tool: &str, output: &str) -> String {
+    let mut message = format!("read-only tool `{tool}` failed: {output}");
+    let normalized = output.to_ascii_lowercase();
+    if normalized.contains("authentication failed")
+        || normalized.contains("authentication to device failed")
+    {
+        message.push_str("\n\n認証に失敗しました。設定情報のベンダー（機器種別）が接続先の実機と一致しているか確認してください。併せて、ユーザー名・パスワードやSSH鍵の設定も確認してください。");
+    }
+    message
 }
 
 fn dispatch_name(mode: DispatchMode) -> &'static str {
@@ -356,7 +368,7 @@ mod tests {
             })
         }
     }
-    struct FailedExecutor;
+    struct FailedExecutor(&'static str);
     impl ToolExecutorPort for FailedExecutor {
         fn execute<'a>(
             &'a self,
@@ -365,10 +377,10 @@ mod tests {
             _target: Option<&'a str>,
             _args: &'a serde_json::Value,
         ) -> PortFuture<'a, ToolResult> {
-            Box::pin(async {
+            Box::pin(async move {
                 Ok(ToolResult {
                     success: false,
-                    output: "SSH authentication failed".into(),
+                    output: self.0.into(),
                 })
             })
         }
@@ -429,15 +441,47 @@ mod tests {
         let reporter = Events::default();
         let task = TaskSnapshot::new("sw1を診断");
         let result = futures_lite::future::block_on(
-            ChatService::new(&planner, &FailedExecutor, &reporter).answer(task),
+            ChatService::new(
+                &planner,
+                &FailedExecutor("SSH authentication failed"),
+                &reporter,
+            )
+            .answer(task),
         );
-        assert!(result.unwrap_err().contains("SSH authentication failed"));
+        let error = result.unwrap_err();
+        assert!(error.contains("SSH authentication failed"));
+        assert!(error.contains("設定情報のベンダー"));
         assert!(!reporter
             .0
             .lock()
             .unwrap()
             .iter()
             .any(|event| matches!(event, ReportEvent::Evidence { .. })));
+    }
+
+    #[test]
+    fn netmiko_authentication_failure_requests_vendor_check_but_other_errors_do_not() {
+        for output in [
+            "INFO: Connecting to device 192.168.50.1 (cisco_ios)...\nNetmiko Error: Authentication to device failed.\nDevice settings: cisco_ios 192.168.50.1:22\n\nAuthentication failed.\n",
+            "Netmiko Error: Authentication to device failed.",
+            "AUTHENTICATION FAILED.",
+            "Connection timed out",
+        ] {
+            let planner = ScriptedPlanner(Mutex::new(0));
+            let reporter = Events::default();
+            let error = futures_lite::future::block_on(
+                ChatService::new(&planner, &FailedExecutor(output), &reporter)
+                    .answer(TaskSnapshot::new("sw1を診断")),
+            )
+            .unwrap_err();
+            assert!(error.contains(output));
+            assert_eq!(error.contains("設定情報のベンダー"), output != "Connection timed out");
+            assert_eq!(*planner.0.lock().unwrap(), 1);
+            assert!(!reporter.0.lock().unwrap().iter().any(|event| matches!(
+                event,
+                ReportEvent::Evidence { .. } | ReportEvent::Completed { .. }
+            )));
+        }
     }
 
     #[test]
