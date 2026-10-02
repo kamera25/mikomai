@@ -3,6 +3,24 @@ import Testing
 
 @Suite
 struct NetworkUtilityPolicyTests {
+    @Test func savedDiagnosticHostsResolveBeforeDNS() throws {
+        let device = SavedConnection(sourceID: "gateway-id", name: "NakaokuGW", host: "192.168.50.1")
+        for alias in ["NakaokuGW", "nakaokugw", device.id.uuidString, "gateway-id"] {
+            #expect(try RegisteredDiagnosticHostPolicy.resolve(alias, connections: [device]) == "192.168.50.1")
+        }
+        for host in ["192.168.50.1", "2001:db8::1", "unregistered.example"] {
+            #expect(try RegisteredDiagnosticHostPolicy.resolve(host, connections: [device]) == host)
+        }
+        let missing = SavedConnection(name: "NakaokuGW", host: " ")
+        #expect(throws: RegisteredDiagnosticHostPolicy.ResolutionError.self) {
+            try RegisteredDiagnosticHostPolicy.resolve("NakaokuGW", connections: [missing])
+        }
+        let duplicate = SavedConnection(name: "nakaokugw", host: "192.0.2.1")
+        #expect(throws: RegisteredDiagnosticHostPolicy.ResolutionError.self) {
+            try RegisteredDiagnosticHostPolicy.resolve("NakaokuGW", connections: [device, duplicate])
+        }
+    }
+
     @Test func arpUsesFormerTauriVendorCommands() {
         for type in ["Cisco IOS", "cisco_ios", "arista_eos", "furukawa_fitelnet"] {
             #expect(ARPCommandPolicy.command(for: type) == "show ip arp")

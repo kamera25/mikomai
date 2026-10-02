@@ -2978,10 +2978,11 @@ pub unsafe extern "C" fn mikomai_test_tcp_connection(
     }
 }
 
-fn test_tcp_connection_core(host: &str, port: u16, timeout_ms: u32) -> Result<String, String> {
+pub fn test_tcp_connection_core(host: &str, port: u16, timeout_ms: u32) -> Result<String, String> {
     use std::net::{TcpStream, ToSocketAddrs};
     use std::time::{Duration, Instant};
 
+    if port == 0 { return Err("port must be between 1 and 65535".into()); }
     let trimmed = host.trim();
     if trimmed.is_empty() {
         return Err("ホスト名またはIPアドレスが指定されていません。".into());
@@ -3805,6 +3806,37 @@ mod tests {
         assert_eq!(start["phase"], "開始");
         assert_eq!(executing["detail"], "get_state · sw1");
         assert_eq!(chunks[2].0, "診断完了");
+    }
+
+    #[test]
+    fn named_port_check_reaches_native_callback_with_registered_ip() {
+        unsafe extern "C" fn probe(
+            tool: *const c_char, _: *const c_char, args: *const c_char,
+            output: *mut c_char, capacity: usize, _: *mut std::ffi::c_void,
+        ) -> i32 {
+            assert_eq!(CStr::from_ptr(tool).to_str().unwrap(), "self_network_test_connection");
+            let args: serde_json::Value = serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap();
+            assert_eq!(args["host"], "192.168.50.1");
+            assert_eq!(args["port"], 22);
+            let payload = b"{\"success\":true,\"output\":\"TCP observed\"}\0";
+            assert!(payload.len() <= capacity);
+            std::ptr::copy_nonoverlapping(payload.as_ptr().cast(), output, payload.len()); 0
+        }
+        let input = CString::new("NakaokuGW の22/tcpが空いているかチェック").unwrap();
+        let empty = CString::new("").unwrap();
+        let path = CString::new("/nonexistent-mikomai-port-check").unwrap();
+        let devices = CString::new(r#"[{"hostname":"NakaokuGW","ip":"192.168.50.1"}]"#).unwrap();
+        let mut events: Vec<(String, i32)> = vec![];
+        let response = unsafe { super::mikomai_agent_chat_streaming(
+            input.as_ptr(), empty.as_ptr(), path.as_ptr(), path.as_ptr(), empty.as_ptr(), devices.as_ptr(),
+            Some(capture_chat_chunk), Some(probe), None, &mut events as *mut _ as *mut _,
+        ) };
+        assert_eq!(response.status, 0);
+        assert_eq!(unsafe { CStr::from_ptr(response.message).to_str().unwrap() }, "TCP observed");
+        unsafe { mikomai_result_free(response) };
+        let debug: Vec<serde_json::Value> = events.iter().filter_map(|(text, _)| text.strip_prefix("__MIKOMAI_DEBUG__")).map(|json| serde_json::from_str(json).unwrap()).collect();
+        assert!(debug.iter().any(|event| event["kind"] == "fast_route_result" && event["payload"]["success"] == true));
+        assert!(!debug.iter().any(|event| event["kind"] == "llm_request"));
     }
 
     #[test]

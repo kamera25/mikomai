@@ -235,6 +235,21 @@ impl ReadOnlyToolRegistry {
         credentials: &DeviceCredentials,
     ) -> Result<ToolResult, String> {
         let tool = ReadOnlyDeviceTool::parse(tool_id)?;
+        let mut resolved_args = args.clone();
+        if matches!(tool, ReadOnlyDeviceTool::SelfNetworkPing | ReadOnlyDeviceTool::SelfNetworkTraceroute | ReadOnlyDeviceTool::SelfNetworkTestConnection) {
+            if let Some(host) = args.get("host").and_then(Value::as_str) {
+                let matches = self.devices.iter().filter(|device| {
+                    device.hostname.trim().eq_ignore_ascii_case(host.trim()) || device.id.as_deref() == Some(host.trim())
+                }).collect::<Vec<_>>();
+                if matches.len() > 1 { return Err("registered diagnostic target is ambiguous".into()); }
+                if let Some(device) = matches.first() {
+                    let ip = device.ip.as_deref().filter(|ip| !ip.trim().is_empty())
+                        .ok_or("registered diagnostic target has no host address")?;
+                    resolved_args["host"] = ip.trim().into();
+                }
+            }
+        }
+        let args = &resolved_args;
         validate_tool_args(tool, args)?;
         let target = if is_local_tool_id(tool_id) {
             RegisteredDevice {
@@ -286,6 +301,9 @@ fn validate_tool_args(tool: ReadOnlyDeviceTool, args: &Value) -> Result<(), Stri
             return Err("host must be a DNS name or IP address".into());
         }
         if tool == ReadOnlyDeviceTool::SelfNetworkTestConnection {
+            if args.get("protocol").is_some_and(|p| p.as_str().is_none_or(|p| !p.eq_ignore_ascii_case("tcp"))) {
+                return Err("port check supports TCP only".into());
+            }
             let port = args
                 .get("port")
                 .and_then(Value::as_u64)
@@ -385,6 +403,50 @@ pub fn is_local_tool_id(tool_id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn registered_hosts_take_priority_for_all_local_network_probes() {
+        struct Capture(std::sync::Mutex<Vec<Value>>);
+        impl CredentialedReadOnlyTransport for Capture {
+            fn execute_read_only(&self, _: &RegisteredDevice, _: &DeviceCredentials, _: ReadOnlyDeviceTool, args: &Value) -> Result<String, String> {
+                self.0.lock().unwrap().push(args.clone()); Ok("observed".into())
+            }
+        }
+        let registry = ReadOnlyToolRegistry::from_json(r#"[{"id":"gateway-id","hostname":"NakaokuGW","ip":"192.168.50.1"}]"#).unwrap();
+        let transport = Capture(std::sync::Mutex::new(vec![]));
+        for tool in ["self_network_ping", "self_network_traceroute", "self_network_test_connection", "self_network_test_net_connection"] {
+            for host in ["NakaokuGW", "nakaokugw", "gateway-id"] {
+                registry.execute(&transport, tool, "localhost", &serde_json::json!({"host":host,"port":22}), &creds()).unwrap();
+                assert_eq!(transport.0.lock().unwrap().last().unwrap()["host"], "192.168.50.1");
+            }
+        }
+        registry.execute(&transport, "self_network_ping", "localhost", &serde_json::json!({"host":"unregistered.example"}), &creds()).unwrap();
+        assert_eq!(transport.0.lock().unwrap().last().unwrap()["host"], "unregistered.example");
+        let missing = ReadOnlyToolRegistry::from_json(r#"[{"hostname":"NakaokuGW"}]"#).unwrap();
+        assert!(missing.execute(&transport, "self_network_ping", "localhost", &serde_json::json!({"host":"NakaokuGW"}), &creds()).is_err());
+        let ambiguous = ReadOnlyToolRegistry::from_json(r#"[{"hostname":"NakaokuGW","ip":"192.0.2.1"},{"hostname":"nakaokugw","ip":"192.0.2.2"}]"#).unwrap();
+        assert!(ambiguous.execute(&transport, "self_network_ping", "localhost", &serde_json::json!({"host":"NakaokuGW"}), &creds()).is_err());
+        assert_eq!(transport.0.lock().unwrap().len(), 13);
+    }
+
+    #[test]
+    fn port_check_resolves_inventory_names_and_rejects_udp_before_transport() {
+        struct Capture(std::sync::Mutex<Vec<Value>>);
+        impl CredentialedReadOnlyTransport for Capture {
+            fn execute_read_only(&self, _: &RegisteredDevice, _: &DeviceCredentials, _: ReadOnlyDeviceTool, args: &Value) -> Result<String, String> {
+                self.0.lock().unwrap().push(args.clone()); Ok("observed".into())
+            }
+        }
+        let registry = ReadOnlyToolRegistry::from_json(r#"[{"hostname":"NakaokuGW","ip":"192.168.50.1"}]"#).unwrap();
+        let transport = Capture(std::sync::Mutex::new(vec![]));
+        registry.execute(&transport, "self_network_test_connection", "localhost", &serde_json::json!({"host":"NakaokuGW","port":22}), &creds()).unwrap();
+        assert_eq!(transport.0.lock().unwrap()[0]["host"], "192.168.50.1");
+        for args in [serde_json::json!({"host":"NakaokuGW","port":53,"protocol":"udp"}), serde_json::json!({"host":"NakaokuGW","port":65536})] {
+            assert!(registry.execute(&transport, "self_network_test_connection", "localhost", &args, &creds()).is_err());
+        }
+        assert_eq!(transport.0.lock().unwrap().len(), 1);
+    }
+
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

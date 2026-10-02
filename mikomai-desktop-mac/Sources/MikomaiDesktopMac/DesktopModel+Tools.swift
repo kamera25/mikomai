@@ -81,6 +81,15 @@ extension DesktopModel {
         connections: [SavedConnection],
         credentialPersistence: ConnectionCredentialPersistence
     ) -> NetworkOperationOutput {
+        var arguments = arguments
+        if ["self_network_ping", "self_network_traceroute", "self_network_test_connection", "self_network_test_net_connection"].contains(tool),
+           let requestedHost = arguments["host"] as? String {
+            do {
+                arguments["host"] = try RegisteredDiagnosticHostPolicy.resolve(requestedHost, connections: connections)
+            } catch {
+                return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription)
+            }
+        }
         if tool == "get_state", target.hostname == "localhost", arguments["resource"] as? String == "arp" {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/sbin/arp")

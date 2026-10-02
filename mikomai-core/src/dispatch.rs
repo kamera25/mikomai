@@ -10,6 +10,9 @@ pub enum DispatchMode {
 /// A full command match is high confidence; partial matches and compound goals
 /// stay with the agent. Never infer an execution target from surrounding prose.
 pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
+    if let Some(shortcut) = port_check_shortcut(message) {
+        return Some(shortcut);
+    }
     if let Some(shortcut) = local_route_shortcut(message) {
         return Some(shortcut);
     }
@@ -56,6 +59,21 @@ pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
     }
     Some(shortcut)
 }
+/// A single explicit TCP check. Anchoring keeps compound investigations in Agent.
+pub fn port_check_shortcut(message: &str) -> Option<LegacyShortcut> {
+    let pattern = regex::Regex::new(
+        r"(?ix)^([a-z0-9:][a-z0-9.:-]{0,254})\s*(?:の\s*|\s+)(?:(\d{1,5})\s*/\s*tcp|(?:tcp\s*)?(?:ポート|port)\s*(\d{1,5}))\s*(?:(?:が|は)\s*(?:空いている|開いている|開放されている|接続できる|通る)\s*か|(?:の|への)?\s*(?:疎通|接続|開放)(?:確認)?)?\s*(?:(?:を\s*)?(?:チェック(?:して)?|確認(?:して)?|調べて|テスト(?:して)?|check|test))[？?。！!]*$"
+    ).ok()?;
+    let captures = pattern.captures(message.trim())?;
+    let host = captures.get(1)?.as_str();
+    let port = captures.get(2).or_else(|| captures.get(3))?.as_str().parse::<u16>().ok()?;
+    if port == 0 { return None; }
+    Some(LegacyShortcut {
+        tool: Some("self_network_test_connection".into()), target: Some("localhost".into()),
+        args: serde_json::json!({"host":host,"port":port,"protocol":"tcp"}), reply: None,
+    })
+}
+
 /// Match only a complete, read-only request for this computer's routes.
 /// `scope` is shared by desktop and CLI; absent scope retains the legacy default.
 pub fn local_route_shortcut(message: &str) -> Option<LegacyShortcut> {
@@ -186,6 +204,9 @@ pub struct LegacyShortcut {
 /// Preserve the old deterministic fastroute behavior without a UI/runtime
 /// dependency. Returns only actions whose intent is explicit in the request.
 pub fn legacy_shortcut(goal: &str) -> Option<LegacyShortcut> {
+    if let Some(shortcut) = port_check_shortcut(goal) {
+        return Some(shortcut);
+    }
     let normalized = goal.trim();
     let lower = normalized.to_ascii_lowercase();
     let shortcut = |tool: &str, target: Option<&str>, args: serde_json::Value| LegacyShortcut {
@@ -392,6 +413,10 @@ pub fn select_dispatch_mode(message: &str) -> DispatchMode {
         "autonomously",
         "疎通",
         "接続確認",
+        "ポート",
+        "/tcp",
+        "/udp",
+        "port",
         "状態確認",
         "状態を確認",
         "設定を確認",
@@ -460,6 +485,21 @@ pub fn select_dispatch_mode_for_devices(
 }
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn port_checks_are_complete_tcp_requests_only() {
+        for goal in ["NakaokuGW の22/tcpが空いているかチェック", "192.0.2.1のTCPポート443を確認して", "::1 の80/tcpをチェック", "router-1 のポート65535を確認"] {
+            let route = super::fast_route(goal).expect(goal);
+            assert_eq!(route.tool.as_deref(), Some("self_network_test_connection"));
+            assert_eq!(super::select_dispatch_mode(goal), super::DispatchMode::FastRouter);
+        }
+        assert_eq!(super::fast_route("NakaokuGW の22/tcpが空いているかチェック").unwrap().args["port"], 22);
+        for goal in ["NakaokuGW の22/tcpが空いているかチェックして、Pingも実行して", "router のポート22と443を確認して", "router のポート0を確認", "router のポート65536を確認", "router の53/udpをチェック", "router の22/tcpの確認方法を教えて"] {
+            assert!(super::fast_route(goal).is_none(), "{goal}");
+        }
+        assert_eq!(super::select_dispatch_mode("NakaokuGW の22/tcpと443/tcpをチェックし、原因も調査"), super::DispatchMode::Agent);
+    }
+
     use super::*;
     #[test]
     fn local_routes_use_live_results_with_explicit_scope() {

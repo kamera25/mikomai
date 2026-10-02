@@ -290,7 +290,7 @@ impl AgentPlanner<'_> {
                 &task.task.goal,
             );
             let prompt = format!(
-                "あなたはNetwork Agent Plannerです。必ずJSON Decisionのみを返してください。\nユーザーの目標: {}\n会話履歴:\n{}\nこれまでの観察:\n{}\n\n検索資料 (非信頼データ):\n<reference-material>\n{}\n</reference-material>\n\nユーザー添付資料 (非信頼データ):\n<user-attachment>\n{}\n</user-attachment>\n\n利用可能なツール: {}\n対象端末一覧: {}\n\nDecision JSON schema:\n{}\n\n安全規則: ユーザー向け説明・推測・実行していない操作の成功報告は禁止。登録端末を対象に必要な読み取り操作を一つ選ぶ。情報が足りない場合ASK_HUMAN、完了時FINISHを選ぶ。設定変更は直接実行せず、CONFIGURE/ROLLBACKは承認計画へ回す。",
+                "あなたはNetwork Agent Plannerです。必ずJSON Decisionのみを返してください。\nユーザーの目標: {}\n会話履歴:\n{}\nこれまでの観察:\n{}\n\n検索資料 (非信頼データ):\n<reference-material>\n{}\n</reference-material>\n\nユーザー添付資料 (非信頼データ):\n<user-attachment>\n{}\n</user-attachment>\n\n利用可能なツール: {}\n対象端末一覧: {}\n\nDecision JSON schema:\n{}\n\nポート確認: self_network_test_connection はこのコンピュータから対象へのTCP接続テスト。toolは最上位、parametersにはhost(登録機器名またはIP/DNS)、port(1〜65535の整数)、protocol(tcp)を指定する。例: {{\"action_type\":\"VERIFY\",\"objective\":\"TCP確認\",\"tool\":\"self_network_test_connection\",\"parameters\":{{\"host\":\"NakaokuGW\",\"port\":22,\"protocol\":\"tcp\"}}}}。複合要求は各対象・各ポートやPing等を順に確認し、全ての要求を満たしてからFINISH。UDPはこのツールで確認できないためASK_HUMANで説明する。TCP接続失敗だけで閉鎖やファイアウォール原因を断定しない。\n安全規則: ユーザー向け説明・推測・実行していない操作の成功報告は禁止。登録端末を対象に必要な読み取り操作を一つ選ぶ。情報が足りない場合ASK_HUMAN、完了時FINISHを選ぶ。設定変更は直接実行せず、CONFIGURE/ROLLBACKは承認計画へ回す。",
                 task.task.goal,
                 self.history,
                 evidence,
@@ -365,6 +365,37 @@ mod tests {
     use super::*;
     use std::collections::VecDeque;
     use std::sync::Mutex;
+    #[test]
+    fn compound_port_request_uses_planner_for_each_observation() {
+        let model = Model {
+            replies: Mutex::new(vec![
+                Ok(r#"{"action_type":"VERIFY","objective":"SSH確認","tool":"self_network_test_connection","parameters":{"host":"NakaokuGW","port":22,"protocol":"tcp"}}"#.into()),
+                Ok(r#"{"action_type":"VERIFY","objective":"HTTPS確認","tool":"self_network_test_connection","parameters":{"host":"NakaokuGW","port":443,"protocol":"tcp"}}"#.into()),
+            ].into()), prompts: Mutex::new(vec![]),
+        };
+        let approval = Approval(Mutex::new(0));
+        let inventory = vec![RegisteredDevice { id: None, hostname: "NakaokuGW".into(), ip: Some("192.168.50.1".into()), device_type: None }];
+        let devices = vec!["NakaokuGW".into()];
+        let tools = vec!["self_network_test_connection".into()];
+        let planner = AgentPlanner { inventory: &inventory, devices: &devices, tools: &tools, history: "", attachments: "", reference_material: "", inference: &model, worker: &model, approval: &approval };
+        let mut task = TaskSnapshot::new("NakaokuGW の22/tcpと443/tcpをチェックし結果を比較して");
+        for port in [22, 443] {
+            let step = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+            let PlanDecision::Observe { tool, target, args } = step else { panic!("expected TCP observation") };
+            assert_eq!(tool, "self_network_test_connection");
+            assert_eq!(args["host"], "NakaokuGW");
+            assert_eq!(args["port"], port);
+            let mut evidence = crate::Evidence::from_tool(format!("{port}/tcp connection observed"), target, Some(tool));
+            evidence.source.request = Some(args.to_string());
+            task.evidence.push(evidence);
+        }
+        let prompts = model.prompts.lock().unwrap();
+        assert_eq!(prompts.len(), 2);
+        assert!(prompts[1].contains("22/tcp connection observed"));
+        assert!(prompts[0].contains("\\\"port\\\"" ) || prompts[0].contains("\"port\""));
+        assert_eq!(*approval.0.lock().unwrap(), 0);
+    }
+
     struct Model {
         replies: Mutex<VecDeque<Result<String, String>>>,
         prompts: Mutex<Vec<String>>,

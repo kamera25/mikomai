@@ -44,6 +44,34 @@ impl PlannerDecision {
         if !decision.parameters.is_null() && !decision.parameters.is_object() {
             return Err("planner decision parameters must be an object or null".into());
         }
+        // Some local models nest the tool alongside its arguments. Recover only
+        // the read-only TCP tool; the normal allow-list still validates it.
+        if matches!(decision.action, ActionType::Observe | ActionType::Verify) {
+            let nested = decision.parameters.get("tool").and_then(serde_json::Value::as_str);
+            if decision.tool.is_none() && matches!(nested, Some("self_network_test_connection" | "self_network_test_net_connection")) {
+                decision.tool = nested.map(str::to_owned);
+                decision.parameters.as_object_mut().unwrap().remove("tool");
+            }
+            if matches!(decision.tool.as_deref(), Some("self_network_test_connection" | "self_network_test_net_connection")) {
+                if decision.parameters.is_null() { decision.parameters = serde_json::json!({}); }
+                let host = decision.parameters.get("host").and_then(serde_json::Value::as_str)
+                    .or_else(|| decision.parameters.get("ip").and_then(serde_json::Value::as_str))
+                    .or_else(|| decision.parameters.get("device").and_then(serde_json::Value::as_str))
+                    .or(decision.target.as_deref()).map(str::to_owned);
+                if let Some(host) = host { decision.parameters["host"] = host.into(); }
+                if decision.parameters.get("port").is_none() {
+                    if let Some(query) = decision.parameters.get("query").and_then(serde_json::Value::as_str) {
+                        let re = regex::Regex::new(r"(?i)^(\d{1,5})/(tcp|udp)$").unwrap();
+                        if let Some(caps) = re.captures(query.trim()) {
+                            let port = caps[1].parse::<u64>().unwrap();
+                            let protocol = caps[2].to_ascii_lowercase();
+                            decision.parameters["port"] = port.into();
+                            decision.parameters["protocol"] = protocol.into();
+                        }
+                    }
+                }
+            }
+        }
         Ok(decision)
     }
 
@@ -54,6 +82,17 @@ impl PlannerDecision {
         if let Some(tool) = self.tool.as_deref() {
             if !allowed_tools.iter().any(|allowed| allowed == tool) {
                 return Err(format!("unknown tool: {tool}"));
+            }
+        }
+        if matches!(self.tool.as_deref(), Some("self_network_test_connection" | "self_network_test_net_connection")) {
+            if !self.parameters["port"].as_u64().is_some_and(|p| (1..=65535).contains(&p)) {
+                return Err("TCP port check requires port between 1 and 65535".into());
+            }
+            if self.parameters.get("protocol").is_some_and(|p| p.as_str().is_none_or(|p| !p.eq_ignore_ascii_case("tcp"))) {
+                return Err("port check supports TCP only; UDP cannot be checked with a TCP connection".into());
+            }
+            if self.parameters["host"].as_str().is_none_or(|host| host.trim().is_empty()) {
+                return Err("TCP port check requires a host".into());
             }
         }
         match self.action {
@@ -147,6 +186,8 @@ pub fn build_decision_schema(devices: &[String], tools: &[String]) -> String {
                 "depth":{"type":"integer","minimum":0,"maximum":8},
                 "relations":{"type":"array","items":{"type":"string","enum":["interface","bgp","vrf","route"]},"minItems":1},
                 "query":{"type":"string"},"ip":{"type":"string"},"mac":{"type":"string"},
+                "port":{"type":"integer","minimum":1,"maximum":65535},
+                "protocol":{"type":"string","enum":["tcp"]},
                 "command":{"type":"string"},"host":{"type":"string"},"id":{"type":"string"},
                 "intent":{"type":"string","enum":["analyze_broadcast","analyze_dhcp_response","prepare_dhcp_request","dhcp_request_probe"]},
                 "frame_hex":{"type":"string"},"client_mac":{"type":"string"},"transaction_id":{"type":"string"},
@@ -201,6 +242,23 @@ pub fn build_goal_decision_schema(devices: &[String], tools: &[String], goal: &s
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn recovers_logged_tcp_decision_and_rejects_udp_and_bad_ports() {
+        let allowed = vec!["self_network_test_connection".into()];
+        let decision = super::PlannerDecision::parse(r#"{"action_type":"VERIFY","objective":"check","parameters":{"device":"NakaokuGW","tool":"self_network_test_connection","ip":null,"query":"22/tcp"}}"#).unwrap();
+        decision.validate(&allowed).unwrap();
+        assert_eq!(decision.tool.as_deref(), Some("self_network_test_connection"));
+        assert_eq!(decision.parameters["host"], "NakaokuGW");
+        assert_eq!(decision.parameters["port"], 22);
+        for (port, protocol) in [(0, "tcp"), (65536, "tcp"), (53, "udp")] {
+            let raw = serde_json::json!({"action_type":"VERIFY","objective":"check","tool":"self_network_test_connection","parameters":{"host":"router","port":port,"protocol":protocol}}).to_string();
+            assert!(super::PlannerDecision::parse(&raw).unwrap().validate(&allowed).is_err());
+        }
+        let schema: serde_json::Value = serde_json::from_str(&super::build_decision_schema(&[], &allowed)).unwrap();
+        assert_eq!(schema["properties"]["parameters"]["properties"]["port"]["maximum"], 65535);
+    }
+
     use super::*;
 
     #[test]

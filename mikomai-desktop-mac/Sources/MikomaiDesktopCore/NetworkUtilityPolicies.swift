@@ -168,3 +168,31 @@ public enum ARPCommandPolicy {
         return "show ip arp"
     }
 }
+
+
+/// Resolve saved display names before an OS network probe can attempt DNS.
+public enum RegisteredDiagnosticHostPolicy {
+    public static func resolve(_ requestedHost: String, connections: [SavedConnection]) throws -> String {
+        let host = requestedHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = connections.filter {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(host) == .orderedSame
+                || $0.id.uuidString.caseInsensitiveCompare(host) == .orderedSame
+                || $0.sourceID == host
+        }
+        guard matches.count <= 1 else { throw ResolutionError.ambiguous }
+        guard let connection = matches.first else { return host }
+        let address = connection.host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !address.isEmpty else { throw ResolutionError.missingAddress }
+        return address
+    }
+
+    public enum ResolutionError: LocalizedError {
+        case ambiguous, missingAddress
+        public var errorDescription: String? {
+            switch self {
+            case .ambiguous: return "同じ名前の登録機器が複数あります。対象のIPアドレスを指定してください。"
+            case .missingAddress: return "登録機器の接続先が未設定です。IPアドレスを設定してください。"
+            }
+        }
+    }
+}

@@ -118,6 +118,8 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
     let docs = std::env::var_os("MIKOMAI_DOCS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("nw-docs"));
+    let port_check = mikomai_core::dispatch::fast_route(&goal)
+        .filter(|route| route.tool.as_deref() == Some("self_network_test_connection"));
     let next_hop = mikomai_core::dispatch::local_next_hop_shortcut(&goal);
     let local_route = next_hop.clone().or_else(|| mikomai_core::dispatch::local_route_shortcut(&goal));
     let local_mac = mikomai_core::dispatch::local_arp_mac_target(&goal);
@@ -130,12 +132,20 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         "cli_request",
         serde_json::json!({
             "query": goal, "history": "", "attachments": "", "devices_json": "[]",
-            "mode": if next_hop.is_some() { "agent" } else if local_route.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
-            "backend": if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
+            "mode": if next_hop.is_some() { "agent" } else if local_route.is_some() || port_check.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
+            "backend": if port_check.is_some() { "local_tcp" } else if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
         }),
     );
     let result = (|| {
-        let answer = if let Some(route) = local_route {
+        let answer = if let Some(check) = port_check {
+            trace.emit("fast_route", serde_json::json!({"event_type":"tool_call","tool":check.tool,"target":"localhost","args":check.args}));
+            let result = mikomai_ffi::test_tcp_connection_core(check.args["host"].as_str().unwrap(), check.args["port"].as_u64().unwrap() as u16, 3000);
+            let success = result.is_ok();
+            let answer = result.unwrap_or_else(|error| format!("TCP接続を確認できませんでした。{error}\n接続失敗だけではポート閉鎖と経路・フィルタによる遮断を区別できません。"));
+            trace.emit("fast_route_result", serde_json::json!({"event_type":"observation","tool":check.tool,"target":"localhost","success":success,"output":answer}));
+            trace.stream(&answer, true);
+            answer
+        } else if let Some(route) = local_route {
             trace.emit(if next_hop.is_some() { "agent_event" } else { "fast_route" }, serde_json::json!({"event_type":"tool_call", "tool":route.tool, "target":"localhost", "args":route.args}));
             let table = route.args["scope"] == "table";
             #[cfg(target_os = "macos")]
