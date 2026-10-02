@@ -282,24 +282,8 @@ struct DesktopWindow: View {
                                        onDelete: { model.deleteSession(session.id) })
                         }
                     } else if historyTab == "agents" {
-                        ForEach(model.agentTasks) { task in
-                            Button {
-                                model.selectedAgentTaskID = task.id
-                                model.loadAgentTaskHistory(task)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(task.goal).font(.system(size: 15)).lineLimit(2)
-                                    Text("\(task.status) · \(task.eventCount)件 · \(task.lastEventAt)")
-                                        .font(.system(size: 13)).foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 8).padding(.vertical, 7)
-                                .background(task.id == model.selectedAgentTaskID ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        if model.agentTasks.isEmpty {
-                            Text("エージェント履歴はありません").font(.system(size: 14)).foregroundStyle(.secondary).padding(8)
+                        AgentTaskHistoryList(tasks: model.agentTasks, selectedTaskID: $model.selectedAgentTaskID) { task in
+                            model.loadAgentTaskHistory(task)
                         }
                     } else {
                         Text("承認済み操作の監査記録").font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary).padding(8)

@@ -42,7 +42,7 @@ final class DesktopModel: ObservableObject {
     @Published var watchMessage = "CPU 使用率がしきい値を超えました"
     @Published var watchEditingID: String?
     @Published var agentTasks: [NativeAgentTask] = []
-    @Published var selectedTaskHistory = ""
+    @Published var selectedTaskHistory: [AgentTaskHistoryItem] = []
     @Published var chatQueue = ChatSubmissionQueue()
     @Published var executionResults: [AgentToolResult] = []
     var queuedSubmissionsInActiveSession: [QueuedChatSubmission] {
@@ -306,7 +306,7 @@ final class DesktopModel: ObservableObject {
         let response = task.id.withCString { mikomai_agent_task_history($0) }
         defer { mikomai_result_free(response) }
         let raw = response.message.map { String(cString: $0) } ?? "タスク履歴を読み込めませんでした"
-        selectedTaskHistory = AgentTaskHistoryPresentation.lines(from: raw, fallbackGoal: task.goal).joined(separator: "\n\n")
+        selectedTaskHistory = AgentTaskHistoryPresentation.items(from: raw, fallbackGoal: task.goal)
     }
 
     func resumeAgentTask(_ task: NativeAgentTask) {

@@ -17,18 +17,14 @@ struct SessionRow: View {
                     .textFieldStyle(.plain).font(.system(size: 14))
                     .padding(.horizontal, 8).padding(.vertical, 8)
             } else {
-                Button(action: onSelect) {
+                HistorySelectionRow(isSelected: isSelected, action: onSelect) {
                     Text(session.title)
                         .font(.system(size: 14)).lineLimit(1)
-                        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity)
-        .background(isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
+        .background(isRenaming && isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
         .contentShape(Rectangle())
         .contextMenu {
             Button("名前を変更") { title = session.title; isRenaming = true }

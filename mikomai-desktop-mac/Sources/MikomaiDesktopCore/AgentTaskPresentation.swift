@@ -48,33 +48,198 @@ public struct AgentToolResult: Identifiable, Equatable, Sendable {
 
 /// Converts persisted Rust Agent events into short, readable progress entries.
 public enum AgentTaskHistoryPresentation {
-    public static func lines(from json: String, fallbackGoal: String) -> [String] {
+    public static func taskDateGroups(
+        _ tasks: [NativeAgentTask],
+        calendar: Calendar = .current
+    ) -> [AgentTaskDateGroup] {
+        var groups: [AgentTaskDateGroup] = []
+        for task in tasks {
+            if let date = parseTimestamp(task.lastEventAt) {
+                let day = calendar.startOfDay(for: date)
+                if let lastIndex = groups.indices.last,
+                   let lastDate = groups[lastIndex].date,
+                   calendar.isDate(lastDate, inSameDayAs: date) {
+                    groups[lastIndex].tasks.append(task)
+                } else {
+                    let components = calendar.dateComponents([.year, .month, .day], from: day)
+                    let dateID = "\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)"
+                    groups.append(AgentTaskDateGroup(id: "\(dateID)-\(groups.count)", date: day, tasks: [task]))
+                }
+            } else if let lastIndex = groups.indices.last, groups[lastIndex].date == nil {
+                groups[lastIndex].tasks.append(task)
+            } else {
+                groups.append(AgentTaskDateGroup(id: "unknown-date-\(groups.count)", date: nil, tasks: [task]))
+            }
+        }
+        return groups
+    }
+
+    public static func items(from json: String, fallbackGoal: String) -> [AgentTaskHistoryItem] {
         guard let data = json.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let events = root["events"] as? [[String: Any]] else {
-            return json.isEmpty ? [] : [json]
+            return json.isEmpty ? [] : [AgentTaskHistoryItem(
+                id: 0,
+                eventType: "fallback",
+                timestamp: nil,
+                icon: .unknown,
+                title: "記録",
+                detail: json
+            )]
         }
 
-        return events.compactMap { event in
-            switch event["event_type"] as? String {
+        return events.enumerated().compactMap { index, event in
+            guard let eventType = event["event_type"] as? String else { return nil }
+            let timestamp = timestamp(in: event)
+            switch eventType {
             case "task_started":
-                return "開始: \(event["goal"] as? String ?? fallbackGoal)"
+                return AgentTaskHistoryItem(
+                    id: index,
+                    eventType: eventType,
+                    timestamp: timestamp,
+                    icon: .started,
+                    title: "開始",
+                    detail: event["goal"] as? String ?? fallbackGoal
+                )
             case "observation":
                 let evidence = event["evidence"] as? [String: Any] ?? [:]
                 let output = evidence["content"] as? String
                     ?? evidence["raw"] as? String
-                    ?? Self.prettyJSON(evidence.isEmpty ? event : evidence)
-                return "観測結果:\n\(output)"
+                    ?? prettyJSON(evidence.isEmpty ? event : evidence)
+                return AgentTaskHistoryItem(
+                    id: index,
+                    eventType: eventType,
+                    timestamp: timestamp,
+                    icon: .observation,
+                    title: "観測結果",
+                    detail: output
+                )
             case "state_updated":
-                return "状態: \(Self.stringValue(event["status"]) ?? "更新中")"
+                let status = stringValue(event["status"]) ?? "更新中"
+                return AgentTaskHistoryItem(
+                    id: index,
+                    eventType: eventType,
+                    timestamp: timestamp,
+                    icon: AgentTaskHistoryIcon(status: status),
+                    title: "状態",
+                    detail: AgentTaskHistoryIcon(status: status).accessibilityLabel,
+                    rawStatus: status
+                )
             case "approval_required":
-                return "承認待ち: \(event["message"] as? String ?? "提案を確認してください")"
+                return AgentTaskHistoryItem(
+                    id: index,
+                    eventType: eventType,
+                    timestamp: timestamp,
+                    icon: .awaitingApproval,
+                    title: "承認待ち",
+                    detail: event["message"] as? String ?? "提案を確認してください"
+                )
             case "finished":
-                return "完了:\n\(event["answer"] as? String ?? "回答を記録しました")"
+                if let error = stringValue(event["error"]), !error.isEmpty {
+                    return AgentTaskHistoryItem(
+                        id: index,
+                        eventType: eventType,
+                        timestamp: timestamp,
+                        icon: .failed,
+                        title: "失敗",
+                        detail: error
+                    )
+                }
+                return AgentTaskHistoryItem(
+                    id: index,
+                    eventType: eventType,
+                    timestamp: timestamp,
+                    icon: .completed,
+                    title: "完了",
+                    detail: event["answer"] as? String ?? "回答を記録しました"
+                )
             default:
                 return nil
             }
         }
+    }
+
+    /// Preserves the text presentation used by older callers and history fixtures.
+    public static func lines(from json: String, fallbackGoal: String) -> [String] {
+        items(from: json, fallbackGoal: fallbackGoal).map { item in
+            switch item.eventType {
+            case "fallback": return item.detail
+            case "task_started": return "開始: \(item.detail)"
+            case "observation": return "観測結果:\n\(item.detail)"
+            case "state_updated": return "状態: \(item.rawStatus ?? item.detail)"
+            case "approval_required": return "承認待ち: \(item.detail)"
+            case "finished":
+                return item.icon == .failed ? "失敗:\n\(item.detail)" : "完了:\n\(item.detail)"
+            default: return "\(item.title): \(item.detail)"
+            }
+        }
+    }
+
+    public static func startsNewDay(
+        at index: Int,
+        in items: [AgentTaskHistoryItem],
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard items.indices.contains(index), let date = items[index].timestamp else { return false }
+        guard let previous = items.prefix(index).reversed().compactMap(\.timestamp).first else { return true }
+        return !calendar.isDate(previous, inSameDayAs: date)
+    }
+
+    public static func timeLabel(
+        _ date: Date,
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
+    public static func taskUpdateTimeLabel(
+        _ timestamp: String?,
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        guard let timestamp, let date = parseTimestamp(timestamp) else { return "時刻不明" }
+        return timeLabel(date, calendar: calendar, locale: locale)
+    }
+
+    public static func dateLabel(
+        _ date: Date,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        let dateYear = calendar.component(.year, from: date)
+        let currentYear = calendar.component(.year, from: now)
+        formatter.dateFormat = dateYear < currentYear ? "yyyy年M月d日" : "M月d日"
+        return formatter.string(from: date)
+    }
+
+    private static func timestamp(in event: [String: Any]) -> Date? {
+        let text = (event["timestamp"] ?? event["created_at"] ?? event["occurred_at"]) as? String
+        guard let text else { return nil }
+        return parseTimestamp(text)
+    }
+
+    public static func parseTimestamp(_ text: String) -> Date? {
+        for options: ISO8601DateFormatter.Options in [
+            [.withInternetDateTime, .withFractionalSeconds],
+            [.withInternetDateTime]
+        ] {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = options
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            if let date = formatter.date(from: text) { return date }
+        }
+        return nil
     }
 
     private static func stringValue(_ value: Any?) -> String? {
@@ -88,6 +253,91 @@ public enum AgentTaskHistoryPresentation {
               let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]),
               let text = String(data: data, encoding: .utf8) else { return "観測結果を記録しました" }
         return text
+    }
+}
+
+public struct AgentTaskDateGroup: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let date: Date?
+    public var tasks: [NativeAgentTask]
+
+    public init(id: String, date: Date?, tasks: [NativeAgentTask]) {
+        self.id = id
+        self.date = date
+        self.tasks = tasks
+    }
+}
+
+public struct AgentTaskHistoryItem: Identifiable, Equatable, Sendable {
+    public let id: Int
+    public let eventType: String
+    public let timestamp: Date?
+    public let icon: AgentTaskHistoryIcon
+    public let title: String
+    public let detail: String
+    public let rawStatus: String?
+
+    public init(id: Int, eventType: String, timestamp: Date?, icon: AgentTaskHistoryIcon, title: String, detail: String, rawStatus: String? = nil) {
+        self.id = id
+        self.eventType = eventType
+        self.timestamp = timestamp
+        self.icon = icon
+        self.title = title
+        self.detail = detail
+        self.rawStatus = rawStatus
+    }
+}
+
+public enum AgentTaskHistoryIcon: Equatable, Sendable {
+    case started
+    case observation
+    case awaitingApproval
+    case pending
+    case running
+    case awaitingInput
+    case completed
+    case failed
+    case unknown
+
+    public init(status: String) {
+        let normalized = status.lowercased().filter(\.isLetter)
+        switch normalized {
+        case "pending": self = .pending
+        case "running": self = .running
+        case "awaitingapproval", "approvalrequired": self = .awaitingApproval
+        case "awaitinginput", "awaitinguserinput": self = .awaitingInput
+        case "completed", "complete", "finished", "success", "succeeded": self = .completed
+        case "failed", "failure", "error": self = .failed
+        default: self = .unknown
+        }
+    }
+
+    public var systemImage: String {
+        switch self {
+        case .started: "play.circle.fill"
+        case .observation: "eye.fill"
+        case .awaitingApproval: "hand.raised.fill"
+        case .pending: "clock.fill"
+        case .running: "arrow.triangle.2.circlepath"
+        case .awaitingInput: "text.cursor"
+        case .completed: "checkmark.circle.fill"
+        case .failed: "xmark.circle.fill"
+        case .unknown: "questionmark.circle"
+        }
+    }
+
+    public var accessibilityLabel: String {
+        switch self {
+        case .started: "開始"
+        case .observation: "観測結果"
+        case .awaitingApproval: "承認待ち"
+        case .pending: "待機中"
+        case .running: "実行中"
+        case .awaitingInput: "入力待ち"
+        case .completed: "完了"
+        case .failed: "失敗"
+        case .unknown: "状態不明"
+        }
     }
 }
 
