@@ -21,6 +21,8 @@ bash .agents/skills/mikomai-regression/scripts/run_regression.sh
 
 The script runs the Rust workspace suite and the current CLI baseline. It continues after an individual failure, prints a per-check result, and exits nonzero when any check fails. Do not stop after the first failure unless the user asks for a short diagnosis.
 
+For new-feature or response verification, also run the relevant `mikomai-cli chat` inputs with `--debug-jsonl` as required by [the shared verification guide](../../skills.md). The script's text baseline does not replace this mandatory check. Preserve the baseline format; validate JSONL records and inspect internal processing and the final `core_response` separately. Run normal text or `--json` checks additionally when testing those output formats.
+
 Before running, check the working tree and record whether failures come from the current change or from pre-existing local modifications. Loopback and fake transport tests do not connect to real network devices. Live Swift UI and device behavior remain outside this automated suite and must be reported as unverified.
 
 ## Interpret results

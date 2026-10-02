@@ -12,7 +12,7 @@ bash .agents/skills/mikomai-regression/scripts/run_regression.sh
 
 ## 必須ルールと検証範囲
 
-コード修正、新機能実装、リファクタリング、設定変更の完了前には、最終変更後の `mikomai-cli chat` を必ず実行してください。CLI の基本動作確認に加え、変更した機能の受け入れ条件を検証します。
+コード修正、新機能実装、リファクタリング、設定変更の完了前、および新機能・応答確認時には、最終変更後の `mikomai-cli chat --debug-jsonl` を必ず実行してください。通常テキスト出力や `--json` だけの実行で代用してはいけません。CLI の基本動作確認に加え、内部記録を使って変更した機能の受け入れ条件を検証します。
 
 実行経路は変更され得るため、まず [package.json](../package.json) の `scripts.cli` と呼び出し先を確認してください。現在の実装は次のとおりです。
 
@@ -39,21 +39,23 @@ bash .agents/skills/mikomai-regression/scripts/run_regression.sh
 
 ## 2. CLI を実行する
 
-プロジェクトルートで基本質問を実行します。変更に対応した質問で確認を補い、基本質問で兼ねられる場合は重複実行しません。
+プロジェクトルートで基本質問を `--debug-jsonl` 付きで実行します。変更に対応した質問にも必ずこのオプションを付け、基本質問で兼ねられる場合は重複実行しません。
 
 ```bash
-npm run cli -- chat "F220のVLAN設定方法を教えて"
+npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --debug-jsonl > /tmp/mikomai-verification.jsonl 2> /tmp/mikomai-verification.stderr
 ```
 
-JSON 検証には次を使用します。`--silent` は npm のバナーを抑制するための指定です。
+通常テキスト・JSON出力自体の確認が必要な場合は、必須のJSONL検証に加えて別途実行します。`--json` / `-j` と `--debug-jsonl` は同時指定できません。`--debug` はstderrの詳細ログ用であり、JSONL検証の代用にはなりません。`--silent` は npm のバナーを抑制するための指定です。
 
 ```bash
 npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --json
 ```
 
-- 終了コード、stdout、stderr を別々に取得する。JSON 検証で stderr を stdout に結合しない。
+- 終了コード、stdout、stderr を別々に取得する。JSONL / JSON 検証で stderr を stdout に結合しない。ログ保存先とCLI自身の終了コードを記録する。
+- JSONLはstdoutの全行をJSONとして解析し、各行の `timestamp`・`kind`・`payload` を確認する。余分な行を削除して成功扱いにしない。
+- `cli_request` の入力・backendと、`llm_request` / `llm_response` または `agent_event` の処理内容を確認する。モデル未設定時のMarkdown経路でLLMの検証を合格にしない。
 - パイプを使う場合は、後段のパーサーだけでなく CLI 自身の終了コードも保持する。終了コードは実行直後に取得する。
-- stdout 全体を JSON としてパースする。余分な行を削除したり、最後の JSON だけ抽出して成功扱いにしない。
+- `--json` の追加検証ではstdout全体を単一のJSONとしてパースする。余分な行を削除したり、最後のJSONだけ抽出して成功扱いにしない。
 - 現在のCLI JSON指定は `--json` / `-j`。実行環境、モデル、資料、`MIKOMAI_GRAPH_DB_PATH` と `MIKOMAI_E5_CACHE_DIR` を再現に必要な範囲で記録する。通常の検索先はmacOS Application Support内のSurrealDBとE5 cache。
 - 実行が完了するまで待ち、出力途中や回答表示直後だけで成功としない。タイムアウト・中断は成功に含めず、停止時点を記録する。
 
@@ -64,8 +66,9 @@ npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --json
 正常系では以下をすべて確認します。
 
 - プロセスの終了コードが `0`。
+- JSONL出力の場合、最後のレコードが `core_response`、`payload.status` が数値の `0`、`payload.text` が空白のみではない文字列である。ストリームだけ、最終レコード欠落、強制終了は成功扱いにしない。
 - テキスト出力の場合、空でない最終回答がある。
-- JSON 出力の場合、stdout 全体をパースでき、`ok` が boolean の `true`、`data.response` が空白のみではない文字列である。
+- `--json` 出力の場合、stdout 全体を単一のJSONとしてパースでき、`ok` が boolean の `true`、`data.response` が空白のみではない文字列である。
 
 異常系は事前に決めた期待エラーと終了コードで判定します。`ok: true`、完了ログ、回答の存在は、内容の正確性やツール実行の証明にはなりません。
 
@@ -76,7 +79,7 @@ npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --json
 - 完成した設定を期待する場合、未展開のテンプレート変数や必要な値の欠落がないか。テンプレートを求めた場合は変数の存在だけで失敗にしない。
 - 利用者向け回答に内部の推論指示が露出していないか。資料抽出の検証と、完成した回答の品質評価を区別する。
 - MCP や実機操作を検証する場合、呼び出しと結果の証拠があるか。「確認しました」という回答だけで実行済みと判断しない。
-- 修正した処理を実際に通ったか。対象に到達していない場合は、その修正の検証として合格にしない。
+- JSONLの入力・内部処理・最終応答を照合し、修正した処理を実際に通ったか確認する。対象に到達していない、または内部記録で確認できない場合は、その修正の検証として合格にしない。
 
 資料検索の確認時は機種/vendor filter、citation、回答中の出典と値を元資料に照合します。CLI成功だけでSwift UIや実機操作まで合格としません。
 
@@ -86,6 +89,7 @@ npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --json
 
 - 変更対象と合格条件。
 - 実行コマンドまたは操作、実行経路、終了コード。
+- JSONLとstderrの保存先、確認したレコード種別、変更箇所を通った証拠。
 - 期待結果と観測結果の比較、必要なログやテスト結果への参照。
 - 判定: **合格 / 不合格 / 未検証**。未検証の場合は環境要因・経路未到達などの理由。
 - 残る問題と影響範囲。既存問題を今回の変更による回帰と断定しない。
