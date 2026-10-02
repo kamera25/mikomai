@@ -2113,10 +2113,17 @@ impl ToolExecutorPort for FfiAgentExecutor {
                     success: true,
                     output: result.output,
                 });
-            let decoded = ToolResult {
+            let mut decoded = ToolResult {
                 success: decoded.success,
                 output: mikomai_core::redaction::redact_network_secrets(&decoded.output),
             };
+            let raw_observation = decoded.output.clone();
+            if decoded.success && (tool == "fetch_arp" || (tool == "get_state" && args["resource"] == "arp")) {
+                match mikomai_core::network::arp::parse_observed_table(&decoded.output) {
+                    Ok(table) => decoded.output = table.to_string(),
+                    Err(error) => return Ok(ToolResult { success: false, output: format!("{error}\n{}", decoded.output) }),
+                }
+            }
             if decoded.success {
                 if let Some(device) = target_id.and_then(|target| {
                     self.registry.devices().iter().find(|device| {
@@ -2134,7 +2141,7 @@ impl ToolExecutorPort for FfiAgentExecutor {
                                 collected_at: chrono::Utc::now(),
                                 device_name: device.hostname.clone(),
                                 kind,
-                                raw: decoded.output.clone(),
+                                raw: raw_observation.clone(),
                                 normalized,
                                 canonical,
                                 evidence: None,
@@ -2190,7 +2197,7 @@ fn graph_observation(
     };
     match name {
         "arp" => {
-            let table = parse_arp_observation(output);
+            let table = mikomai_core::network::arp::parse_observed_table(output).ok()?;
             Some((GraphDataKind::Arp, Some(table.clone()), Some(table)))
         }
         "routing" | "routes" => {
@@ -2214,40 +2221,6 @@ fn graph_observation(
     }
 }
 
-fn parse_arp_observation(raw: &str) -> serde_json::Value {
-    let entries = raw
-        .lines()
-        .filter_map(|line| {
-            let fields = line.split_whitespace().collect::<Vec<_>>();
-            let ip = fields.iter().find_map(|field| {
-                field
-                    .trim_matches(|ch: char| matches!(ch, '(' | ')' | ','))
-                    .parse::<std::net::IpAddr>()
-                    .ok()
-                    .map(|ip| ip.to_string())
-            })?;
-            let mac = fields
-                .iter()
-                .find(|field| {
-                    let normalized = mikomai_core::network::canonicalization::normalize_mac(field);
-                    normalized.len() == 17 && normalized.contains(':')
-                })
-                .map(|field| mikomai_core::network::canonicalization::normalize_mac(field));
-            let interface = fields
-                .iter()
-                .rev()
-                .find(|field| {
-                    field.chars().any(|ch| ch.is_ascii_alphabetic())
-                        && !field.eq_ignore_ascii_case("dynamic")
-                        && !field.eq_ignore_ascii_case("static")
-                        && !field.eq_ignore_ascii_case("incomplete")
-                })
-                .map(|field| (*field).to_string());
-            Some(serde_json::json!({"ip_address":ip,"mac_address":mac,"interface":interface}))
-        })
-        .collect::<Vec<_>>();
-    serde_json::json!({"arp_table":entries})
-}
 
 fn parse_interfaces_observation(raw: &str) -> serde_json::Value {
     let mut interfaces = Vec::<serde_json::Value>::new();
@@ -3691,7 +3664,10 @@ mod tests {
             serde_json::from_str(CStr::from_ptr(target).to_str().unwrap()).unwrap(),
             serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap(),
         ));
-        let response = serde_json::json!({"success":true,"output":"192.0.2.10 aa:bb:cc:dd:ee:ff GigaEthernet 1/1"}).to_string();
+        let raw = if calls.last().unwrap().1["hostname"] == "NakaokuGW" {
+            "Protocol Address Age (min) Hardware Addr Type Interface\nInternet 192.168.50.23 2 624f.b0f6.2523 ARPA Vlan1"
+        } else { "192.0.2.10 aa:bb:cc:dd:ee:ff GigaEthernet 1/1" };
+        let response = serde_json::json!({"success":true,"output":raw}).to_string();
         if capacity <= response.len() {
             return 1;
         }
@@ -3763,6 +3739,34 @@ mod tests {
         assert_eq!(calls[0].1["hostname"], "branch-router");
         assert_eq!(calls[0].2["resource"], "arp");
         assert!(answer.contains("branch-router のARP確認結果") && answer.contains("192.0.2.10"));
+    }
+
+    #[test]
+    fn router_arp_mac_lookup_reads_cisco_table_through_callback() {
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!("mikomai-router-arp-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("MIKOMAI_DATA_DIR");
+        std::env::set_var("MIKOMAI_DATA_DIR", &root);
+        let input = CString::new("NakaokuGW のARPテーブルに62:4f:b0:f6:25:23は存在する？").unwrap();
+        let empty = CString::new("").unwrap();
+        let devices = CString::new(r#"[{"hostname":"other-router","deviceType":"cisco_ios"},{"hostname":"NakaokuGW","ip":"192.168.50.1","deviceType":"Cisco IOS"}]"#).unwrap();
+        let mut calls: Vec<(String, serde_json::Value, serde_json::Value)> = Vec::new();
+        let response = unsafe {
+            super::mikomai_agent_chat_streaming(input.as_ptr(), empty.as_ptr(), empty.as_ptr(), empty.as_ptr(), empty.as_ptr(), devices.as_ptr(), None, Some(fake_arp_read), None, (&mut calls as *mut Vec<_>).cast())
+        };
+        let answer = unsafe { CStr::from_ptr(response.message) }.to_string_lossy().into_owned();
+        let status = response.status;
+        unsafe { mikomai_result_free(response) };
+        match previous {
+            Some(value) => std::env::set_var("MIKOMAI_DATA_DIR", value),
+            None => std::env::remove_var("MIKOMAI_DATA_DIR"),
+        }
+        assert_eq!(status, 0, "{answer}");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "get_state");
+        assert_eq!(calls[0].1["hostname"], "NakaokuGW");
+        assert_eq!(calls[0].2["resource"], "arp");
+        assert!(answer.contains("見つかりました") && answer.contains("192.168.50.23"), "{answer}");
     }
 
     #[test]

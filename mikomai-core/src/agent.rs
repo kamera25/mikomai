@@ -227,16 +227,16 @@ impl AgentPlanner<'_> {
                 let target = if local {
                     Some("localhost".to_string())
                 } else {
-                    self.devices
-                        .iter()
-                        .find(|device| {
-                            task.task
-                                .goal
-                                .to_lowercase()
-                                .contains(&device.to_lowercase())
-                        })
-                        .cloned()
-                        .or_else(|| self.devices.first().cloned())
+                    let goal = task.task.goal.to_lowercase();
+                    let matching = self.inventory.iter().filter(|device| {
+                        (!device.hostname.trim().is_empty() && goal.contains(&device.hostname.to_lowercase()))
+                            || device.ip.as_deref().is_some_and(|ip| !ip.trim().is_empty() && goal.contains(&ip.to_lowercase()))
+                    }).collect::<Vec<_>>();
+                    if matching.len() > 1 {
+                        return Ok(PlanDecision::AskUser { message: "ARP照会対象が複数あります。機器名を1台指定してください。".into() });
+                    }
+                    matching.first().map(|device| device.hostname.clone())
+
                 };
                 if let Some(observation) = task.evidence.iter().rev().find(|evidence| {
                     evidence.source.tool.as_deref() == Some("get_state")

@@ -159,3 +159,12 @@ public enum NetworkCommandOutputPolicy {
     }
 }
 
+
+/// ARP commands from the former Tauri vendor templates.
+public enum ARPCommandPolicy {
+    public static func command(for deviceType: String) -> String {
+        let type = DeviceTypeCatalog.canonicalID(for: deviceType)
+        if type.contains("juniper") || type.contains("yamaha") { return "show arp" }
+        return "show ip arp"
+    }
+}

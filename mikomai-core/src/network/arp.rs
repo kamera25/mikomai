@@ -216,6 +216,60 @@ pub fn evidence(extracted: &ExtractedCandidates) -> ArpCanonicalizationEvidence 
     }
 }
 
+/// Normalize observed CLI rows before lookup or graph ingestion. Unknown lines
+/// invalidate the table: command errors must never become an empty cache.
+pub fn parse_observed_table(raw: &str) -> Result<serde_json::Value, String> {
+    let invalid = || "ARPテーブルの出力を解析できません。".to_string();
+    if raw.trim().is_empty() {
+        return Err("ARP取得結果が空です。".into());
+    }
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) {
+        let entries = value.get("arp_table").and_then(serde_json::Value::as_array).ok_or_else(invalid)?;
+        let mut normalized = Vec::new();
+        for entry in entries {
+            let ip = entry.get("ip_address").and_then(serde_json::Value::as_str)
+                .and_then(|ip| ip.parse::<std::net::IpAddr>().ok()).ok_or_else(invalid)?;
+            let mac = match entry.get("mac_address") {
+                Some(serde_json::Value::String(mac)) => Some(crate::dispatch::mac_address_in_goal(mac).ok_or_else(invalid)?),
+                Some(serde_json::Value::Null) if entry.get("type").and_then(serde_json::Value::as_str) == Some("incomplete") => None,
+                _ => return Err(invalid()),
+            };
+            let mut entry = entry.clone();
+            entry["ip_address"] = serde_json::json!(ip.to_string());
+            entry["mac_address"] = serde_json::json!(mac);
+            normalized.push(entry);
+        }
+        return Ok(serde_json::json!({"arp_table":normalized}));
+    }
+    let mut entries = Vec::new();
+    let mut header_seen = false;
+    for line in raw.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let lower = line.to_ascii_lowercase();
+        let header = (lower.starts_with("protocol") && lower.contains("address") && lower.contains("hardware"))
+            || ((lower.starts_with("ip address") || lower.starts_with("address") || lower.starts_with("mac address"))
+                && (lower.contains("mac") || lower.contains("hardware")));
+        if header { header_seen = true; continue; }
+        // The old multi-command fetcher included these delimiters.
+        if lower.starts_with("=== command: show ") && lower.contains("arp") && lower.ends_with(" ===") { continue; }
+        let fields = line.split_whitespace().collect::<Vec<_>>();
+        let ip = fields.iter().find_map(|field| field.trim_matches(['(', ')', ',']).parse::<std::net::IpAddr>().ok()).ok_or_else(invalid)?;
+        let mac = crate::dispatch::mac_address_in_goal(line);
+        let incomplete = fields.iter().any(|field| field.trim_matches(['(', ')']).eq_ignore_ascii_case("incomplete"));
+        if mac.is_none() && !incomplete { return Err(invalid()); }
+        let interface = if let Some(index) = fields.iter().position(|field| *field == "on") {
+            fields.get(index + 1).copied()
+        } else {
+            fields.last().copied().filter(|field| field.chars().any(|ch| ch.is_ascii_alphabetic())
+                && !["arpa", "dynamic", "static", "incomplete", "(incomplete)"].contains(&field.to_ascii_lowercase().as_str())
+                && crate::dispatch::mac_address_in_goal(field).is_none())
+        };
+        entries.push(serde_json::json!({"ip_address":ip.to_string(),"mac_address":mac,"interface":interface,
+            "type":if incomplete {"incomplete"} else {"dynamic"}}));
+    }
+    if entries.is_empty() && !header_seen { return Err(invalid()); }
+    Ok(serde_json::json!({"arp_table":entries}))
+}
+
 /// Answer only from an observed table. Accept canonical JSON and native
 /// macOS/BSD `arp -an` output, including omitted leading zeroes in MAC octets.
 pub fn mac_lookup_answer(host: &str, mac: &str, raw: &str) -> String {
@@ -225,26 +279,10 @@ pub fn mac_lookup_answer(host: &str, mac: &str, raw: &str) -> String {
     if raw.trim().is_empty() {
         return format!("{host} のARP取得結果が空のため、MAC {normalized} の有無を判定できません。macOS 27ではアプリのNetwork Topology Observation権限がないとARP情報が非表示になる場合があります。ターミナルの arp -a の結果と照合してください。");
     }
-    let entries = if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) {
-        value.get("arp_table").and_then(serde_json::Value::as_array).cloned()
-    } else {
-        let mut entries = Vec::new();
-        let mut valid = true;
-        for line in raw.lines().filter(|line| !line.trim().is_empty()) {
-            let fields = line.split_whitespace().collect::<Vec<_>>();
-            let ip = fields.iter().find_map(|field| field.trim_matches(['(', ')', ',']).parse::<std::net::IpAddr>().ok());
-            let address = crate::dispatch::mac_address_in_goal(line);
-            match (ip, address) {
-                (Some(ip), Some(address)) => entries.push(serde_json::json!({"ip_address":ip.to_string(),"mac_address":address})),
-                (Some(_), None) if line.contains("(incomplete)") => {},
-                _ => { valid = false; break; }
-            }
-        }
-        valid.then_some(entries)
-    };
-    let Some(entries) = entries else {
+    let Ok(table) = parse_observed_table(raw) else {
         return format!("ARPテーブルの出力を解析できず、MAC {normalized} の有無を判定できません。");
     };
+    let entries = table["arp_table"].as_array().expect("validated ARP table");
     let ips = entries.iter().filter(|entry| entry.get("mac_address").and_then(serde_json::Value::as_str).and_then(crate::dispatch::mac_address_in_goal).as_deref() == Some(normalized.as_str())).filter_map(|entry| entry.get("ip_address").and_then(serde_json::Value::as_str)).collect::<Vec<_>>();
     if ips.is_empty() {
         format!("{host} のARPテーブルに MAC {normalized} は存在しません。")
@@ -271,6 +309,21 @@ mod tests {
         let observed = "setup.netvolante.jp (192.168.50.1) at ac:44:f2:91:fa:f8 on en0 ifscope [ethernet]\n? (192.168.50.3) at (incomplete) on en0 ifscope [ethernet]\n? (192.168.50.8) at 0:2b:f5:3c:cc:7c on en0 ifscope [ethernet]\n? (192.168.50.27) at ea:f1:92:50:7b:c3 on en0 ifscope [ethernet]\nmdns.mcast.net (224.0.0.251) at 1:0:5e:0:0:fb on en0 ifscope permanent [ethernet]";
         assert!(mac_lookup_answer("localhost", mac, observed).contains("対応IP: 192.168.50.27"));
         assert!(mac_lookup_answer("router", mac, r#"{"arp_table":[{"ip_address":"192.0.2.10","mac_address":"EA-F1-92-50-7B-C3"}]}"#).contains("192.0.2.10"));
+    }
+
+    #[test]
+    fn lookup_router_headers_dotted_mac_and_reject_partial_or_error_output() {
+        let mac = "62:4f:b0:f6:25:23";
+        let cisco = "Protocol  Address          Age (min)  Hardware Addr   Type   Interface\nInternet  192.168.50.23  2  624f.b0f6.2523  ARPA  Vlan1\nInternet 192.168.50.24 0 Incomplete ARPA";
+        assert!(mac_lookup_answer("NakaokuGW", mac, cisco).contains("対応IP: 192.168.50.23"));
+        assert!(mac_lookup_answer("NakaokuGW", "00:11:22:33:44:55", cisco).contains("存在しません"));
+        assert!(mac_lookup_answer("NakaokuGW", mac, "Protocol Address Age (min) Hardware Addr Type Interface").contains("存在しません"));
+        let yamaha = "IP Address MAC Address TTL(sec) Interface\n192.168.50.23 62:4f:b0:f6:25:23 100 LAN1";
+        assert!(mac_lookup_answer("NakaokuGW", mac, yamaha).contains("192.168.50.23"));
+        for raw in ["% Invalid input detected at '^' marker.", "Protocol Address Age Hardware Addr Type Interface\npermission denied", "Internet 192.168.50.23 broken ARPA Vlan1", r#"{"arp_table":[{}]}"#, r#"{"arp_table":[{"ip_address":"192.168.50.23","mac_address":"broken"}]}"#] {
+            assert!(parse_observed_table(raw).is_err(), "{raw}");
+            assert!(!mac_lookup_answer("NakaokuGW", mac, raw).contains("存在しません"));
+        }
     }
 
     #[test]

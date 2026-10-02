@@ -3,6 +3,15 @@ import Testing
 
 @Suite
 struct NetworkUtilityPolicyTests {
+    @Test func arpUsesFormerTauriVendorCommands() {
+        for type in ["Cisco IOS", "cisco_ios", "arista_eos", "furukawa_fitelnet"] {
+            #expect(ARPCommandPolicy.command(for: type) == "show ip arp")
+        }
+        for type in ["juniper_junos", "yamaha"] {
+            #expect(ARPCommandPolicy.command(for: type) == "show arp")
+        }
+    }
+
     @Test func recognizesPublicIPv4ButNotPrivateOrSpecialRanges() {
         for address in ["8.8.8.8", "1.1.1.1", "198.51.100.1"] {
             #expect(IPAddressPolicy.isGlobalIP(address))

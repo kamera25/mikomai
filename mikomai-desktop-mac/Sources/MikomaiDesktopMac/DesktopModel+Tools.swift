@@ -203,10 +203,10 @@ extension DesktopModel {
             command = supplied
         case "fetch_config": command = connection.deviceType.lowercased().contains("yamaha") ? "show config" : "show running-config"
         case "fetch_routing": command = "show ip route"
-        case "fetch_arp": command = "show arp"
+        case "fetch_arp": command = ARPCommandPolicy.command(for: connection.deviceType)
         case "get_state":
             switch resource {
-            case "arp": command = "show arp"
+            case "arp": command = ARPCommandPolicy.command(for: connection.deviceType)
             case "routes": command = "show ip route"
             case "interfaces": command = "show interfaces"
             case "lldp": command = "show lldp neighbors"
