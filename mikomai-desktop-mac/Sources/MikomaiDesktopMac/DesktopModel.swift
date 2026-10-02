@@ -428,22 +428,15 @@ final class DesktopModel: ObservableObject {
         onDebug(CoreDebugRecord.encode(kind: "swift_request", payload: ["query":prompt, "history":history, "attachments":attachments, "devices_json":devicesJSON, "mode":mode, "documents":documents, "knowledge":knowledge]))
         let response = prompt.withCString { message in
             devicesJSON.withCString { devices in
-                if mode == "agent" || mode == "fast_router" {
+                // The Agent entry point keeps grounded worker answers and can
+                // escalate knowledge misses using the native tool callbacks.
+                do {
                     return history.withCString { historyText in
                         documents.withCString { documentsPath in
                             knowledge.withCString { knowledgePath in
                                 attachments.withCString { attachmentText in
                                     mikomai_agent_chat_streaming(message, historyText, documentsPath, knowledgePath, attachmentText, devices, streamBridge, agentToolBridge, agentPlanBridge, context)
                                 }
-                            }
-                        }
-                    }
-                }
-                return history.withCString { historyText in
-                    documents.withCString { documentsPath in
-                        knowledge.withCString { knowledgePath in
-                            attachments.withCString { attachmentText in
-                                mikomai_assistant_chat_streaming(message, historyText, documentsPath, knowledgePath, attachmentText, streamBridge, context)
                             }
                         }
                     }

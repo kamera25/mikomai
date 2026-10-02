@@ -2592,20 +2592,21 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
         let empty_attachments =
             attachments.is_null() || CStr::from_ptr(attachments).to_bytes().is_empty();
         let mut fast_failure = None;
+        let next_hop = mikomai_core::dispatch::local_next_hop_shortcut(&incoming);
         if let Some(shortcut) = empty_attachments
-            .then(|| mikomai_core::dispatch::fast_route(&incoming)).flatten()
+            .then(|| next_hop.clone().or_else(|| mikomai_core::dispatch::fast_route(&incoming))).flatten()
         {
             let registry = mikomai_adapters::portable_device::ReadOnlyToolRegistry::from_json(
                 CStr::from_ptr(devices_json).to_str().map_err(|e| e.to_string())?,
             )?;
-            debug_trace::emit("fast_route", serde_json::json!({
-                "confidence":1.0, "tool":shortcut.tool, "args":shortcut.args,
+            debug_trace::emit(if next_hop.is_some() { "agent_event" } else { "fast_route" }, serde_json::json!({
+                "event_type":"tool_call", "target":"localhost", "confidence":1.0, "tool":shortcut.tool, "args":shortcut.args,
             }));
             let outcome = execute_fast_route(&shortcut, &registry, &SwiftCallbackTransport {
                 callback: tool_callback.unwrap(), context: context as usize,
             }).unwrap_or_else(|error| ToolResult { success: false, output: error });
-            debug_trace::emit("fast_route_result", serde_json::json!({
-                "tool":shortcut.tool, "success":outcome.success, "output":outcome.output,
+            debug_trace::emit(if next_hop.is_some() { "agent_event" } else { "fast_route_result" }, serde_json::json!({
+                "event_type":"observation", "target":"localhost", "tool":shortcut.tool, "success":outcome.success, "output":outcome.output,
             }));
             if shortcut.tool.as_deref() == Some("self_network_route")
                 && (!outcome.success || outcome.output.trim().is_empty())
@@ -2616,7 +2617,7 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
             if outcome.success {
                 let answer = if shortcut.tool.as_deref() == Some("self_network_route") {
                     mikomai_core::network::route::local_route_answer(
-                        shortcut.args["scope"].as_str().unwrap_or("default"), &outcome.output,
+                        shortcut.args["destination"].as_str().or_else(|| shortcut.args["scope"].as_str()).unwrap_or("default"), &outcome.output,
                     )
                 } else {
                     outcome.output
@@ -2699,6 +2700,12 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
         } else {
             String::new()
         };
+        if reference_material.trim().is_empty()
+            && mikomai_core::dispatch::select_dispatch_mode(&goal) == DispatchMode::Worker {
+            debug_trace::emit("worker_fallback", serde_json::json!({
+                "from":"worker", "to":"agent", "reason":"no_similar_knowledge", "query":goal,
+            }));
+        }
         let device_text = CStr::from_ptr(devices_json)
             .to_str()
             .map_err(|e| e.to_string())?;
@@ -3247,10 +3254,10 @@ fn chat_with_paths(
             rag.expand_selected_documents(&paths).await.map(Some)
         }
     });
-    if let Ok(Some(retrieved)) = retrieval {
-        if !retrieved.trim().is_empty() {
-            return Ok(retrieved);
-        }
+    match retrieval {
+        Ok(Some(retrieved)) => return Ok(retrieved),
+        Ok(None) => return Ok(String::new()),
+        Err(error) => eprintln!("Semantic RAG unavailable; using lexical search: {error}"),
     }
 
     // Keep a local lexical fallback when the optional E5 model cannot be
@@ -3259,6 +3266,11 @@ fn chat_with_paths(
     let planner = KnowledgePlanner::new(&store);
     let executor = EchoToolExecutor;
     let reporter = StdoutReporter::default();
+    // An empty search is absence of evidence, never a reference document.
+    use mikomai_core::port::SearchPort;
+    if portable_runtime()?.block_on(store.search(goal, 3))?.is_empty() {
+        return Ok(String::new());
+    }
     let task = manager.start(goal).map_err(|error| error.to_string())?;
     let service = ChatService::new(&planner, &executor, &reporter);
     portable_runtime()?.block_on(manager.run_chat(&service, task))

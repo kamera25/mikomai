@@ -13,7 +13,7 @@ private func routeTool(_ tool: UnsafePointer<CChar>?, _ target: UnsafePointer<CC
     let device = try! JSONSerialization.jsonObject(with: Data(String(cString: target).utf8)) as! [String: Any]
     precondition(device["hostname"] as? String == "localhost")
     let arguments = try! JSONSerialization.jsonObject(with: Data(String(cString: args).utf8)) as! [String: Any]
-    let result = LocalRoutingUtility.read(scope: arguments["scope"] as? String ?? "default")
+    let result = LocalRoutingUtility.read(scope: arguments["scope"] as? String ?? "default", destination: arguments["destination"] as? String)
     let capture = Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue()
     capture.calls += 1
     capture.evidence = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -40,13 +40,13 @@ struct LocalRoutingChecks {
     static func main() {
         let invalid = LocalRoutingUtility.read(scope: "unsupported")
         precondition(!invalid.success && invalid.stderr.contains("defaultまたはtable"))
-        for goal in ["localhost のデフォルトルートを教えて", "localhost のデフォルトルートはどこ？", "自機のルーティングを確認して"] {
+        for goal in ["localhost のデフォルトルートを教えて", "localhost のデフォルトルートはどこ？", "自機のルーティングを確認して", "localhost の8.8.8.8 のネクストホップはどこですか？"] {
             let capture = Capture()
             let context = Unmanaged.passUnretained(capture).toOpaque()
             let response = goal.withCString { message in
                 "[]".withCString { devices in
                     let mode = mikomai_dispatch_mode(message, devices)
-                    precondition(mode.status == 0 && String(cString: mode.message!) == "fast_router")
+                    precondition(mode.status == 0 && String(cString: mode.message!) == (goal.contains("ネクストホップ") ? "agent" : "fast_router"))
                     mikomai_result_free(mode)
                     return "".withCString { empty in
                         "/nonexistent-mikomai-routing-check".withCString { path in
@@ -60,7 +60,7 @@ struct LocalRoutingChecks {
             mikomai_result_free(response)
             precondition(capture.calls == 1 && capture.done && capture.chunks == answer)
             precondition(!capture.evidence.isEmpty && answer.contains(capture.evidence))
-            let expected = goal.contains("デフォルト") ? "自機のデフォルトルート" : "自機のルーティングテーブル"
+            let expected = goal.contains("ネクストホップ") ? "自機から 8.8.8.8 への経路" : (goal.contains("デフォルト") ? "自機のデフォルトルート" : "自機のルーティングテーブル")
             precondition(answer.hasPrefix(expected))
             if goal.contains("デフォルト") {
                 precondition(answer.contains("デフォルトゲートウェイ:") && answer.contains("使用インターフェース:"))

@@ -202,6 +202,18 @@ impl AgentPlanner<'_> {
                     }
                 }
             }
+            if let Some(route) = crate::dispatch::local_next_hop_shortcut(&task.task.goal) {
+                if let Some(observation) = task.evidence.iter().rev().find(|item| {
+                    item.source.tool.as_deref() == Some("self_network_route")
+                        && item.source.target.as_deref() == Some("localhost")
+                        && item.source.request.as_deref() == Some(route.args.to_string().as_str())
+                }) {
+                    return Ok(PlanDecision::Complete { brief: crate::network::route::local_route_answer(
+                        route.args["destination"].as_str().unwrap(), &observation.content,
+                    ) });
+                }
+                return Ok(PlanDecision::Observe { tool: route.tool.unwrap(), target: route.target, args: route.args });
+            }
             if let Some(shortcut) = crate::dispatch::legacy_shortcut(&task.task.goal) {
                 if let Some(reply) = shortcut.reply {
                     if self.attachments.is_empty() && task.evidence.is_empty() {
@@ -261,7 +273,8 @@ impl AgentPlanner<'_> {
             }
             let mode =
                 crate::dispatch::select_dispatch_mode_for_devices(&task.task.goal, &self.devices);
-            if mode == DispatchMode::Worker && task.evidence.is_empty() {
+            if mode == DispatchMode::Worker && task.evidence.is_empty()
+                && !self.reference_material.trim().is_empty() {
                 let evidence = self.worker.complete(&task.task.goal).await?;
                 return Ok(PlanDecision::Complete { brief: evidence });
             }
@@ -414,6 +427,45 @@ mod tests {
         let prompts = model.prompts.into_inner().unwrap();
         (result, prompts, approval.0.into_inner().unwrap())
     }
+    #[test]
+    fn knowledge_miss_plans_with_agent_instead_of_answering_with_worker() {
+        let model = Model {
+            replies: Mutex::new(vec![Ok(r#"{"action_type":"ASK_HUMAN","objective":"情報収集","question":"対象を指定してください"}"#.into())].into()),
+            prompts: Mutex::new(Vec::new()),
+        };
+        let approval = Approval(Mutex::new(0));
+        let planner = AgentPlanner {
+            inventory: &[], devices: &[], tools: &[], history: "", attachments: "",
+            reference_material: "", inference: &model, worker: &model, approval: &approval,
+        };
+        let task = TaskSnapshot::new("未知のネットワークについて教えて");
+        assert_eq!(crate::dispatch::select_dispatch_mode(&task.task.goal), DispatchMode::Worker);
+        let result = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+        assert!(matches!(result, PlanDecision::AskUser { .. }));
+        assert_eq!(model.prompts.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn local_next_hop_is_observed_before_answering() {
+        let model = Model { replies: Mutex::new(Vec::new().into()), prompts: Mutex::new(Vec::new()) };
+        let approval = Approval(Mutex::new(0));
+        let planner = AgentPlanner {
+            inventory: &[], devices: &[], tools: &["self_network_route".into()], history: "", attachments: "",
+            reference_material: "traceroute reference", inference: &model, worker: &model, approval: &approval,
+        };
+        let mut task = TaskSnapshot::new("localhost の8.8.8.8 のネクストホップはどこですか？");
+        let decision = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+        let PlanDecision::Observe { tool, target, args } = decision else { panic!("route observation required") };
+        assert_eq!(tool, "self_network_route");
+        assert_eq!(args["destination"], "8.8.8.8");
+        let mut evidence = crate::Evidence::from_tool("gateway: 192.0.2.1\ninterface: en0", target, Some(tool));
+        evidence.source.request = Some(args.to_string());
+        task.evidence.push(evidence);
+        let result = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+        assert!(matches!(result, PlanDecision::Complete { brief } if brief.contains("ネクストホップ: `192.0.2.1`")));
+        assert!(model.prompts.lock().unwrap().is_empty());
+    }
+
     #[test]
     fn failed_fast_router_attempt_reaches_planner_without_repeating_shortcut() {
         let model = Model {

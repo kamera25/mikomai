@@ -401,11 +401,13 @@ pub fn local_route_answer(scope: &str, raw: &str) -> String {
     let raw = raw.trim();
     let mut answer = if scope == "table" {
         "自機のルーティングテーブルの取得結果です。".to_string()
-    } else {
+    } else if scope == "default" {
         "自機のデフォルトルートの取得結果です。".to_string()
+    } else {
+        format!("自機から {scope} への経路の取得結果です。")
     };
-    if scope == "default" {
-        for (key, label) in [("gateway", "デフォルトゲートウェイ"), ("interface", "使用インターフェース")] {
+    if scope != "table" {
+        for (key, label) in [("gateway", if scope == "default" { "デフォルトゲートウェイ" } else { "ネクストホップ" }), ("interface", "使用インターフェース")] {
             let values: Vec<_> = raw.lines().filter_map(|line| {
                 let (name, value) = line.trim().split_once(':')?;
                 (name == key && !value.trim().is_empty()).then_some(value.trim())

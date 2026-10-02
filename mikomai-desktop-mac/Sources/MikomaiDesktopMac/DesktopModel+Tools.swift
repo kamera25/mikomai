@@ -177,7 +177,7 @@ extension DesktopModel {
                 let result = testTCP(host: host, port: UInt16(rawPort), timeoutMs: 3000)
                 return NetworkOperationOutput(success: result.success, stdout: result.success ? result.message : "", stderr: result.success ? "" : result.message)
             case "self_network_route":
-                let result = LocalRoutingUtility.read(scope: arguments["scope"] as? String ?? "default")
+                let result = LocalRoutingUtility.read(scope: arguments["scope"] as? String ?? "default", destination: arguments["destination"] as? String)
                 return NetworkOperationOutput(success: result.success, stdout: result.stdout, stderr: result.stderr)
             case "network_get_ip_info":
                 return runAgentUtility("/sbin/ifconfig", ["-a"])

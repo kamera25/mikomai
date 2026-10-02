@@ -79,6 +79,20 @@ pub fn local_route_shortcut(message: &str) -> Option<LegacyShortcut> {
     })
 }
 
+/// Resolve an explicit local next-hop question through the kernel routing table.
+/// Accept IP literals only, so arbitrary text can never become command arguments.
+pub fn local_next_hop_shortcut(message: &str) -> Option<LegacyShortcut> {
+    let pattern = regex::Regex::new(
+        r"(?ix)^(?:localhost|127\.0\.0\.1|::1|local|ローカル|自機|このpc|このコンピュータ|この端末)\s*(?:の\s*|\s+)([0-9a-f:.]+)\s*(?:への?\s*|の\s*|\s+)(?:ネクストホップ|次ホップ|next\s*hop|経路|ルート|route)\s*(?:(?:は\s*)?(?:どこ|何|なに)(?:ですか)?|(?:を\s*)?(?:教えて|確認して|調べて|表示して))?[？?。！!]*$",
+    ).ok()?;
+    let captures = pattern.captures(message.trim())?;
+    let destination = captures.get(1)?.as_str().parse::<std::net::IpAddr>().ok()?;
+    Some(LegacyShortcut {
+        tool: Some("self_network_route".into()), target: Some("localhost".into()),
+        args: serde_json::json!({"scope":"destination", "destination":destination.to_string()}), reply: None,
+    })
+}
+
 pub fn is_explanatory_request(message: &str) -> bool {
     [
         "とは",
@@ -351,6 +365,9 @@ pub fn select_dispatch_mode(message: &str) -> DispatchMode {
     if is_configuration_change_request(&normalized) {
         return DispatchMode::Agent;
     }
+    if local_next_hop_shortcut(message).is_some() {
+        return DispatchMode::Agent;
+    }
     if fast_route(message).is_some() {
         return DispatchMode::FastRouter;
     }
@@ -564,5 +581,24 @@ mod tests {
             .unwrap()
             .reply
             .is_some());
+    }
+}
+
+#[cfg(test)]
+mod next_hop_tests {
+    use super::*;
+    #[test]
+    fn local_next_hops_use_agent_and_preserve_valid_destinations() {
+        for (goal, ip) in [
+            ("localhost の8.8.8.8 のネクストホップはどこですか？", "8.8.8.8"),
+            ("自機の2001:db8::1への経路を教えて", "2001:db8::1"),
+        ] {
+            assert_eq!(select_dispatch_mode(goal), DispatchMode::Agent);
+            assert_eq!(local_next_hop_shortcut(goal).unwrap().args["destination"], ip);
+            assert!(fast_route(goal).is_none());
+        }
+        for goal in ["R1の8.8.8.8のネクストホップはどこ？", "localhost の999.8.8.8の経路はどこ？", "localhost の8.8.8.8;touchの経路はどこ？"] {
+            assert!(local_next_hop_shortcut(goal).is_none());
+        }
     }
 }

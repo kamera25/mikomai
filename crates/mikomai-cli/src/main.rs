@@ -118,7 +118,8 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
     let docs = std::env::var_os("MIKOMAI_DOCS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("nw-docs"));
-    let local_route = mikomai_core::dispatch::local_route_shortcut(&goal);
+    let next_hop = mikomai_core::dispatch::local_next_hop_shortcut(&goal);
+    let local_route = next_hop.clone().or_else(|| mikomai_core::dispatch::local_route_shortcut(&goal));
     let local_mac = mikomai_core::dispatch::local_arp_mac_target(&goal);
     let model_path = configured_model_path();
     let knowledge = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
@@ -129,22 +130,29 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         "cli_request",
         serde_json::json!({
             "query": goal, "history": "", "attachments": "", "devices_json": "[]",
-            "mode": if local_route.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
+            "mode": if next_hop.is_some() { "agent" } else if local_route.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
             "backend": if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
         }),
     );
     let result = (|| {
         let answer = if let Some(route) = local_route {
-            trace.emit("fast_route", serde_json::json!({"tool":route.tool, "target":"localhost", "args":route.args}));
+            trace.emit(if next_hop.is_some() { "agent_event" } else { "fast_route" }, serde_json::json!({"event_type":"tool_call", "tool":route.tool, "target":"localhost", "args":route.args}));
             let table = route.args["scope"] == "table";
             #[cfg(target_os = "macos")]
-            let output = if table {
+            let output = if let Some(destination) = route.args["destination"].as_str() {
+                let mut command = std::process::Command::new("/sbin/route");
+                command.args(["-n", "get"]);
+                if destination.contains(':') { command.arg("-inet6"); }
+                command.arg(destination).output()
+            } else if table {
                 std::process::Command::new("/usr/sbin/netstat").args(["-rn"]).output()
             } else {
                 std::process::Command::new("/sbin/route").args(["-n", "get", "default"]).output()
             };
             #[cfg(target_os = "linux")]
-            let output = if table {
+            let output = if let Some(destination) = route.args["destination"].as_str() {
+                std::process::Command::new("ip").args(["route", "get", destination]).output()
+            } else if table {
                 std::process::Command::new("ip").args(["route", "show", "table", "all"]).output()
             } else {
                 std::process::Command::new("ip").args(["route", "show", "default"]).output()
@@ -156,7 +164,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
             let output = output.map_err(|error| format!("自機の経路の取得に失敗しました: {error}"))?;
             let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
             let stderr = String::from_utf8_lossy(&output.stderr);
-            trace.emit("fast_route_result", serde_json::json!({"tool":route.tool, "success":output.status.success(), "output":raw, "stderr":stderr}));
+            trace.emit(if next_hop.is_some() { "agent_event" } else { "fast_route_result" }, serde_json::json!({"event_type":"observation", "target":"localhost", "tool":route.tool, "success":output.status.success(), "output":raw, "stderr":stderr}));
             if !output.status.success() {
                 return Err(format!("自機の経路の取得に失敗しました: {stderr}"));
             }
@@ -164,7 +172,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
                 return Err("自機の経路の取得結果が空です。".into());
             }
             let answer = mikomai_core::network::route::local_route_answer(
-                route.args["scope"].as_str().unwrap_or("default"), &raw,
+                route.args["destination"].as_str().or_else(|| route.args["scope"].as_str()).unwrap_or("default"), &raw,
             );
             trace.stream(&answer, true);
             answer

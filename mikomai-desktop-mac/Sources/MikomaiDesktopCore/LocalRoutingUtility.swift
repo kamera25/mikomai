@@ -8,13 +8,20 @@ public struct LocalRoutingOutput: Sendable {
 
 /// Read this Mac's routes. Answers are formatted in Japanese by mikomai-core.
 public enum LocalRoutingUtility {
-    public static func read(scope: String = "default") -> LocalRoutingOutput {
+    public static func read(scope: String = "default", destination: String? = nil) -> LocalRoutingOutput {
         let executable: String
         let arguments: [String]
         switch scope {
         case "default":
             executable = "/sbin/route"
             arguments = ["-n", "get", "default"]
+        case "destination":
+            guard let destination, !destination.isEmpty,
+                  destination.unicodeScalars.allSatisfy({ "0123456789abcdefABCDEF:.".unicodeScalars.contains($0) }) else {
+                return LocalRoutingOutput(success: false, stdout: "", stderr: "宛先IPアドレスが必要です。")
+            }
+            executable = "/sbin/route"
+            arguments = destination.contains(":") ? ["-n", "get", "-inet6", destination] : ["-n", "get", destination]
         case "table":
             executable = "/usr/sbin/netstat"
             arguments = ["-rn"]
