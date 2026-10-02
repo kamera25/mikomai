@@ -80,7 +80,8 @@ extension DesktopModel {
         let agentConnections = connections
         let agentCredentialPersistence = credentialPersistence
         guard let requestID = chatResponse.begin(sessionID: id) else { return }
-        let isAgentRequest = Self.dispatchMode(submissionText, connections: agentConnections) == "agent"
+        let dispatchMode = Self.dispatchMode(submissionText, connections: agentConnections)
+        let isAgentRequest = dispatchMode == "agent"
         if isAgentRequest, let messageIndex = sessions[index].messages.firstIndex(where: { $0.id == assistantID }) {
             sessions[index].messages[messageIndex].agentGoal = userText
             sessions[index].messages[messageIndex].agentProgress = [AgentProgressEntry(phase: "準備", nextAction: "実行環境を確認して計画を作成", detail: "Agentを起動しています")]

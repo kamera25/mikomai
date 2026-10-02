@@ -3,7 +3,55 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DispatchMode {
     Worker,
+    FastRouter,
     Agent,
+}
+
+/// A full command match is high confidence; partial matches and compound goals
+/// stay with the agent. Never infer an execution target from surrounding prose.
+pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
+    let command = message.trim();
+    // Scoped IPv6 hosts are not supported by the legacy extractor.
+    if command.contains('%') {
+        return None;
+    }
+    let pattern = regex::Regex::new(
+        r"(?ix)^(?:(?:traceroute|trace\s+route|トレースルート)\s+[a-z0-9][a-z0-9.:%-]*|(?:ping|ピング|ピン)\s+[a-z0-9][a-z0-9.:%-]*(?:\s+(?:count|回数|回|size|サイズ)\s*\d+)*(?:\s+df)?|(?:tnc\s+|test-netconnection\s+-computername\s+)[a-z0-9][a-z0-9.:%-]*\s+-port\s+\d+)$",
+    ).ok()?;
+    if !pattern.is_match(command) {
+        return None;
+    }
+    let mut shortcut = legacy_shortcut(command)?;
+    let host = shortcut.args["host"].as_str()?;
+    // Legacy extraction must consume the complete host token (including IPv6).
+    if host.len() > 255 || host.contains('%') {
+        return None;
+    }
+    if shortcut.tool.as_deref() == Some("self_network_test_connection")
+        && !shortcut.args["port"].as_u64().is_some_and(|port| (1..=65535).contains(&port))
+    {
+        return None;
+    }
+    if shortcut.tool.as_deref() == Some("self_network_ping") {
+        let mut seen = std::collections::HashSet::new();
+        let tokens = command.split_whitespace().skip(2).collect::<Vec<_>>();
+        let mut index = 0;
+        while index < tokens.len() {
+            let option = tokens[index].to_ascii_lowercase();
+            if option == "df" {
+                index += 1;
+                continue;
+            }
+            let key = if option.starts_with("size") || option.starts_with("サイズ") { "size" } else { "count" };
+            if !seen.insert(key) || shortcut.args[key].as_u64().is_none() {
+                return None;
+            }
+            // The legacy parser supports values joined to Japanese option names.
+            index += if option.chars().any(|ch| ch.is_ascii_digit()) { 1 } else { 2 };
+        }
+        shortcut.args["dont_fragment"] = serde_json::json!(command.split_whitespace().last().is_some_and(|token| token.eq_ignore_ascii_case("df")));
+    }
+    Some(shortcut)
 }
 pub fn is_explanatory_request(message: &str) -> bool {
     [
@@ -281,6 +329,9 @@ pub fn select_dispatch_mode(message: &str) -> DispatchMode {
     if is_configuration_change_request(&normalized) {
         return DispatchMode::Agent;
     }
+    if fast_route(message).is_some() {
+        return DispatchMode::FastRouter;
+    }
     if legacy_shortcut(message).is_some() {
         return DispatchMode::Agent;
     }
@@ -357,7 +408,7 @@ pub fn select_dispatch_mode_for_devices(
     registered_devices: &[String],
 ) -> DispatchMode {
     let mode = select_dispatch_mode(message);
-    if mode == DispatchMode::Agent || is_explanatory_request(&message.to_lowercase()) {
+    if mode != DispatchMode::Worker || is_explanatory_request(&message.to_lowercase()) {
         return mode;
     }
     if registered_devices.iter().any(|device| {
@@ -371,6 +422,18 @@ pub fn select_dispatch_mode_for_devices(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn fast_router_requires_a_complete_unambiguous_command() {
+        for command in ["traceroute 8.8.8.8", "trace route example.com", "ping 127.0.0.1 count 3 size 64 df", "tnc example.com -port 443"] {
+            assert!(fast_route(command).is_some(), "{command}");
+            assert_eq!(select_dispatch_mode_for_devices(command, &["8.8.8.8".into()]), DispatchMode::FastRouter);
+        }
+        for command in ["traceroute 8.8.8.8 の結果を分析して", "R1から traceroute 8.8.8.8", "tracerouteとは", "traceroute 8.8.8.8; ping 1.1.1.1", "ping fe80::1%en0", "ping 8.8.8.8 と 1.1.1.1", "ping 8.8.8.8 count 999999999999", "ping 8.8.8.8 count 3 count 4", "tnc example.com -port 0", "tnc example.com -port 65536", "__MIKOMAI_RESUME__id\ntraceroute 8.8.8.8"] {
+            assert!(fast_route(command).is_none(), "{command}");
+            assert_ne!(select_dispatch_mode(command), DispatchMode::FastRouter);
+        }
+        assert_eq!(fast_route("ping df.example.com").unwrap().args["dont_fragment"], false);
+    }
     #[test]
     fn routes_live_requests_to_agent() {
         assert_eq!(

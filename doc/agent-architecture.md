@@ -31,6 +31,10 @@ Event-sourced NetworkState <- Tool executor port -> MCP / device
 - `state_machine`: 不正なフェーズ遷移と上限超過を拒否する。
 - `NetworkState`: 直接観測と Action の実行結果を区別してイベント化し、ログから再生できる。
 
+単純な `traceroute HOST`、`ping HOST`（count/size/df指定可）、`tnc HOST -port PORT` は、Coreの `dispatch::fast_route` がコマンド全体への一致で評価します。一致した入力を高confidence（1.0）の `fast_router` とし、FFIから既存の検証済みツールcallbackを直接呼びます。添付がない場合、成功時は資料検索・Agentタスク作成・Planner推論を行わず、既存の秘匿情報除去後の実行結果をそのまま通知します。ツール失敗時だけ失敗内容と実行引数をevidenceに保持してAgentへ引き継ぎ、ショートカットの自動重複実行を防ぎます。機器からの実行指定、追加分析・複数操作を含む依頼、添付ありの入力はAgentで処理します。
+
+Standalone CLIの通常chatはWorker経路を使用するため、このFastRouter経路の検証にはFFI callbackのテストが必要です。
+
 今回のリファクタリングでは、`intent`、`execution`、状態遷移、ActionResult の因果記録に
 加え、`PlannerPort`、`ToolExecutorPort`、`ReporterPort` と既存実装のアダプタを実装している。
 

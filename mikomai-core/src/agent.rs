@@ -415,6 +415,29 @@ mod tests {
         (result, prompts, approval.0.into_inner().unwrap())
     }
     #[test]
+    fn failed_fast_router_attempt_reaches_planner_without_repeating_shortcut() {
+        let model = Model {
+            replies: Mutex::new(vec![Ok(r#"{"action_type":"ASK_HUMAN","objective":"対象確認","question":"宛先を確認してください"}"#.into())].into()),
+            prompts: Mutex::new(Vec::new()),
+        };
+        let approval = Approval(Mutex::new(0));
+        let planner = AgentPlanner {
+            inventory: &[], devices: &[], tools: &[], history: "", attachments: "",
+            reference_material: "", inference: &model, worker: &model, approval: &approval,
+        };
+        let mut task = TaskSnapshot::new("traceroute 8.8.8.8");
+        task.evidence.push(crate::Evidence::from_tool(
+            "FastRouter execution failed: traceroute timed out", None,
+            Some("self_network_traceroute".into()),
+        ));
+        let result = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+        assert!(matches!(result, PlanDecision::AskUser { .. }));
+        let prompts = model.prompts.lock().unwrap();
+        assert_eq!(prompts.len(), 1);
+        assert!(prompts[0].contains("traceroute timed out"));
+    }
+
+    #[test]
     fn finish_generates_grounded_answer_in_core_without_dispatching_operation() {
         let (result, prompts, approvals) = run(vec![
             Ok(r#"{"action_type":"FINISH","objective":"完了","final_answer":"CPUは20%"}"#.into()),

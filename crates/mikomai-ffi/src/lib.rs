@@ -1445,6 +1445,7 @@ pub unsafe extern "C" fn mikomai_dispatch_mode(
         let mode = mikomai_core::dispatch::select_dispatch_mode_for_devices(message, &names);
         Ok(match mode {
             DispatchMode::Agent => "agent",
+            DispatchMode::FastRouter => "fast_router",
             DispatchMode::Worker => "worker",
         }
         .to_string())
@@ -1573,6 +1574,28 @@ impl mikomai_core::port::OperationProposalPort for SwiftPlanTransport {
 struct SwiftCallbackTransport {
     callback: MikomaiToolCallback,
     context: usize,
+}
+
+fn execute_fast_route(
+    shortcut: &mikomai_core::dispatch::LegacyShortcut,
+    registry: &mikomai_adapters::portable_device::ReadOnlyToolRegistry,
+    transport: &SwiftCallbackTransport,
+) -> Result<ToolResult, String> {
+    let credentials = mikomai_adapters::portable_device::DeviceCredentials {
+        username: String::new(), password: None, enable_password: None,
+        private_key: None, passphrase: None,
+    };
+    let result = registry.execute(
+        transport, shortcut.tool.as_deref().ok_or("fast route requires a tool")?,
+        "localhost", &shortcut.args, &credentials,
+    )?;
+    let decoded = serde_json::from_str::<ToolResult>(&result.output).unwrap_or(ToolResult {
+        success: true, output: result.output,
+    });
+    Ok(ToolResult {
+        success: decoded.success,
+        output: mikomai_core::redaction::redact_network_secrets(&decoded.output),
+    })
 }
 
 impl mikomai_adapters::portable_device::CredentialedReadOnlyTransport for SwiftCallbackTransport {
@@ -2568,6 +2591,38 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
         // Deterministic replies need neither RAG nor an agent task/status event.
         let empty_attachments =
             attachments.is_null() || CStr::from_ptr(attachments).to_bytes().is_empty();
+        let mut fast_failure = None;
+        if let Some(shortcut) = empty_attachments
+            .then(|| mikomai_core::dispatch::fast_route(&incoming)).flatten()
+        {
+            let registry = mikomai_adapters::portable_device::ReadOnlyToolRegistry::from_json(
+                CStr::from_ptr(devices_json).to_str().map_err(|e| e.to_string())?,
+            )?;
+            debug_trace::emit("fast_route", serde_json::json!({
+                "confidence":1.0, "tool":shortcut.tool, "args":shortcut.args,
+            }));
+            let outcome = execute_fast_route(&shortcut, &registry, &SwiftCallbackTransport {
+                callback: tool_callback.unwrap(), context: context as usize,
+            }).unwrap_or_else(|error| ToolResult { success: false, output: error });
+            debug_trace::emit("fast_route_result", serde_json::json!({
+                "tool":shortcut.tool, "success":outcome.success, "output":outcome.output,
+            }));
+            if outcome.success {
+                if let Some(cb) = callback {
+                    let text = CString::new(outcome.output.replace('\0', "")).map_err(|e| e.to_string())?;
+                    cb(text.as_ptr(), 0, context);
+                    let done = CString::new("").unwrap();
+                    cb(done.as_ptr(), 1, context);
+                }
+                return Ok(outcome.output);
+            }
+            let mut evidence = mikomai_core::Evidence::from_tool(
+                format!("FastRouter execution failed: {}", outcome.output),
+                shortcut.target, shortcut.tool,
+            );
+            evidence.source.request = Some(shortcut.args.to_string());
+            fast_failure = Some(evidence);
+        }
         if let Some(reply) = empty_attachments
             .then(|| mikomai_core::dispatch::legacy_shortcut(&incoming))
             .flatten()
@@ -2704,6 +2759,11 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
         } else {
             manager.start(goal).map_err(|error| error.to_string())?
         };
+        if let Some(evidence) = fast_failure {
+            // Retain the failed attempt so the planner can recover without
+            // blindly repeating the deterministic command.
+            task.evidence.push(evidence);
+        }
         mikomai_core::vision::retain_attachment_context(&mut task, &attachments);
         let task_id = task.task.id;
         task_snapshots
@@ -3359,6 +3419,7 @@ mod tests {
             ("F220のVLAN設定方法を教えて", "worker"),
             ("R1の状態を確認して", "agent"),
             ("router-aの現在状態", "agent"),
+            ("traceroute 8.8.8.8", "fast_router"),
         ] {
             let message = CString::new(message_text).unwrap();
             let devices =
@@ -3718,6 +3779,45 @@ mod tests {
         assert_eq!(start["phase"], "開始");
         assert_eq!(executing["detail"], "get_state · sw1");
         assert_eq!(chunks[2].0, "診断完了");
+    }
+
+    #[test]
+    fn fast_router_streams_exact_tool_output_without_agent_or_rag() {
+        unsafe extern "C" fn trace_tool(
+            tool: *const c_char, target: *const c_char, args: *const c_char,
+            output: *mut c_char, capacity: usize, _context: *mut std::ffi::c_void,
+        ) -> i32 {
+            assert_eq!(CStr::from_ptr(tool).to_str().unwrap(), "self_network_traceroute");
+            let target: serde_json::Value = serde_json::from_str(CStr::from_ptr(target).to_str().unwrap()).unwrap();
+            let args: serde_json::Value = serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap();
+            assert_eq!(target["hostname"], "localhost");
+            assert_eq!(args["host"], "8.8.8.8");
+            let payload = b"{\"success\":true,\"output\":\"1 192.0.2.1 2 ms\\n2 8.8.8.8 12 ms\\n\"}\0";
+            assert!(payload.len() <= capacity);
+            std::ptr::copy_nonoverlapping(payload.as_ptr().cast(), output, payload.len());
+            0
+        }
+        let input = CString::new("traceroute 8.8.8.8").unwrap();
+        // Invalid directories ensure success cannot depend on reference search.
+        let path = CString::new("/nonexistent-mikomai-fast-route").unwrap();
+        let empty = CString::new("").unwrap();
+        let devices = CString::new("[]").unwrap();
+        let mut events: Vec<(String, i32)> = Vec::new();
+        let response = unsafe { super::mikomai_agent_chat_streaming(
+            input.as_ptr(), empty.as_ptr(), path.as_ptr(), path.as_ptr(), empty.as_ptr(),
+            devices.as_ptr(), Some(capture_chat_chunk), Some(trace_tool), None,
+            &mut events as *mut _ as *mut _,
+        ) };
+        assert_eq!(response.status, 0);
+        let expected = "1 192.0.2.1 2 ms\n2 8.8.8.8 12 ms";
+        assert_eq!(unsafe { CStr::from_ptr(response.message).to_str().unwrap() }, expected);
+        unsafe { mikomai_result_free(response) };
+        let visible: Vec<_> = events.iter().filter(|(text, _)| !text.starts_with("__MIKOMAI_DEBUG__")).cloned().collect();
+        assert_eq!(visible, vec![(expected.into(), 0), (String::new(), 1)]);
+        let debug: Vec<serde_json::Value> = events.iter().filter_map(|(text, _)| text.strip_prefix("__MIKOMAI_DEBUG__")).map(|json| serde_json::from_str(json).unwrap()).collect();
+        assert!(debug.iter().any(|event| event["kind"] == "fast_route"));
+        assert!(debug.iter().any(|event| event["kind"] == "fast_route_result" && event["payload"]["success"] == true));
+        assert!(!debug.iter().any(|event| matches!(event["kind"].as_str(), Some("agent_event" | "agent_query" | "llm_request"))));
     }
 
     #[test]

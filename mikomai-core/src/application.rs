@@ -106,7 +106,11 @@ impl<'a, P: PlannerPort, E: ToolExecutorPort, R: ReporterPort> ChatService<'a, P
         self
     }
     pub async fn answer(&self, mut task: TaskSnapshot) -> Result<String, String> {
-        let mode = select_dispatch_mode(&task.task.goal);
+        let mode = match select_dispatch_mode(&task.task.goal) {
+            // Successful fast routes finish before entering this service.
+            DispatchMode::FastRouter => DispatchMode::Agent,
+            mode => mode,
+        };
         self.reporter.report(ReportEvent::Status {
             task_id: task.task.id,
             status: format!("dispatch:{}", dispatch_name(mode)),
@@ -196,6 +200,7 @@ fn read_only_tool_error(tool: &str, output: &str) -> String {
 fn dispatch_name(mode: DispatchMode) -> &'static str {
     match mode {
         DispatchMode::Worker => "worker",
+        DispatchMode::FastRouter => "fast_router",
         DispatchMode::Agent => "agent",
     }
 }

@@ -424,7 +424,7 @@ final class DesktopModel: ObservableObject {
         onDebug(CoreDebugRecord.encode(kind: "swift_request", payload: ["query":prompt, "history":history, "attachments":attachments, "devices_json":devicesJSON, "mode":mode, "documents":documents, "knowledge":knowledge]))
         let response = prompt.withCString { message in
             devicesJSON.withCString { devices in
-                if mode == "agent" {
+                if mode == "agent" || mode == "fast_router" {
                     return history.withCString { historyText in
                         documents.withCString { documentsPath in
                             knowledge.withCString { knowledgePath in
