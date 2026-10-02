@@ -28,7 +28,12 @@ unsafe extern "C" fn llama_log(level: ggml_log_level, text: *const c_char, _: *m
 }
 
 fn write_log(writer: &mut impl Write, debug: bool, level: ggml_log_level, text: &[u8]) {
-    if debug || matches!(level, GGML_LOG_LEVEL_WARN | GGML_LOG_LEVEL_ERROR) {
+    let model_setup_notice = level == GGML_LOG_LEVEL_WARN
+        && (text.starts_with(b"load: control-looking token:")
+            || text.starts_with(b"load: special_eog_ids contains '<|tool_response>', removing '</s>' token from EOG list")
+            || text.starts_with(b"llama_kv_cache_iswa: using full-size SWA cache (ref:"));
+    if debug || (matches!(level, GGML_LOG_LEVEL_WARN | GGML_LOG_LEVEL_ERROR) && !model_setup_notice)
+    {
         // A closed stderr must not panic across the native callback boundary.
         let _ = writer.write_all(text);
     }
@@ -76,6 +81,26 @@ mod tests {
             let mut output = Vec::new();
             write_log(&mut output, false, level, b"model diagnostic\n");
             assert_eq!(output, b"model diagnostic\n");
+        }
+    }
+
+    #[test]
+    fn model_setup_notices_require_debug_but_errors_remain_visible() {
+        for text in [
+            "load: control-looking token:     50 '<|tool_response>' was not control-type; this is probably a bug in the model. its type will be overridden\n",
+            "load: control-looking token:    212 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden\n",
+            "load: control-looking token:      1 '<eos>' was not control-type; this is probably a bug in the model. its type will be overridden\n",
+            "load: special_eog_ids contains '<|tool_response>', removing '</s>' token from EOG list\n",
+            "llama_kv_cache_iswa: using full-size SWA cache (ref: https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)\n",
+        ] {
+            let mut output = Vec::new();
+            write_log(&mut output, false, GGML_LOG_LEVEL_WARN, text.as_bytes());
+            assert!(output.is_empty());
+            write_log(&mut output, true, GGML_LOG_LEVEL_WARN, text.as_bytes());
+            assert_eq!(output, text.as_bytes());
+            output.clear();
+            write_log(&mut output, false, GGML_LOG_LEVEL_ERROR, text.as_bytes());
+            assert_eq!(output, text.as_bytes());
         }
     }
 }
