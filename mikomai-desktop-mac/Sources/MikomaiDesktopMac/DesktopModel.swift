@@ -68,6 +68,10 @@ final class DesktopModel: ObservableObject {
     @Published var modelPath: String = "" { didSet { defaults.set(modelPath, forKey: "mikomai.desktop.mac.modelPath") } }
     @Published var modelStatus = "モデル未ロード"
     @Published var isLoadingModel = false
+    var isAppleModelSelected: Bool { settings.llmBackend == .apple }
+    var supportsAppleModelOS: Bool {
+        AppleModelPolicy.supportsOS(majorVersion: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
+    }
     var isCancelling: Bool { chatResponse.isCancelling }
 
     // Native settings
@@ -448,4 +452,3 @@ final class DesktopModel: ObservableObject {
         MikomaiFFIBridge.executeApprovedAgentOperation(planID: planID, planHash: planHash, password: password)
     }
 }
-

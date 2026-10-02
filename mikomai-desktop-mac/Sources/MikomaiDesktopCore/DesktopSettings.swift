@@ -1,10 +1,16 @@
 import Foundation
 
+public enum LLMBackend: String, Codable, Sendable {
+    case llamacpp
+    case apple
+}
+
 public struct DesktopSettings: Codable, Equatable {
     public var historyLimit: Int
     public var temperature: Double
     public var repetitionPenalty: Double
     public var modelPath: String?
+    public var llmBackend: LLMBackend
     public var recentIps: [String]
     public var mcpTimeout: Int?
     public var ipVersion: String?
@@ -32,12 +38,13 @@ public struct DesktopSettings: Codable, Equatable {
         preloadPlotter: Bool = false, preloadBuilder: Bool = false, preloadSummarization: Bool = false,
         cacheExpiryMinutes: Int? = 10, nCtx: Int = 8192, maxGen: Int = 2048,
         promptKeepTokens: Int = 500, visionEnabled: Bool = false, autoDryRun: Bool = false,
-        mmprojPath: String? = nil
+        mmprojPath: String? = nil, llmBackend: LLMBackend = .llamacpp
     ) {
         self.historyLimit = historyLimit
         self.temperature = temperature
         self.repetitionPenalty = repetitionPenalty
         self.modelPath = modelPath
+        self.llmBackend = llmBackend
         self.recentIps = recentIps
         self.mcpTimeout = mcpTimeout
         self.ipVersion = ipVersion
@@ -62,7 +69,7 @@ public struct DesktopSettings: Codable, Equatable {
         case historyLimit, temperature, repetitionPenalty, modelPath, recentIps, mcpTimeout, ipVersion
         case consolePort, consoleBaudRate, preloadKnowledge, preloadAnalysis, preloadRag, preloadPlotter
         case preloadBuilder, preloadSummarization, cacheExpiryMinutes, nCtx, maxGen, promptKeepTokens
-        case visionEnabled, autoDryRun, mmprojPath
+        case visionEnabled, autoDryRun, mmprojPath, llmBackend
     }
 
     public init(from decoder: Decoder) throws {
@@ -89,7 +96,8 @@ public struct DesktopSettings: Codable, Equatable {
             promptKeepTokens: try values.decodeIfPresent(Int.self, forKey: .promptKeepTokens) ?? 500,
             visionEnabled: try values.decodeIfPresent(Bool.self, forKey: .visionEnabled) ?? false,
             autoDryRun: try values.decodeIfPresent(Bool.self, forKey: .autoDryRun) ?? false,
-            mmprojPath: try values.decodeIfPresent(String.self, forKey: .mmprojPath)
+            mmprojPath: try values.decodeIfPresent(String.self, forKey: .mmprojPath),
+            llmBackend: try values.decodeIfPresent(LLMBackend.self, forKey: .llmBackend) ?? .llamacpp
         )
     }
 
@@ -98,6 +106,7 @@ public struct DesktopSettings: Codable, Equatable {
         apply(patch.temperature, to: \.temperature)
         apply(patch.repetitionPenalty, to: \.repetitionPenalty)
         apply(patch.modelPath, to: \.modelPath)
+        apply(patch.llmBackend, to: \.llmBackend)
         apply(patch.recentIps, to: \.recentIps)
         apply(patch.mcpTimeout, to: \.mcpTimeout)
         apply(patch.ipVersion, to: \.ipVersion)
@@ -133,6 +142,7 @@ public struct DesktopSettingsPatch {
     public var temperature: SettingUpdate<Double> = .unchanged
     public var repetitionPenalty: SettingUpdate<Double> = .unchanged
     public var modelPath: SettingUpdate<String?> = .unchanged
+    public var llmBackend: SettingUpdate<LLMBackend> = .unchanged
     public var recentIps: SettingUpdate<[String]> = .unchanged
     public var mcpTimeout: SettingUpdate<Int?> = .unchanged
     public var ipVersion: SettingUpdate<String?> = .unchanged

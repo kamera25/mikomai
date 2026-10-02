@@ -19,7 +19,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(test)]
 mod approval_boundary;
 
-use mikomai_adapters::local_llama::{infer, CANCEL_INFERENCE};
+mod llm_runtime;
+use llm_runtime::infer;
+use mikomai_adapters::local_llama::CANCEL_INFERENCE;
 
 static OPERATION_PLANS: OnceLock<Mutex<HashMap<String, OperationPlan>>> = OnceLock::new();
 static GENERIC_EXECUTION_CLAIMS: OnceLock<Mutex<std::collections::HashSet<String>>> =
@@ -1172,7 +1174,9 @@ pub unsafe extern "C" fn mikomai_model_load(path: *const c_char) -> MikomaiResul
     let caught = std::panic::catch_unwind(|| {
         let raw_str = CStr::from_ptr(path).to_str().map_err(|e| e.to_string())?;
         let path = expand_tilde(Path::new(raw_str));
-        mikomai_adapters::local_llama::load(&path)
+        let loaded = mikomai_adapters::local_llama::load(&path)?;
+        llm_runtime::select("llamacpp")?;
+        Ok::<_, String>(loaded)
     });
     match caught {
         Ok(Ok(value)) => result(0, value),
@@ -1183,15 +1187,32 @@ pub unsafe extern "C" fn mikomai_model_load(path: *const c_char) -> MikomaiResul
 
 #[no_mangle]
 pub unsafe extern "C" fn mikomai_model_status() -> MikomaiResult {
-    match mikomai_adapters::local_llama::status() {
+    match llm_runtime::status() {
         Ok(path) => result(0, path),
         Err(error) => error_result(error),
     }
 }
 
+/// Selects the application backend without encoding it as a GGUF path.
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_model_select_backend(name: *const c_char) -> MikomaiResult {
+    if name.is_null() {
+        return error_result("backend must not be null".into());
+    }
+    let caught = std::panic::catch_unwind(|| {
+        let name = CStr::from_ptr(name).to_str().map_err(|e| e.to_string())?;
+        llm_runtime::select(name)
+    });
+    match caught {
+        Ok(Ok(value)) => result(0, value),
+        Ok(Err(error)) => error_result(error),
+        Err(_) => error_result("backend selection failed unexpectedly".into()),
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn mikomai_model_cancel() -> MikomaiResult {
-    CANCEL_INFERENCE.store(true, Ordering::Relaxed);
+    llm_runtime::cancel();
     result(0, "生成を停止しています".into())
 }
 
@@ -1226,7 +1247,7 @@ pub unsafe extern "C" fn mikomai_model_chat(prompt: *const c_char) -> MikomaiRes
     }
     let caught = std::panic::catch_unwind(|| {
         let prompt = CStr::from_ptr(prompt).to_str().map_err(|e| e.to_string())?;
-        CANCEL_INFERENCE.store(false, Ordering::Relaxed);
+        llm_runtime::reset_cancellation();
         infer(prompt)
     });
     match caught {
@@ -2440,7 +2461,7 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
             .to_str()
             .map_err(|e| e.to_string())?
             .to_owned();
-        CANCEL_INFERENCE.store(false, Ordering::Relaxed);
+        llm_runtime::reset_cancellation();
         // Deterministic replies need neither RAG nor an agent task/status event.
         let empty_attachments =
             attachments.is_null() || CStr::from_ptr(attachments).to_bytes().is_empty();
@@ -2698,7 +2719,7 @@ pub unsafe extern "C" fn mikomai_assistant_chat_streaming(
         return error_result("message, history and directories must not be null".into());
     }
     let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        CANCEL_INFERENCE.store(false, Ordering::Relaxed);
+        llm_runtime::reset_cancellation();
         let question = CStr::from_ptr(message)
             .to_str()
             .map_err(|e| e.to_string())?;
@@ -2737,16 +2758,13 @@ pub unsafe extern "C" fn mikomai_assistant_chat_streaming(
             references: &evidence,
             attachments: &attachments,
         };
-        response.answer_streaming(
-            &mikomai_adapters::local_llama::LocalInference,
-            &mut |chunk, is_done| {
-                if let Some(cb) = callback {
-                    if let Ok(c_chunk) = CString::new(chunk.replace('\0', "")) {
-                        cb(c_chunk.as_ptr(), if is_done { 1 } else { 0 }, context);
-                    }
+        llm_runtime::answer_streaming(&response, &mut |chunk, is_done| {
+            if let Some(cb) = callback {
+                if let Ok(c_chunk) = CString::new(chunk.replace('\0', "")) {
+                    cb(c_chunk.as_ptr(), if is_done { 1 } else { 0 }, context);
                 }
-            },
-        )
+            }
+        })
     }));
     match caught {
         Ok(Ok(answer)) => result(0, answer),
@@ -4086,6 +4104,9 @@ mod tests {
 
 fn prepare_attachments(question: &str, payload: &str) -> Result<String, String> {
     let (text, images) = mikomai_adapters::attachments::decode(payload)?;
+    if llm_runtime::apple_selected() && !images.is_empty() {
+        return Err("AFM 3 Core は現在、画像添付に対応していません。Gemma の Vision モデルを選択してください。".into());
+    }
     futures_lite::future::block_on(mikomai_core::vision::analyze_attachments(
         question,
         &text,

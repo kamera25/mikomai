@@ -6,9 +6,27 @@
 use mikomai_llm::{
     InferenceCapabilities, InferencePort, ModelAvailability, PortFuture, TokenLimits,
 };
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, OnceLock,
+};
+
+fn cancellation() -> Arc<AtomicBool> {
+    static CANCELLED: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+    CANCELLED
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
+}
+
+pub fn cancel() {
+    cancellation().store(true, Ordering::Relaxed);
+}
+pub fn reset_cancellation() {
+    cancellation().store(false, Ordering::Relaxed);
+}
 
 /// Conservative on-device budget; kept here rather than in callers or core.
 pub const CONTEXT_WINDOW: u32 = 4096;
@@ -35,6 +53,42 @@ impl Default for AppleInference<FmCli> {
 impl<T: AppleTransport> AppleInference<T> {
     pub fn new(transport: T) -> Self {
         Self { transport }
+    }
+
+    /// Keep the request/attachments intact, fitting optional references/history
+    /// into this backend's budget. Earlier context entries have higher priority.
+    /// Unlike complete(), this explicitly permits shortening optional context.
+    pub fn complete_with_context(
+        &self,
+        required: &str,
+        context: &[&str],
+    ) -> Result<String, String> {
+        let mut parts: Vec<String> = context.iter().map(|part| (*part).to_owned()).collect();
+        let mut shortened = false;
+        loop {
+            let notice = if shortened {
+                "\n[一部の参考情報はコンテキスト制限により省略されています]\n"
+            } else {
+                "\n"
+            };
+            let prompt = format!("{}{notice}{required}", parts.join("\n\n"));
+            if self.transport.count_tokens(&prompt)? <= CONTEXT_WINDOW - RESPONSE_RESERVE {
+                return self.generate(&prompt);
+            }
+            let Some(last) = parts.last_mut() else {
+                return Err(
+                    "AFM 3 Core の入力上限を超えています。質問や添付資料を短くしてください。"
+                        .into(),
+                );
+            };
+            let remaining = last.chars().count() / 2;
+            if remaining == 0 {
+                parts.pop();
+            } else {
+                *last = last.chars().take(remaining).collect();
+            }
+            shortened = true;
+        }
     }
 
     fn generate(&self, prompt: &str) -> Result<String, String> {
@@ -83,6 +137,7 @@ impl<T: AppleTransport> InferencePort for AppleInference<T> {
 /// be installed and provisioned; this backend never installs or accepts terms.
 pub struct FmCli {
     executable: PathBuf,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl Default for FmCli {
@@ -95,10 +150,15 @@ impl FmCli {
     pub fn new(executable: impl Into<PathBuf>) -> Self {
         Self {
             executable: executable.into(),
+            cancelled: cancellation(),
         }
     }
 
     fn run(&self, args: &[&str], prompt: Option<&str>) -> Result<String, String> {
+        let cancellable = prompt.is_some();
+        if cancellable && self.cancelled.load(Ordering::Relaxed) {
+            return Err("生成を停止しました。".into());
+        }
         let mut child = Command::new(&self.executable)
             .args(args)
             .env("NO_COLOR", "1")
@@ -118,16 +178,49 @@ impl FmCli {
             let input = prompt.as_bytes().to_vec();
             std::thread::spawn(move || stdin.write_all(&input))
         });
-        let output = child
-            .wait_with_output()
-            .map_err(|e| format!("fm failed: {e}"))?;
+        let mut stdout = child.stdout.take().expect("piped stdout");
+        let mut stderr = child.stderr.take().expect("piped stderr");
+        let read_stdout = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            stdout.read_to_end(&mut bytes).map(|_| bytes)
+        });
+        let read_stderr = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            stderr.read_to_end(&mut bytes).map(|_| bytes)
+        });
+        let mut cancelled = false;
+        let status = loop {
+            if cancellable && self.cancelled.load(Ordering::Relaxed) {
+                cancelled = true;
+                let _ = child.kill();
+                break child.wait().map_err(|e| format!("fm wait failed: {e}"))?;
+            }
+            if let Some(status) = child
+                .try_wait()
+                .map_err(|e| format!("fm wait failed: {e}"))?
+            {
+                break status;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        let stdout = read_stdout
+            .join()
+            .map_err(|_| "fm output reader failed".to_string())?
+            .map_err(|e| format!("fm output read failed: {e}"))?;
+        let stderr = read_stderr
+            .join()
+            .map_err(|_| "fm diagnostic reader failed".to_string())?
+            .map_err(|e| format!("fm diagnostic read failed: {e}"))?;
         let write_result = writer.map(|writer| writer.join());
-        if !output.status.success() {
-            let diagnostic = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
+        if cancelled {
+            return Err("生成を停止しました。".into());
+        }
+        if !status.success() {
+            let diagnostic = String::from_utf8_lossy(&stderr);
+            let stdout = String::from_utf8_lossy(&stdout);
             return Err(format!(
                 "fm exited with {}: {} {}",
-                output.status,
+                status,
                 diagnostic.trim(),
                 stdout.trim()
             ));
@@ -137,7 +230,7 @@ impl FmCli {
                 .map_err(|_| "fm input writer failed".to_string())?
                 .map_err(|e| format!("Cannot send prompt to fm: {e}"))?;
         }
-        String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 from fm: {e}"))
+        String::from_utf8(stdout).map_err(|e| format!("Invalid UTF-8 from fm: {e}"))
     }
 }
 
@@ -312,5 +405,49 @@ esac
             .count_tokens("hello")
             .unwrap_err()
             .contains("Invalid fm token count"));
+    }
+
+    struct LengthTransport;
+    impl AppleTransport for LengthTransport {
+        fn availability(&self) -> ModelAvailability {
+            ModelAvailability::Available
+        }
+        fn count_tokens(&self, prompt: &str) -> Result<u32, String> {
+            Ok(prompt.chars().count() as u32)
+        }
+        fn generate(&self, prompt: &str) -> Result<String, String> {
+            Ok(prompt.into())
+        }
+    }
+
+    #[test]
+    fn optional_context_fits_without_removing_question_or_attachment() {
+        let backend = AppleInference::new(LengthTransport);
+        let response = backend
+            .complete_with_context(
+                "質問と添付は完全に保持",
+                &[&"資料".repeat(4000), &"履歴".repeat(4000)],
+            )
+            .unwrap();
+        assert!(response.contains("質問と添付は完全に保持"));
+        assert!(response.contains("一部の参考情報"));
+        assert!(response.chars().count() <= 3072);
+        assert!(backend
+            .complete_with_context(&"必須".repeat(2000), &["optional"])
+            .is_err());
+    }
+
+    #[test]
+    fn cancellation_terminates_the_cli_process() {
+        let script = Script::new("cat >/dev/null; exec /bin/sleep 10");
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cli = FmCli {
+            executable: script.0.clone(),
+            cancelled: cancelled.clone(),
+        };
+        let worker = std::thread::spawn(move || cli.generate("hello"));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        cancelled.store(true, Ordering::Relaxed);
+        assert!(worker.join().unwrap().unwrap_err().contains("停止"));
     }
 }

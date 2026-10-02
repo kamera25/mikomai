@@ -262,19 +262,37 @@ struct SettingsWorkspace: View {
             // Presets
             VStack(alignment: .leading, spacing: 6) {
                 Text("モデルプリセット").font(.system(size: 14, weight: .medium))
-                Picker("", selection: Binding(
-                    get: { model.selectedPresetId },
-                    set: { model.selectPreset($0) }
-                )) {
+                VStack(alignment: .leading, spacing: 2) {
                     ForEach(PRESET_MODELS) { preset in
                         let exists = HuggingFaceHub.modelExists(repo: preset.repo, filename: preset.filename)
-                        Text("\(preset.name) \(exists ? "(✓ DL済)" : "(未DL)")").tag(preset.id)
+                        modelSelectionRow(preset.id, title: "\(preset.name) \(exists ? "(✓ DL済)" : "(未DL)")")
                     }
-                    Text("カスタムモデル (任意の GGUF)").tag("custom")
+                    if model.supportsAppleModelOS {
+                        modelSelectionRow(AppleModelPolicy.presetID, title: "AFM 3 Core (macOS 標準)")
+                    }
+                    modelSelectionRow("custom", title: "カスタムモデル (任意の GGUF)")
                 }
-                .pickerStyle(.radioGroup)
+                .disabled(model.isWorking || model.isLoadingModel)
+                if !model.supportsAppleModelOS {
+                    Text(AppleModelPolicy.unsupportedOSMessage)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
             }
 
+            if model.isAppleModelSelected {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(model.modelStatus)
+                        .font(.system(size: 13))
+                        .foregroundStyle(model.modelStatus.hasPrefix("エラー") ? .red : .secondary)
+                    Text("Apple Intelligence のオンデバイスモデルを使用します。GGUF のダウンロードは不要です。")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text("長い会話履歴や参考資料は入力上限に合わせて短縮します。大きな添付資料や画像入力には、Gemma のモデルを選択してください。")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                    Button(model.isLoadingModel ? "確認中…" : "利用可否を再確認") { model.loadModel() }
+                        .disabled(model.isWorking || model.isLoadingModel)
+                }
+            } else {
             // Hugging Face Repo & Filename
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
@@ -430,7 +448,20 @@ struct SettingsWorkspace: View {
                 }
 
             }
+            }
         }
+    }
+
+    private func modelSelectionRow(_ id: String, title: String) -> some View {
+        HistorySelectionRow(isSelected: model.selectedPresetId == id, action: { model.selectPreset(id) }) {
+            HStack(spacing: 8) {
+                Image(systemName: model.selectedPresetId == id ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(model.selectedPresetId == id ? Color.accentColor : Color.secondary)
+                Text(title).font(.system(size: 13))
+            }
+        }
+        .accessibilityLabel(title)
+        .accessibilityValue(model.selectedPresetId == id ? "選択中" : "未選択")
     }
 
     // MARK: Category 2: Vision Settings
@@ -442,6 +473,10 @@ struct SettingsWorkspace: View {
 
             }
             Text("画像入力に対応したGemma 4 GGUFモデルと、そのモデルに対応するmmprojを設定してください。PNG/JPEG画像をチャットに添付して解析できます。").font(.system(size: 13)).foregroundStyle(.secondary)
+            if model.isAppleModelSelected {
+                Text("AFM 3 Core は現在、画像入力に対応していません。Vision を使う場合は Gemma を選択してください。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
 
             Toggle(isOn: Binding(
                 get: { model.settings.visionEnabled },
@@ -479,6 +514,7 @@ struct SettingsWorkspace: View {
                 }
             }
         }
+        .disabled(model.isAppleModelSelected)
     }
 
 

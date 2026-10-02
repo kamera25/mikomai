@@ -13,6 +13,19 @@ extension DesktopModel {
         self.settingsFileURL = url
         self.isSettingsLoaded = source != nil
 
+        if loadedSettings.llmBackend == .apple && supportsAppleModelOS {
+            settingsStatusMessage = "Swift版設定を読み込みました: \(url.path)"
+            selectedPresetId = AppleModelPolicy.presetID
+            modelPath = loadedSettings.modelPath ?? ""
+            loadModel()
+            return
+        }
+        if loadedSettings.llmBackend == .apple {
+            // The option is hidden on older OS versions; restore GGUF instead.
+            settings.llmBackend = .llamacpp
+        }
+        _ = Self.callRust { "llamacpp".withCString { mikomai_model_select_backend($0) } }
+
         if source != nil {
             self.settingsStatusMessage = source == "imported"
                 ? "既存設定を読み込み、Swift版の保存先へ移行しました: \(url.path)"
@@ -65,12 +78,16 @@ extension DesktopModel {
 
     func resetSettingsToDefault() {
         self.settings = AppSettings()
+        selectedPresetId = "custom"
+        _ = Self.callRust { "llamacpp".withCString { mikomai_model_select_backend($0) } }
+        refreshModelStatus()
         saveSettings()
         applyInferenceParams()
         self.settingsStatusMessage = "設定をデフォルト値にリセットしました。"
     }
 
     func applyInferenceParams() {
+        guard !isAppleModelSelected else { return }
         let temp = Float(settings.temperature)
         let rep = Float(settings.repetitionPenalty)
         let nCtx = UInt32(settings.nCtx)
@@ -86,6 +103,22 @@ extension DesktopModel {
     }
 
     func selectPreset(_ presetId: String) {
+        guard !isWorking && !isLoadingModel else { return }
+        if presetId == AppleModelPolicy.presetID {
+            guard supportsAppleModelOS else { return }
+            selectedPresetId = presetId
+            settings.llmBackend = .apple
+            saveSettings()
+            loadModel()
+            return
+        }
+        if isAppleModelSelected {
+            settings.llmBackend = .llamacpp
+            _ = Self.callRust { "llamacpp".withCString { mikomai_model_select_backend($0) } }
+            modelStatus = "モデル未ロード"
+            refreshModelStatus()
+            saveSettings()
+        }
         selectedPresetId = presetId
         if presetId != "custom", let preset = PRESET_MODELS.first(where: { $0.id == presetId }) {
             repoPath = preset.repo
@@ -100,12 +133,14 @@ extension DesktopModel {
     // MARK: - Model Management
 
     func selectModel() {
+        guard !isWorking && !isLoadingModel else { return }
         let panel = NSOpenPanel()
         if let gguf = UTType(filenameExtension: "gguf") { panel.allowedContentTypes = [gguf] }
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
+            selectPreset("custom")
             modelPath = url.path
             settings.modelPath = url.path
             saveSettings()
@@ -113,6 +148,23 @@ extension DesktopModel {
     }
 
     func loadModel() {
+        guard !isLoadingModel, !isWorking else { return }
+        if isAppleModelSelected {
+            guard supportsAppleModelOS else {
+                modelStatus = AppleModelPolicy.unsupportedOSMessage
+                return
+            }
+            isLoadingModel = true
+            modelStatus = "AFM 3 Core の利用可否を確認中…"
+            Task.detached(priority: .userInitiated) {
+                let status = Self.callRust { "apple".withCString { mikomai_model_select_backend($0) } }
+                await MainActor.run {
+                    self.modelStatus = status.hasPrefix("エラー") ? status : "利用可能: AFM 3 Core"
+                    self.isLoadingModel = false
+                }
+            }
+            return
+        }
         let path = (modelPath as NSString).expandingTildeInPath
         guard !path.isEmpty, !isLoadingModel else { return }
         isLoadingModel = true
@@ -135,6 +187,10 @@ extension DesktopModel {
 
     func refreshModelStatus() {
         let status = Self.callRust { mikomai_model_status() }
+        if isAppleModelSelected {
+            modelStatus = status.hasPrefix("エラー") ? status : "利用可能: AFM 3 Core"
+            return
+        }
         if !status.isEmpty { modelStatus = "読み込み済み: \(URL(fileURLWithPath: status).lastPathComponent)" }
     }
 

@@ -673,7 +673,7 @@ struct DesktopWindow: View {
         HStack(spacing: 14) {
             HStack(spacing: 5) {
                 Circle()
-                    .fill(model.modelStatus.hasPrefix("読み込み済み") ? Color.green : Color.orange)
+                    .fill(model.modelStatus.hasPrefix("読み込み済み") || model.modelStatus.hasPrefix("利用可能") ? Color.green : Color.orange)
                     .frame(width: 7, height: 7)
                 Text(model.modelStatus)
                     .font(.system(size: 13))
@@ -970,7 +970,7 @@ struct DesktopWindow: View {
                             .background(ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) ? Color.accentColor : Color.gray.opacity(0.55), in: Circle())
                     }
                         .buttonStyle(.plain)
-                        .disabled(!ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count))
+                        .disabled(model.isLoadingModel || !ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count))
                         .help(model.isWorking ? "次回送信予定に追加 (Enter)" : "送信 (Enter、Shift+Enter で改行)")
                 }
             }

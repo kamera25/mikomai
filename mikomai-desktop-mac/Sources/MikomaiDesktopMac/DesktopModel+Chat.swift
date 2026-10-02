@@ -8,6 +8,7 @@ extension DesktopModel {
     // MARK: - Streaming Chat Operations
 
     func send() {
+        guard !isLoadingModel else { return }
         let prompt = ChatSubmissionPolicy.normalizedPrompt(draft)
         guard ChatSubmissionPolicy.shouldSubmit(
             prompt: prompt,
@@ -77,6 +78,7 @@ extension DesktopModel {
         let documents = (documentsDirectory as NSString).expandingTildeInPath
         let knowledge = (knowledgeDirectory as NSString).expandingTildeInPath
         let modelP = (modelPath as NSString).expandingTildeInPath
+        let usesAppleModel = isAppleModelSelected
         let agentConnections = connections
         let agentCredentialPersistence = credentialPersistence
         guard let requestID = chatResponse.begin(sessionID: id) else { return }
@@ -89,7 +91,7 @@ extension DesktopModel {
         Task.detached(priority: .userInitiated) {
             // Auto-load model if configured but not yet loaded in Rust FFI
             let currentLoaded = Self.callRust { mikomai_model_status() }
-            if currentLoaded.isEmpty && !modelP.isEmpty && FileManager.default.fileExists(atPath: modelP) {
+            if !usesAppleModel && currentLoaded.isEmpty && !modelP.isEmpty && FileManager.default.fileExists(atPath: modelP) {
                 if isAgentRequest {
                     await MainActor.run {
                         guard self.chatResponse.acceptsChunk(for: requestID),

@@ -34,6 +34,19 @@ struct DesktopSettingsPolicyTests {
         #expect(settings.consoleBaudRate == 115200)
         #expect(settings.nCtx == 8192)
         #expect(settings.visionEnabled == false)
+        #expect(settings.llmBackend == .llamacpp)
+    }
+
+    @Test func appleSelectionRoundTripsAndRetainsPreviousGGUFPath() throws {
+        var settings = DesktopSettings(modelPath: "/previous.gguf", llmBackend: .apple)
+        settings.merge(DesktopSettingsPatch(temperature: .set(0.7)))
+        let restored = try DesktopSettingsCodec.decode(DesktopSettingsCodec.encode(settings))
+        #expect(restored.llmBackend == .apple)
+        #expect(restored.modelPath == "/previous.gguf")
+        var patch = DesktopSettingsPatch()
+        patch.llmBackend = .set(.llamacpp)
+        settings.merge(patch)
+        #expect(settings.llmBackend == .llamacpp)
     }
 
     @Test func partialSaveOverridePreservesOtherSettingsAndEncodesFullPayload() throws {

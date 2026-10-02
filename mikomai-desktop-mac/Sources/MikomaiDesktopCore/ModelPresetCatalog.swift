@@ -29,3 +29,14 @@ public enum ModelPresetCatalog {
         presets.first { $0.filename == filename }
     }
 }
+
+/// AFM 3 Core is supplied by macOS, rather than downloaded as a GGUF preset.
+public enum AppleModelPolicy {
+    public static let presetID = "afm-3-core"
+    public static let name = "AFM 3 Core"
+    public static let unsupportedOSMessage = "このマシンのOSは非対応です。macOS 27以降にアップデートしてください。"
+
+    public static func supportsOS(majorVersion: Int) -> Bool {
+        majorVersion >= 27
+    }
+}

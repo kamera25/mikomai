@@ -31,6 +31,7 @@ MikomaiResult mikomai_chat(const char *message);
 MikomaiResult mikomai_chat_with_paths(const char *message, const char *documents_dir, const char *knowledge_dir);
 MikomaiResult mikomai_model_load(const char *path);
 MikomaiResult mikomai_model_status(void);
+MikomaiResult mikomai_model_select_backend(const char *name);
 MikomaiResult mikomai_model_cancel(void);
 MikomaiResult mikomai_configure_vision(int32_t enabled, const char *projector_path);
 MikomaiResult mikomai_device_registry_read(const char *path);
