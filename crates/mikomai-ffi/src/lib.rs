@@ -3701,6 +3701,28 @@ mod tests {
     }
 
     #[test]
+    fn local_arp_mac_planner_reads_native_observation_without_llm() {
+        let planner = super::FfiAgentPlanner {
+            inventory: vec![], devices: vec![], tools: vec!["get_state".into()],
+            history: String::new(), attachments: String::new(), reference_material: String::new(),
+            plan_callback: None, callback_context: 0,
+        };
+        let mut task = TaskSnapshot::new("localhost のARPテーブルにea:f1:92:50:7b:c3は存在する？");
+        let decision = super::portable_runtime().unwrap().block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+        assert!(matches!(decision, PlanDecision::Observe { tool, target, args } if tool == "get_state" && target.as_deref() == Some("localhost") && args["resource"] == "arp"));
+        task.evidence.push(mikomai_core::Evidence::from_tool(
+            "? (192.0.2.10) at ea:f1:92:50:7b:c3 on en0 ifscope [ethernet]",
+            Some("localhost".into()), Some("get_state".into()),
+        ));
+        let decision = super::portable_runtime().unwrap().block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+        assert!(matches!(decision, PlanDecision::Complete { brief } if brief.contains("見つかりました") && brief.contains("192.0.2.10")));
+        task.evidence.last_mut().unwrap().content.clear();
+        let decision = super::portable_runtime().unwrap().block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+        assert!(matches!(decision, PlanDecision::Complete { brief } if brief.contains("判定できません") && !brief.contains("存在しません")));
+
+    }
+
+    #[test]
     fn registered_arp_agent_runs_one_read_and_completes_without_llm() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("mikomai-arp-test-{}", uuid::Uuid::new_v4()));

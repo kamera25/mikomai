@@ -68,7 +68,19 @@ chmod 755 "$CONTENTS/Resources/netmiko_wrapper"
 touch "$CONTENTS/Resources/.mikomai-development-bundle"
 install_name_tool -id @rpath/libmikomai_ffi.dylib "$CONTENTS/Frameworks/libmikomai_ffi.dylib"
 install_name_tool -change "$ROOT/target/debug/deps/libmikomai_ffi.dylib" @rpath/libmikomai_ffi.dylib "$CONTENTS/MacOS/Mikomai-Desktop-Mac"
-codesign --force --deep --sign - "$STAGED_APP"
+# macOS 27 hides the ARP cache from apps without the Network Topology
+# Observation capability. It requires an authorised signing identity; adding
+# the restricted entitlement to an ad-hoc signature prevents the app launching.
+SIGN_IDENTITY="${MIKOMAI_CODESIGN_IDENTITY:--}"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    codesign --force --deep --sign - "$STAGED_APP"
+else
+    if [ -n "${MIKOMAI_PROVISIONING_PROFILE:-}" ]; then
+        cp "$MIKOMAI_PROVISIONING_PROFILE" "$CONTENTS/embedded.provisionprofile"
+    fi
+    codesign --force --sign "$SIGN_IDENTITY" "$CONTENTS/Frameworks/libmikomai_ffi.dylib"
+    codesign --force --sign "$SIGN_IDENTITY" --entitlements "$APP/NetworkTopology.entitlements" "$STAGED_APP"
+fi
 codesign --verify --deep --strict "$STAGED_APP"
 if [ -e "$BUNDLE" ]; then
     if [ ! -f "$BUNDLE/Contents/Resources/.mikomai-development-bundle" ]; then

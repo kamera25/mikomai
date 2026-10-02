@@ -242,23 +242,9 @@ impl AgentPlanner<'_> {
                     evidence.source.tool.as_deref() == Some("get_state")
                         && evidence.source.target.as_deref() == target.as_deref()
                 }) {
-                    let normalized = crate::network::canonicalization::normalize_mac(&mac);
-                    let entries = serde_json::from_str::<serde_json::Value>(&observation.content)
-                        .ok()
-                        .and_then(|value| {
-                            value
-                                .get("arp_table")
-                                .and_then(serde_json::Value::as_array)
-                                .cloned()
-                        });
-                    let brief = match entries {
-                        Some(entries) => {
-                            let ips = entries.iter().filter(|entry| entry.get("mac_address").and_then(serde_json::Value::as_str).is_some_and(|value| crate::network::canonicalization::normalize_mac(value) == normalized)).filter_map(|entry| entry.get("ip_address").and_then(serde_json::Value::as_str)).collect::<Vec<_>>();
-                            let host = target.as_deref().unwrap_or("対象端末");
-                            if ips.is_empty() { format!("{host} のARPテーブルに MAC {normalized} は存在しません。") } else { format!("{host} のARPテーブルに MAC {normalized} が見つかりました。対応IP: {}。", ips.join(", ")) }
-                        }
-                        None => format!("ARPテーブルの出力を解析できず、MAC {normalized} の有無を判定できません。")
-                    };
+                    let brief = crate::network::arp::mac_lookup_answer(
+                        target.as_deref().unwrap_or("対象端末"), &mac, &observation.content,
+                    );
                     return Ok(PlanDecision::Complete { brief });
                 }
                 let Some(target) = target else {

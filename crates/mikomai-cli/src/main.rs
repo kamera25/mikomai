@@ -118,6 +118,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
     let docs = std::env::var_os("MIKOMAI_DOCS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("nw-docs"));
+    let local_mac = mikomai_core::dispatch::local_arp_mac_target(&goal);
     let model_path = configured_model_path();
     let knowledge = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
         .map(PathBuf::from)
@@ -127,12 +128,28 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         "cli_request",
         serde_json::json!({
             "query": goal, "history": "", "attachments": "", "devices_json": "[]",
-            "mode": "worker", "documents": docs, "knowledge": knowledge,
-            "backend": if model_path.is_some() { "local_model" } else { "markdown" }
+            "mode": if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
+            "backend": if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
         }),
     );
     let result = (|| {
-        let answer = if let Some(path) = model_path {
+        let answer = if let Some(mac) = local_mac {
+            let args = serde_json::json!({"device":"localhost", "resource":"arp", "mac":mac});
+            trace.emit("agent_event", serde_json::json!({"event_type":"tool_call", "tool":"get_state", "target":"localhost", "args":args}));
+            #[cfg(target_os = "macos")]
+            let output = std::process::Command::new("/usr/sbin/arp").arg("-an").output();
+            #[cfg(not(target_os = "macos"))]
+            let output = std::process::Command::new("arp").arg("-an").output();
+            let output = output.map_err(|error| format!("ARPテーブルの取得に失敗しました: {error}"))?;
+            let raw = String::from_utf8_lossy(&output.stdout);
+            trace.emit("agent_event", serde_json::json!({"event_type":"observation", "tool":"get_state", "target":"localhost", "success":output.status.success(), "output":raw, "stderr":String::from_utf8_lossy(&output.stderr)}));
+            if !output.status.success() {
+                return Err(format!("ARPテーブルの取得に失敗しました: {}", String::from_utf8_lossy(&output.stderr)));
+            }
+            let answer = mikomai_core::network::arp::mac_lookup_answer("localhost", &mac, &raw);
+            trace.stream(&answer, true);
+            answer
+        } else if let Some(path) = model_path {
             mikomai_ffi::load_local_model(&path)?;
             if debug_jsonl {
                 mikomai_ffi::local_model_chat_with_callback(

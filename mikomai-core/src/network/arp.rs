@@ -216,9 +216,63 @@ pub fn evidence(extracted: &ExtractedCandidates) -> ArpCanonicalizationEvidence 
     }
 }
 
+/// Answer only from an observed table. Accept canonical JSON and native
+/// macOS/BSD `arp -an` output, including omitted leading zeroes in MAC octets.
+pub fn mac_lookup_answer(host: &str, mac: &str, raw: &str) -> String {
+    let normalized = crate::dispatch::mac_address_in_goal(mac).unwrap_or_else(|| mac.to_string());
+    // macOS 27 may silently hide the ARP cache from an unentitled process.
+    // A successful process with blank stdout is not evidence of absence.
+    if raw.trim().is_empty() {
+        return format!("{host} のARP取得結果が空のため、MAC {normalized} の有無を判定できません。macOS 27ではアプリのNetwork Topology Observation権限がないとARP情報が非表示になる場合があります。ターミナルの arp -a の結果と照合してください。");
+    }
+    let entries = if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) {
+        value.get("arp_table").and_then(serde_json::Value::as_array).cloned()
+    } else {
+        let mut entries = Vec::new();
+        let mut valid = true;
+        for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+            let fields = line.split_whitespace().collect::<Vec<_>>();
+            let ip = fields.iter().find_map(|field| field.trim_matches(['(', ')', ',']).parse::<std::net::IpAddr>().ok());
+            let address = crate::dispatch::mac_address_in_goal(line);
+            match (ip, address) {
+                (Some(ip), Some(address)) => entries.push(serde_json::json!({"ip_address":ip.to_string(),"mac_address":address})),
+                (Some(_), None) if line.contains("(incomplete)") => {},
+                _ => { valid = false; break; }
+            }
+        }
+        valid.then_some(entries)
+    };
+    let Some(entries) = entries else {
+        return format!("ARPテーブルの出力を解析できず、MAC {normalized} の有無を判定できません。");
+    };
+    let ips = entries.iter().filter(|entry| entry.get("mac_address").and_then(serde_json::Value::as_str).and_then(crate::dispatch::mac_address_in_goal).as_deref() == Some(normalized.as_str())).filter_map(|entry| entry.get("ip_address").and_then(serde_json::Value::as_str)).collect::<Vec<_>>();
+    if ips.is_empty() {
+        format!("{host} のARPテーブルに MAC {normalized} は存在しません。")
+    } else {
+        format!("{host} のARPテーブルに MAC {normalized} が見つかりました。対応IP: {}。", ips.join(", "))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn lookup_native_and_canonical_tables_without_inventing_absence() {
+        let mac = "ea:f1:92:50:7b:c3";
+        let raw = "? (192.0.2.10) at ea:f1:92:50:7b:c3 on en0 ifscope [ethernet]";
+        assert!(mac_lookup_answer("localhost", mac, raw).contains("対応IP: 192.0.2.10"));
+        assert!(mac_lookup_answer("localhost", "00:01:02:03:04:05", "? (192.0.2.11) at 0:1:2:3:4:5 on en0").contains("192.0.2.11"));
+        for raw in ["? (192.0.2.12) at (incomplete) on en0", r#"{"arp_table":[]}"#] {
+            assert!(mac_lookup_answer("localhost", mac, raw).contains("存在しません"));
+        }
+        for raw in ["", "  \n", "permission denied", "not JSON", "{}"] {
+            assert!(mac_lookup_answer("localhost", mac, raw).contains("判定できません"));
+        }
+        let observed = "setup.netvolante.jp (192.168.50.1) at ac:44:f2:91:fa:f8 on en0 ifscope [ethernet]\n? (192.168.50.3) at (incomplete) on en0 ifscope [ethernet]\n? (192.168.50.8) at 0:2b:f5:3c:cc:7c on en0 ifscope [ethernet]\n? (192.168.50.27) at ea:f1:92:50:7b:c3 on en0 ifscope [ethernet]\nmdns.mcast.net (224.0.0.251) at 1:0:5e:0:0:fb on en0 ifscope permanent [ethernet]";
+        assert!(mac_lookup_answer("localhost", mac, observed).contains("対応IP: 192.168.50.27"));
+        assert!(mac_lookup_answer("router", mac, r#"{"arp_table":[{"ip_address":"192.0.2.10","mac_address":"EA-F1-92-50-7B-C3"}]}"#).contains("192.0.2.10"));
+    }
+
     #[test]
     fn extracts_reconstructs_and_rejects_non_cooccurring_candidates() {
         let raw = "Protocol Address Age Hardware Addr Type Interface\nInternet 192.0.2.1 2 0011.2233.4455 ARPA Gi1/0/1\nInternet 192.0.2.2 3 00aa.bbcc.ddee ARPA Gi1/0/2";
