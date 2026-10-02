@@ -47,11 +47,9 @@ extension DesktopModel {
             }
         }
 
-        // Context limit derived from settings.historyLimit
-        let maxHistoryTurns = max(2, settings.historyLimit * 2)
-        let history = sessions[index].messages.suffix(maxHistoryTurns).map { message in
-            "\(message.role == .user ? "ユーザー" : "MIKOMAI"): \(message.text)"
-        }.joined(separator: "\n")
+        let history = ChatHistoryPolicy.context(
+            messages: sessions[index].messages, turnLimit: settings.historyLimit
+        )
 
         let attachedNames = attachments.map(\.name)
         let userText = prompt.isEmpty ? "添付ファイルを確認してください。" : prompt
