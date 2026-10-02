@@ -220,16 +220,7 @@ extension DesktopModel {
             return NetworkOperationOutput(success: false, stdout: "", stderr: "この読み取りツールはSwift transportで許可されていません。")
         }
         let credentials = credentialPersistence.load(for: connection.id)
-        let type = connection.deviceType.lowercased()
-        let deviceType: String = {
-            if type.contains("juniper") { return "juniper_junos" }
-            if type.contains("nx-os") || type.contains("nxos") { return "cisco_nxos" }
-            if type.contains("arista") { return "arista_eos" }
-            if type.contains("yamaha") { return "yamaha" }
-            if type.contains("furukawa") || type.contains("fitel") { return "furukawa_fitelnet" }
-            if type.contains("cisco") { return "cisco_ios" }
-            return type.replacingOccurrences(of: " ", with: "_")
-        }()
+        let deviceType = DeviceTypeCatalog.canonicalID(for: connection.deviceType)
         let request = NetworkRunnerRequest(
             action: "show",
             host: connection.host,

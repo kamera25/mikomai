@@ -206,7 +206,7 @@ public struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
 
     public init(
         id: UUID = UUID(), sourceID: String? = nil, name: String, host: String, port: String = "22",
-        connectionType: String? = "SSH", username: String = "", deviceType: String = "Cisco IOS", hasPassword: Bool = false,
+        connectionType: String? = "SSH", username: String = "", deviceType: String = "cisco_ios", hasPassword: Bool = false,
         hasEnablePassword: Bool = false
     ) {
         self.id = id

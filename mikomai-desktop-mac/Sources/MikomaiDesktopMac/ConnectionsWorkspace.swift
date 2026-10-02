@@ -33,14 +33,12 @@ struct ConnectionsWorkspace: View {
             } else {
                 Table(model.connections) {
                     TableColumn("名前", value: \.name)
-                    TableColumn("登録元") { connection in
-                        Text(connection.sourceID == nil ? "Mac 内" : "Imported")
-                            .font(.system(size: 13)).foregroundStyle(.secondary)
-                    }.width(62)
                     TableColumn("ホスト", value: \.host)
                     TableColumn("ポート", value: \.port).width(50)
                     TableColumn("ユーザー", value: \.username)
-                    TableColumn("機器タイプ", value: \.deviceType)
+                    TableColumn("機器タイプ") { connection in
+                        Text(DeviceTypeCatalog.displayName(for: connection.deviceType))
+                    }
                     TableColumn("資格情報") { connection in
                         if connection.hasPassword || connection.hasEnablePassword {
                             Label(
@@ -196,7 +194,8 @@ struct ConnectionEditor: View {
     @State private var password = ""
     @State private var enablePassword = ""
     let onSave: (SavedConnection, String?, String?) -> Void
-    private let deviceTypes = ["Cisco IOS", "Cisco NX-OS", "Juniper JunOS", "Arista EOS", "Other"]
+    @State private var showsDeviceTypes = false
+    @State private var deviceTypeQuery = ""
 
     init(connection: SavedConnection, onSave: @escaping (SavedConnection, String?, String?) -> Void) {
         self._connection = State(initialValue: connection)
@@ -222,7 +221,43 @@ struct ConnectionEditor: View {
                     Text("Telnet").tag("Telnet")
                     Text("Console").tag("Console")
                 }
-                Picker("機器タイプ", selection: $connection.deviceType) { ForEach(deviceTypes, id: \.self) { Text($0) } }
+                LabeledContent("機器タイプ") {
+                    Button {
+                        deviceTypeQuery = ""
+                        showsDeviceTypes = true
+                    } label: {
+                        HStack {
+                            Text(DeviceTypeCatalog.displayName(for: connection.deviceType))
+                            Image(systemName: "chevron.up.chevron.down")
+                        }
+                    }
+                    .popover(isPresented: $showsDeviceTypes) {
+                        VStack(spacing: 8) {
+                            TextField("機器タイプを検索", text: $deviceTypeQuery)
+                                .textFieldStyle(.roundedBorder)
+                            ScrollView {
+                                LazyVStack(spacing: 2) {
+                                    ForEach(DeviceTypeCatalog.matching(deviceTypeQuery), id: \.self) { id in
+                                        HistorySelectionRow(
+                                            isSelected: DeviceTypeCatalog.canonicalID(for: connection.deviceType) == id,
+                                            action: {
+                                                connection.deviceType = id
+                                                showsDeviceTypes = false
+                                            }
+                                        ) {
+                                            Text(DeviceTypeCatalog.optionLabel(for: id))
+                                        }
+                                    }
+                                    if DeviceTypeCatalog.matching(deviceTypeQuery).isEmpty {
+                                        Text("一致する機器タイプがありません")
+                                            .foregroundStyle(.secondary).padding()
+                                    }
+                                }
+                            }
+                        }
+                        .padding(12).frame(width: 360, height: 340)
+                    }
+                }
 
                 Section("資格情報 (Keychain)") {
                     SecureField("パスワード", text: $password)

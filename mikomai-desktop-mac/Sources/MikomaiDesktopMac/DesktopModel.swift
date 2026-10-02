@@ -334,16 +334,7 @@ final class DesktopModel: ObservableObject {
     func networkRequest(action: String, connection: SavedConnection, commands: [String]) -> NetworkRunnerRequest? {
         guard (connection.connectionType ?? "SSH").lowercased() != "console" else { return nil }
         let credentials = credentialPersistence.load(for: connection.id)
-        let deviceType: String = {
-            let lower = connection.deviceType.lowercased()
-            if lower.contains("juniper") { return "juniper_junos" }
-            if lower.contains("nx-os") || lower.contains("nxos") { return "cisco_nxos" }
-            if lower.contains("arista") { return "arista_eos" }
-            if lower.contains("yamaha") { return "yamaha" }
-            if lower.contains("furukawa") || lower.contains("fitel") { return "furukawa_fitelnet" }
-            if lower.contains("cisco") { return "cisco_ios" }
-            return lower.replacingOccurrences(of: " ", with: "_")
-        }()
+        let deviceType = DeviceTypeCatalog.canonicalID(for: connection.deviceType)
         return NetworkRunnerRequest(
             action: action, host: connection.host, username: connection.username,
             password: credentials.password ?? "", secret: credentials.enablePassword ?? "",

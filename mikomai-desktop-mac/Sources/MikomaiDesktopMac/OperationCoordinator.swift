@@ -11,14 +11,7 @@ final class OperationCoordinator: ObservableObject {
     }
 
     static func runnerDeviceType(_ value: String) -> String {
-        let lower = value.lowercased()
-        if lower.contains("juniper") { return "juniper_junos" }
-        if lower.contains("nx-os") || lower.contains("nxos") { return "cisco_nxos" }
-        if lower.contains("arista") { return "arista_eos" }
-        if lower.contains("yamaha") { return "yamaha" }
-        if lower.contains("furukawa") || lower.contains("fitel") { return "furukawa_fitelnet" }
-        if lower.contains("cisco") { return "cisco_ios" }
-        return lower.replacingOccurrences(of: " ", with: "_")
+        DeviceTypeCatalog.canonicalID(for: value)
     }
 
     static func showConfigCommand(for connection: SavedConnection) -> String {
