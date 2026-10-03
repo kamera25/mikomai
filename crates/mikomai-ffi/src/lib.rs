@@ -2748,6 +2748,7 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
                 "network_tftp_upload".to_string(),
             ])
             .collect::<Vec<_>>();
+        let reference_material = llm_runtime::selected_references_for_model(&reference_material)?;
         let planner = FfiAgentPlanner {
             inventory: registry.devices().to_vec(),
             devices,
