@@ -40,3 +40,15 @@ Swiftテストは `test-core.sh` から標準の `swift test` ランナーを実
 UIとSwift callbackの確認は、`test-core.sh` の後に `./mikomai-desktop-mac/test-execution-queue.sh` を実行できます。一時設定・保存先を使い、入力と送信待機列、localhostへのping・traceroute結果を検証します。
 
 Swift unit testsおよびRust fake transportで承認・planner・tool結果を検証します。実機SSH、モデルごとの生成品質、物理装置に対する変更適用はそれぞれの利用環境で追加確認してください。
+
+### NW図の表示
+
+「LAN 192.168.1.0/24にrouter01とswitch01を接続したNW図を作成して」のように構成を指定すると、共有CoreのPlotterが会話履歴・添付情報を参照してnwdiag DSLを生成し、検証後にSwift callbackがSVGを描画します。DSLを直接コードブロックで指定する場合はモデル推論を省略します。生成した図はチャット内で表示し、「拡大」「SVGを保存」を利用できます。SVGは回答に埋め込むため、履歴を開き直しても表示できます。構成不足や描画失敗では確認を求め、再生成は上限を設けています。
+
+描画にはnwdiag・Pillow・SVG用依存を導入したPythonが必要です。既存の`venv/bin/python`、または`MIKOMAI_PYTHON`で指定した環境を使います。SVGの自動保存先はApplication Support内の`MikomaiDesktopMac/artifacts`で、検証時には`MIKOMAI_ARTIFACTS_DIR`で変更できます。
+
+表示経路の検証は、Core/Swiftテストに加えて以下で実施できます。macOSのWebKit描画プロセスへのアクセスが必要です。`MIKOMAI_DIAGRAM_CHECK_MODEL`にGGUFパスを指定すると自然文からの生成も検証します。
+
+```sh
+MIKOMAI_WINDOW_CHECK_SOURCE="$PWD/mikomai-desktop-mac/Tests/NetworkDiagramChecks/NetworkDiagramChecks.swift" sh mikomai-desktop-mac/test-chat-window.sh
+```

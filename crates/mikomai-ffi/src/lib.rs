@@ -1606,11 +1606,12 @@ impl mikomai_adapters::portable_device::CredentialedReadOnlyTransport for SwiftC
         tool: mikomai_adapters::portable_device::ReadOnlyDeviceTool,
         args: &serde_json::Value,
     ) -> Result<String, String> {
+        let capacity = if tool == mikomai_adapters::portable_device::ReadOnlyDeviceTool::SelfNetworkNwdiag { 8 * 1024 * 1024 } else { 256 * 1024 };
         let tool = CString::new(tool.as_str()).unwrap();
         let target =
             CString::new(serde_json::to_string(target).map_err(|e| e.to_string())?).unwrap();
         let args = CString::new(serde_json::to_string(args).map_err(|e| e.to_string())?).unwrap();
-        let mut output = vec![0_i8; 256 * 1024];
+        let mut output = vec![0_i8; capacity];
         let status = unsafe {
             (self.callback)(
                 tool.as_ptr(),
@@ -2001,8 +2002,9 @@ impl ToolExecutorPort for FfiAgentExecutor {
                     .or_else(|| args.get("nwdiag"))
                     .and_then(serde_json::Value::as_str)
                     .ok_or_else(|| "nwdiag schema is required".to_string())?;
-                mikomai_core::nwdiag::validate_nwdiag_schema(schema)
-                    .map_err(|error| error.to_llm_feedback_string())?;
+                if let Err(error) = mikomai_core::nwdiag::validate_nwdiag_schema(schema) {
+                    return Ok(ToolResult { success: false, output: error.to_llm_feedback_string() });
+                }
             }
             if matches!(tool, "network_packet_analyze" | "network_packet_prepare") {
                 if tool == "network_packet_prepare" {
@@ -2240,9 +2242,12 @@ impl ToolExecutorPort for FfiAgentExecutor {
                 private_key: None,
                 passphrase: None,
             };
-            let result =
-                self.registry
-                    .execute(&self.transport, tool, target, args, &credentials)?;
+            let result = match self.registry.execute(&self.transport, tool, target, args, &credentials) {
+                Ok(result) => result,
+                // Renderer feedback must reach Plotter's bounded repair loop.
+                Err(error) if tool == "self_network_nwdiag" => return Ok(ToolResult { success: false, output: error }),
+                Err(error) => return Err(error),
+            };
             let decoded =
                 serde_json::from_str::<ToolResult>(&result.output).unwrap_or(ToolResult {
                     success: true,
@@ -2711,8 +2716,10 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
                 .map_err(|e| e.to_string())?
         };
         let attachments = prepare_attachments(&goal, attachments)?;
-        let fetch_references = !attachments.is_empty()
-            || mikomai_core::reference_context::needs_selected_references(&goal);
+        // Plotter uses supplied topology, history and attachments, rather than
+        // configuration manuals. Do not require downloading an embedding model to draw it.
+        let fetch_references = !mikomai_core::plotter::is_diagram_request(&goal)
+            && (!attachments.is_empty() || mikomai_core::reference_context::needs_selected_references(&goal));
         let reference_start = std::time::Instant::now();
         let reference_material = if fetch_references && documents.is_dir() {
             chat_with_paths(&goal, documents.clone(), knowledge.clone()).unwrap_or_default()
@@ -4145,6 +4152,41 @@ mod tests {
         std::ptr::copy_nonoverlapping(response.as_ptr(), output.cast::<u8>(), response.len());
         *output.add(response.len()) = 0;
         0
+    }
+
+    #[test]
+    fn plotter_validation_and_renderer_errors_remain_observations_for_repair() {
+        use mikomai_core::port::ToolExecutorPort;
+        unsafe extern "C" fn failed_renderer(_: *const c_char, _: *const c_char, _: *const c_char, output: *mut c_char, capacity: usize, context: *mut std::ffi::c_void) -> i32 {
+            *(context as *mut usize) = capacity;
+            let message = b"nwdiag syntax error\0";
+            std::ptr::copy_nonoverlapping(message.as_ptr(), output.cast::<u8>(), message.len());
+            1
+        }
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        super::CANCEL_INFERENCE.store(false, std::sync::atomic::Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!("mikomai-plotter-errors-{}", uuid::Uuid::new_v4()));
+        let runtime = super::portable_runtime().unwrap();
+        let graph = runtime.block_on(mikomai_adapters::portable_graph::PortableGraph::initialize_at(&root)).unwrap();
+        let mut capacity = 0_usize;
+        let executor = super::FfiAgentExecutor {
+            registry: mikomai_adapters::portable_device::ReadOnlyToolRegistry::new(vec![]).unwrap(),
+            transport: super::SwiftCallbackTransport { callback: failed_renderer, context: (&mut capacity as *mut usize) as usize },
+            rag: mikomai_adapters::portable_rag::PortableRag::new(graph.clone(), std::sync::Arc::new(mikomai_adapters::e5_embedder::FastEmbedE5::new())),
+            graph, rag_sources: vec![], arp_inference: |_, _| unreachable!(),
+        };
+        let invalid = serde_json::json!({"schema":"invalid"});
+        let result = runtime.block_on(executor.execute(uuid::Uuid::new_v4(), "self_network_nwdiag", None, &invalid)).unwrap();
+        assert!(!result.success);
+        assert!(result.output.contains("validation failed"));
+        assert_eq!(capacity, 0);
+        let valid = serde_json::json!({"schema":"nwdiag {\n network lan {\n router;\n }\n}"});
+        let result = runtime.block_on(executor.execute(uuid::Uuid::new_v4(), "self_network_nwdiag", None, &valid)).unwrap();
+        assert!(!result.success);
+        assert!(result.output.contains("syntax error"));
+        assert_eq!(capacity, 8 * 1024 * 1024);
+        drop(executor);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

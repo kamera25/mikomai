@@ -45,6 +45,10 @@ struct MarkdownMessage: View {
                 case let .quote(content):
                     inline(content).font(.system(size: 15)).foregroundStyle(.secondary)
                         .padding(.leading, 10).overlay(alignment: .leading) { Rectangle().fill(Color.accentColor.opacity(0.45)).frame(width: 2) }
+                case let .image(title, source):
+                    if let image = ChatDiagramImage(source: source) {
+                        NetworkDiagramView(title: title, image: image)
+                    }
                 case .separator:
                     Divider()
                 }

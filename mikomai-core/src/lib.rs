@@ -10,6 +10,7 @@ pub mod graph_identity;
 pub mod intent;
 pub mod network;
 pub mod nwdiag;
+pub mod plotter;
 pub mod planner;
 pub mod port;
 pub mod redaction;

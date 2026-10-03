@@ -124,7 +124,7 @@ impl PlannerDecision {
     }
 }
 
-fn extract_json(raw: &str) -> Option<&str> {
+pub(crate) fn extract_json(raw: &str) -> Option<&str> {
     if let Some(start) = raw.find('{') {
         let bytes = raw.as_bytes();
         let mut depth = 0i32;

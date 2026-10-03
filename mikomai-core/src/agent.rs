@@ -223,7 +223,7 @@ impl AgentPlanner<'_> {
                         message: question.to_string(),
                     });
                 }
-                if let Some(artifact) = last.content.strip_prefix("__PORTABLE_ARTIFACT__") {
+                if let Some(artifact) = last.content.strip_prefix("__PORTABLE_ARTIFACT__").filter(|_| observation_succeeded(last)) {
                     return Ok(PlanDecision::Complete {
                         brief: artifact.to_string(),
                     });
@@ -242,6 +242,12 @@ impl AgentPlanner<'_> {
                         _ => {}
                     }
                 }
+            }
+            if crate::plotter::is_diagram_request(&task.task.goal) {
+                if !self.tools.iter().any(|tool| tool == "self_network_nwdiag") {
+                    return Err("NW図生成ツールが利用できません。".into());
+                }
+                return crate::plotter::plan(task, self.history, self.attachments, self.inference).await;
             }
             if let Some(route) = crate::dispatch::local_next_hop_shortcut(&task.task.goal) {
                 if let Some(observation) = task.evidence.iter().rev().find(|item| {
@@ -500,6 +506,70 @@ mod tests {
         let answer = futures_lite::future::block_on(crate::application::ChatService::new(&planner, &executor, &SilentReporter).answer(TaskSnapshot::new(goal))).unwrap();
         (answer, executor.0.into_inner().unwrap(), model.prompts.into_inner().unwrap())
     }
+    #[test]
+    fn plotter_generates_valid_schema_and_preserves_completed_artifact_without_rephrasing() {
+        let schema = "nwdiag {\n network lan {\n router;\n switch;\n }\n}";
+        let reply = serde_json::json!({"tool_name":"self_network_nwdiag","params":{"schema":schema}}).to_string();
+        let model = Model { replies: Mutex::new(vec![Ok("invalid".into()), Ok(reply)].into()), prompts: Mutex::new(vec![]) };
+        let approval = Approval(Mutex::new(0));
+        let tools = vec!["self_network_nwdiag".into()];
+        let planner = AgentPlanner { inventory: &[], devices: &[], tools: &tools, history: "routerとswitchはLAN接続", attachments: "lan: 192.168.1.0/24", reference_material: "", inference: &model, worker: &model, approval: &approval };
+        let mut task = TaskSnapshot::new("前の構成のNW図を作って");
+        let decision = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+        let PlanDecision::Observe { tool, args, .. } = decision else { panic!("expected render call") };
+        assert_eq!(tool, "self_network_nwdiag");
+        assert_eq!(args["schema"], schema);
+        let artifact = "![NW図](data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=)";
+        let mut evidence = crate::Evidence::from_tool(format!("__PORTABLE_ARTIFACT__{artifact}"), None, Some(tool));
+        evidence.source.success = Some(true);
+        task.evidence.push(evidence);
+        let PlanDecision::Complete { brief } = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap() else { panic!("expected final image") };
+        assert_eq!(brief, artifact);
+        let prompts = model.prompts.lock().unwrap();
+        assert_eq!(prompts.len(), 2);
+        assert!(prompts[0].contains("routerとswitchはLAN接続"));
+        assert!(prompts[0].contains("lan: 192.168.1.0/24"));
+        assert!(prompts[1].contains("previous output was invalid"));
+        assert_eq!(*approval.0.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn plotter_rejects_echoed_question_and_renders_nodes_without_inventing_ips() {
+        let schema = "nwdiag {\n network lan {\n address = \"192.168.1.0/24\";\n router01;\n switch01;\n }\n}";
+        let reply = serde_json::json!({"tool_name":"self_network_nwdiag","params":{"schema":schema}}).to_string();
+        let model = Model { replies: Mutex::new(vec![Ok(r#"{"question":"必要な接続関係を日本語で質問"}"#.into()), Ok(reply)].into()), prompts: Mutex::new(vec![]) };
+        let approval = Approval(Mutex::new(0));
+        let tools = vec!["self_network_nwdiag".into()];
+        let planner = AgentPlanner { inventory: &[], devices: &[], tools: &tools, history: "", attachments: "", reference_material: "", inference: &model, worker: &model, approval: &approval };
+        let mut task = TaskSnapshot::new("LAN 192.168.1.0/24にrouter01とswitch01を接続したNW図を作成して");
+        task.evidence.push(crate::Evidence::from_tool(format!("__USER_CHOICE__{}", task.task.goal), None, Some("user_choice".into())));
+        let PlanDecision::Observe { tool, args, .. } = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap() else { panic!("must render instead of repeating the copied question") };
+        assert_eq!(tool, "self_network_nwdiag");
+        assert_eq!(args["schema"], schema);
+        assert!(!schema.contains("192.168.1.1"));
+        let prompts = model.prompts.lock().unwrap();
+        assert_eq!(prompts.len(), 2);
+        assert!(prompts[1].contains("Copied role instruction is not a question"));
+        assert!(prompts[0].contains("__USER_CHOICE__LAN"));
+    }
+
+    #[test]
+    fn plotter_direct_dsl_needs_no_model_and_stops_after_two_render_failures() {
+        let model = Model { replies: Mutex::new(VecDeque::new()), prompts: Mutex::new(vec![]) };
+        let approval = Approval(Mutex::new(0));
+        let tools = vec!["self_network_nwdiag".into()];
+        let planner = AgentPlanner { inventory: &[], devices: &[], tools: &tools, history: "", attachments: "", reference_material: "", inference: &model, worker: &model, approval: &approval };
+        let mut task = TaskSnapshot::new("表示して\n```nwdiag\nnwdiag {\n network lan {\n router;\n }\n}\n```");
+        let PlanDecision::Observe { args, .. } = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap() else { panic!("expected render") };
+        assert!(args["schema"].as_str().unwrap().ends_with('}'));
+        for _ in 0..2 {
+            let mut item = crate::Evidence::from_tool("render failed", None, Some("self_network_nwdiag".into()));
+            item.source.success = Some(false); task.evidence.push(item);
+        }
+        assert!(matches!(futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap(), PlanDecision::AskUser { .. }));
+        assert!(model.prompts.lock().unwrap().is_empty());
+    }
+
     const PORT22: &str = r#"{"action_type":"VERIFY","objective":"SSH確認","tool":"self_network_test_connection","parameters":{"host":"NakaokuGW","port":22}}"#;
     const REPEAT22: &str = r#"{"action_type":"VERIFY","objective":"SSH確認","tool":"self_network_test_net_connection","target":"localhost","parameters":{"host":"192.168.50.1","port":22,"protocol":"tcp"}}"#;
     const PORT443: &str = r#"{"action_type":"VERIFY","objective":"HTTPS確認","tool":"self_network_test_connection","parameters":{"host":"NakaokuGW","port":443}}"#;

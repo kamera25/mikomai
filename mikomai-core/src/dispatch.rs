@@ -304,7 +304,7 @@ pub fn legacy_shortcut(goal: &str) -> Option<LegacyShortcut> {
         return Some(shortcut(
             "self_network_nwdiag",
             None,
-            serde_json::json!({"input":diagram,"diagram":diagram}),
+            serde_json::json!({"schema":crate::plotter::extract_schema(diagram).unwrap_or(diagram)}),
         ));
     }
     if lower.contains("dhcprequest")
@@ -467,7 +467,7 @@ pub fn select_dispatch_mode(message: &str) -> DispatchMode {
     if fast_route(message).is_some() {
         return DispatchMode::FastRouter;
     }
-    if legacy_shortcut(message).is_some() {
+    if crate::plotter::is_diagram_request(message) || legacy_shortcut(message).is_some() {
         return DispatchMode::Agent;
     }
     let live = [

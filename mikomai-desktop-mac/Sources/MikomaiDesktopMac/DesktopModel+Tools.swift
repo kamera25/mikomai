@@ -130,14 +130,23 @@ extension DesktopModel {
                 defer { try? FileManager.default.removeItem(at: directory) }
                 let process = Process(); process.executableURL = python
                 process.arguments = [wrapper.path, "-T", "svg", "-o", output.path, input.path]
-                let stdout = Pipe(); let stderr = Pipe(); process.standardOutput = stdout; process.standardError = stderr
+                // Rendering errors can exceed a pipe buffer; write logs to disk while the process runs.
+                let log = directory.appendingPathComponent("renderer.log")
+                FileManager.default.createFile(atPath: log.path, contents: nil)
+                let logHandle = try FileHandle(forWritingTo: log)
+                defer { try? logHandle.close() }
+                process.standardOutput = logHandle; process.standardError = logHandle
                 try process.run(); process.waitUntilExit()
-                let err = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                let err = (try? String(contentsOf: log, encoding: .utf8)) ?? ""
                 guard process.terminationStatus == 0, let svg = try? Data(contentsOf: output), !svg.isEmpty else {
                     return NetworkOperationOutput(success: false, stdout: "", stderr: err.isEmpty ? "nwdiag SVG生成に失敗しました。" : err)
                 }
                 let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-                let artifactDirectory = appSupport.appendingPathComponent("MikomaiDesktopMac/artifacts", isDirectory: true)
+                guard svg.count <= 4 * 1024 * 1024 else {
+                    return NetworkOperationOutput(success: false, stdout: "", stderr: "NW図が表示可能なサイズを超えました。構成を分割してください。")
+                }
+                let artifactDirectory = ProcessInfo.processInfo.environment["MIKOMAI_ARTIFACTS_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+                    ?? appSupport.appendingPathComponent("MikomaiDesktopMac/artifacts", isDirectory: true)
                 try FileManager.default.createDirectory(at: artifactDirectory, withIntermediateDirectories: true)
                 let artifact = artifactDirectory.appendingPathComponent("network-\(UUID().uuidString).svg")
                 try svg.write(to: artifact)
@@ -264,9 +273,15 @@ extension DesktopModel {
     }
 
     private nonisolated static func portablePython() -> URL? {
+        // Finder launches the development .app with a different working directory.
+        // Resolve its repository venv relative to repo/mikomai-desktop-mac/dist/Mikomai.app.
+        let developmentPython = Bundle.main.bundleURL.pathExtension == "app"
+            ? Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("venv/bin/python")
+            : nil
         let candidates = [
             ProcessInfo.processInfo.environment["MIKOMAI_PYTHON"].map { URL(fileURLWithPath: $0) },
             URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("venv/bin/python"),
+            developmentPython,
             URL(fileURLWithPath: "/usr/bin/python3")
         ].compactMap { $0 }
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }

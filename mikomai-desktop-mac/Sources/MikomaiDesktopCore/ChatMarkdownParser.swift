@@ -7,6 +7,7 @@ public struct ChatMarkdownBlock: Equatable {
         case code(String, String)
         case bullet(String)
         case quote(String)
+        case image(String, String)
         case separator
     }
 
@@ -32,6 +33,16 @@ public enum ChatMarkdownParser {
             let line = lines[index]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { flushParagraph(); index += 1; continue }
+            if trimmed.hasPrefix("!["), let divider = trimmed.range(of: "]("), trimmed.hasSuffix(")") {
+                let title = String(trimmed[trimmed.index(trimmed.startIndex, offsetBy: 2)..<divider.lowerBound])
+                let source = String(trimmed[divider.upperBound..<trimmed.index(before: trimmed.endIndex)])
+                if ChatDiagramImage(source: source) != nil {
+                    flushParagraph()
+                    result.append(ChatMarkdownBlock(kind: .image(title, source)))
+                    index += 1
+                    continue
+                }
+            }
             if trimmed.hasPrefix("```") {
                 flushParagraph()
                 let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
