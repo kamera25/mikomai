@@ -90,7 +90,8 @@ import MikomaiDesktopCore
  // Resize the production chat after laying it out at full width, as when snapping.
  let message = ChatMessage(role: .user, text: String(repeating: "Yamahaで設定変更するコマンドを教えて。", count: 12),
                            attachments: [String(repeating: "長い添付ファイル名", count: 8) + ".txt"])
- model.sessions = [ChatSession(id: initialSessionID, title: "折り返し確認", messages: [message])]
+ let shortMessage = ChatMessage(role: .user, text: "FitelnetのVLAN設定を教えて")
+ model.sessions = [ChatSession(id: initialSessionID, title: "折り返し確認", messages: [shortMessage, message])]
  model.activeSessionID = initialSessionID
  func observation(_ view: NSView) -> ChatScrollObservationView? {
      if let result = view as? ChatScrollObservationView { return result }
