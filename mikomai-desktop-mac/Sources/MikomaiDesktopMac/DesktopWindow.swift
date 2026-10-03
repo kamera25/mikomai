@@ -909,11 +909,12 @@ struct DesktopWindow: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.primary)
                 Text("テキスト (.txt, .md, .json, .yaml, .xml, .log) または画像 (.png, .jpg)")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
             }
             .padding(24)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
             .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
         }
         .allowsHitTesting(false)
