@@ -59,13 +59,71 @@ private struct WindowTitleDragRegion: NSViewRepresentable {
     func updateNSView(_ nsView: DragView, context: Context) {}
 }
 
-private struct RightPaneWidthPreference: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+private struct ToolbarHeaderSizing: NSViewRepresentable {
+    @Binding var rightPaneWidth: CGFloat
+    let showsRightPane: Bool
+
+    final class ObserverView: NSView {
+        var onResize: ((NSWindow) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            NotificationCenter.default.removeObserver(self)
+            if let window {
+                NotificationCenter.default.addObserver(self, selector: #selector(resized),
+                    name: NSWindow.didResizeNotification, object: window)
+                NotificationCenter.default.addObserver(self, selector: #selector(resized),
+                    name: NSSplitView.didResizeSubviewsNotification, object: nil)
+                resized()
+            }
+        }
+
+        @objc private func resized() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window else { return }
+                self.onResize?(window)
+            }
+        }
+
+        deinit { NotificationCenter.default.removeObserver(self) }
+    }
+
+    func makeNSView(context: Context) -> ObserverView { ObserverView() }
+
+    func updateNSView(_ nsView: ObserverView, context: Context) {
+        nsView.onResize = { window in
+            guard let item = window.toolbar?.items.first(where: {
+                $0.itemIdentifier.rawValue == "windowHeader"
+            }) else { return }
+            // Keep the native item flexible without replacing it during live resize.
+            let minimum = NSSize(width: 120, height: 36)
+            let maximum = NSSize(width: max(120, (window.contentView?.bounds.width ?? 520) - 120), height: 36)
+            if item.minSize != minimum { item.minSize = minimum }
+            if item.maxSize != maximum { item.maxSize = maximum }
+            if showsRightPane, let content = window.contentView,
+               let split = Self.mainSplit(in: content), let pane = split.subviews.last {
+                let width = pane.frame.width
+                if width > 0 && abs(rightPaneWidth - width) > 0.5 { rightPaneWidth = width }
+            }
+        }
+        DispatchQueue.main.async {
+            if let window = nsView.window { nsView.onResize?(window) }
+        }
+    }
+
+    private static func mainSplit(in view: NSView) -> NSSplitView? {
+        if let split = view as? NSSplitView, split.isVertical, split.subviews.count > 1 { return split }
+        return view.subviews.lazy.compactMap { mainSplit(in: $0) }.first
+    }
 }
 
 struct DesktopWindow: View {
     @ObservedObject var model: DesktopModel
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var chatBackground: Color {
+        colorScheme == .dark ? Color(white: 0.2) : Color(nsColor: .windowBackgroundColor)
+    }
     @State private var mentionPresentation = ChatMentionPresentation()
     @State private var isChatInputFocused = false
     @State private var isDropTargeted = false
@@ -152,9 +210,6 @@ struct DesktopWindow: View {
                 if model.workspace == .chat && historyTab == "conversation" && isRightPaneOpen {
                     rightSidePane
                         .frame(minWidth: 180, idealWidth: rightPaneWidth, maxWidth: 600)
-                        .background(GeometryReader { pane in
-                            Color.clear.preference(key: RightPaneWidthPreference.self, value: pane.size.width)
-                        })
                 }
             }
             .frame(width: max(0, geometry.size.width - 50))
@@ -169,9 +224,6 @@ struct DesktopWindow: View {
             currentContainerWidth = newWidth
             evaluateTiling(containerWidth: newWidth)
         }
-        }
-        .onPreferenceChange(RightPaneWidthPreference.self) { width in
-            if width > 0 { renderedRightPaneWidth = width }
         }
         .toolbar { windowToolbar }
         .toolbarBackground(Color(nsColor: .controlBackgroundColor), for: .windowToolbar)
@@ -404,13 +456,11 @@ struct DesktopWindow: View {
 
     @ToolbarContentBuilder
     private var windowToolbar: some ToolbarContent {
-        // AppKit caches a custom item's minimum width; recreate it when the
-        // window or pane layout changes so shrinking does not hide the whole row.
         if #available(macOS 26.0, *) {
-            ToolbarItem(id: "windowHeader-\(Int(currentContainerWidth))-\(isRightPaneOpen)", placement: .principal) { header }
+            ToolbarItem(id: "windowHeader", placement: .principal) { header }
                 .sharedBackgroundVisibility(.hidden)
         } else {
-            ToolbarItem(id: "windowHeader-\(Int(currentContainerWidth))-\(isRightPaneOpen)", placement: .principal) { header }
+            ToolbarItem(id: "windowHeader", placement: .principal) { header }
         }
     }
 
@@ -444,25 +494,20 @@ struct DesktopWindow: View {
         .frame(minWidth: 0, idealWidth: max(0, currentContainerWidth - 120),
                maxWidth: max(0, currentContainerWidth - 120))
         .frame(height: 36)
+        .background(ToolbarHeaderSizing(rightPaneWidth: $renderedRightPaneWidth,
+                                        showsRightPane: model.workspace == .chat && historyTab == "conversation" && isRightPaneOpen))
     }
 
-    @ViewBuilder
     private func paneToggleButton(symbol: String, title: String,
                                   action: @escaping () -> Void) -> some View {
-        if #available(macOS 26.0, *) {
-            Button(action: action) {
-                Image(systemName: symbol).frame(width: 20, height: 20)
-            }
-            .buttonStyle(.glass)
-            .help(title)
-            .accessibilityLabel(title)
-        } else {
-            Button(action: action) {
-                Image(systemName: symbol).frame(width: 20, height: 20)
-            }
-            .help(title)
-            .accessibilityLabel(title)
+        Button(action: action) {
+            Image(systemName: symbol)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
     }
 
     private var headerTitle: String {
@@ -771,6 +816,7 @@ struct DesktopWindow: View {
             }
             composer
         }
+        .background(chatBackground)
         .dropDestination(for: URL.self) { urls, _ in
             guard !urls.isEmpty else { return false }
             return model.attachFiles(at: urls)
@@ -991,7 +1037,7 @@ struct DesktopWindow: View {
         .padding(10).background(Color(nsColor: .textBackgroundColor)).clipShape(RoundedRectangle(cornerRadius: 7))
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(isDropTargeted ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: isDropTargeted ? 1.5 : 0.7))
         .frame(maxWidth: 760).padding(.horizontal, 22).padding(.top, 10).padding(.bottom, 14)
-        .frame(maxWidth: .infinity).background(Color(nsColor: .windowBackgroundColor))
+        .frame(maxWidth: .infinity).background(chatBackground)
         .onAppear {
             model.reloadCompletionHosts()
             isChatInputFocused = true

@@ -31,10 +31,16 @@ fi
 mkdir -p "$DIST" "$SCRATCH" "$CLANG_CACHE" "$SWIFTPM_CACHE"
 cargo build -p mikomai-ffi --manifest-path "$ROOT/Cargo.toml"
 build_swift() {
+    # SwiftPM's Xcode backend can record the deployment target as the SDK
+    # version. AppKit uses the linked SDK to enable the modern window controls.
+    SDK_VERSION="$(xcrun --sdk "$SDK" --show-sdk-version)"
+    DEPLOYMENT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Info.plist")"
     SDKROOT="$SDK" \
     CLANG_MODULE_CACHE_PATH="$CLANG_CACHE" \
     SWIFTPM_MODULECACHE_OVERRIDE="$SWIFTPM_CACHE" \
-    swift build --disable-sandbox --package-path "$APP" --scratch-path "$SCRATCH"
+    swift build --disable-sandbox --sdk "$SDK" --package-path "$APP" --scratch-path "$SCRATCH" \
+        -Xlinker -platform_version -Xlinker macos \
+        -Xlinker "$DEPLOYMENT_VERSION" -Xlinker "$SDK_VERSION"
 }
 if ! build_swift; then
     if [ -n "$SDK_OVERRIDE" ] || [ "$SDK" = "$SDK_FALLBACK" ] || [ ! -d "$SDK_FALLBACK" ]; then
@@ -45,7 +51,7 @@ if ! build_swift; then
     SDK="$SDK_FALLBACK"
     build_swift
 fi
-PRODUCTS="$(SDKROOT="$SDK" CLANG_MODULE_CACHE_PATH="$CLANG_CACHE" SWIFTPM_MODULECACHE_OVERRIDE="$SWIFTPM_CACHE" swift build --disable-sandbox --package-path "$APP" --scratch-path "$SCRATCH" --show-bin-path)"
+PRODUCTS="$(SDKROOT="$SDK" CLANG_MODULE_CACHE_PATH="$CLANG_CACHE" SWIFTPM_MODULECACHE_OVERRIDE="$SWIFTPM_CACHE" swift build --disable-sandbox --sdk "$SDK" --package-path "$APP" --scratch-path "$SCRATCH" --show-bin-path)"
 
 STAGING="$(mktemp -d "$DIST/.Mikomai.XXXXXX")"
 STAGED_APP="$STAGING/Mikomai.app"
