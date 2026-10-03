@@ -64,17 +64,7 @@ impl PlannerDecision {
                     .or_else(|| decision.parameters.get("device").and_then(serde_json::Value::as_str))
                     .or(decision.target.as_deref()).map(str::to_owned);
                 if let Some(host) = host { decision.parameters["host"] = host.into(); }
-                if decision.parameters.get("port").is_none() {
-                    if let Some(query) = decision.parameters.get("query").and_then(serde_json::Value::as_str) {
-                        let re = regex::Regex::new(r"(?i)^(\d{1,5})/(tcp|udp)$").unwrap();
-                        if let Some(caps) = re.captures(query.trim()) {
-                            let port = caps[1].parse::<u64>().unwrap();
-                            let protocol = caps[2].to_ascii_lowercase();
-                            decision.parameters["port"] = port.into();
-                            decision.parameters["protocol"] = protocol.into();
-                        }
-                    }
-                }
+                crate::service_ports::normalize_parameters(&mut decision.parameters)?;
             }
         }
         Ok(decision)
@@ -190,8 +180,8 @@ pub fn build_decision_schema(devices: &[String], tools: &[String]) -> String {
                 "roots":{"type":"array","items":{"type":"string","minLength":1},"minItems":1,"maxItems":32},
                 "depth":{"type":"integer","minimum":0,"maximum":8},
                 "relations":{"type":"array","items":{"type":"string","enum":["interface","bgp","vrf","route"]},"minItems":1},
-                "query":{"type":"string"},"ip":{"type":"string"},"mac":{"type":"string"},
-                "port":{"type":"integer","minimum":1,"maximum":65535},
+                "service":{"type":"string"},"query":{"type":"string"},"ip":{"type":"string"},"mac":{"type":"string"},
+                "port":{"type":["integer","string"],"minimum":1,"maximum":65535,"description":"Port number or service name; e.g. ssh, dns, tcp/22"},
                 "protocol":{"type":"string","enum":["tcp"]},
                 "command":{"type":"string"},"host":{"type":"string"},"id":{"type":"string"},
                 "intent":{"type":"string","enum":["analyze_broadcast","analyze_dhcp_response","prepare_dhcp_request","dhcp_request_probe"]},
@@ -258,6 +248,22 @@ pub fn build_goal_decision_schema(devices: &[String], tools: &[String], goal: &s
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn normalizes_service_names_in_planner_arguments() {
+        let allowed = vec!["self_network_test_connection".into()];
+        for parameters in [serde_json::json!({"host":"router","port":"ssh"}), serde_json::json!({"host":"router","query":"tcp/22"}), serde_json::json!({"host":"router","service":"SSH"})] {
+            let raw = serde_json::json!({"action_type":"VERIFY","objective":"check","tool":allowed[0],"parameters":parameters}).to_string();
+            let decision = super::PlannerDecision::parse(&raw).unwrap();
+            decision.validate(&allowed).unwrap();
+            assert_eq!(decision.parameters["port"], 22);
+            assert_eq!(decision.parameters["protocol"], "tcp");
+        }
+        let raw = serde_json::json!({"action_type":"VERIFY","objective":"check","tool":allowed[0],"parameters":{"host":"router","query":"udp/22"}}).to_string();
+        let decision = super::PlannerDecision::parse(&raw).unwrap();
+        assert_eq!(decision.parameters["protocol"], "udp");
+        assert!(decision.validate(&allowed).is_err());
+    }
 
     #[test]
     fn recovers_logged_tcp_decision_and_rejects_udp_and_bad_ports() {

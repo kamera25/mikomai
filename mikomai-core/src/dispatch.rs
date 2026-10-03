@@ -134,12 +134,19 @@ fn explicit_probe_shortcut(message: &str) -> Option<LegacyShortcut> {
 /// A single explicit TCP check. Anchoring keeps compound investigations in Agent.
 pub fn port_check_shortcut(message: &str) -> Option<LegacyShortcut> {
     let pattern = regex::Regex::new(
-        r"(?ix)^([a-z0-9:][a-z0-9.:-]{0,254})\s*(?:の\s*|\s+)(?:(\d{1,5})\s*/\s*tcp|(?:tcp\s*)?(?:ポート|port)\s*(\d{1,5}))\s*(?:(?:(?:が|は)\s*(?:空いている|開いている|開放されている|接続できる|通る)\s*か|(?:の|への)?\s*(?:疎通|接続|開放)(?:確認)?)?\s*(?:(?:を\s*)?(?:チェック(?:して)?|確認(?:して)?|調べて|テスト(?:して)?|check|test))|(?:って|は|が)?\s*(?:空いて(?:います|ます|いる)?|開いて(?:います|ます|いる)?|開放されて(?:います|いる)?|接続でき(?:ます|る)?|通る)\s*(?:か|でしょうか))[？?。！!]*$"
+        r"(?ix)^([a-z0-9:][a-z0-9.:-]{0,254})\s*(?:の\s*|\s+)((?:(?:tcp|udp)\s*)?(?:ポート|port)\s*[a-z0-9_-]+|(?:[a-z0-9_-]+\s*/\s*(?:tcp|udp)|(?:tcp|udp)\s*/\s*[a-z0-9_-]+)|[a-z][a-z0-9_-]*)\s*(?:(?:(?:が|は)\s*(?:空いている|開いている|開放されている|接続できる|通る)\s*か|(?:の|への)?\s*(?:疎通|接続|開放)(?:確認)?)?\s*(?:(?:を\s*)?(?:チェック(?:して)?|確認(?:して)?|調べて|テスト(?:して)?|check|test))|(?:って|は|が)?\s*(?:空いて(?:います|ます|いる)?|開いて(?:います|ます|いる)?|開放されて(?:います|いる)?|接続でき(?:ます|る)?|通る)\s*(?:か|でしょうか))[？?。！!]*$"
     ).ok()?;
     let captures = pattern.captures(message.trim())?;
     let host = captures.get(1)?.as_str();
-    let port = captures.get(2).or_else(|| captures.get(3))?.as_str().parse::<u16>().ok()?;
-    if port == 0 { return None; }
+    let spec = captures.get(2)?.as_str();
+    let label = regex::Regex::new(r"(?i)^(?:(tcp|udp)\s*)?(?:ポート|port)\s*([a-z0-9_-]+)$").ok()?;
+    let resolved = if let Some(parts) = label.captures(spec) {
+        crate::service_ports::resolve(&parts[2], parts.get(1).map(|p| p.as_str())).ok()?
+    } else {
+        crate::service_ports::resolve(spec, None).ok()?
+    };
+    if resolved.protocol != "tcp" { return None; }
+    let port = resolved.port;
     Some(LegacyShortcut {
         tool: Some("self_network_test_connection".into()), target: Some("localhost".into()),
         args: serde_json::json!({"host":host,"port":port,"protocol":"tcp"}), reply: None,
@@ -560,6 +567,18 @@ pub fn select_dispatch_mode_for_devices(
 }
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn service_port_checks_resolve_names_and_preserve_tcp_only_execution() {
+        for (goal, port) in [("router のsshを確認して",22),("router のDNSが開いているかチェック",53),("router のtcp/22をチェック",22),("router のTCPポートhttpsを確認",443),("router のdns/tcpをチェック",53)] {
+            let route = super::fast_route(goal).unwrap_or_else(|| panic!("{goal}"));
+            assert_eq!(route.args["port"], port);
+            assert_eq!(route.args["protocol"], "tcp");
+        }
+        for goal in ["router のudp/22をチェック", "router のdns/udpを確認", "router のntpをチェック", "router のunknownを確認", "router のsshとhttpsを確認", "router のsshの設定方法を教えて"] {
+            assert!(super::fast_route(goal).is_none(), "{goal}");
+        }
+    }
 
     #[test]
     fn port_checks_are_complete_tcp_requests_only() {

@@ -1,0 +1,14 @@
+[
+  {"name":"ssh","port":22,"protocol":"tcp","transports":["tcp"],"aliases":[]},
+  {"name":"dns","port":53,"protocol":"tcp","transports":["tcp","udp"],"aliases":["domain"]},
+  {"name":"http","port":80,"protocol":"tcp","transports":["tcp"],"aliases":["www"]},
+  {"name":"https","port":443,"protocol":"tcp","transports":["tcp","udp"],"aliases":[]},
+  {"name":"ftp","port":21,"protocol":"tcp","transports":["tcp"],"aliases":[]},
+  {"name":"telnet","port":23,"protocol":"tcp","transports":["tcp"],"aliases":[]},
+  {"name":"smtp","port":25,"protocol":"tcp","transports":["tcp"],"aliases":[]},
+  {"name":"ntp","port":123,"protocol":"udp","transports":["udp"],"aliases":[]},
+  {"name":"snmp","port":161,"protocol":"udp","transports":["udp"],"aliases":[]},
+  {"name":"ldap","port":389,"protocol":"tcp","transports":["tcp","udp"],"aliases":[]},
+  {"name":"ldaps","port":636,"protocol":"tcp","transports":["tcp"],"aliases":[]},
+  {"name":"rdp","port":3389,"protocol":"tcp","transports":["tcp","udp"],"aliases":[]}
+]

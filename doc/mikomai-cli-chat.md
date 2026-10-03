@@ -37,3 +37,11 @@ CLIとmacOSアプリは別々の実行経路です。CLIでの動作確認は、
 `chat "localhost のデフォルトルートはどこ？" --debug-jsonl` は自機のデフォルト経路を取得し、日本語の説明と取得した経路情報を応答として返します。`chat "自機のルーティングを確認して" --debug-jsonl` はルーティングテーブル全体を取得します。macOSではそれぞれ `route -n get default` と `netstat -rn`、Linuxでは `ip route show default` と `ip route show table all` を使用します。LLMや資料検索は不要です。取得失敗や空の結果を一般論で補完せずエラーとして返します。デスクトップもcoreの同じ判定と `self_network_route` の `scope` (`default` / `table`) を使用します。
 
 自機の経路照会への応答はcoreの共通フォーマッターで日本語化します。デフォルト経路の出力にgateway/interfaceが明示されている場合は、「デフォルトゲートウェイ」「使用インターフェース」として表示します。元の経路情報も残し、未取得の値は推測しません。
+
+### サービス名によるポート確認
+
+`chat "127.0.0.1 のsshを確認して" --debug-jsonl` のように、ポート番号の代わりに `ssh`、`dns`、`https` などを指定できます。`tcp/22`・`22/tcp`・`dns/tcp` も解決します。core の定型入力と Agent の `port`（文字列）、`query`、`service` パラメーターで同じ解決処理を使います。
+
+定義は `mikomai-core/src/service_ports.json`、解決処理は `service_ports.rs` に分離しています。定義には `name`、`port`、既定の `protocol`、利用可能な `transports`、任意の `aliases` を指定します。組み込み定義の編集は再ビルド後に反映されます。連携側では `ServiceRegistry::from_json` で独自定義を読み込めます。重複する名前・別名や不正な定義は拒否されます。
+
+疎通確認の実行はTCP専用です。`dns` の既定値はTCP/53で、DNS問い合わせの応答確認を行うものではありません。`udp/22`・`dns/udp` はUDPとして解決されますが、TCP接続チェックでは実行しません。`ntp`・`snmp` の既定値もUDPのままです。未知のサービスや矛盾する通信方式を推測して実行しません。

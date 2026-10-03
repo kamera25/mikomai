@@ -9,6 +9,7 @@ pub mod domain;
 pub mod graph_identity;
 pub mod intent;
 pub mod network;
+pub mod service_ports;
 pub mod nwdiag;
 pub mod plotter;
 pub mod planner;
