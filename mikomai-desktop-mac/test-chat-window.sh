@@ -10,7 +10,7 @@ printf '%s' '{"modelPath":null}' > "$CHECK_DIR/settings.json"
 # Compile the production window and model into the same file as the harness,
 # preserving their private visibility while replacing only the app entry point.
 sed '/^@main$/d' "$APP/Sources/MikomaiDesktopMac/MikomaiDesktopMac.swift" > "$CHECK_DIR/full.swift"
-cat "$APP/Tests/ChatWindowChecks/ChatWindowChecks.swift" >> "$CHECK_DIR/full.swift"
+cat "${MIKOMAI_WINDOW_CHECK_SOURCE:-$APP/Tests/ChatWindowChecks/ChatWindowChecks.swift}" >> "$CHECK_DIR/full.swift"
 set -- "$CHECK_DIR/full.swift"
 for source in "$APP"/Sources/MikomaiDesktopMac/*.swift; do
     case "$source" in */MikomaiDesktopMac.swift) ;; *) set -- "$@" "$source" ;; esac
@@ -24,4 +24,3 @@ swiftc -suppress-warnings -sdk "$SDK" -module-cache-path "$CHECK_DIR/cache" \
  -o "$CHECK_DIR/check"
 cp -R "$SCRATCH/out/Products/Debug/MikomaiDesktopMac_MikomaiDesktopMac.bundle" "$CHECK_DIR/"
 "$CHECK_DIR/check"
-

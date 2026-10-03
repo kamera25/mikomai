@@ -10,11 +10,6 @@ import UniformTypeIdentifiers
 
 // MARK: - Main Desktop Window
 
-private struct ChatBottomPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
 private struct WindowAccessor: NSViewRepresentable {
     @Binding var window: NSWindow?
 
@@ -49,11 +44,6 @@ private struct WindowAccessor: NSViewRepresentable {
             }
         }
     }
-}
-
-private struct ChatTopPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 struct DesktopWindow: View {
@@ -672,7 +662,7 @@ struct DesktopWindow: View {
 
     private var chatWorkspace: some View {
         VStack(spacing: 0) {
-            GeometryReader { viewport in
+            GeometryReader { _ in
                 ScrollViewReader { proxy in
                     ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
@@ -695,26 +685,14 @@ struct DesktopWindow: View {
                                 model.removeQueuedSubmission(submission.id)
                             }
                         }
-                        GeometryReader { bottomProxy in
-                            Color.clear.preference(key: ChatBottomPreferenceKey.self,
-                                                   value: bottomProxy.frame(in: .named("chatScroll")).maxY)
-                        }
-                        .frame(height: 1)
-                        .id("chatBottom")
                     }
-                    .background(GeometryReader { topProxy in
-                        Color.clear.preference(key: ChatTopPreferenceKey.self,
-                            value: topProxy.frame(in: .named("chatScroll")).minY)
-                    })
                     .frame(maxWidth: 760).frame(maxWidth: .infinity).padding(.horizontal, 24).padding(.vertical, 24)
-                    }
-                    .coordinateSpace(name: "chatScroll")
-                    .onPreferenceChange(ChatTopPreferenceKey.self) { topY in
-                        chatScrollFollow.observe(contentTop: Double(topY), isAtBottom: isAtChatBottom)
-                    }
-                    .onPreferenceChange(ChatBottomPreferenceKey.self) { bottomY in
-                        isAtChatBottom = bottomY <= viewport.size.height + 32
-                        chatScrollFollow.updateViewport(isAtBottom: isAtChatBottom)
+                    .id("chatBottom")
+                    .background(ChatScrollObserver { top, atBottom in
+                        chatScrollFollow.observe(contentTop: top, isAtBottom: atBottom)
+                        isAtChatBottom = atBottom
+                        chatScrollFollow.updateViewport(isAtBottom: atBottom)
+                    })
                     }
                     .onChange(of: model.activeSession?.messages.last?.text ?? "") { _ in
                         if chatScrollFollow.followsOutput { proxy.scrollTo("chatBottom", anchor: .bottom) }
@@ -742,6 +720,7 @@ struct DesktopWindow: View {
                                     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
                                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
                             }
+                            .accessibilityIdentifier("chat-scroll-to-bottom")
                             .buttonStyle(.plain).padding(.bottom, 8)
                         }
                     }
