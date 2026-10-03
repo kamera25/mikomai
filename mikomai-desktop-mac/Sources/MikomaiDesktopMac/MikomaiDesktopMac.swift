@@ -46,27 +46,9 @@ struct MikomaiDesktopMac: App {
             CommandMenu("表示") {
                 Button("チャット") { model.workspace = .chat }.keyboardShortcut("1", modifiers: .command)
                 Button("機器情報一覧") { model.workspace = .connections }.keyboardShortcut("2", modifiers: .command)
-                Button("ネットワークツール") { model.workspace = .tools }.keyboardShortcut("3", modifiers: .command)
+                Button("エージェント履歴") { model.workspace = .agentHistory }.keyboardShortcut("3", modifiers: .command)
                 Button("設定") { model.workspace = .settings }.keyboardShortcut("4", modifiers: .command)
-                Button("監視・タスク履歴") { model.workspace = .monitoring }.keyboardShortcut("5", modifiers: .command)
-            }
-            CommandMenu("ネットワーク") {
-                Button("接続テスト") {
-                    model.workspace = .tools
-                    model.selectedToolTab = .tcpTest
-                }
-                Button("Ping / Trace を実行") {
-                    model.workspace = .tools
-                    model.selectedToolTab = .ping
-                }
-                Button("ARP テーブル表示") {
-                    model.workspace = .tools
-                    model.selectedToolTab = .arp
-                }
-                Button("ルーティングテーブル表示") {
-                    model.workspace = .tools
-                    model.selectedToolTab = .route
-                }
+                Button("CPU監視") { model.workspace = .monitoring }.keyboardShortcut("5", modifiers: .command)
             }
         }
     }

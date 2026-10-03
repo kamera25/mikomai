@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 enum Workspace: String, CaseIterable, Identifiable {
     case chat = "チャット"
     case connections = "機器情報一覧"
-    case tools = "ネットワークツール"
+    case agentHistory = "エージェント履歴"
     case monitoring = "CPU監視"
     case settings = "設定"
 
@@ -22,26 +22,9 @@ enum Workspace: String, CaseIterable, Identifiable {
         switch self {
         case .chat: "bubble.left.and.bubble.right"
         case .connections: "point.3.connected.trianglepath.dotted"
-        case .tools: "wrench.and.screwdriver"
+        case .agentHistory: "clock.arrow.circlepath"
         case .monitoring: "waveform.path.ecg"
         case .settings: "gearshape"
-        }
-    }
-}
-
-enum ToolTab: String, CaseIterable, Identifiable {
-    case tcpTest = "接続テスト"
-    case ping = "Ping / Trace"
-    case arp = "ARP テーブル"
-    case route = "ルーティング"
-
-    var id: String { rawValue }
-    var icon: String {
-        switch self {
-        case .tcpTest: "bolt.horizontal.fill"
-        case .ping: "antenna.radiowaves.left.and.right"
-        case .arp: "tablecells"
-        case .route: "arrow.triangle.branch"
         }
     }
 }
@@ -142,30 +125,6 @@ enum SettingsManager {
 }
 
 // MARK: - Chat & Saved Connections Models
-
-struct ConnectionTestStatus {
-    let success: Bool
-    let message: String
-    let latencyMs: Int?
-    let timestamp: Date
-}
-
-struct ArpRecord: Identifiable {
-    let id = UUID()
-    let ip: String
-    let mac: String
-    let interface: String
-    let isPermanent: Bool
-    let isIncomplete: Bool
-}
-
-struct RouteRecord: Identifiable {
-    let id = UUID()
-    let destination: String
-    let gateway: String
-    let flags: String
-    let interface: String
-}
 
 struct NativeOperationPlan: Decodable, Identifiable {
     let id: String

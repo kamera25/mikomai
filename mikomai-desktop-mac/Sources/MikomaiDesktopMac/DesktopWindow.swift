@@ -234,7 +234,7 @@ struct DesktopWindow: View {
         HStack(spacing: 0) {
             activityBar
             HSplitView {
-                if model.workspace == .chat && isHistoryOpen {
+                if showsHistorySidebar && isHistoryOpen {
                     historySidebar
                         .frame(minWidth: 180, idealWidth: historyWidth, maxWidth: 420)
                         .background(InitialHistoryPaneSizing(width: historyWidth))
@@ -244,7 +244,7 @@ struct DesktopWindow: View {
                         switch model.workspace {
                         case .chat: selectedHistoryWorkspace
                         case .connections: ConnectionsWorkspace(model: model)
-                        case .tools: NetworkToolsWorkspace(model: model)
+                        case .agentHistory: agentHistoryWorkspace
                         case .monitoring: MonitoringWorkspace(model: model)
                         case .settings: SettingsWorkspace(model: model)
                         }
@@ -295,6 +295,12 @@ struct DesktopWindow: View {
             guard id != nil, !(isRightPaneOpen && rightPaneTab == "debug") else { return }
             rightPaneTab = "execution"
             isRightPaneOpen = true
+        }
+        .onChange(of: model.workspace) { workspace in
+            if workspace == .chat { historyTab = "conversation" }
+            if (workspace == .chat || workspace == .agentHistory) && !isTiled {
+                isHistoryOpen = true
+            }
         }
         .onAppear { model.startWatchService() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in model.stopWatchService() }
@@ -358,7 +364,7 @@ struct DesktopWindow: View {
     private func activityButton(_ item: Workspace) -> some View {
         Button {
             model.workspace = item
-            if item == .chat && !isTiled { isHistoryOpen = true }
+            if (item == .chat || item == .agentHistory) && !isTiled { isHistoryOpen = true }
         } label: {
             Image(systemName: item.icon).font(.system(size: 16, weight: .medium))
                 .foregroundStyle(model.workspace == item ? .primary : .secondary)
@@ -367,38 +373,39 @@ struct DesktopWindow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain).help(item.rawValue)
+        .accessibilityLabel(item.rawValue)
     }
 
     private var historySidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Menu {
-                    Button("会話") { historyTab = "conversation" }
-                    Button("エージェント履歴") {
-                        historyTab = "agents"
-                        model.refreshAgentTasks()
+                if model.workspace == .agentHistory {
+                    Text("エージェント履歴").font(.system(size: 14, weight: .semibold))
+                } else {
+                    Menu {
+                        Button("会話") { historyTab = "conversation" }
+                        Button("操作監査") {
+                            historyTab = "audit"
+                            model.refreshOperationAudit()
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(historyTabTitle).font(.system(size: 14, weight: .semibold))
+                            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                            Spacer(minLength: 8)
+                        }
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                    Button("操作監査") {
-                        historyTab = "audit"
-                        model.refreshOperationAudit()
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Text(historyTabTitle).font(.system(size: 14, weight: .semibold))
-                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
-                        Spacer(minLength: 8)
-                    }
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-                    .contentShape(Rectangle())
+                    .menuStyle(.borderlessButton)
+                    .help("表示する履歴を選択")
                 }
-                .menuStyle(.borderlessButton)
-                .help("表示する履歴を選択")
                 Spacer()
-                if historyTab == "conversation" {
+                if model.workspace == .chat && historyTab == "conversation" {
                     Button { model.createSession() } label: { Image(systemName: "square.and.pencil") }
                         .buttonStyle(.plain).help("新しい会話")
-                } else if historyTab == "agents" {
+                } else if model.workspace == .agentHistory {
                     Button { model.refreshAgentTasks() } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.plain).help("エージェント履歴を更新")
                 }
@@ -407,26 +414,26 @@ struct DesktopWindow: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    if historyTab == "conversation" {
-                        ForEach(model.sessions) { session in
-                            SessionRow(session: session, isSelected: session.id == model.activeSessionID,
-                                       onSelect: { model.select(session.id) },
-                                       onRename: { model.renameSession(session.id, title: $0) },
-                                       onDelete: { model.deleteSession(session.id) })
-                        }
-                    } else if historyTab == "agents" {
+                    if model.workspace == .agentHistory {
                         AgentTaskHistoryList(
                             tasks: model.agentTasks,
                             selectedTaskID: $model.selectedAgentTaskID,
                             onSelect: { task in model.loadAgentTaskHistory(task) },
                             onDelete: { task in model.deleteAgentTask(task) }
                         )
+                    } else if historyTab == "conversation" {
+                        ForEach(model.sessions) { session in
+                            SessionRow(session: session, isSelected: session.id == model.activeSessionID,
+                                       onSelect: { model.select(session.id) },
+                                       onRename: { model.renameSession(session.id, title: $0) },
+                                       onDelete: { model.deleteSession(session.id) })
+                        }
                     } else {
                         Text("承認済み操作の監査記録").font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary).padding(8)
                     }
                 }.padding(8)
             }
-            if historyTab == "conversation" && !model.recentToolResults.isEmpty {
+            if model.workspace == .chat && historyTab == "conversation" && !model.recentToolResults.isEmpty {
                 Divider()
                 VStack(alignment: .leading, spacing: 7) {
                     Text("取得した状態・DB検索").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
@@ -457,30 +464,36 @@ struct DesktopWindow: View {
 
     private var historyTabTitle: String {
         switch historyTab {
-        case "agents": "エージェント履歴"
         case "audit": "操作監査"
         default: "会話"
         }
     }
 
+    private var showsHistorySidebar: Bool {
+        model.workspace == .chat || model.workspace == .agentHistory
+    }
+
+    private var agentHistoryWorkspace: some View {
+        AgentTaskWorkspace(
+            tasks: model.agentTasks,
+            selectedTaskID: $model.selectedAgentTaskID,
+            selectedHistory: model.selectedTaskHistory,
+            onRefresh: { model.refreshAgentTasks() },
+            onResumeTask: { task in
+                historyTab = "conversation"
+                model.workspace = .chat
+                model.resumeAgentTask(task)
+            },
+            onDeleteTask: { task in model.deleteAgentTask(task) },
+            onDeleteAllTasks: { model.deleteAllAgentTasks() }
+        )
+        .padding(20)
+        .onAppear { model.refreshAgentTasks() }
+    }
+
     @ViewBuilder
     private var selectedHistoryWorkspace: some View {
         switch historyTab {
-        case "agents":
-            AgentTaskWorkspace(
-                tasks: model.agentTasks,
-                selectedTaskID: $model.selectedAgentTaskID,
-                selectedHistory: model.selectedTaskHistory,
-                onRefresh: { model.refreshAgentTasks() },
-                onResumeTask: { task in
-                    historyTab = "conversation"
-                    model.resumeAgentTask(task)
-                },
-                onDeleteTask: { task in model.deleteAgentTask(task) },
-                onDeleteAllTasks: { model.deleteAllAgentTasks() }
-            )
-            .padding(20)
-            .onAppear { model.refreshAgentTasks() }
         case "audit":
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -514,9 +527,9 @@ struct DesktopWindow: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            if model.workspace == .chat {
+            if showsHistorySidebar {
                 paneToggleButton(symbol: "sidebar.left",
-                                 title: isHistoryOpen ? "会話履歴を非表示" : "会話履歴を表示") {
+                                 title: isHistoryOpen ? "履歴一覧を非表示" : "履歴一覧を表示") {
                     withAnimation(.easeInOut(duration: 0.18)) { isHistoryOpen.toggle() }
                 }
             }
@@ -561,7 +574,6 @@ struct DesktopWindow: View {
     private var headerTitle: String {
         guard model.workspace == .chat else { return model.workspace.rawValue }
         switch historyTab {
-        case "agents": return "エージェント履歴"
         case "audit": return "操作監査"
         default: return model.activeSession?.title ?? "mikomai"
         }

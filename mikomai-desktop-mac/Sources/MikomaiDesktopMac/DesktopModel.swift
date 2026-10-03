@@ -14,7 +14,6 @@ import UniformTypeIdentifiers
 final class DesktopModel: ObservableObject {
     @Published var debugRecords: [CoreDebugRecord] = []
     @Published var workspace: Workspace = .chat
-    @Published var selectedToolTab: ToolTab = .tcpTest
     @Published var sessions: [ChatSession] = [] { didSet { persistSessions() } }
     @Published var activeSessionID: UUID? { didSet { persistActiveSession() } }
     @Published var draft = ""
@@ -25,7 +24,6 @@ final class DesktopModel: ObservableObject {
     var isWorkingInActiveSession: Bool { chatResponse.showsProgress(in: activeSessionID) }
     @Published var connections: [SavedConnection] = [] { didSet { persistConnections(); watchCallbackBox?.update(connections: connections) } }
     @Published var editingConnection: SavedConnection?
-    @Published var connectionStatuses: [UUID: ConnectionTestStatus] = [:]
     @Published var operationProposal = ""
     @Published var operationPlan: NativeOperationPlan?
     @Published var operationLogs: [String] = []
@@ -95,15 +93,6 @@ final class DesktopModel: ObservableObject {
     @Published var modelFilename: String = "gemma-4-E4B-it-UD-Q4_K_XL.gguf"
     @Published var isDownloadingModel: Bool = false
     @Published var downloadProgressText: String = ""
-
-    // Tools state
-    @Published var tcpTestHost = ""
-    @Published var tcpTestPort = "22"
-    @Published var tcpTestTimeout = "2000"
-    @Published var isTestingTcp = false
-    @Published var tcpTestResult: String?
-    @Published var tcpTestSuccess: Bool?
-    @Published var recentTcpTests: [String] = []
 
     let defaults: UserDefaults
     let credentialPersistence = ConnectionCredentialPersistence(store: KeychainCredentialAdapter())

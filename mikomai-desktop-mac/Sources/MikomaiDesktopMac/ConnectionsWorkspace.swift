@@ -28,7 +28,7 @@ struct ConnectionsWorkspace: View {
                 VStack(spacing: 9) {
                     Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 24)).foregroundStyle(.secondary)
                     Text("登録した機器はありません").font(.system(size: 16, weight: .semibold))
-                    Text("ネットワーク機器の接続情報を登録できます。Keychain による資格情報の安全な保存、Ping や接続テストを実行できます。").font(.system(size: 14)).foregroundStyle(.secondary)
+                    Text("ネットワーク機器の接続情報を登録できます。資格情報はKeychainに安全に保存します。").font(.system(size: 14)).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Table(model.connections) {
@@ -50,38 +50,8 @@ struct ConnectionsWorkspace: View {
                             Text("未設定").font(.system(size: 13)).foregroundStyle(.secondary)
                         }
                     }.width(90)
-                    TableColumn("ステータス") { connection in
-                        if let status = model.connectionStatuses[connection.id] {
-                            HStack(spacing: 4) {
-                                Circle().fill(status.success ? Color.green : Color.red).frame(width: 7, height: 7)
-                                if let lat = status.latencyMs {
-                                    Text("\(lat) ms").font(.system(size: 13))
-                                } else {
-                                    Text(status.success ? "OK" : "NG").font(.system(size: 13))
-                                }
-                            }
-                        } else {
-                            Text("未テスト").font(.system(size: 13)).foregroundStyle(.secondary)
-                        }
-                    }.width(75)
                     TableColumn("操作") { connection in
                         HStack(spacing: 6) {
-                            Button {
-                                model.testConnection(connection)
-                            } label: {
-                                Image(systemName: "bolt.fill")
-                            }
-                            .help("接続テスト")
-
-                            Button {
-                                model.tcpTestHost = connection.host
-                                model.workspace = .tools
-                                model.selectedToolTab = .ping
-                            } label: {
-                                Image(systemName: "antenna.radiowaves.left.and.right")
-                            }
-                            .help("Ping を実行")
-
                             Button {
                                 model.editingConnection = connection
                             } label: {
