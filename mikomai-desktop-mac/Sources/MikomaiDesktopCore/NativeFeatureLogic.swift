@@ -13,7 +13,29 @@ public struct ChatMessage: Identifiable, Codable, Equatable {
     public var probeResults: [AgentToolResult]?
 
     public var hasProbeResults: Bool { !(probeResults ?? []).isEmpty }
-    public var conversationText: String { hasProbeResults ? "" : text }
+    public var displayedProbeResults: [AgentToolResult] {
+        var seen = Set<String>()
+        return (probeResults ?? []).reversed().filter {
+            seen.insert($0.probeDisplayName ?? $0.tool).inserted
+        }.reversed()
+    }
+
+    public var conversationText: String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let plannerErrors = ["エラー: action Observe requires a tool or target", "エラー: action Verify requires a tool or target", "エラー: planner omitted a read-only tool"]
+        if plannerErrors.contains(trimmed),
+           let summary = (probeResults ?? []).reversed().compactMap({ ProbeResultPresentation.pingStatisticsSummary($0) }).first {
+            return summary
+        }
+        if hasProbeResults,
+           ProbeResultPresentation.legacyResult(from: text, messageID: id) != nil
+            || (probeResults ?? []).contains(where: {
+                $0.output.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed
+            }) {
+            return ""
+        }
+        return text
+    }
 
     public init(id: UUID = UUID(), role: Role, text: String, attachments: [String] = []) {
         self.id = id

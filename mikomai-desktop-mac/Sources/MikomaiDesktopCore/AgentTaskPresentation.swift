@@ -57,6 +57,20 @@ public struct AgentToolResult: Identifiable, Codable, Equatable, Sendable {
 }
 
 public enum ProbeResultPresentation {
+    /// Recover measured statistics for older messages whose planner failed after Ping.
+    public static func pingStatisticsSummary(_ result: AgentToolResult) -> String? {
+        guard result.succeeded, result.probeDisplayName == "Ping",
+              let regex = try? NSRegularExpression(pattern: #"(\d+) packets transmitted,\s*(\d+) (?:packets )?received,\s*([0-9]+(?:\.[0-9]+)?)% packet loss"#),
+              let match = regex.firstMatch(in: result.output, range: NSRange(result.output.startIndex..., in: result.output)) else { return nil }
+        let values = (1...3).compactMap { index -> String? in
+            guard let range = Range(match.range(at: index), in: result.output) else { return nil }
+            return String(result.output[range])
+        }
+        guard values.count == 3, let sent = UInt64(values[0]), let received = UInt64(values[1]),
+              let loss = Double(values[2]), sent > 0, received <= sent, (0...100).contains(loss) else { return nil }
+        return "パケット損失率は\(values[2])%です（\(sent)回送信、\(received)回応答）。"
+    }
+
     /// Older sessions stored terminal output as assistant prose. Recover that
     /// output without classifying ordinary explanations or greetings as probes.
     public static func legacyResult(from text: String, messageID: UUID) -> AgentToolResult? {

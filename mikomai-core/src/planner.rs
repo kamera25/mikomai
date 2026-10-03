@@ -44,13 +44,18 @@ impl PlannerDecision {
         if !decision.parameters.is_null() && !decision.parameters.is_object() {
             return Err("planner decision parameters must be an object or null".into());
         }
-        // Some local models nest the tool alongside its arguments. Recover only
-        // the read-only TCP tool; the normal allow-list still validates it.
+        // Some local models nest read-only probe tools alongside their arguments.
+        // Recover these known tools; the normal allow-list still validates them.
         if matches!(decision.action, ActionType::Observe | ActionType::Verify) {
             let nested = decision.parameters.get("tool").and_then(serde_json::Value::as_str);
-            if decision.tool.is_none() && matches!(nested, Some("self_network_test_connection" | "self_network_test_net_connection")) {
+            if decision.tool.is_none() && matches!(nested, Some("self_network_test_connection" | "self_network_test_net_connection" | "self_network_ping" | "self_network_traceroute")) {
                 decision.tool = nested.map(str::to_owned);
                 decision.parameters.as_object_mut().unwrap().remove("tool");
+            }
+            if matches!(decision.tool.as_deref(), Some("self_network_ping" | "self_network_traceroute")) && decision.parameters.get("host").is_none() {
+                let host = decision.parameters.get("device").and_then(serde_json::Value::as_str)
+                    .or(decision.target.as_deref()).filter(|host| !host.trim().is_empty() && *host != "localhost").map(str::to_owned);
+                if let Some(host) = host { decision.parameters["host"] = host.into(); }
             }
             if matches!(decision.tool.as_deref(), Some("self_network_test_connection" | "self_network_test_net_connection")) {
                 if decision.parameters.is_null() { decision.parameters = serde_json::json!({}); }
@@ -208,6 +213,17 @@ pub fn build_goal_decision_schema(devices: &[String], tools: &[String], goal: &s
     let mut schema: serde_json::Value =
         serde_json::from_str(&build_decision_schema(devices, tools))
             .expect("generated decision schema is valid JSON");
+    if let Some(host) = crate::agent::ping_statistics_target(goal) {
+        schema["properties"]["tool"] = serde_json::json!({"enum":["self_network_ping", null]});
+        schema["properties"]["parameters"] = serde_json::json!({
+            "type":"object", "properties":{
+                "host":{"type":"string","enum":[host]},
+                "count":{"type":"integer","minimum":1,"maximum":100},
+                "size":{"type":"integer","minimum":1,"maximum":65507},
+                "dont_fragment":{"type":"boolean"}
+            }
+        });
+    }
     if let Some(mac) = crate::dispatch::arp_mac_target(goal)
         .or_else(|| {
             crate::dispatch::mac_address_in_goal(goal)
@@ -260,6 +276,18 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn nested_ping_and_natural_statistics_schema_remain_read_only() {
+        let decision = PlannerDecision::parse(r#"{"action_type":"OBSERVE","objective":"packet statistics","parameters":{"tool":"self_network_ping","device":"127.0.0.1"}}"#).unwrap();
+        decision.validate(&["self_network_ping".into()]).unwrap();
+        assert_eq!(decision.tool.as_deref(), Some("self_network_ping"));
+        assert_eq!(decision.parameters["host"], "127.0.0.1");
+        let schema: serde_json::Value = serde_json::from_str(&build_goal_decision_schema(&[], &["self_network_ping".into(), "self_network_test_connection".into()], "127.0.0.1への疎通を調べて、損失率を教えてください")).unwrap();
+        assert_eq!(schema["properties"]["tool"]["enum"], serde_json::json!(["self_network_ping", null]));
+        assert_eq!(schema["properties"]["parameters"]["properties"]["host"]["enum"], serde_json::json!(["127.0.0.1"]));
+        assert!(schema["properties"]["parameters"]["properties"].get("port").is_none());
+    }
 
     #[test]
     fn parses_wrapped_finish_and_hides_planner_reason() {

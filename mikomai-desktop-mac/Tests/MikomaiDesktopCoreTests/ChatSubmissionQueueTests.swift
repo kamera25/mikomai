@@ -72,7 +72,7 @@ struct ExecutionTerminalPresentationTests {
     }
 
     @Test func keepsResultSeparateEvenWhenAnswerIsReformattedAndSurvivesReload() throws {
-        var message = ChatMessage(role: .assistant, text: "PING 8.8.8.8: 64 bytes ttl=120 time=12 ms")
+        var message = ChatMessage(role: .assistant, text: "PING 8.8.8.8:\n64 bytes ttl=120 time=12 ms\n")
         let result = AgentToolResult(tool: "self_network_ping", output: "PING 8.8.8.8:\n64 bytes ttl=120 time=12 ms\n",
                                      succeeded: true, messageID: message.id)
         message.probeResults = [result]
@@ -82,6 +82,35 @@ struct ExecutionTerminalPresentationTests {
         #expect(reloaded.probeResults == [result])
         #expect(reloaded.conversationText.isEmpty)
         #expect(!ChatMessage(role: .assistant, text: "こんにちは！").hasProbeResults)
+    }
+
+    @Test func recoversMeasuredAnswerFromPlannerErrorAndGroupsDuplicateLinks() throws {
+        var message = ChatMessage(role: .assistant, text: "エラー: planner omitted a read-only tool")
+        let first = AgentToolResult(tool: "self_network_ping", output: "4 packets transmitted, 4 packets received, 0.0% packet loss", succeeded: true)
+        let latest = AgentToolResult(tool: "self_network_ping", output: "4 packets transmitted, 4 packets received, 0.0% packet loss", succeeded: true)
+        message.probeResults = [first, latest]
+        #expect(message.conversationText == "パケット損失率は0.0%です（4回送信、4回応答）。")
+        #expect(message.displayedProbeResults == [latest])
+        #expect(message.probeResults?.count == 2)
+        let restored = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(message))
+        #expect(restored.conversationText == message.conversationText)
+        #expect(restored.displayedProbeResults == [latest])
+        message.text = "エラー: 接続失敗"
+        #expect(message.conversationText == message.text)
+        var failed = first; failed.succeeded = false
+        #expect(ProbeResultPresentation.pingStatisticsSummary(failed) == nil)
+        #expect(ProbeResultPresentation.pingStatisticsSummary(AgentToolResult(tool: "self_network_ping", output: "no statistics", succeeded: true)) == nil)
+    }
+
+    @Test func keepsAnswerAlongsideProbeResultsAfterReload() throws {
+        for tool in ["self_network_ping", "self_network_traceroute"] {
+            var message = ChatMessage(role: .assistant, text: "8.8.8.8へのPing成功率は100%です（4回中4回応答）。")
+            message.probeResults = [AgentToolResult(tool: tool, output: "4 packets transmitted, 4 packets received, 0.0% packet loss", succeeded: true)]
+            #expect(message.conversationText == message.text)
+            let reloaded = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(message))
+            #expect(reloaded.conversationText == message.text)
+            #expect(reloaded.hasProbeResults)
+        }
     }
 
     @Test func recoversSavedPingAndTracerouteWithoutMatchingGreetingOrExplanation() throws {

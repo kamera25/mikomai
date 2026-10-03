@@ -37,7 +37,7 @@ struct MessageRow: View {
                     }
                     if message.hasProbeResults {
                         VStack(alignment: .leading, spacing: 6) {
-                            ForEach(message.probeResults ?? []) { result in
+                            ForEach(message.displayedProbeResults) { result in
                                 if let name = result.probeDisplayName {
                                     Text("\(name)を実行しました。")
                                         .font(.system(size: 15))
