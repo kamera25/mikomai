@@ -15,19 +15,6 @@ private struct ChatBottomPreferenceKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
-private struct PaneResizeCursor: NSViewRepresentable {
-    final class CursorView: NSView {
-        override func resetCursorRects() {
-            addCursorRect(bounds, cursor: .resizeLeftRight)
-        }
-    }
-
-    func makeNSView(context: Context) -> CursorView { CursorView() }
-    func updateNSView(_ view: CursorView, context: Context) {
-        view.window?.invalidateCursorRects(for: view)
-    }
-}
-
 private struct WindowAccessor: NSViewRepresentable {
     @Binding var window: NSWindow?
 
@@ -86,11 +73,9 @@ struct DesktopWindow: View {
     @State private var currentContainerWidth: CGFloat = 1120
 
     @AppStorage("mikomai.desktop.mac.historyWidth") private var historyWidth = 248.0
-    @State private var historyDragStart: CGFloat?
     @State private var isHistoryOpen = true
     @State private var historyTab = "conversation"
     @AppStorage("mikomai.desktop.mac.rightPaneWidth") private var rightPaneWidth = 330.0
-    @State private var rightPaneDragStart: CGFloat?
     @State private var isRightPaneOpen = false
     @State private var rightPaneTab = "diff"
     @State private var isAtChatBottom = true
@@ -100,69 +85,6 @@ struct DesktopWindow: View {
     @State private var isOperationRunning = false
     @State private var operationRationale = "選択した変更案を適用する"
 
-
-    private func historyMaximumWidth(containerWidth: CGFloat) -> CGFloat {
-        CGFloat(PaneResizePolicy.maximumWidth(
-            containerWidth: Double(containerWidth),
-            reservedWidth: 50 + 440 + (isRightPaneOpen ? rightPaneWidth + 8 : 0) + 8,
-            lowerBound: 180,
-            upperBound: 420
-        ))
-    }
-
-    private func rightPaneMaximumWidth(containerWidth: CGFloat) -> CGFloat {
-        let visibleHistoryWidth = isHistoryOpen ? min(CGFloat(historyWidth), historyMaximumWidth(containerWidth: containerWidth)) + 8 : 0
-        return CGFloat(PaneResizePolicy.maximumWidth(
-            containerWidth: Double(containerWidth),
-            reservedWidth: 50 + 440 + Double(visibleHistoryWidth) + 8,
-            lowerBound: 180,
-            upperBound: 600
-        ))
-    }
-
-    private func paneResizeDivider(isHistory: Bool, currentWidth: CGFloat, maximumWidth: CGFloat) -> some View {
-        Rectangle()
-            .fill(Color(nsColor: .separatorColor).opacity(0.65))
-            .frame(width: 1)
-            .frame(width: 8)
-            .background(PaneResizeCursor())
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                .onChanged { value in
-                    if isHistory {
-                        if historyDragStart == nil { historyDragStart = currentWidth }
-                        historyWidth = PaneResizePolicy.clampedWidth(
-                            Double((historyDragStart ?? currentWidth) + value.translation.width),
-                            maximumWidth: Double(maximumWidth)
-                        )
-                    } else {
-                        if rightPaneDragStart == nil { rightPaneDragStart = currentWidth }
-                        rightPaneWidth = PaneResizePolicy.clampedWidth(
-                            Double((rightPaneDragStart ?? currentWidth) - value.translation.width),
-                            maximumWidth: Double(maximumWidth)
-                        )
-                    }
-                }
-                .onEnded { value in
-                    if isHistory {
-                        if PaneResizePolicy.shouldClose(
-                            startWidth: Double(historyDragStart ?? currentWidth),
-                            translation: Double(value.translation.width),
-                            isHistoryPane: true
-                        ) { isHistoryOpen = false }
-                        historyDragStart = nil
-                    } else {
-                        if PaneResizePolicy.shouldClose(
-                            startWidth: Double(rightPaneDragStart ?? currentWidth),
-                            translation: Double(value.translation.width),
-                            isHistoryPane: false
-                        ) { isRightPaneOpen = false }
-                        rightPaneDragStart = nil
-                    }
-                })
-            .help(isHistory ? "ドラッグして会話履歴の幅を調整・180pt未満で閉じる" : "ドラッグして右ペインの幅を調整・180pt未満で閉じる")
-            .accessibilityLabel(isHistory ? "会話履歴の幅を調整" : "右ペインの幅を調整")
-    }
 
     private var hostSuggestions: [HostSuggestion] {
         guard let context = mentionContext else { return [] }
@@ -196,14 +118,11 @@ struct DesktopWindow: View {
         GeometryReader { geometry in
         HStack(spacing: 0) {
             activityBar
-            if model.workspace == .chat && isHistoryOpen {
-                historySidebar
-                    .frame(width: min(CGFloat(historyWidth), historyMaximumWidth(containerWidth: geometry.size.width)))
-                paneResizeDivider(isHistory: true,
-                    currentWidth: min(CGFloat(historyWidth), historyMaximumWidth(containerWidth: geometry.size.width)),
-                    maximumWidth: historyMaximumWidth(containerWidth: geometry.size.width))
-            }
-            HStack(spacing: 0) {
+            HSplitView {
+                if model.workspace == .chat && isHistoryOpen {
+                    historySidebar
+                        .frame(minWidth: 180, idealWidth: historyWidth, maxWidth: 420)
+                }
                 VStack(spacing: 0) {
                     header
                     Group {
@@ -217,14 +136,11 @@ struct DesktopWindow: View {
                     }
                     statusBar
                 }
+                .frame(minWidth: 440, maxWidth: .infinity)
                 .background(Color(nsColor: .windowBackgroundColor))
                 if model.workspace == .chat && historyTab == "conversation" && isRightPaneOpen {
-                    paneResizeDivider(isHistory: false,
-                        currentWidth: min(CGFloat(rightPaneWidth), rightPaneMaximumWidth(containerWidth: geometry.size.width)),
-                        maximumWidth: rightPaneMaximumWidth(containerWidth: geometry.size.width))
                     rightSidePane
-                        .frame(width: min(CGFloat(rightPaneWidth), rightPaneMaximumWidth(containerWidth: geometry.size.width)))
-                        .transition(.move(edge: .trailing))
+                        .frame(minWidth: 180, idealWidth: rightPaneWidth, maxWidth: 600)
                 }
             }
         }
@@ -416,7 +332,6 @@ struct DesktopWindow: View {
             }.padding(12)
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.7))
-        .overlay(alignment: .trailing) { Divider() }
     }
 
     private var historyTabTitle: String {
@@ -584,7 +499,6 @@ struct DesktopWindow: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
-        .overlay(alignment: .leading) { Divider() }
     }
 
     private var operationDiffPane: some View {
