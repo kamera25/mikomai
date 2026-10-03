@@ -8,6 +8,7 @@ public struct ChatMarkdownBlock: Equatable {
         case bullet(String)
         case quote(String)
         case image(String, String)
+        case imageFile(URL)
         case separator
     }
 
@@ -33,6 +34,17 @@ public enum ChatMarkdownParser {
             let line = lines[index]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { flushParagraph(); index += 1; continue }
+            let savedImagePrefix = "SVGを保存しました: "
+            if trimmed.hasPrefix(savedImagePrefix) {
+                let path = String(trimmed.dropFirst(savedImagePrefix.count))
+                let url = URL(fileURLWithPath: path)
+                if path.hasPrefix("/"), url.pathExtension.lowercased() == "svg" {
+                    flushParagraph()
+                    result.append(ChatMarkdownBlock(kind: .imageFile(url)))
+                    index += 1
+                    continue
+                }
+            }
             if trimmed.hasPrefix("!["), let divider = trimmed.range(of: "]("), trimmed.hasSuffix(")") {
                 let title = String(trimmed[trimmed.index(trimmed.startIndex, offsetBy: 2)..<divider.lowerBound])
                 let source = String(trimmed[divider.upperBound..<trimmed.index(before: trimmed.endIndex)])

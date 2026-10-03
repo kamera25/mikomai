@@ -268,7 +268,7 @@ struct SettingsWorkspace: View {
                         modelSelectionRow(preset.id, title: "\(preset.name) \(exists ? "(✓ DL済)" : "(未DL)")")
                     }
                     if model.supportsAppleModelOS {
-                        modelSelectionRow(AppleModelPolicy.presetID, title: "AFM 3 Core (macOS 標準)")
+                        modelSelectionRow(AppleModelPolicy.presetID, title: "AFM 3 Core (macOS 27 以降 / Experimental)")
                     }
                     modelSelectionRow("custom", title: "カスタムモデル (任意の GGUF)")
                 }

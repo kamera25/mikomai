@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import MikomaiDesktopCore
 
 // MARK: - Markdown Message View
@@ -49,6 +50,15 @@ struct MarkdownMessage: View {
                     if let image = ChatDiagramImage(source: source) {
                         NetworkDiagramView(title: title, image: image)
                     }
+                case let .imageFile(url):
+                    Link(destination: url) {
+                        Label("画像ファイル", systemImage: "photo")
+                    }
+                    .font(.system(size: 15))
+                    .help(url.path)
+                    .environment(\.openURL, OpenURLAction { destination in
+                        NSWorkspace.shared.open(destination) ? .handled : .discarded
+                    })
                 case .separator:
                     Divider()
                 }

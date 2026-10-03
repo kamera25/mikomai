@@ -51,6 +51,7 @@ struct DesktopWindow: View {
     @State private var mentionPresentation = ChatMentionPresentation()
     @State private var isChatInputFocused = false
     @State private var isDropTargeted = false
+    @StateObject private var diagramPresentation = NetworkDiagramPresentation()
     private var mentionContext: ChatMentionContext? { mentionPresentation.context }
     private var showsHostSuggestions: Bool { mentionPresentation.isVisible(candidateCount: hostSuggestions.count) }
     @State private var hostSuggestionIndex = 0
@@ -745,6 +746,9 @@ struct DesktopWindow: View {
                 dropOverlay
             }
         }
+        .modifier(ChatDiagramExpansion(presentation: diagramPresentation))
+        .onChange(of: model.activeSessionID) { _ in diagramPresentation.close() }
+        .onDisappear { diagramPresentation.close() }
     }
 
     private var dropOverlay: some View {
