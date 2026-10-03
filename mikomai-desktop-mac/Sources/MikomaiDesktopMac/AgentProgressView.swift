@@ -13,12 +13,14 @@ struct AgentProgressView: View {
                     if isRunning { ProgressView().controlSize(.small) }
                     Label(current.phase, systemImage: icon(for: current.phase))
                         .font(.system(size: 17, weight: .semibold))
+                        .keyboardReadable("エージェントの状態", text: current.phase + (isRunning ? "、実行中" : ""))
                     Spacer()
                     Text("Agent").font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 field("目的", text: goal)
                 field("次のアクション", text: current.nextAction)
                 Text(current.detail).font(.system(size: 15)).foregroundStyle(.secondary).lineLimit(3)
+                    .keyboardReadable("エージェントの詳細", text: current.detail)
                 AccessibleDisclosureGroup("実行内容 · \(entries.count)件") {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
@@ -28,6 +30,7 @@ struct AgentProgressView: View {
                                 Text(entry.detail).font(.system(size: 15)).textSelection(.enabled)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .keyboardReadable("エージェントの実行内容 \(index + 1)", text: "状態: \(entry.phase)\n次のアクション: \(entry.nextAction)\n\(entry.detail)")
                         }
                     }.padding(.top, 8)
                 }
@@ -44,6 +47,7 @@ struct AgentProgressView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.system(size: 13)).foregroundStyle(.secondary)
             Text(text).font(.system(size: 15)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                .keyboardReadable("エージェントの\(title)", text: text)
         }
     }
 

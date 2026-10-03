@@ -57,6 +57,52 @@ import MikomaiDesktopCore
     precondition(descendants(host).contains { $0 is ChatTitleEditor.TitleField }, "F2 opens the native rename field")
     print("PASS: production history label, single accessibility element, selected value, Return selection and F2 rename")
 
+    // Display-only content must be in the same real Tab dispatch loop as actions.
+    var agentMessage = ChatMessage(role: .assistant, text: "回答の先頭\n\n回答の最後")
+    agentMessage.agentGoal = "経路を確認する"
+    agentMessage.agentProgress = [AgentProgressEntry(phase: "実行", nextAction: "経路を取得", detail: "省略せず読み取る実行詳細")]
+    let conversation = ChatSession(title: "本文フォーカス検証", messages: [
+        ChatMessage(role: .user, text: "ユーザーの質問全文", attachments: ["config.txt"]), agentMessage
+    ])
+    model.sessions = [conversation]
+    model.activeSessionID = conversation.id
+    window.contentView = host
+    pump()
+    func readableViews(_ root: NSView) -> [ReadableContentView] {
+        descendants(root).compactMap { $0 as? ReadableContentView }
+    }
+    let transcript = readableViews(host)
+    for prefix in ["ユーザーの発言:", "AIの発言:", "エージェントの状態:", "エージェントの目的:", "エージェントの次のアクション:", "エージェントの詳細:"] {
+        precondition(transcript.contains { ($0.accessibilityLabel() ?? "").hasPrefix(prefix) }, "Missing readable content: \(prefix)")
+    }
+    let answer = transcript.first { ($0.accessibilityLabel() ?? "").hasPrefix("AIの発言:") }!
+    precondition((answer.accessibilityValue() as? String)?.contains("回答の最後") == true)
+    let user = transcript.first { ($0.accessibilityLabel() ?? "").hasPrefix("ユーザーの発言:") }!
+    precondition((user.accessibilityValue() as? String)?.contains("config.txt") == true)
+    KeyboardNavigation.rebuild(in: window)
+    window.makeFirstResponder(button("チャット", in: host))
+    var contentVisited = Set<ObjectIdentifier>()
+    for _ in 0..<60 {
+        if !KeyboardNavigation.handleTab(key(48), in: window) {
+            guard let composer = window.firstResponder as? ChatComposerTextView else { fatalError("Unexpected Tab owner") }
+            composer.keyDown(with: key(48))
+        }
+        pump()
+        if let content = window.firstResponder as? ReadableContentView { contentVisited.insert(ObjectIdentifier(content)) }
+    }
+    precondition(transcript.allSatisfy { contentVisited.contains(ObjectIdentifier($0)) }, "Tab reaches user, AI and every agent field")
+    window.makeFirstResponder(answer)
+    precondition(KeyboardNavigation.handleTab(key(48, modifiers: .shift), in: window))
+    precondition(window.firstResponder !== answer)
+    let disclosure = buttons(host).first { ($0.accessibilityLabel() ?? "").hasPrefix("実行内容") }!
+    window.makeFirstResponder(disclosure)
+    disclosure.keyDown(with: key(36))
+    pump()
+    let detail = readableViews(host).first { ($0.accessibilityLabel() ?? "").hasPrefix("エージェントの実行内容 1:") }!
+    precondition(window.makeFirstResponder(detail) && detail.canBecomeKeyView)
+    precondition((detail.accessibilityValue() as? String)?.contains("経路を取得") == true)
+    print("PASS: real chat Tab/Shift+Tab reaches full user/AI content and agent fields; expanded execution is readable")
+
     // Every mounted action has a name and one focus stop. Audit each workspace.
     for workspace in Workspace.allCases {
         model.workspace = workspace
@@ -152,6 +198,21 @@ import MikomaiDesktopCore
     model.connections = [SavedConnection(name: "検証機器", host: "192.0.2.1")]
     window.contentView = host
     pump()
+    let cells = readableViews(host)
+    for column in ["名前", "ホスト", "ポート", "ユーザー", "機器タイプ", "資格情報"] {
+        precondition(cells.contains { ($0.accessibilityLabel() ?? "").hasPrefix("検証機器の\(column):") }, "Missing readable table column: \(column)")
+    }
+    precondition(cells.first { ($0.accessibilityLabel() ?? "").hasPrefix("検証機器のユーザー:") }?.accessibilityValue() as? String == "未設定")
+    KeyboardNavigation.rebuild(in: window)
+    window.makeFirstResponder(button("機器を追加", in: host))
+    var cellsVisited = Set<String>()
+    for _ in 0..<40 {
+        precondition(KeyboardNavigation.handleTab(key(48), in: window))
+        pump()
+        if let cell = window.firstResponder as? ReadableContentView { cellsVisited.insert(cell.accessibilityLabel() ?? "") }
+    }
+    precondition(cells.allSatisfy { cellsVisited.contains($0.accessibilityLabel() ?? "") }, "Every table cell is reachable through Tab; visited: \(cellsVisited.sorted()); cells: \(cells.map { "\($0.accessibilityLabel() ?? "") enabled=\($0.isEnabled) hidden=\($0.isHiddenOrHasHiddenAncestor) key=\($0.canBecomeKeyView) frame=\($0.frame)" })")
+    print("PASS: host table Tab reaches all six columns, identifies row/column/value, and names empty cells")
     let edit = button("機器を編集: 検証機器", in: host)
     window.makeFirstResponder(edit)
     edit.keyDown(with: key(36))

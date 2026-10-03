@@ -27,6 +27,7 @@ enum KeyboardNavigation {
             guard !view.isHiddenOrHasHiddenAncestor else { return [] }
             let eligible: Bool
             switch view {
+            case let content as ReadableContentView: eligible = content.isEnabled
             case let button as KeyboardActionButton: eligible = button.isEnabled
             case let picker as KeyboardPopUpButton: eligible = picker.isEnabled
             case let slider as KeyboardSlider: eligible = slider.isEnabled
@@ -86,12 +87,18 @@ enum KeyboardNavigation {
         let candidates = controls(in: window)
         guard !candidates.isEmpty else { return false }
         let responder = window.firstResponder
-        let current = candidates.firstIndex { candidate in
-            if candidate === responder { return true }
-            if let field = candidate as? NSTextField, field.currentEditor() === responder { return true }
-            if let focused = responder as? NSView { return focused.isDescendant(of: candidate) }
-            return false
-        }
+        // A table is itself a key view and also contains focusable cells. Match
+        // the exact responder first, otherwise the parent table would always
+        // win and Tab would repeatedly return to its first cell.
+        let current = candidates.firstIndex { $0 === responder }
+            ?? candidates.firstIndex { candidate in
+                guard let field = candidate as? NSTextField, let editor = field.currentEditor() else { return false }
+                return editor === responder
+            }
+            ?? candidates.lastIndex { candidate in
+                guard let focused = responder as? NSView else { return false }
+                return focused.isDescendant(of: candidate)
+            }
         let direction = backwards ? -1 : 1
         let start = current ?? (backwards ? 0 : candidates.count - 1)
         for offset in 1...candidates.count {

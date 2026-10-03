@@ -8,6 +8,21 @@ struct MessageRow: View {
     var onShowTraceResults: () -> Void = {}
     @State private var showsCopyConfirmation = false
     @State private var copyFeedbackGeneration = 0
+    private var readableConversation: String {
+        ChatMarkdownParser.parse(message.conversationText).compactMap { block -> String? in
+            switch block.kind {
+            case let .heading(_, content), let .paragraph(content), let .bullet(content), let .quote(content):
+                if let attributed = try? AttributedString(markdown: content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+                    return String(attributed.characters)
+                }
+                return content
+            case let .code(language, content): return "コード \(language)\n\(content)"
+            case let .image(title, _): return title.isEmpty ? "ネットワーク構成図" : title
+            case let .imageFile(url): return "画像ファイル: \(url.lastPathComponent)"
+            case .separator: return nil
+            }
+        }.joined(separator: "\n")
+    }
     var body: some View {
         VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
             Group {
@@ -26,6 +41,7 @@ struct MessageRow: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14).padding(.vertical, 10)
                         .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
+                        .keyboardReadable("ユーザーの発言", text: ([message.text] + message.attachments.map { "添付ファイル: \($0)" }).joined(separator: "\n"))
                     }
                 } else {
                     if !message.hasProbeResults, let entries = message.agentProgress, !entries.isEmpty {
@@ -34,6 +50,7 @@ struct MessageRow: View {
                     if !message.conversationText.isEmpty {
                         MarkdownMessage(text: message.conversationText, onSelectConfig: onSelectConfig)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .keyboardReadable("AIの発言", text: readableConversation, preservesChildren: true)
                     }
                     if message.hasProbeResults {
                         VStack(alignment: .leading, spacing: 6) {
@@ -41,6 +58,7 @@ struct MessageRow: View {
                                 if let name = result.probeDisplayName {
                                     Text("\(name)を実行しました。")
                                         .font(.system(size: 15))
+                                        .keyboardReadable("エージェントの実行結果", text: "\(name)を実行しました。")
                                     AccessibleButton("\(name)の結果を右ペインに表示", action: onShowTraceResults) {
                                         Label("\(name)の結果", systemImage: "terminal")
                                             .font(.system(size: 13))

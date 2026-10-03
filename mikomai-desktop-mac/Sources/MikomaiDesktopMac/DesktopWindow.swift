@@ -809,7 +809,7 @@ struct DesktopWindow: View {
             GeometryReader { geometry in
                 ScrollViewReader { proxy in
                     ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 18) {
                         if model.activeSession?.messages.isEmpty ?? true { emptyState }
                         if let session = model.activeSession {
                             ForEach(session.messages) { message in

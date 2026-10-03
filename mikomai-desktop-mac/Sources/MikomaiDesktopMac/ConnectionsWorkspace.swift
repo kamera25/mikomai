@@ -32,23 +32,45 @@ struct ConnectionsWorkspace: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Table(model.connections) {
-                    TableColumn("名前", value: \.name)
-                    TableColumn("ホスト", value: \.host)
-                    TableColumn("ポート", value: \.port).width(50)
-                    TableColumn("ユーザー", value: \.username)
+                    TableColumn("名前") { connection in
+                        Text(connection.name.isEmpty ? "未設定" : connection.name)
+                            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                            .keyboardReadable("\(connection.name)の名前", text: connection.name)
+                    }
+                    TableColumn("ホスト") { connection in
+                        Text(connection.host.isEmpty ? "未設定" : connection.host)
+                            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                            .keyboardReadable("\(connection.name)のホスト", text: connection.host)
+                    }
+                    TableColumn("ポート") { connection in
+                        Text(connection.port.isEmpty ? "未設定" : connection.port)
+                            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                            .keyboardReadable("\(connection.name)のポート", text: connection.port)
+                    }.width(50)
+                    TableColumn("ユーザー") { connection in
+                        Text(connection.username.isEmpty ? "未設定" : connection.username)
+                            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                            .keyboardReadable("\(connection.name)のユーザー", text: connection.username)
+                    }
                     TableColumn("機器タイプ") { connection in
                         Text(DeviceTypeCatalog.displayName(for: connection.deviceType))
+                            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                            .keyboardReadable("\(connection.name)の機器タイプ", text: DeviceTypeCatalog.displayName(for: connection.deviceType))
                     }
                     TableColumn("資格情報") { connection in
-                        if connection.hasPassword || connection.hasEnablePassword {
-                            Label(
-                                connection.hasPassword && connection.hasEnablePassword ? "Key + Enable" :
-                                    (connection.hasEnablePassword ? "Enable" : "Key"),
-                                systemImage: "key.fill"
-                            ).font(.system(size: 13)).foregroundStyle(.green)
-                        } else {
-                            Text("未設定").font(.system(size: 13)).foregroundStyle(.secondary)
+                        Group {
+                            if connection.hasPassword || connection.hasEnablePassword {
+                                Label(
+                                    connection.hasPassword && connection.hasEnablePassword ? "Key + Enable" :
+                                        (connection.hasEnablePassword ? "Enable" : "Key"),
+                                    systemImage: "key.fill"
+                                ).font(.system(size: 13)).foregroundStyle(.green)
+                            } else {
+                                Text("未設定").font(.system(size: 13)).foregroundStyle(.secondary)
+                            }
                         }
+                        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                        .keyboardReadable("\(connection.name)の資格情報", text: connection.hasPassword && connection.hasEnablePassword ? "パスワードとEnableパスワードを設定済み" : connection.hasEnablePassword ? "Enableパスワードを設定済み" : connection.hasPassword ? "パスワードを設定済み" : "未設定")
                     }.width(90)
                     TableColumn("操作") { connection in
                         HStack(spacing: 6) {
