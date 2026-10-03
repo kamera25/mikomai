@@ -1965,6 +1965,7 @@ struct FfiAgentExecutor {
     graph: mikomai_adapters::portable_graph::PortableGraph,
     rag: mikomai_adapters::portable_rag::PortableRag,
     rag_sources: Vec<PathBuf>,
+    arp_inference: fn(&str, &str) -> Result<String, String>,
 }
 
 impl ToolExecutorPort for FfiAgentExecutor {
@@ -1979,31 +1980,19 @@ impl ToolExecutorPort for FfiAgentExecutor {
             if CANCEL_INFERENCE.load(Ordering::Relaxed) {
                 return Err("生成を停止しました。".into());
             }
-            if tool == "get_state"
-                && target == Some("localhost")
-                && args.get("resource").and_then(serde_json::Value::as_str) == Some("arp")
-            {
-                let local = mikomai_adapters::portable_device::RegisteredDevice {
-                    id: None,
-                    hostname: "localhost".into(),
-                    ip: None,
-                    device_type: Some("local".into()),
+            if tool == "fetch_arp" || (tool == "get_state" && args["resource"] == "arp")
+                || (tool == "network_show" && args["command"].as_str().is_some_and(|command| command.to_ascii_lowercase().contains("arp"))) {
+                let requested = target.or_else(|| args["device"].as_str()).ok_or("ARP requires a target")?;
+                let device = if requested == "localhost" { "localhost" } else {
+                    self.registry.devices().iter().find(|device| requested == device.hostname || device.id.as_deref() == Some(requested) || device.ip.as_deref() == Some(requested))
+                        .map(|device| device.hostname.as_str()).ok_or("ARP target is not registered")?
                 };
-                let credentials = mikomai_adapters::portable_device::DeviceCredentials {
-                    username: String::new(),
-                    password: None,
-                    enable_password: None,
-                    private_key: None,
-                    passphrase: None,
-                };
-                let raw = mikomai_adapters::portable_device::CredentialedReadOnlyTransport::execute_read_only(&self.transport, &local, &credentials, mikomai_adapters::portable_device::ReadOnlyDeviceTool::GetState, args)?;
-                let tool_result = serde_json::from_str::<ToolResult>(&raw).unwrap_or(ToolResult {
-                    success: true,
-                    output: raw,
-                });
-                return Ok(ToolResult {
-                    success: tool_result.success,
-                    output: mikomai_core::redaction::redact_network_secrets(&tool_result.output),
+                let collector = |device: &str| self.collect_arp(device);
+                let os_type = self.registry.devices().iter().find(|item| item.hostname == device).and_then(|item| item.device_type.as_deref()).unwrap_or("local");
+                let state = mikomai_adapters::arp_state::GraphArpState { graph: &self.graph, collect: &collector, infer: self.arp_inference, os_type };
+                return Ok(match mikomai_core::network::arp_state::get_state(&state, device).await {
+                    Ok(table) => ToolResult { success: true, output: table.to_string() },
+                    Err(error) => ToolResult { success: false, output: error },
                 });
             }
             if tool == "self_network_nwdiag" {
@@ -2259,17 +2248,11 @@ impl ToolExecutorPort for FfiAgentExecutor {
                     success: true,
                     output: result.output,
                 });
-            let mut decoded = ToolResult {
+            let decoded = ToolResult {
                 success: decoded.success,
                 output: mikomai_core::redaction::redact_network_secrets(&decoded.output),
             };
             let raw_observation = decoded.output.clone();
-            if decoded.success && (tool == "fetch_arp" || (tool == "get_state" && args["resource"] == "arp")) {
-                match mikomai_core::network::arp::parse_observed_table(&decoded.output) {
-                    Ok(table) => decoded.output = table.to_string(),
-                    Err(error) => return Ok(ToolResult { success: false, output: format!("{error}\n{}", decoded.output) }),
-                }
-            }
             if decoded.success {
                 if let Some(device) = target_id.and_then(|target| {
                     self.registry.devices().iter().find(|device| {
@@ -2300,6 +2283,38 @@ impl ToolExecutorPort for FfiAgentExecutor {
             Ok(decoded)
         })
     }
+}
+
+impl FfiAgentExecutor {
+    fn collect_arp(&self, device: &str) -> Result<String, String> {
+            let args = serde_json::json!({"device":device,"resource":"arp"});
+            let credentials = mikomai_adapters::portable_device::DeviceCredentials { username: String::new(), password: None, enable_password: None, private_key: None, passphrase: None };
+            let raw = if device == "localhost" {
+                let local = mikomai_adapters::portable_device::RegisteredDevice { id: None, hostname: device.into(), ip: None, device_type: Some("local".into()) };
+                mikomai_adapters::portable_device::CredentialedReadOnlyTransport::execute_read_only(&self.transport, &local, &credentials, mikomai_adapters::portable_device::ReadOnlyDeviceTool::GetState, &args)?
+            } else {
+                self.registry.execute(&self.transport, "get_state", device, &args, &credentials)?.output
+            };
+            let result = serde_json::from_str::<ToolResult>(&raw).unwrap_or(ToolResult { success: true, output: raw });
+            if !result.success { return Err("ARP取得に失敗しました。接続ログを確認してください。".into()); }
+            Ok(mikomai_core::redaction::redact_network_secrets(&result.output))
+    }
+}
+
+/// Standalone CLI uses the same Graph -> collect -> constrained canonicalize path.
+pub fn local_arp_state() -> Result<serde_json::Value, String> {
+    let graph = portable_graph()?;
+    let collector = |_: &str| {
+        #[cfg(target_os = "macos")]
+        let output = std::process::Command::new("/usr/sbin/arp").arg("-an").output();
+        #[cfg(not(target_os = "macos"))]
+        let output = std::process::Command::new("arp").arg("-an").output();
+        let output = output.map_err(|e| e.to_string())?;
+        if !output.status.success() { return Err("ARP取得に失敗しました。".into()); }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    };
+    let state = mikomai_adapters::arp_state::GraphArpState { graph: &graph, collect: &collector, infer: llm_runtime::infer_constrained, os_type: std::env::consts::OS };
+    portable_runtime()?.block_on(mikomai_core::network::arp_state::get_state(&state, "localhost"))
 }
 
 fn graph_observation(
@@ -2773,6 +2788,7 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
             graph,
             rag,
             rag_sources: vec![documents.clone(), knowledge.clone()],
+            arp_inference: llm_runtime::infer_constrained,
         };
         let task_snapshots = Arc::new(Mutex::new(HashMap::new()));
         let reporter = FfiAgentReporter {
@@ -4105,18 +4121,66 @@ mod tests {
             serde_json::from_str(CStr::from_ptr(target).to_str().unwrap()).unwrap(),
             serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap(),
         ));
-        let raw = if calls.last().unwrap().1["deviceType"] == "yamaha" {
-            include_str!("../../../mikomai-core/src/network/fixtures/yamaha-show-arp.txt")
-        } else if calls.last().unwrap().1["hostname"] == "NakaokuGW" {
-            "Protocol Address Age (min) Hardware Addr Type Interface\nInternet 192.168.50.23 2 624f.b0f6.2523 ARPA Vlan1"
-        } else { "192.0.2.10 aa:bb:cc:dd:ee:ff GigaEthernet 1/1" };
-        let response = serde_json::json!({"success":true,"output":raw}).to_string();
+        let target = &calls.last().unwrap().1;
+        let (ip, mac, interface) = if target["deviceType"] == "yamaha" {
+            ("192.168.20.1", "44:55:66:b3:37:22", "LAN1(port1)")
+        } else if target["hostname"] == "NakaokuGW" {
+            ("192.168.50.23", "62:4f:b0:f6:25:23", "Vlan1")
+        } else { ("192.0.2.10", "aa:bb:cc:dd:ee:ff", "GigaEthernet 1/1") };
+        let table = serde_json::json!({"version":"1.0","metadata":{"generated_at":chrono::Utc::now(),"source_device":target["hostname"],"os_type":target["deviceType"]},"arp_table":[{"ip_address":ip,"mac_address":mac,"interface":interface,"type":"dynamic","age_seconds":null}]});
+        let response = serde_json::json!({"success":true,"output":table.to_string()}).to_string();
         if capacity <= response.len() {
             return 1;
         }
         std::ptr::copy_nonoverlapping(response.as_ptr(), output.cast::<u8>(), response.len());
         *output.add(response.len()) = 0;
         0
+    }
+
+    unsafe extern "C" fn fake_raw_arp_read(tool: *const c_char, target: *const c_char, args: *const c_char, output: *mut c_char, capacity: usize, context: *mut std::ffi::c_void) -> i32 {
+        let calls = &mut *(context as *mut Vec<(String, serde_json::Value, serde_json::Value)>);
+        calls.push((CStr::from_ptr(tool).to_string_lossy().into_owned(), serde_json::from_str(CStr::from_ptr(target).to_str().unwrap()).unwrap(), serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap()));
+        let response = serde_json::json!({"success":true,"output":"unusual0 aa:bb:cc:dd:ee:ff 192.0.2.20 dynamic 50"}).to_string();
+        if capacity <= response.len() { return 1; }
+        std::ptr::copy_nonoverlapping(response.as_ptr(), output.cast::<u8>(), response.len());
+        *output.add(response.len()) = 0;
+        0
+    }
+
+    #[test]
+    fn arp_executor_hides_raw_canonicalizes_and_reuses_graph() {
+        use mikomai_core::port::ToolExecutorPort;
+        use std::sync::{Arc, atomic::Ordering};
+        use super::CANCEL_INFERENCE;
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        CANCEL_INFERENCE.store(false, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!("mikomai-arp-executor-{}", uuid::Uuid::new_v4()));
+        let graph = super::portable_runtime().unwrap().block_on(mikomai_adapters::portable_graph::PortableGraph::initialize_at(&root)).unwrap();
+        let registry = mikomai_adapters::portable_device::ReadOnlyToolRegistry::new(vec![mikomai_adapters::portable_device::RegisteredDevice { id: Some("id-router".into()), hostname: "router".into(), ip: Some("192.0.2.1".into()), device_type: Some("unknown".into()) }]).unwrap();
+        let mut calls: Vec<(String, serde_json::Value, serde_json::Value)> = vec![];
+        let executor = super::FfiAgentExecutor {
+            registry, transport: super::SwiftCallbackTransport { callback: fake_raw_arp_read, context: (&mut calls as *mut Vec<_>) as usize },
+            rag: mikomai_adapters::portable_rag::PortableRag::new(graph.clone(), Arc::new(mikomai_adapters::e5_embedder::FastEmbedE5::new())), graph: graph.clone(), rag_sources: vec![],
+            arp_inference: |prompt, grammar| {
+                assert!(prompt.contains("unusual0"));
+                assert!(grammar.contains("ip ::= \"0\""));
+                Ok(r#"{"is_arp_table":true,"entries":[{"ip_idx":0,"mac_idx":0,"interface_idx":0,"type":"dynamic","age_seconds":50}]}"#.into())
+            },
+        };
+        let args = serde_json::json!({"device":"id-router","resource":"arp"});
+        let first = super::portable_runtime().unwrap().block_on(executor.execute(uuid::Uuid::new_v4(), "get_state", Some("id-router"), &args)).unwrap();
+        assert!(first.success, "{}", first.output);
+        let canonical: serde_json::Value = serde_json::from_str(&first.output).unwrap();
+        assert_eq!(canonical["arp_table"][0]["interface"], "unusual0");
+        assert!(!first.output.contains("unusual0 aa:bb"));
+        let second = super::portable_runtime().unwrap().block_on(executor.execute(uuid::Uuid::new_v4(), "get_state", Some("router"), &args)).unwrap();
+        assert_eq!(first.output, second.output);
+        assert_eq!(calls.len(), 1);
+        let raw = super::portable_runtime().unwrap().block_on(graph.fresh_arp_observation("router")).unwrap().unwrap().raw;
+        assert!(raw.contains("unusual0 aa:bb"));
+        drop(executor);
+        drop(graph);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -4185,7 +4249,7 @@ mod tests {
     }
 
     #[test]
-    fn router_arp_mac_lookup_reads_cisco_table_through_callback() {
+    fn router_arp_mac_lookup_reads_canonical_cisco_table_through_callback() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("mikomai-router-arp-{}", uuid::Uuid::new_v4()));
         let previous = std::env::var_os("MIKOMAI_DATA_DIR");
@@ -4213,7 +4277,7 @@ mod tests {
     }
 
     #[test]
-    fn router_arp_mac_lookup_reads_yamaha_table_through_callback() {
+    fn router_arp_mac_lookup_reads_canonical_yamaha_table_through_callback() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("mikomai-router-arp-{}", uuid::Uuid::new_v4()));
         let previous = std::env::var_os("MIKOMAI_DATA_DIR");
@@ -4235,7 +4299,7 @@ mod tests {
         assert_eq!(status, 0, "{answer}");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].0, "get_state");
-        assert_eq!(calls[0].1["hostname"], "NakaokuGW");
+        assert_eq!(calls[0].1["hostname"], "hogehogeGW");
         assert_eq!(calls[0].2["resource"], "arp");
         assert!(answer.contains("見つかりました") && answer.contains("192.168.20.1"), "{answer}");
     }

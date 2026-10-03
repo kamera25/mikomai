@@ -334,7 +334,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         if input.device_name.trim().is_empty() || input.source_id.trim().is_empty() {
             return Err("Graph ingestion requires a device name and source ID".into());
         }
-        let observation_id = uuid::Uuid::new_v4().to_string();
+        // A retry/canonicalization update for the same source and collection
+        // time replaces its raw observation instead of creating an ambiguous tie.
+        let observation_id = stable_rag_id(&format!("{}:{}:{}:{}", input.device_name, input.kind.as_str(), input.source_id, input.collected_at.to_rfc3339()));
         self.upsert("observation", &observation_id, json!({
             "id":observation_id, "source_id":input.source_id, "device_name":input.device_name,
             "kind":input.kind.as_str(), "collected_at":input.collected_at.to_rfc3339(), "raw":input.raw,
@@ -359,6 +361,25 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         )
         .await?;
         Ok(())
+    }
+
+    /// Only the latest observation of this device/resource is authoritative.
+    /// Never resurrect an older canonical table after a newer failed refresh.
+    pub async fn fresh_arp_observation(&self, device: &str) -> Result<Option<mikomai_core::network::arp_state::ArpObservation>, String> {
+        let mut response = self.db.query("SELECT raw, canonical, collected_at FROM observation WHERE device_name = $device AND kind = 'arp' ORDER BY collected_at DESC LIMIT 10;")
+            .bind(("device", device.to_owned())).await.map_err(|e| e.to_string())?;
+        let records: Vec<Value> = response.take(0).map_err(|e| e.to_string())?;
+        let Some(row) = records.first() else { return Ok(None); };
+        let Some(timestamp) = row["collected_at"].as_str() else { return Ok(None); };
+        let row = records.iter().find(|candidate| candidate["collected_at"].as_str() == Some(timestamp) && !candidate["canonical"].is_null()).unwrap_or(row);
+        let collected_at = DateTime::parse_from_rfc3339(timestamp).map_err(|e| e.to_string())?.with_timezone(&Utc);
+        let age = Utc::now() - collected_at;
+        if age < Duration::zero() || age > Duration::minutes(GRAPH_TTL_MINUTES) { return Ok(None); }
+        Ok(Some(mikomai_core::network::arp_state::ArpObservation {
+            raw: row["raw"].as_str().unwrap_or_default().to_owned(),
+            canonical: row.get("canonical").filter(|value| !value.is_null()).cloned(),
+            collected_at,
+        }))
     }
 
     async fn store_normalized(

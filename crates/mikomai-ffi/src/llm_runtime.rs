@@ -267,3 +267,12 @@ mod tests {
         println!("AFM 3 Core via Swift ABI: {answer}");
     }
 }
+
+/// Canonicalization uses a grammar-capable local backend, separate from planner
+/// inference. Do not silently substitute unconstrained AFM text generation.
+pub fn infer_constrained(prompt: &str, grammar: &str) -> Result<String, String> {
+    crate::debug_trace::emit("arp_canonicalization_request", serde_json::json!({"backend":"llamacpp","prompt":prompt,"grammar":grammar}));
+    let result = mikomai_adapters::local_llama::infer_constrained(prompt, grammar);
+    crate::debug_trace::emit("arp_canonicalization_response", serde_json::json!({"result":result}));
+    result
+}

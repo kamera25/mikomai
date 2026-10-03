@@ -44,13 +44,17 @@ fn mac_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
-            r"(?i)\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b|\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b",
+            r"(?i)\b(?:[0-9a-f]{1,2}[:-]){5}[0-9a-f]{1,2}\b|\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b",
         )
         .unwrap()
     })
 }
 
 pub fn normalize_mac(value: &str) -> String {
+    let octets = value.split([':', '-']).collect::<Vec<_>>();
+    if octets.len() == 6 {
+        return octets.iter().map(|octet| format!("{:0>2}", octet.to_ascii_lowercase())).collect::<Vec<_>>().join(":");
+    }
     value
         .chars()
         .filter(|c| c.is_ascii_hexdigit())

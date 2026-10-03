@@ -1,5 +1,6 @@
 //! Infrastructure adapters for persistence, knowledge, inference, and devices.
 pub mod audit;
+pub mod arp_state;
 pub mod device;
 pub mod e5_embedder;
 pub mod headless;

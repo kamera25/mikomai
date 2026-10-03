@@ -189,17 +189,10 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         } else if let Some(mac) = local_mac {
             let args = serde_json::json!({"device":"localhost", "resource":"arp", "mac":mac});
             trace.emit("agent_event", serde_json::json!({"event_type":"tool_call", "tool":"get_state", "target":"localhost", "args":args}));
-            #[cfg(target_os = "macos")]
-            let output = std::process::Command::new("/usr/sbin/arp").arg("-an").output();
-            #[cfg(not(target_os = "macos"))]
-            let output = std::process::Command::new("arp").arg("-an").output();
-            let output = output.map_err(|error| format!("ARPテーブルの取得に失敗しました: {error}"))?;
-            let raw = String::from_utf8_lossy(&output.stdout);
-            trace.emit("agent_event", serde_json::json!({"event_type":"observation", "tool":"get_state", "target":"localhost", "success":output.status.success(), "output":raw, "stderr":String::from_utf8_lossy(&output.stderr)}));
-            if !output.status.success() {
-                return Err(format!("ARPテーブルの取得に失敗しました: {}", String::from_utf8_lossy(&output.stderr)));
-            }
-            let answer = mikomai_core::network::arp::mac_lookup_answer("localhost", &mac, &raw);
+            if let Some(path) = model_path.as_deref() { mikomai_ffi::load_local_model(path)?; }
+            let table = mikomai_ffi::local_arp_state()?;
+            trace.emit("agent_event", serde_json::json!({"event_type":"observation", "tool":"get_state", "target":"localhost", "success":true, "output":table}));
+            let answer = mikomai_core::network::arp::mac_lookup_answer("localhost", &mac, &table.to_string());
             trace.stream(&answer, true);
             answer
         } else if let Some(path) = model_path {
