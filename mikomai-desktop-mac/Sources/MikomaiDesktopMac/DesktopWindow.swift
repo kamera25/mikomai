@@ -51,6 +51,12 @@ private struct WindowTitleDragRegion: NSViewRepresentable {
         override var mouseDownCanMoveWindow: Bool { true }
 
         override func mouseDown(with event: NSEvent) {
+            // The custom toolbar title consumes AppKit's titlebar clicks.
+            // Handle the second click before starting another drag session.
+            if event.clickCount == 2 {
+                window?.performZoom(nil)
+                return
+            }
             window?.performDrag(with: event)
         }
     }
