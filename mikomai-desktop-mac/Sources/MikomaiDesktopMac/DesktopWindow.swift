@@ -46,6 +46,24 @@ private struct WindowAccessor: NSViewRepresentable {
     }
 }
 
+private struct WindowTitleDragRegion: NSViewRepresentable {
+    final class DragView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
+        }
+    }
+
+    func makeNSView(context: Context) -> DragView { DragView() }
+    func updateNSView(_ nsView: DragView, context: Context) {}
+}
+
+private struct RightPaneWidthPreference: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
 struct DesktopWindow: View {
     @ObservedObject var model: DesktopModel
     @State private var mentionPresentation = ChatMentionPresentation()
@@ -69,6 +87,7 @@ struct DesktopWindow: View {
     @AppStorage("mikomai.desktop.mac.rightPaneWidth") private var rightPaneWidth = 330.0
     @State private var isRightPaneOpen = false
     @State private var rightPaneTab = "diff"
+    @State private var renderedRightPaneWidth: CGFloat = 330
     @State private var isAtChatBottom = true
     @State private var chatScrollFollow = ChatScrollFollowState()
     @State private var selectedConnectionID: UUID?
@@ -115,7 +134,6 @@ struct DesktopWindow: View {
                         .frame(minWidth: 180, idealWidth: historyWidth, maxWidth: 420)
                 }
                 VStack(spacing: 0) {
-                    header
                     Group {
                         switch model.workspace {
                         case .chat: selectedHistoryWorkspace
@@ -134,6 +152,9 @@ struct DesktopWindow: View {
                 if model.workspace == .chat && historyTab == "conversation" && isRightPaneOpen {
                     rightSidePane
                         .frame(minWidth: 180, idealWidth: rightPaneWidth, maxWidth: 600)
+                        .background(GeometryReader { pane in
+                            Color.clear.preference(key: RightPaneWidthPreference.self, value: pane.size.width)
+                        })
                 }
             }
             .frame(width: max(0, geometry.size.width - 50))
@@ -149,6 +170,12 @@ struct DesktopWindow: View {
             evaluateTiling(containerWidth: newWidth)
         }
         }
+        .onPreferenceChange(RightPaneWidthPreference.self) { width in
+            if width > 0 { renderedRightPaneWidth = width }
+        }
+        .toolbar { windowToolbar }
+        .toolbarBackground(Color(nsColor: .controlBackgroundColor), for: .windowToolbar)
+        .toolbarBackground(.visible, for: .windowToolbar)
         .sheet(item: $model.editingConnection) { connection in
             ConnectionEditor(connection: connection) { saved, pwd, enPwd in
                 model.saveConnection(saved, password: pwd, enablePassword: enPwd)
@@ -375,48 +402,67 @@ struct DesktopWindow: View {
         }
     }
 
+    @ToolbarContentBuilder
+    private var windowToolbar: some ToolbarContent {
+        // AppKit caches a custom item's minimum width; recreate it when the
+        // window or pane layout changes so shrinking does not hide the whole row.
+        if #available(macOS 26.0, *) {
+            ToolbarItem(id: "windowHeader-\(Int(currentContainerWidth))-\(isRightPaneOpen)", placement: .principal) { header }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(id: "windowHeader-\(Int(currentContainerWidth))-\(isRightPaneOpen)", placement: .principal) { header }
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 10) {
             if model.workspace == .chat {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        isHistoryOpen.toggle()
-                    }
-                } label: {
-                    Image(systemName: "sidebar.left")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(isHistoryOpen ? Color.accentColor : Color.primary)
-                        .frame(width: 28, height: 26)
-                        .contentShape(Rectangle())
+                paneToggleButton(symbol: "sidebar.left",
+                                 title: isHistoryOpen ? "会話履歴を非表示" : "会話履歴を表示") {
+                    withAnimation(.easeInOut(duration: 0.18)) { isHistoryOpen.toggle() }
                 }
-                .buttonStyle(.plain)
-                .help(isHistoryOpen ? "会話履歴を非表示" : "会話履歴を表示")
-                .accessibilityLabel(isHistoryOpen ? "会話履歴を非表示" : "会話履歴を表示")
             }
-
             Text(headerTitle)
                 .font(.system(size: 16, weight: .semibold))
-            Spacer()
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(WindowTitleDragRegion())
             if model.workspace == .chat && historyTab == "conversation" {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        isRightPaneOpen.toggle()
-                    }
-                } label: {
-                    Image(systemName: "sidebar.right")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(isRightPaneOpen ? Color.accentColor : Color.primary)
-                        .frame(width: 28, height: 26)
-                        .contentShape(Rectangle())
+                paneToggleButton(symbol: "sidebar.right",
+                                 title: isRightPaneOpen ? "作業タブを非表示" : "作業タブを表示") {
+                    withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen.toggle() }
                 }
-                .buttonStyle(.plain)
-                .help(isRightPaneOpen ? "作業タブを非表示" : "作業タブを表示")
-                .accessibilityLabel(isRightPaneOpen ? "作業タブを非表示" : "作業タブを表示")
+                if isRightPaneOpen {
+                    RightPaneTabHeader(selectedTab: rightPaneTab, onSelect: { rightPaneTab = $0 })
+                        .frame(width: max(154, renderedRightPaneWidth - 20))
+                        .overlay(alignment: .leading) { Divider() }
+                }
             }
         }
-        .padding(.horizontal, 20).padding(.vertical, 12)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .overlay(alignment: .bottom) { Divider() }
+        // The native toolbar reserves the area occupied by the window controls.
+        .frame(minWidth: 0, idealWidth: max(0, currentContainerWidth - 120),
+               maxWidth: max(0, currentContainerWidth - 120))
+        .frame(height: 36)
+    }
+
+    @ViewBuilder
+    private func paneToggleButton(symbol: String, title: String,
+                                  action: @escaping () -> Void) -> some View {
+        if #available(macOS 26.0, *) {
+            Button(action: action) {
+                Image(systemName: symbol).frame(width: 20, height: 20)
+            }
+            .buttonStyle(.glass)
+            .help(title)
+            .accessibilityLabel(title)
+        } else {
+            Button(action: action) {
+                Image(systemName: symbol).frame(width: 20, height: 20)
+            }
+            .help(title)
+            .accessibilityLabel(title)
+        }
     }
 
     private var headerTitle: String {
@@ -458,14 +504,6 @@ struct DesktopWindow: View {
 
     private var rightSidePane: some View {
         VStack(spacing: 0) {
-            RightPaneTabHeader(
-                selectedTab: rightPaneTab,
-                onSelect: { rightPaneTab = $0 },
-                onClose: {
-                    withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen = false }
-                }
-            )
-            Divider()
             if rightPaneTab == "diff" {
                 operationDiffPane
             } else if rightPaneTab == "debug" {

@@ -3,16 +3,13 @@ import SwiftUI
 struct RightPaneTabHeader: View {
     let selectedTab: String
     let onSelect: (String) -> Void
-    let onClose: () -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             row(showsTitles: true)
             row(showsTitles: false)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .padding(.horizontal, 12)
     }
 
     private func row(showsTitles: Bool) -> some View {
@@ -28,15 +25,6 @@ struct RightPaneTabHeader: View {
             }
             WorkspaceTabButton(title: "デバッグ", icon: "ladybug", isSelected: selectedTab == "debug", showsTitle: showsTitles) { onSelect("debug") }
             Spacer(minLength: 0)
-            Button(action: onClose) {
-                Image(systemName: "sidebar.right")
-                    .font(.system(size: 15, weight: .medium))
-                    .frame(width: 28, height: 26)
-                    .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
-            }
-            .buttonStyle(.plain)
-            .help("作業タブを閉じる")
-            .accessibilityLabel("作業タブを閉じる")
         }
     }
 }

@@ -35,6 +35,7 @@ struct MikomaiDesktopMac: App {
                 .frame(minWidth: 520, idealWidth: 1120, minHeight: 560, idealHeight: 760)
         }
         .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unifiedCompact)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("新しい会話") {
