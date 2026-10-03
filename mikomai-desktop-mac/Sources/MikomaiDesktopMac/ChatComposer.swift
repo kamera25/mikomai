@@ -55,6 +55,56 @@ final class ChatComposerTextView: NSTextView {
     var onEscape: () -> Void = {}
     var onSuggestionKey: (ChatSuggestionKey) -> Bool = { _ in false }
     var onMentionContextChanged: (ChatMentionContext?) -> Void = { _ in }
+    var onFileDrop: (([URL]) -> Bool)? = nil
+    var onDragTargetChanged: ((Bool) -> Void)? = nil
+
+    private func extractFileURLs(from pasteboard: NSPasteboard) -> [URL] {
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [
+            .urlReadingFileURLsOnly: true
+        ]) as? [URL], !urls.isEmpty {
+            return urls
+        }
+        if let filenames = pasteboard.propertyList(forType: .init("NSFilenamesPboardType")) as? [String] {
+            return filenames.map { URL(fileURLWithPath: $0) }
+        }
+        return []
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if onFileDrop != nil && !extractFileURLs(from: sender.draggingPasteboard).isEmpty {
+            onDragTargetChanged?(true)
+            return .copy
+        }
+        return super.draggingEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if onFileDrop != nil && !extractFileURLs(from: sender.draggingPasteboard).isEmpty {
+            return .copy
+        }
+        return super.draggingUpdated(sender)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onDragTargetChanged?(false)
+        super.draggingExited(sender)
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        onDragTargetChanged?(false)
+        super.draggingEnded(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        onDragTargetChanged?(false)
+        if let onFileDrop, !extractFileURLs(from: sender.draggingPasteboard).isEmpty {
+            let urls = extractFileURLs(from: sender.draggingPasteboard)
+            if !urls.isEmpty {
+                return onFileDrop(urls)
+            }
+        }
+        return super.performDragOperation(sender)
+    }
 
     func scheduleMentionReport() {
         DispatchQueue.main.async { [weak self] in self?.reportMentionQuery() }
@@ -144,6 +194,8 @@ struct ChatComposer: NSViewRepresentable {
     var onSuggestionKey: (ChatSuggestionKey) -> Bool = { _ in false }
     var onMentionContextChanged: (ChatMentionContext?) -> Void = { _ in }
     var completion: ChatMentionCompletion? = nil
+    var onFileDrop: (([URL]) -> Bool)? = nil
+    var onDragTargetChanged: ((Bool) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -194,6 +246,8 @@ struct ChatComposer: NSViewRepresentable {
         editor.onEscape = onEscape
         editor.onSuggestionKey = onSuggestionKey
         editor.onMentionContextChanged = onMentionContextChanged
+        editor.onFileDrop = onFileDrop
+        editor.onDragTargetChanged = onDragTargetChanged
         if let completion, context.coordinator.lastCompletionID != completion.id {
             context.coordinator.lastCompletionID = completion.id
             DispatchQueue.main.async { [weak editor, weak coordinator = context.coordinator] in

@@ -270,21 +270,16 @@ extension DesktopModel {
         }
     }
 
-    func selectAttachments() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [
-            .plainText, .commaSeparatedText, .json, .yaml, .xml, .png, .jpeg,
-            UTType(filenameExtension: "md") ?? .plainText,
-            UTType(filenameExtension: "log") ?? .plainText
-        ]
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = true
-        guard panel.runModal() == .OK else { return }
-
+    @discardableResult
+    func attachFiles(at urls: [URL]) -> Bool {
         var loaded = pendingAttachments
         var totalBytes = loaded.filter { $0.imageData == nil }.reduce(0) { $0 + $1.byteCount }
-        for url in panel.urls {
+        var anyAdded = false
+        for url in urls {
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                continue
+            }
             guard !loaded.contains(where: { $0.name == url.lastPathComponent }) else { continue }
             let hasScope = url.startAccessingSecurityScopedResource()
             defer { if hasScope { url.stopAccessingSecurityScopedResource() } }
@@ -304,14 +299,32 @@ extension DesktopModel {
                     totalBytes += attachment.byteCount
                 }
                 loaded.append(attachment)
+                anyAdded = true
             } catch {
                 attachmentError = "\(url.lastPathComponent): \(error.localizedDescription)"
                 pendingAttachments = loaded
-                return
+                return false
             }
         }
         pendingAttachments = loaded
-        attachmentError = ""
+        if anyAdded {
+            attachmentError = ""
+        }
+        return anyAdded
+    }
+
+    func selectAttachments() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [
+            .plainText, .commaSeparatedText, .json, .yaml, .xml, .png, .jpeg,
+            UTType(filenameExtension: "md") ?? .plainText,
+            UTType(filenameExtension: "log") ?? .plainText
+        ]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
+        attachFiles(at: panel.urls)
     }
 
     func removeAttachment(_ id: UUID) { pendingAttachments.removeAll { $0.id == id } }

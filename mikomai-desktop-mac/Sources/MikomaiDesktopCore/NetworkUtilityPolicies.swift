@@ -183,15 +183,24 @@ public enum RegisteredDiagnosticHostPolicy {
         guard let connection = matches.first else { return host }
         let address = connection.host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !address.isEmpty else { throw ResolutionError.missingAddress }
+        guard isIPAddressLiteral(address) else { throw ResolutionError.invalidAddress }
         return address
     }
 
+    private static func isIPAddressLiteral(_ value: String) -> Bool {
+        var ipv4 = in_addr()
+        if value.withCString({ inet_pton(AF_INET, $0, &ipv4) }) == 1 { return true }
+        var ipv6 = in6_addr()
+        return value.withCString({ inet_pton(AF_INET6, $0, &ipv6) }) == 1
+    }
+
     public enum ResolutionError: LocalizedError {
-        case ambiguous, missingAddress
+        case ambiguous, missingAddress, invalidAddress
         public var errorDescription: String? {
             switch self {
             case .ambiguous: return "同じ名前の登録機器が複数あります。対象のIPアドレスを指定してください。"
             case .missingAddress: return "登録機器の接続先が未設定です。IPアドレスを設定してください。"
+            case .invalidAddress: return "登録機器のホスト欄に有効なIPアドレスがありません。名前解決を避けるため、IPアドレスを登録してください。"
             }
         }
     }

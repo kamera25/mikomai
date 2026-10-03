@@ -73,6 +73,7 @@ struct DesktopWindow: View {
     @ObservedObject var model: DesktopModel
     @State private var mentionPresentation = ChatMentionPresentation()
     @State private var isChatInputFocused = false
+    @State private var isDropTargeted = false
     private var mentionContext: ChatMentionContext? { mentionPresentation.context }
     private var showsHostSuggestions: Bool { mentionPresentation.isVisible(candidateCount: hostSuggestions.count) }
     @State private var hostSuggestionIndex = 0
@@ -834,6 +835,44 @@ struct DesktopWindow: View {
             }
             composer
         }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard !urls.isEmpty else { return false }
+            return model.attachFiles(at: urls)
+        } isTargeted: { targeted in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isDropTargeted = targeted
+            }
+        }
+        .overlay {
+            if isDropTargeted {
+                dropOverlay
+            }
+        }
+    }
+
+    private var dropOverlay: some View {
+        ZStack {
+            Color.accentColor.opacity(0.08)
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [8, 4]))
+                .padding(16)
+            VStack(spacing: 12) {
+                Image(systemName: "arrow.down.doc.fill")
+                    .font(.system(size: 38))
+                    .foregroundStyle(Color.accentColor)
+                Text("ファイルをドロップして添付")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text("テキスト (.txt, .md, .json, .yaml, .xml, .log) または画像 (.png, .jpg)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(24)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
+        }
+        .allowsHitTesting(false)
+        .transition(.opacity)
     }
 
     private var emptyState: some View {
@@ -979,7 +1018,13 @@ struct DesktopWindow: View {
                                  hostSuggestionIndex = 0
                                  mentionPresentation.update(context: context)
                                  if context != nil { model.reloadCompletionHosts() }
-                             }, completion: mentionCompletion)
+                             }, completion: mentionCompletion,
+                             onFileDrop: { urls in model.attachFiles(at: urls) },
+                             onDragTargetChanged: { targeted in
+                                 withAnimation(.easeInOut(duration: 0.15)) {
+                                     isDropTargeted = targeted
+                                 }
+                             })
                     .padding(.horizontal, 4)
                     .padding(.vertical, 4)
 
@@ -1005,7 +1050,7 @@ struct DesktopWindow: View {
             }
         }
         .padding(10).background(Color(nsColor: .textBackgroundColor)).clipShape(RoundedRectangle(cornerRadius: 7))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(isDropTargeted ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: isDropTargeted ? 1.5 : 0.7))
         .frame(maxWidth: 760).padding(.horizontal, 22).padding(.top, 10).padding(.bottom, 14)
         .frame(maxWidth: .infinity).background(Color(nsColor: .windowBackgroundColor))
         .onAppear {

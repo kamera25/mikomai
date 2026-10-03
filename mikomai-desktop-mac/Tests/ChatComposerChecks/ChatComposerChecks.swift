@@ -213,6 +213,59 @@ private func checkHostedSuggestions() {
     editor.unmarkText()
     pump()
     precondition(probe.visible && probe.context?.query == "", "Committing Japanese @ refreshes the mounted list")
-    window.contentView = nil
     print("PASS: mounted SwiftUI candidate display, asynchronous host arrival, Escape persistence, completion round trip, Japanese full-width input and IME commit")
+
+    // Verify file drag and drop interception on ChatComposerTextView
+    let dragEditor = ChatComposerTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 100))
+    var droppedURLs: [URL] = []
+    var isDragTargeted = false
+    dragEditor.onFileDrop = { urls in
+        droppedURLs = urls
+        return true
+    }
+    dragEditor.onDragTargetChanged = { targeted in
+        isDragTargeted = targeted
+    }
+
+    final class MockDraggingInfo: NSObject, NSDraggingInfo {
+        let pasteboard: NSPasteboard
+        init(pasteboard: NSPasteboard) {
+            self.pasteboard = pasteboard
+        }
+        var draggingPasteboard: NSPasteboard { pasteboard }
+        var draggingDestinationWindow: NSWindow? { nil }
+        var draggingSourceOperationMask: NSDragOperation { .copy }
+        var draggingLocation: NSPoint { .zero }
+        var draggedImageLocation: NSPoint { .zero }
+        var draggedImage: NSImage? { nil }
+        var draggingSource: Any? { nil }
+        var draggingSequenceNumber: Int { 1 }
+        func slideDraggedImage(to screenPoint: NSPoint) {}
+        override func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
+        var draggingFormation: NSDraggingFormation = .default
+        var animatesToDestination: Bool = false
+        var numberOfValidItemsForDrop: Int = 1
+        var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+        func resetSpringLoading() {}
+        func enumerateDraggingItems(options: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey : Any] = [:], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    }
+
+    let pb = NSPasteboard.withUniqueName()
+    let testURL = URL(fileURLWithPath: "/tmp/sample_config.txt")
+    pb.writeObjects([testURL as NSURL])
+    let dragInfo = MockDraggingInfo(pasteboard: pb)
+
+    let enterOp = dragEditor.draggingEntered(dragInfo)
+    precondition(enterOp == .copy, "Dragging entered with file URL must return .copy")
+    precondition(isDragTargeted, "Drag target state must be true on draggingEntered")
+
+    dragEditor.draggingExited(dragInfo)
+    precondition(!isDragTargeted, "Drag target state must be false on draggingExited")
+
+    _ = dragEditor.draggingEntered(dragInfo)
+    let dropSuccess = dragEditor.performDragOperation(dragInfo)
+    precondition(dropSuccess, "performDragOperation must succeed")
+    precondition(droppedURLs == [testURL], "onFileDrop must receive the dropped URL")
+    precondition(!isDragTargeted, "Drag target state must be false after performDragOperation")
+    print("PASS: ChatComposerTextView file drag & drop interception")
 }

@@ -54,6 +54,37 @@
  testHost.removeFromSuperview()
  print("PASS: chat history session row with long title and HoverScrollTitle mounting")
 
+ // Verify file attachment via attachFiles (supporting drag & drop)
+ let tempDir = FileManager.default.temporaryDirectory
+ let testFile = tempDir.appendingPathComponent("vlan_config.txt")
+ try! "vlan 10\n name SALES\n".write(to: testFile, atomically: true, encoding: .utf8)
+ defer { try? FileManager.default.removeItem(at: testFile) }
+
+ let attached = model.attachFiles(at: [testFile])
+ precondition(attached, "attachFiles must succeed for valid txt file")
+ precondition(model.pendingAttachments.count == 1, "pendingAttachments must contain 1 attachment")
+ precondition(model.pendingAttachments.first?.name == "vlan_config.txt")
+ precondition(model.attachmentError.isEmpty, "attachmentError must be empty on success")
+ pump()
+
+ // Verify removing attachment
+ if let attachmentID = model.pendingAttachments.first?.id {
+     model.removeAttachment(attachmentID)
+     precondition(model.pendingAttachments.isEmpty, "pendingAttachments must be empty after removeAttachment")
+ }
+ pump()
+
+ // Verify unsupported file rejection
+ let unsupportedFile = tempDir.appendingPathComponent("invalid.exe")
+ try! "binary content".write(to: unsupportedFile, atomically: true, encoding: .utf8)
+ defer { try? FileManager.default.removeItem(at: unsupportedFile) }
+ let rejected = model.attachFiles(at: [unsupportedFile])
+ precondition(!rejected, "attachFiles must return false for unsupported file")
+ precondition(!model.attachmentError.isEmpty, "attachmentError must be set for unsupported file")
+ precondition(model.pendingAttachments.isEmpty, "unsupported file must not be attached")
+ pump()
+ print("PASS: file attachment and drag-and-drop validation in chat window")
+
  _ = app
  }
 }

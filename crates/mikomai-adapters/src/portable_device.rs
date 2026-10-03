@@ -244,8 +244,10 @@ impl ReadOnlyToolRegistry {
                 if matches.len() > 1 { return Err("registered diagnostic target is ambiguous".into()); }
                 if let Some(device) = matches.first() {
                     let ip = device.ip.as_deref().filter(|ip| !ip.trim().is_empty())
-                        .ok_or("registered diagnostic target has no host address")?;
-                    resolved_args["host"] = ip.trim().into();
+                        .ok_or("registered diagnostic target has no IP address")?;
+                    let ip = ip.trim().parse::<std::net::IpAddr>()
+                        .map_err(|_| "registered diagnostic target has an invalid IP address; DNS lookup is disabled for registered devices")?;
+                    resolved_args["host"] = ip.to_string().into();
                 }
             }
         }

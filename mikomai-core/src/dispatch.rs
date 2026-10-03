@@ -10,6 +10,9 @@ pub enum DispatchMode {
 /// A full command match is high confidence; partial matches and compound goals
 /// stay with the agent. Never infer an execution target from surrounding prose.
 pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
+    if let Some(shortcut) = explicit_ping_shortcut(message) {
+        return Some(shortcut);
+    }
     if let Some(shortcut) = port_check_shortcut(message) {
         return Some(shortcut);
     }
@@ -59,6 +62,67 @@ pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
     }
     Some(shortcut)
 }
+/// Parse a complete, explicit ping command before the language model can
+/// misread a leading command-line option such as `-df` as the destination.
+fn explicit_ping_shortcut(message: &str) -> Option<LegacyShortcut> {
+    let tokens = message.split_whitespace().collect::<Vec<_>>();
+    let command = tokens.first()?.to_ascii_lowercase();
+    if !matches!(command.as_str(), "ping" | "ピング" | "ピン") || tokens.len() < 2 {
+        return None;
+    }
+
+    let mut host = None;
+    let mut count = None;
+    let mut size = None;
+    let mut dont_fragment = false;
+    let mut index = 1;
+    while index < tokens.len() {
+        let token = tokens[index];
+        let option = token.to_ascii_lowercase();
+        match option.as_str() {
+            "-df" | "-d" | "df" | "dont-fragment" | "フラグメント禁止" => {
+                if dont_fragment { return None; }
+                dont_fragment = true;
+                index += 1;
+            }
+            "-c" | "count" | "回数" | "回" => {
+                if count.is_some() { return None; }
+                let value = tokens.get(index + 1)?.parse::<u32>().ok()?;
+                if value == 0 || value > 10 { return None; }
+                count = Some(value);
+                index += 2;
+            }
+            "-s" | "size" | "サイズ" => {
+                if size.is_some() { return None; }
+                let value = tokens.get(index + 1)?.parse::<u32>().ok()?;
+                if !(1..=65_500).contains(&value) { return None; }
+                size = Some(value);
+                index += 2;
+            }
+            _ => {
+                if host.is_some()
+                    || token.starts_with('-')
+                    || token.is_empty()
+                    || token.len() > 255
+                    || !token.chars().all(|ch| ch.is_ascii_alphanumeric() || ".-:%".contains(ch))
+                {
+                    return None;
+                }
+                host = Some(token);
+                index += 1;
+            }
+        }
+    }
+    Some(LegacyShortcut {
+        tool: Some("self_network_ping".into()),
+        target: Some("localhost".into()),
+        args: serde_json::json!({
+            "host":host?, "count":count, "size":size, "dont_fragment":dont_fragment,
+        }),
+        reply: None,
+    })
+}
+
 /// A single explicit TCP check. Anchoring keeps compound investigations in Agent.
 pub fn port_check_shortcut(message: &str) -> Option<LegacyShortcut> {
     let pattern = regex::Regex::new(
