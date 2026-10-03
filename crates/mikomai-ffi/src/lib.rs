@@ -3861,7 +3861,7 @@ mod tests {
             tool: *const c_char, target: *const c_char, args: *const c_char,
             output: *mut c_char, capacity: usize, _context: *mut std::ffi::c_void,
         ) -> i32 {
-            assert_eq!(CStr::from_ptr(tool).to_str().unwrap(), "self_network_traceroute");
+            assert!(matches!(CStr::from_ptr(tool).to_str().unwrap(), "self_network_traceroute" | "self_network_ping"));
             let target: serde_json::Value = serde_json::from_str(CStr::from_ptr(target).to_str().unwrap()).unwrap();
             let args: serde_json::Value = serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap();
             assert_eq!(target["hostname"], "localhost");
@@ -3871,7 +3871,8 @@ mod tests {
             std::ptr::copy_nonoverlapping(payload.as_ptr().cast(), output, payload.len());
             0
         }
-        let input = CString::new("traceroute 8.8.8.8").unwrap();
+        for command in ["traceroute 8.8.8.8", "trace -m 5 8.8.8.8", "ping -df 5000 8.8.8.8"] {
+        let input = CString::new(command).unwrap();
         // Invalid directories ensure success cannot depend on reference search.
         let path = CString::new("/nonexistent-mikomai-fast-route").unwrap();
         let empty = CString::new("").unwrap();
@@ -3892,6 +3893,7 @@ mod tests {
         assert!(debug.iter().any(|event| event["kind"] == "fast_route"));
         assert!(debug.iter().any(|event| event["kind"] == "fast_route_result" && event["payload"]["success"] == true));
         assert!(!debug.iter().any(|event| matches!(event["kind"].as_str(), Some("agent_event" | "agent_query" | "llm_request"))));
+        }
     }
 
     #[test]

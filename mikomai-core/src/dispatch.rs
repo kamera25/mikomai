@@ -10,7 +10,7 @@ pub enum DispatchMode {
 /// A full command match is high confidence; partial matches and compound goals
 /// stay with the agent. Never infer an execution target from surrounding prose.
 pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
-    if let Some(shortcut) = explicit_ping_shortcut(message) {
+    if let Some(shortcut) = explicit_probe_shortcut(message) {
         return Some(shortcut);
     }
     if let Some(shortcut) = port_check_shortcut(message) {
@@ -62,21 +62,37 @@ pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
     }
     Some(shortcut)
 }
-/// Parse a complete, explicit ping command before the language model can
-/// misread a leading command-line option such as `-df` as the destination.
-fn explicit_ping_shortcut(message: &str) -> Option<LegacyShortcut> {
+/// Parse command, destination, then options for explicit ping/trace requests.
+/// Unknown options are ignored rather than misread as the destination.
+fn explicit_probe_shortcut(message: &str) -> Option<LegacyShortcut> {
     let tokens = message.split_whitespace().collect::<Vec<_>>();
     let command = tokens.first()?.to_ascii_lowercase();
-    if !matches!(command.as_str(), "ping" | "ピング" | "ピン") || tokens.len() < 2 {
+    let trace = matches!(command.as_str(), "trace" | "traceroute" | "トレースルート");
+    if (!trace && !matches!(command.as_str(), "ping" | "ピング" | "ピン")) || tokens.len() < 2 {
         return None;
     }
-
-    let mut host = None;
+    let start = if command == "trace" && tokens.get(1).is_some_and(|s| s.eq_ignore_ascii_case("route")) { 2 } else { 1 };
+    // Extract the destination before interpreting options. Numeric option values
+    // must never become hosts, and an IP literal takes precedence over DNS text.
+    let candidates = tokens.iter().enumerate().skip(start).filter(|(i, token)| {
+        let lower = token.to_ascii_lowercase();
+        !token.starts_with('-') && token.len() <= 255 && !token.contains('%')
+            && !token.chars().all(|ch| ch.is_ascii_digit())
+            && token.chars().all(|ch| ch.is_ascii_alphanumeric() || ".-:".contains(ch))
+            && !matches!(lower.as_str(), "df" | "count" | "size" | "dont-fragment")
+            && !matches!(tokens[i - 1].to_ascii_lowercase().as_str(), "-c" | "count" | "-s" | "size")
+    }).collect::<Vec<_>>();
+    let ips = candidates.iter().filter(|(_, token)| token.parse::<std::net::IpAddr>().is_ok()).collect::<Vec<_>>();
+    let (host_index, host) = if ips.len() == 1 { **ips.first()? } else if ips.is_empty() && candidates.len() == 1 { *candidates.first()? } else { return None; };
+    // Keep prose, multiple operations and shell syntax out of direct execution.
+    if tokens.iter().skip(start).any(|token| token.chars().any(|ch| ch.is_control() || ";|&$`()<>\\\"'".contains(ch))
+        || token.chars().any(|ch| !ch.is_ascii()) && !matches!(*token, "回数" | "回" | "サイズ" | "フラグメント禁止")) { return None; }
     let mut count = None;
     let mut size = None;
     let mut dont_fragment = false;
-    let mut index = 1;
+    let mut index = start;
     while index < tokens.len() {
+        if index == host_index { index += 1; continue; }
         let token = tokens[index];
         let option = token.to_ascii_lowercase();
         match option.as_str() {
@@ -100,24 +116,16 @@ fn explicit_ping_shortcut(message: &str) -> Option<LegacyShortcut> {
                 index += 2;
             }
             _ => {
-                if host.is_some()
-                    || token.starts_with('-')
-                    || token.is_empty()
-                    || token.len() > 255
-                    || !token.chars().all(|ch| ch.is_ascii_alphanumeric() || ".-:%".contains(ch))
-                {
-                    return None;
-                }
-                host = Some(token);
+                // Unknown flags and their values remain options, never destinations.
                 index += 1;
             }
         }
     }
     Some(LegacyShortcut {
-        tool: Some("self_network_ping".into()),
+        tool: Some(if trace { "self_network_traceroute" } else { "self_network_ping" }.into()),
         target: Some("localhost".into()),
         args: serde_json::json!({
-            "host":host?, "count":count, "size":size, "dont_fragment":dont_fragment,
+            "host":host, "count":count, "size":size, "dont_fragment":dont_fragment,
         }),
         reply: None,
     })
@@ -268,6 +276,9 @@ pub struct LegacyShortcut {
 /// Preserve the old deterministic fastroute behavior without a UI/runtime
 /// dependency. Returns only actions whose intent is explicit in the request.
 pub fn legacy_shortcut(goal: &str) -> Option<LegacyShortcut> {
+    if let Some(shortcut) = explicit_probe_shortcut(goal) {
+        return Some(shortcut);
+    }
     if let Some(shortcut) = port_check_shortcut(goal) {
         return Some(shortcut);
     }
@@ -607,6 +618,32 @@ mod tests {
         }
         assert_eq!(fast_route("ping df.example.com").unwrap().args["dont_fragment"], false);
     }
+    #[test]
+    fn probe_destination_precedes_options() {
+        for (input, host, tool) in [
+            ("ping -df 5000 8.8.8.8", "8.8.8.8", "self_network_ping"),
+            ("ping -unknown 5000 example.com", "example.com", "self_network_ping"),
+            ("ping -df 5000 NakaokuGW", "NakaokuGW", "self_network_ping"),
+            ("ping 8.8.8.8 -unknown 5000", "8.8.8.8", "self_network_ping"),
+            ("trace -m 5 192.0.2.1", "192.0.2.1", "self_network_traceroute"),
+            ("trace route -w 2 example.com", "example.com", "self_network_traceroute"),
+            ("ping -x label 2001:db8::1", "2001:db8::1", "self_network_ping"),
+        ] {
+            for parsed in [fast_route(input), legacy_shortcut(input)] {
+                let parsed = parsed.expect(input);
+                assert_eq!(parsed.args["host"], host);
+                assert_eq!(parsed.tool.as_deref(), Some(tool));
+            }
+        }
+        assert_eq!(fast_route("ping -df 5000 8.8.8.8").unwrap().args["size"], serde_json::Value::Null);
+        let options = fast_route("ping -c 3 -s 5000 -df 8.8.8.8").unwrap();
+        assert_eq!(options.args["count"], 3);
+        assert_eq!(options.args["size"], 5000);
+        assert_eq!(options.args["dont_fragment"], true);
+        assert!(fast_route("ping -df 5000").is_none());
+        assert!(fast_route("trace -m 5").is_none());
+    }
+
     #[test]
     fn routes_live_requests_to_agent() {
         assert_eq!(
