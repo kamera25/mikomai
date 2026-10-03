@@ -4105,7 +4105,9 @@ mod tests {
             serde_json::from_str(CStr::from_ptr(target).to_str().unwrap()).unwrap(),
             serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap(),
         ));
-        let raw = if calls.last().unwrap().1["hostname"] == "NakaokuGW" {
+        let raw = if calls.last().unwrap().1["deviceType"] == "yamaha" {
+            include_str!("../../../mikomai-core/src/network/fixtures/yamaha-show-arp.txt")
+        } else if calls.last().unwrap().1["hostname"] == "NakaokuGW" {
             "Protocol Address Age (min) Hardware Addr Type Interface\nInternet 192.168.50.23 2 624f.b0f6.2523 ARPA Vlan1"
         } else { "192.0.2.10 aa:bb:cc:dd:ee:ff GigaEthernet 1/1" };
         let response = serde_json::json!({"success":true,"output":raw}).to_string();
@@ -4208,6 +4210,34 @@ mod tests {
         assert_eq!(calls[0].1["hostname"], "NakaokuGW");
         assert_eq!(calls[0].2["resource"], "arp");
         assert!(answer.contains("見つかりました") && answer.contains("192.168.50.23"), "{answer}");
+    }
+
+    #[test]
+    fn router_arp_mac_lookup_reads_yamaha_table_through_callback() {
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!("mikomai-router-arp-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("MIKOMAI_DATA_DIR");
+        std::env::set_var("MIKOMAI_DATA_DIR", &root);
+        let input = CString::new("44:55:66:b3:37:22 が hogehogeGW のarpにある？").unwrap();
+        let empty = CString::new("").unwrap();
+        let devices = CString::new(r#"[{"hostname":"other-router","deviceType":"cisco_ios"},{"hostname":"hogehogeGW","ip":"192.168.50.1","deviceType":"yamaha"}]"#).unwrap();
+        let mut calls: Vec<(String, serde_json::Value, serde_json::Value)> = Vec::new();
+        let response = unsafe {
+            super::mikomai_agent_chat_streaming(input.as_ptr(), empty.as_ptr(), empty.as_ptr(), empty.as_ptr(), empty.as_ptr(), devices.as_ptr(), None, Some(fake_arp_read), None, (&mut calls as *mut Vec<_>).cast())
+        };
+        let answer = unsafe { CStr::from_ptr(response.message) }.to_string_lossy().into_owned();
+        let status = response.status;
+        unsafe { mikomai_result_free(response) };
+        match previous {
+            Some(value) => std::env::set_var("MIKOMAI_DATA_DIR", value),
+            None => std::env::remove_var("MIKOMAI_DATA_DIR"),
+        }
+        assert_eq!(status, 0, "{answer}");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "get_state");
+        assert_eq!(calls[0].1["hostname"], "NakaokuGW");
+        assert_eq!(calls[0].2["resource"], "arp");
+        assert!(answer.contains("見つかりました") && answer.contains("192.168.20.1"), "{answer}");
     }
 
     #[test]

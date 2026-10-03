@@ -160,7 +160,7 @@ struct SettingsWorkspace: View {
             // MCP Timeout
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("MCP / ツール実行タイムアウト (秒)")
+                    Text("ツール実行タイムアウト (秒)")
                     Spacer()
                     Text("\(model.settings.mcpTimeout ?? 30) 秒").font(.system(size: 14, design: .monospaced)).bold()
                 }

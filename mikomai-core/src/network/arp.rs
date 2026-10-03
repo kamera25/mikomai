@@ -29,6 +29,20 @@ pub struct ArpCanonicalizationEvidence {
     pub lines: Vec<EvidenceLine>,
 }
 
+// Yamaha show arp puts the interface before the IP and TTL after the MAC.
+fn yamaha_interface<'a>(fields: &[&'a str]) -> Option<&'a str> {
+    if fields.len() == 4
+        && fields[1].parse::<std::net::Ipv4Addr>().is_ok()
+        && crate::dispatch::mac_address_in_goal(fields[2]).is_some()
+        && fields[3].parse::<u32>().is_ok()
+        && fields[0].chars().any(|ch| ch.is_ascii_alphabetic())
+    {
+        Some(fields[0])
+    } else {
+        None
+    }
+}
+
 pub fn extract(raw: &str) -> ExtractedCandidates {
     extract_candidates(raw, |line| {
         // ARP CLIs conventionally place the outgoing interface in the final
@@ -36,6 +50,9 @@ pub fn extract(raw: &str) -> ExtractedCandidates {
         let words = line.split_whitespace().collect::<Vec<_>>();
         if words.len() < 3 || !line.contains('.') {
             return None;
+        }
+        if let Some(interface) = yamaha_interface(&words) {
+            return Some(interface.to_string());
         }
         let last = *words.last()?;
         if last.eq_ignore_ascii_case("incomplete")
@@ -243,9 +260,16 @@ pub fn parse_observed_table(raw: &str) -> Result<serde_json::Value, String> {
     }
     let mut entries = Vec::new();
     let mut header_seen = false;
+    let mut expected_count = None;
     for line in raw.lines().map(str::trim).filter(|line| !line.is_empty()) {
         let lower = line.to_ascii_lowercase();
-        let header = (lower.starts_with("protocol") && lower.contains("address") && lower.contains("hardware"))
+        if let Some(count) = line.strip_prefix("カウント数:").or_else(|| line.strip_prefix("カウント数：")) {
+            if expected_count.is_some() { return Err(invalid()); }
+            expected_count = Some(count.trim().parse::<usize>().map_err(|_| invalid())?);
+            continue;
+        }
+        let header = (line.starts_with("インタフェース") && line.contains("IPアドレス") && line.contains("MACアドレス") && line.contains("TTL"))
+            || (lower.starts_with("protocol") && lower.contains("address") && lower.contains("hardware"))
             || ((lower.starts_with("ip address") || lower.starts_with("address") || lower.starts_with("mac address"))
                 && (lower.contains("mac") || lower.contains("hardware")));
         if header { header_seen = true; continue; }
@@ -256,7 +280,9 @@ pub fn parse_observed_table(raw: &str) -> Result<serde_json::Value, String> {
         let mac = crate::dispatch::mac_address_in_goal(line);
         let incomplete = fields.iter().any(|field| field.trim_matches(['(', ')']).eq_ignore_ascii_case("incomplete"));
         if mac.is_none() && !incomplete { return Err(invalid()); }
-        let interface = if let Some(index) = fields.iter().position(|field| *field == "on") {
+        let interface = if let Some(interface) = yamaha_interface(&fields) {
+            Some(interface)
+        } else if let Some(index) = fields.iter().position(|field| *field == "on") {
             fields.get(index + 1).copied()
         } else {
             fields.last().copied().filter(|field| field.chars().any(|ch| ch.is_ascii_alphabetic())
@@ -266,6 +292,7 @@ pub fn parse_observed_table(raw: &str) -> Result<serde_json::Value, String> {
         entries.push(serde_json::json!({"ip_address":ip.to_string(),"mac_address":mac,"interface":interface,
             "type":if incomplete {"incomplete"} else {"dynamic"}}));
     }
+    if expected_count.is_some_and(|count| count != entries.len()) { return Err(invalid()); }
     if entries.is_empty() && !header_seen { return Err(invalid()); }
     Ok(serde_json::json!({"arp_table":entries}))
 }
@@ -294,6 +321,25 @@ pub fn mac_lookup_answer(host: &str, mac: &str, raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn parses_yamaha_observation_and_rejects_truncated_tables() {
+        let raw = include_str!("fixtures/yamaha-show-arp.txt");
+        let table = parse_observed_table(raw).unwrap();
+        assert_eq!(table["arp_table"].as_array().unwrap().len(), 14);
+        let entry = &table["arp_table"][7];
+        assert_eq!(entry["ip_address"], "192.168.50.10");
+        assert_eq!(entry["mac_address"], "38:88:a4:b3:37:aa");
+        assert_eq!(entry["interface"], "LAN1(port1)");
+        assert!(mac_lookup_answer("NakaokuGW", "38:88:a4:b3:37:aa", raw).contains("対応IP: 192.168.50.10"));
+        assert!(mac_lookup_answer("NakaokuGW", "00:11:22:33:44:55", raw).contains("存在しません"));
+        let extracted = extract(raw);
+        assert_eq!(extracted.candidates.interfaces, ["LAN2", "LAN1(port1)"]);
+        assert!(parse_observed_table(&raw.replace("カウント数: 14", "カウント数: 15")).is_err());
+        assert!(parse_observed_table(&format!("{raw}permission denied\n")).is_err());
+        assert!(parse_observed_table("カウント数: 0\nインタフェース IPアドレス MACアドレス TTL(秒)").is_ok());
+        assert!(parse_observed_table("カウント数: 0").is_err());
+    }
+
     #[test]
     fn lookup_native_and_canonical_tables_without_inventing_absence() {
         let mac = "ea:f1:92:50:7b:c3";
