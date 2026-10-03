@@ -2,18 +2,24 @@ import SwiftUI
 import MikomaiDesktopCore
 
 struct HistorySelectionRow<Content: View>: View {
+    let title: String
     let isSelected: Bool
     let action: () -> Void
     private let content: Content
+    let accessibilityActions: [AccessibleControlAction]
+    let onRename: (() -> Void)?
 
-    init(isSelected: Bool, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+    init(_ title: String, isSelected: Bool, action: @escaping () -> Void, accessibilityActions: [AccessibleControlAction] = [], onRename: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
         self.isSelected = isSelected
         self.action = action
         self.content = content()
+        self.accessibilityActions = accessibilityActions
+        self.onRename = onRename
     }
 
     var body: some View {
-        Button(action: action) {
+        AccessibleButton(title, value: isSelected ? "選択中" : "未選択", accessibilityActions: accessibilityActions, onRename: onRename, fillsWidth: true, action: action) {
             content
                 .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                 .padding(.horizontal, 8)
@@ -21,7 +27,7 @@ struct HistorySelectionRow<Content: View>: View {
                 .background(isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .accessibleButtonStyle(.plain)
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
     }
@@ -43,7 +49,7 @@ struct AgentTaskHistoryList: View {
                     historyDayDivider(group.date.map { AgentTaskHistoryPresentation.dateLabel($0) } ?? "日時不明")
                     ForEach(group.tasks) { task in
                         HStack(spacing: 0) {
-                            HistorySelectionRow(isSelected: task.id == selectedTaskID, action: {
+                            HistorySelectionRow("\(task.goal)、\(task.status)、\(task.eventCount)件", isSelected: task.id == selectedTaskID, action: {
                                 selectedTaskID = task.id
                                 onSelect(task)
                             }) {
@@ -102,7 +108,7 @@ struct AgentTaskWorkspace: View {
             HStack {
                 Text("エージェント実行履歴").font(.system(size: 16, weight: .semibold))
                 Spacer()
-                Button {
+                AccessibleButton("エージェント履歴を再読込") {
                     onRefresh()
                 } label: {
                     Label("更新", systemImage: "arrow.clockwise")
@@ -110,7 +116,7 @@ struct AgentTaskWorkspace: View {
                 .help("エージェント履歴を再読込")
 
                 if !tasks.isEmpty {
-                    Button(role: .destructive) {
+                    AccessibleButton("全履歴を削除", role: .destructive) {
                         showingDeleteAllConfirm = true
                     } label: {
                         Label("全履歴を削除", systemImage: "trash")
@@ -134,14 +140,15 @@ struct AgentTaskWorkspace: View {
                         }
                         Spacer()
                         HStack(spacing: 8) {
-                            Button("調査を再開") { onResumeTask(selectedTask) }
-                                .buttonStyle(.borderedProminent)
-                            Button(role: .destructive) {
+                            AccessibleButton("調査を再開") { onResumeTask(selectedTask) }
+                                .accessibleButtonStyle(.prominent)
+                            AccessibleButton("エージェント履歴を削除: \(selectedTask.goal)", role: .destructive) {
                                 onDeleteTask(selectedTask)
                             } label: {
                                 Image(systemName: "trash")
                             }
                             .help("この履歴を削除")
+                            .accessibilityLabel("エージェント履歴を削除: \(selectedTask.goal)")
                         }
                     }
 

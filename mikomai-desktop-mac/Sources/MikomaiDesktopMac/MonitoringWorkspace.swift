@@ -11,7 +11,7 @@ struct MonitoringWorkspace: View {
                 Text("CPU監視").font(.system(size: 24, weight: .semibold))
                 Spacer()
                 Text(model.watchStatus).font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(2)
-                Button("更新") { model.refreshWatches() }
+                AccessibleButton("更新") { model.refreshWatches() }
             }
             watchContent
         }
@@ -26,17 +26,14 @@ struct MonitoringWorkspace: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         TextField("監視名", text: $model.watchName)
-                        Picker("機器", selection: $model.watchDevice) {
-                            Text("機器を選択").tag("")
-                            ForEach(model.connections) { connection in Text(connection.name).tag(connection.name) }
-                        }.frame(width: 220)
+                        AccessiblePicker("機器", selection: $model.watchDevice, options: [("", "機器を選択")] + model.connections.map { ($0.name, $0.name) }).frame(width: 220)
                     }
                     HStack {
                         TextField("間隔（秒）", text: $model.watchInterval).frame(width: 130)
                         TextField("CPUしきい値（%）", text: $model.watchThreshold).frame(width: 180)
                         TextField("通知メッセージ", text: $model.watchMessage)
-                        if model.watchEditingID != nil { Button("取消") { model.watchEditingID = nil } }
-                        Button(model.watchEditingID == nil ? "監視を作成" : "監視を更新") { model.createCPUWatch() }.buttonStyle(.borderedProminent)
+                        if model.watchEditingID != nil { AccessibleButton("取消") { model.watchEditingID = nil } }
+                        AccessibleButton(model.watchEditingID == nil ? "監視を作成" : "監視を更新") { model.createCPUWatch() }.accessibleButtonStyle(.prominent)
                     }
                     Text("読み取り専用のCPU状態を定期確認し、しきい値を超えたときに通知します。操作や設定変更は実行しません。")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
@@ -69,10 +66,11 @@ struct MonitoringWorkspace: View {
                             .font(.system(size: 13)).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("今すぐ実行") { model.runWatch(watch) }
-                    Button("編集") { model.editWatch(watch) }
-                    Button(watch.status == "enabled" ? "停止" : "再開") { model.setWatch(watch, enabled: watch.status != "enabled") }
-                    Button(role: .destructive) { model.deleteWatch(watch) } label: { Image(systemName: "trash") }
+                    AccessibleButton("今すぐ実行") { model.runWatch(watch) }
+                    AccessibleButton("編集") { model.editWatch(watch) }
+                    AccessibleButton(watch.status == "enabled" ? "停止" : "再開") { model.setWatch(watch, enabled: watch.status != "enabled") }
+                    AccessibleButton("監視を削除: \(watch.name)", role: .destructive) { model.deleteWatch(watch) } label: { Image(systemName: "trash") }
+                        .accessibilityLabel("監視を削除: \(watch.name)")
                 }
                 if let error = watch.lastError { Label(error, systemImage: "exclamationmark.triangle").font(.system(size: 13)).foregroundStyle(.orange) }
                 if let latest = watch.history?.last {

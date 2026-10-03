@@ -18,6 +18,7 @@ private struct WindowAccessor: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            KeyboardNavigation.schedule(in: window)
             onWindowChange?(window)
         }
     }
@@ -270,6 +271,7 @@ struct DesktopWindow: View {
         }
         .background(Color(nsColor: .underPageBackgroundColor))
         .background(WindowAccessor(window: $window))
+        .background(KeyboardNavigationScope())
         .onAppear {
             currentContainerWidth = geometry.size.width
             evaluateTiling(containerWidth: geometry.size.width)
@@ -368,7 +370,7 @@ struct DesktopWindow: View {
     }
 
     private func activityButton(_ item: Workspace) -> some View {
-        Button {
+        AccessibleButton(item.rawValue, value: model.workspace == item ? "選択中" : "未選択") {
             model.workspace = item
             if (item == .chat || item == .agentHistory) && !isTiled { isHistoryOpen = true }
         } label: {
@@ -378,8 +380,7 @@ struct DesktopWindow: View {
                 .background(model.workspace == item ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 6))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).help(item.rawValue)
-        .accessibilityLabel(item.rawValue)
+        .accessibleButtonStyle(.plain).help(item.rawValue)
     }
 
     private var historySidebar: some View {
@@ -388,32 +389,20 @@ struct DesktopWindow: View {
                 if model.workspace == .agentHistory {
                     Text("エージェント履歴").font(.system(size: 14, weight: .semibold))
                 } else {
-                    Menu {
-                        Button("会話") { historyTab = "conversation" }
-                        Button("操作監査") {
-                            historyTab = "audit"
-                            model.refreshOperationAudit()
+                    AccessiblePicker("履歴の種類", selection: $historyTab,
+                                     options: [("conversation", "会話"), ("audit", "操作監査")], showsTitle: false)
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .onChange(of: historyTab) { tab in
+                            if tab == "audit" { model.refreshOperationAudit() }
                         }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Text(historyTabTitle).font(.system(size: 14, weight: .semibold))
-                            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
-                            Spacer(minLength: 8)
-                        }
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .menuStyle(.borderlessButton)
-                    .help("表示する履歴を選択")
                 }
                 Spacer()
                 if model.workspace == .chat && historyTab == "conversation" {
-                    Button { model.createSession() } label: { Image(systemName: "square.and.pencil") }
-                        .buttonStyle(.plain).help("新しい会話")
+                    AccessibleButton("新しい会話") { model.createSession() } label: { Image(systemName: "square.and.pencil") }
+                        .accessibleButtonStyle(.plain).help("新しい会話").accessibilityLabel("新しい会話")
                 } else if model.workspace == .agentHistory {
-                    Button { model.refreshAgentTasks() } label: { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(.plain).help("エージェント履歴を更新")
+                    AccessibleButton("エージェント履歴を更新") { model.refreshAgentTasks() } label: { Image(systemName: "arrow.clockwise") }
+                        .accessibleButtonStyle(.plain).help("エージェント履歴を更新").accessibilityLabel("エージェント履歴を更新")
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
@@ -505,7 +494,7 @@ struct DesktopWindow: View {
                 HStack {
                     Text("承認済み操作の監査記録").font(.system(size: 16, weight: .semibold))
                     Spacer()
-                    Button("更新") { model.refreshOperationAudit() }
+                    AccessibleButton("更新") { model.refreshOperationAudit() }
                 }
                 ScrollView {
                     Text(model.operationAuditText.isEmpty ? "記録はありません" : model.operationAuditText)
@@ -562,12 +551,12 @@ struct DesktopWindow: View {
 
     private func paneToggleButton(symbol: String, title: String,
                                   action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        AccessibleButton(title, action: action) {
             Image(systemName: symbol)
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .accessibleButtonStyle(.plain)
         .help(title)
         .accessibilityLabel(title)
     }
@@ -656,17 +645,16 @@ struct DesktopWindow: View {
                     .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Spacer()
             } else {
-                Picker("対象機器", selection: $selectedConnectionID) {
-                    Text("機器を選択").tag(Optional<UUID>.none)
-                    ForEach(model.connections.filter { ["ssh", "telnet"].contains(($0.connectionType ?? "SSH").lowercased()) }) { connection in
-                        Text("\(connection.name) (\(connection.host))").tag(Optional(connection.id))
-                    }
-                }
+                AccessiblePicker("対象機器", selection: $selectedConnectionID, options: [(Optional<UUID>.none, "機器を選択")] + model.connections.filter { ["ssh", "telnet"].contains(($0.connectionType ?? "SSH").lowercased()) }.map { (Optional($0.id), "\($0.name) (\($0.host))") })
                 .disabled(model.operationPlan != nil || isOperationRunning)
-                TextEditor(text: $model.operationProposal)
-                    .font(.system(size: 12, design: .monospaced)).frame(minHeight: 95, maxHeight: 170)
+                ChatComposer(text: $model.operationProposal, isFocused: .constant(false),
+                             isEnabled: model.operationPlan == nil && !isOperationRunning, onSubmit: {}, onEscape: {},
+                             submitsOnReturn: false, accessibilityLabel: "変更案の設定コマンド",
+                             editorFont: .monospacedSystemFont(ofSize: 12, weight: .regular),
+                             placeholder: "設定コマンドを入力…")
+                    .frame(minHeight: 95, maxHeight: 170)
                     .disabled(model.operationPlan != nil || isOperationRunning)
-                DisclosureGroup("取得した現状のConfig") {
+                AccessibleDisclosureGroup("取得した現状のConfig") {
                     ScrollView {
                         Text(model.operationBeforeConfig.isEmpty ? "まだ取得していません。" : model.operationBeforeConfig)
                             .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
@@ -691,7 +679,7 @@ struct DesktopWindow: View {
                 if let plan = model.operationPlan {
                     Text("状態: \(operationStatusLabel(plan.status))")
                         .font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
-                    DisclosureGroup("計画の照合情報") {
+                    AccessibleDisclosureGroup("計画の照合情報") {
                         Text("ID: \(plan.id)\nSHA-256: \(plan.planHash)")
                             .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
                             .foregroundStyle(.secondary).lineLimit(4)
@@ -704,11 +692,11 @@ struct DesktopWindow: View {
                 if isOperationRunning {
                     HStack(spacing: 7) { ProgressView().controlSize(.small); Text(model.operationPhase).font(.system(size: 13)) }
                 } else if model.operationPlan == nil {
-                    Button("現状を取得して差分を確認") { Task { await prepareOperationPlan() } }
-                        .buttonStyle(.borderedProminent).disabled(selectedConnectionID == nil || model.connections.isEmpty)
+                    AccessibleButton("現状を取得して差分を確認") { Task { await prepareOperationPlan() } }
+                        .accessibleButtonStyle(.prominent).disabled(selectedConnectionID == nil || model.connections.isEmpty)
                 } else if model.operationPlan?.status == "pending" {
-                    Button("確認して承認・投入") { Task { await approveAndExecutePlan() } }
-                        .buttonStyle(.borderedProminent)
+                    AccessibleButton("確認して承認・投入") { Task { await approveAndExecutePlan() } }
+                        .accessibleButtonStyle(.prominent)
                 }
             }
         }
@@ -867,7 +855,7 @@ struct DesktopWindow: View {
                     }
                     .overlay(alignment: .bottom) {
                         if !isAtChatBottom {
-                            Button {
+                            AccessibleButton("最新のメッセージへ移動") {
                                 chatScrollFollow.resume()
                                 proxy.scrollTo("chatBottom", anchor: .bottom)
                             } label: {
@@ -878,7 +866,8 @@ struct DesktopWindow: View {
                                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
                             }
                             .accessibilityIdentifier("chat-scroll-to-bottom")
-                            .buttonStyle(.plain).padding(.bottom, 8)
+                            .accessibilityLabel("最新のメッセージへ移動")
+                            .accessibleButtonStyle(.plain).padding(.bottom, 8)
                         }
                     }
                 }
@@ -966,7 +955,7 @@ struct DesktopWindow: View {
     }
 
     private func suggestion(_ title: String, icon: String, prompt: String) -> some View {
-        Button {
+        AccessibleButton(title, fillsWidth: true) {
             mentionPresentation.dismiss()
             model.draft = prompt
             model.send()
@@ -987,8 +976,9 @@ struct DesktopWindow: View {
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.7))
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .buttonStyle(.plain)
+        .accessibleButtonStyle(.plain)
         .help("クリックして実行")
+        .accessibilityLabel(title)
     }
 
     private var composer: some View {
@@ -1006,28 +996,24 @@ struct DesktopWindow: View {
                             }
                             return "point.3.connected.trianglepath.dotted"
                         }()
-                        Button {
+                        HistorySelectionRow("\(suggestion.hostname)、\(suggestion.ip)", isSelected: index == hostSuggestionIndex, action: {
                             selectHostSuggestion(suggestion)
-                        } label: {
+                        }) {
                             HStack(spacing: 8) {
                                 Image(systemName: icon).font(.system(size: 11)).foregroundStyle(.secondary)
+                                    .accessibilityHidden(true)
                                 Text(suggestion.hostname).font(.system(size: 14, weight: .medium))
                                 Text(suggestion.ip).font(.system(size: 13)).foregroundStyle(.secondary)
                                 Spacer(minLength: 0)
                             }
-                            .contentShape(Rectangle())
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
                         }
-                        .buttonStyle(.plain)
-                        .background(index == hostSuggestionIndex ? Color.accentColor.opacity(0.14) : .clear,
-                                    in: RoundedRectangle(cornerRadius: 4))
+                        .accessibilityLabel("\(suggestion.hostname)、\(suggestion.ip)")
                         .id(index)
                         .onHover { hovering in if hovering { hostSuggestionIndex = index } }
                     }
                 }
                 }
-                .frame(height: min(180, CGFloat(hostSuggestions.count) * 29))
+                .frame(height: min(180, CGFloat(hostSuggestions.count) * 44))
                 .onChange(of: hostSuggestionIndex) { index in suggestionProxy.scrollTo(index) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1041,9 +1027,9 @@ struct DesktopWindow: View {
                             HStack(spacing: 5) {
                                 Image(systemName: "doc.text")
                                 Text(attachment.name).lineLimit(1)
-                                Button { model.removeAttachment(attachment.id) } label: {
+                                AccessibleButton("添付を削除: \(attachment.name)") { model.removeAttachment(attachment.id) } label: {
                                     Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
-                                }.buttonStyle(.plain).help("添付を削除")
+                                }.accessibleButtonStyle(.plain).help("添付を削除").accessibilityLabel("添付を削除: \(attachment.name)")
                             }
                             .font(.system(size: 13)).padding(.horizontal, 8).padding(.vertical, 5)
                             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
@@ -1055,14 +1041,14 @@ struct DesktopWindow: View {
                 Text(model.attachmentError).font(.system(size: 13)).foregroundStyle(.red)
             }
             HStack(alignment: .bottom, spacing: 10) {
-                Button(action: model.selectAttachments) {
+                AccessibleButton("ファイルを添付", action: model.selectAttachments) {
                     Image(systemName: "paperclip")
                         .font(.system(size: 15))
                         .foregroundStyle(.secondary)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).help("テキスト・PNG/JPEG画像を添付")
+                .accessibleButtonStyle(.plain).help("テキスト・PNG/JPEG画像を添付").accessibilityLabel("ファイルを添付")
 
                 ChatComposer(text: $model.draft, isFocused: $isChatInputFocused,
                              isEnabled: true, onSubmit: model.send,
@@ -1084,23 +1070,25 @@ struct DesktopWindow: View {
                     .padding(.vertical, 4)
 
                 if model.isWorking && !ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) {
-                    Button(action: model.stop) { Image(systemName: "stop.fill")
+                    AccessibleButton(model.isCancelling ? "停止処理中" : "生成を停止", action: model.stop) { Image(systemName: "stop.fill")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.white).frame(width: 30, height: 30)
                             .background(Color(red: 0.86, green: 0.08, blue: 0.24), in: Circle()) }
-                        .buttonStyle(.plain)
+                        .accessibleButtonStyle(.plain)
                         .disabled(!ChatSubmissionPolicy.canStop(isWorking: model.isWorking, isCancelling: model.isCancelling))
                         .help(model.isCancelling ? "停止処理中" : "生成を停止")
+                        .accessibilityLabel(model.isCancelling ? "停止処理中" : "生成を停止")
                 } else {
-                    Button(action: model.send) {
+                    AccessibleButton(model.isWorking ? "次回送信予定に追加" : "送信", action: model.send) {
                         Image(systemName: ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) ? "paperplane.fill" : "arrow.up")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.white).frame(width: 30, height: 30)
                             .background(ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count) ? Color.accentColor : Color.gray.opacity(0.55), in: Circle())
                     }
-                        .buttonStyle(.plain)
+                        .accessibleButtonStyle(.plain)
                         .disabled(model.isLoadingModel || !ChatSubmissionPolicy.hasContent(prompt: model.draft, attachmentCount: model.pendingAttachments.count))
                         .help(model.isWorking ? "次回送信予定に追加 (Enter)" : "送信 (Enter、Shift+Enter で改行)")
+                        .accessibilityLabel(model.isWorking ? "次回送信予定に追加" : "送信")
                 }
             }
         }

@@ -42,6 +42,10 @@ struct ComposerChecks {
         precondition(submissions == 3, "Command+Return submits")
         press(keyCode: 76)
         precondition(submissions == 4, "Keypad Enter submits")
+        editor.submitsOnReturn = false
+        press()
+        precondition(submissions == 4 && editor.string.hasSuffix("\n"), "Configuration editor Return inserts a newline without submitting")
+        editor.submitsOnReturn = true
         editor.isEditable = false
         press()
         precondition(submissions == 4, "Disabled editor cannot submit")
@@ -122,6 +126,7 @@ struct ComposerChecks {
         let labels = HostSuggestionLabels(localhost: "このコンピュータ", pastIps: "最近のIP")
         precondition(HostSuggestionPolicy.find(query: "", availableHosts: [], recentIPs: [], labels: labels).map(\.hostname) == ["localhost"], "Bare @ must show localhost even without registered devices")
         precondition(HostSuggestionPolicy.find(query: "", availableHosts: registryHosts, recentIPs: ["198.51.100.1"], labels: labels).map(\.hostname) == ["localhost", "edge-tauri", "console", "198.51.100.1"], "Bare @ shows all registered hosts and recent IPs")
+        checkTabNavigation()
         checkHostedSuggestions()
         print("PASS: cursor-aware @ completion, Unicode and suffix preservation, arrow/Enter/Tab/Escape routing, IME priority and normal-send fallback")
         print("PASS: Return submission, IME Return/Command+Return/Shift+Return suppression, post-composition submission, Shift+Return newline, Command+Return, keypad Enter, disabled editor")
@@ -268,4 +273,49 @@ private func checkHostedSuggestions() {
     precondition(droppedURLs == [testURL], "onFileDrop must receive the dropped URL")
     precondition(!isDragTargeted, "Drag target state must be false after performDragOperation")
     print("PASS: ChatComposerTextView file drag & drop interception")
+}
+
+
+@MainActor
+private func checkTabNavigation() {
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 200),
+                          styleMask: [.titled], backing: .buffered, defer: false)
+    let previous = NSTextField(string: "前の項目")
+    let next = NSTextField(string: "次の項目")
+    let editor = ChatComposerTextView(frame: NSRect(x: 0, y: 50, width: 400, height: 80))
+    editor.isRichText = false
+    editor.string = "確認 @rou"
+    previous.frame = NSRect(x: 0, y: 150, width: 200, height: 24)
+    next.frame = NSRect(x: 0, y: 10, width: 200, height: 24)
+    for view in [previous, editor, next] { window.contentView!.addSubview(view) }
+    previous.nextKeyView = editor
+    editor.nextKeyView = next
+    next.nextKeyView = previous
+    func tab(_ modifiers: NSEvent.ModifierFlags = []) {
+        editor.keyDown(with: NSEvent.keyEvent(with: .keyDown, location: .zero,
+            modifierFlags: modifiers, timestamp: 0, windowNumber: window.windowNumber,
+            context: nil, characters: "\t", charactersIgnoringModifiers: "\t",
+            isARepeat: false, keyCode: 48)!)
+    }
+    window.makeFirstResponder(editor)
+    tab()
+    precondition(next.currentEditor() === window.firstResponder,
+                 "Tab moves from the multiline composer to the next field")
+    precondition(editor.string == "確認 @rou", "Tab navigation never changes the draft")
+    window.makeFirstResponder(editor)
+    var accepted = false
+    editor.onSuggestionKey = { _ in accepted = true; return true }
+    tab(.shift)
+    precondition(previous.currentEditor() === window.firstResponder && !accepted,
+                 "Shift+Tab moves backwards without accepting an open suggestion")
+    window.makeFirstResponder(editor)
+    tab()
+    precondition(accepted && window.firstResponder === editor,
+                 "Unmodified Tab still accepts an open suggestion without leaving the editor")
+    editor.onSuggestionKey = { _ in false }
+    editor.setMarkedText("るーた", selectedRange: NSRange(location: 3, length: 0),
+                         replacementRange: NSRange(location: NSNotFound, length: 0))
+    tab()
+    precondition(window.firstResponder === editor, "IME Tab stays with the input method")
+    print("PASS: Tab/Shift+Tab focus traversal, draft preservation, suggestion priority and IME Tab")
 }

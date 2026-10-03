@@ -4,22 +4,6 @@ import Foundation
 import UniformTypeIdentifiers
 import MikomaiDesktopCore
 
-private struct RightAlignedSwitchStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 16) {
-            configuration.label
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Toggle(isOn: configuration.$isOn) {
-                configuration.label
-            }
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .fixedSize()
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
 struct SettingsWorkspace: View {
     @ObservedObject var model: DesktopModel
     @State private var selectedCategory = 0
@@ -41,7 +25,7 @@ struct SettingsWorkspace: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12).padding(.bottom, 8)
                 ForEach(categories.indices, id: \.self) { index in
-                    Button { selectedCategory = index } label: {
+                    HistorySelectionRow(categories[index].title, isSelected: selectedCategory == index, action: { selectedCategory = index }) {
                         HStack(spacing: 10) {
                             Image(systemName: categories[index].icon)
                                 .font(.system(size: 15, weight: .medium))
@@ -57,7 +41,7 @@ struct SettingsWorkspace: View {
                         .background(selectedCategory == index ? Color.accentColor : .clear, in: RoundedRectangle(cornerRadius: 8))
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .accessibilityLabel(categories[index].title)
                 }
                 Spacer()
             }
@@ -97,7 +81,7 @@ struct SettingsWorkspace: View {
             }
             .background(Color(nsColor: .underPageBackgroundColor))
         }
-        .toggleStyle(RightAlignedSwitchStyle())
+
         .onAppear {
             availablePorts = SerialPortDetector.listPorts()
         }
@@ -116,7 +100,7 @@ struct SettingsWorkspace: View {
                     Spacer()
                     Text("\(model.settings.historyLimit)").font(.system(size: 14, design: .monospaced)).bold()
                 }
-                Slider(value: Binding(
+                AccessibleSlider("会話履歴の最大往復数", value: Binding(
                     get: { Double(model.settings.historyLimit) },
                     set: { model.settings.historyLimit = Int($0); model.saveSettings() }
                 ), in: 0...20, step: 1)
@@ -132,7 +116,7 @@ struct SettingsWorkspace: View {
                     Spacer()
                     Text(String(format: "%.1f", model.settings.temperature)).font(.system(size: 14, design: .monospaced)).bold()
                 }
-                Slider(value: Binding(
+                AccessibleSlider("サンプリング温度", value: Binding(
                     get: { model.settings.temperature },
                     set: { model.settings.temperature = $0; model.saveSettings() }
                 ), in: 0.0...2.0, step: 0.1)
@@ -148,7 +132,7 @@ struct SettingsWorkspace: View {
                     Spacer()
                     Text(String(format: "%.2f", model.settings.repetitionPenalty)).font(.system(size: 14, design: .monospaced)).bold()
                 }
-                Slider(value: Binding(
+                AccessibleSlider("繰り返しペナルティ", value: Binding(
                     get: { model.settings.repetitionPenalty },
                     set: { model.settings.repetitionPenalty = $0; model.saveSettings() }
                 ), in: 1.0...2.0, step: 0.05)
@@ -164,7 +148,7 @@ struct SettingsWorkspace: View {
                     Spacer()
                     Text("\(model.settings.mcpTimeout ?? 30) 秒").font(.system(size: 14, design: .monospaced)).bold()
                 }
-                Slider(value: Binding(
+                AccessibleSlider("ツール実行タイムアウト（秒）", value: Binding(
                     get: { Double(model.settings.mcpTimeout ?? 30) },
                     set: { model.settings.mcpTimeout = Int($0); model.saveSettings() }
                 ), in: 5...120, step: 5)
@@ -180,7 +164,7 @@ struct SettingsWorkspace: View {
                     Spacer()
                     Text("\(model.settings.cacheExpiryMinutes ?? 10) 分").font(.system(size: 14, design: .monospaced)).bold()
                 }
-                Slider(value: Binding(
+                AccessibleSlider("事実グラフのキャッシュ有効期限（分）", value: Binding(
                     get: { Double(model.settings.cacheExpiryMinutes ?? 10) },
                     set: { model.settings.cacheExpiryMinutes = Int($0); model.saveSettings() }
                 ), in: 0...60, step: 1)
@@ -196,21 +180,17 @@ struct SettingsWorkspace: View {
                     Text("Ping や接続テスト時に優先する IP プロトコルを指定します。").font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Picker("", selection: Binding(
+                AccessiblePicker("優先 IP バージョン", selection: Binding(
                     get: { model.settings.ipVersion ?? "auto" },
                     set: { model.settings.ipVersion = $0; model.saveSettings() }
-                )) {
-                    Text("自動判定 (Auto)").tag("auto")
-                    Text("IPv4").tag("ipv4")
-                    Text("IPv6").tag("ipv6")
-                }
+                ), options: [("auto", "自動判定 (Auto)"), ("ipv4", "IPv4"), ("ipv6", "IPv6")], showsTitle: false)
                 .frame(width: 140)
             }
 
             Divider()
 
             // Auto Dry-Run
-            Toggle(isOn: Binding(
+            AccessibleToggle("自動 Dry-Run 検証", isOn: Binding(
                 get: { model.settings.autoDryRun },
                 set: { model.settings.autoDryRun = $0; model.saveSettings() }
             )) {
@@ -226,27 +206,16 @@ struct SettingsWorkspace: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("シリアルコンソール設定").font(.system(size: 15, weight: .medium))
                 HStack(spacing: 12) {
-                    Picker("ポート", selection: Binding(
+                    AccessiblePicker("ポート", selection: Binding(
                         get: { model.settings.consolePort ?? "" },
                         set: { model.settings.consolePort = $0.isEmpty ? nil : $0; model.saveSettings() }
-                    )) {
-                        Text("未設定 (None)").tag("")
-                        ForEach(availablePorts, id: \.self) { port in
-                            Text(port).tag(port)
-                        }
-                    }
+                    ), options: [("", "未設定 (None)")] + availablePorts.map { ($0, $0) })
                     .frame(maxWidth: .infinity)
 
-                    Picker("ボーレート", selection: Binding(
+                    AccessiblePicker("ボーレート", selection: Binding(
                         get: { model.settings.consoleBaudRate ?? 9600 },
                         set: { model.settings.consoleBaudRate = $0; model.saveSettings() }
-                    )) {
-                        Text("9600 bps").tag(9600)
-                        Text("19200 bps").tag(19200)
-                        Text("38400 bps").tag(38400)
-                        Text("57600 bps").tag(57600)
-                        Text("115200 bps").tag(115200)
-                    }
+                    ), options: [9600, 19200, 38400, 57600, 115200].map { ($0, "\($0) bps") })
                     .frame(width: 140)
                 }
             }
@@ -289,7 +258,7 @@ struct SettingsWorkspace: View {
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                     Text("長い会話履歴や参考資料は入力上限に合わせて短縮します。大きな添付資料や画像入力には、Gemma のモデルを選択してください。")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
-                    Button(model.isLoadingModel ? "確認中…" : "利用可否を再確認") { model.loadModel() }
+                    AccessibleButton(model.isLoadingModel ? "確認中…" : "利用可否を再確認") { model.loadModel() }
                         .disabled(model.isWorking || model.isLoadingModel)
                 }
             } else {
@@ -299,6 +268,7 @@ struct SettingsWorkspace: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Hugging Face リポジトリ").font(.system(size: 13, weight: .medium))
                         TextField("unsloth/gemma-4-E4B-it-GGUF", text: $model.repoPath)
+                            .accessibilityLabel("Hugging Faceリポジトリ")
                             .textFieldStyle(.roundedBorder)
                             .disabled(model.selectedPresetId != "custom")
                     }
@@ -306,6 +276,7 @@ struct SettingsWorkspace: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("GGUF ファイル名").font(.system(size: 13, weight: .medium))
                         TextField("gemma-4-E4B-it-UD-Q4_K_XL.gguf", text: $model.modelFilename)
+                            .accessibilityLabel("GGUFファイル名")
                             .textFieldStyle(.roundedBorder)
                             .disabled(model.selectedPresetId != "custom")
                     }
@@ -320,19 +291,19 @@ struct SettingsWorkspace: View {
                         .foregroundStyle(exists ? Color.green : Color.secondary)
                     Spacer()
                     if exists {
-                        Button("このモデルを適用") {
+                        AccessibleButton("このモデルを適用") {
                             let url = HuggingFaceHub.modelURL(repo: model.repoPath, filename: model.modelFilename)
                             model.modelPath = url.path
                             model.loadModel()
                             model.saveSettings()
                         }
-                        .buttonStyle(.borderedProminent)
+                        .accessibleButtonStyle(.prominent)
                         .controlSize(.small)
                     }
-                    Button("キャッシュフォルダを開く") {
+                    AccessibleButton("キャッシュフォルダを開く") {
                         model.openModelDirectory()
                     }
-                    .buttonStyle(.bordered)
+                    .accessibleButtonStyle(.standard)
                     .controlSize(.small)
                 }
             }
@@ -345,8 +316,8 @@ struct SettingsWorkspace: View {
                 HStack(spacing: 8) {
                     TextField("ローカル GGUF パス", text: $model.modelPath)
                         .textFieldStyle(.roundedBorder)
-                    Button("選択…") { model.selectModel() }
-                    Button(model.isLoadingModel ? "読み込み中…" : "読み込む") { model.loadModel() }
+                    AccessibleButton("GGUFモデルファイルを選択") { model.selectModel() }
+                    AccessibleButton(model.isLoadingModel ? "読み込み中…" : "読み込む") { model.loadModel() }
                         .disabled(model.modelPath.isEmpty || model.isLoadingModel)
                 }
                 Text(model.modelStatus)
@@ -367,6 +338,7 @@ struct SettingsWorkspace: View {
                             get: { model.settings.nCtx },
                             set: { model.settings.nCtx = $0; model.saveSettings() }
                         ), formatter: NumberFormatter())
+                        .accessibilityLabel("コンテキスト長")
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
                     }
@@ -377,6 +349,7 @@ struct SettingsWorkspace: View {
                             get: { model.settings.maxGen },
                             set: { model.settings.maxGen = $0; model.saveSettings() }
                         ), formatter: NumberFormatter())
+                        .accessibilityLabel("最大生成トークン数")
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
                     }
@@ -387,6 +360,7 @@ struct SettingsWorkspace: View {
                             get: { model.settings.promptKeepTokens },
                             set: { model.settings.promptKeepTokens = $0; model.saveSettings() }
                         ), formatter: NumberFormatter())
+                        .accessibilityLabel("保持トークン数")
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
                     }
@@ -408,37 +382,37 @@ struct SettingsWorkspace: View {
                 Text("モデルロード時に各専門ワーカーのシステムプロンプトを KV キャッシュに事前展開する機能です（今後の推論エンジン更新で有効化予定）。").font(.system(size: 13)).foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Toggle("ナレッジワーカー", isOn: Binding(
+                    AccessibleToggle("ナレッジワーカー", isOn: Binding(
                         get: { model.settings.preloadKnowledge },
                         set: { model.settings.preloadKnowledge = $0; model.saveSettings() }
                     ))
                     Divider()
-                    Toggle("アナリストワーカー", isOn: Binding(
+                    AccessibleToggle("アナリストワーカー", isOn: Binding(
                         get: { model.settings.preloadAnalysis },
                         set: { model.settings.preloadAnalysis = $0; model.saveSettings() }
                     ))
                     Divider()
-                    Toggle("RAG ワーカー", isOn: Binding(
+                    AccessibleToggle("RAG ワーカー", isOn: Binding(
                         get: { model.settings.preloadRag },
                         set: { model.settings.preloadRag = $0; model.saveSettings() }
                     ))
                     Divider()
-                    Toggle("ビルダーワーカー", isOn: Binding(
+                    AccessibleToggle("ビルダーワーカー", isOn: Binding(
                         get: { model.settings.preloadBuilder },
                         set: { model.settings.preloadBuilder = $0; model.saveSettings() }
                     ))
                     Divider()
-                    Toggle("プロッターワーカー", isOn: Binding(
+                    AccessibleToggle("プロッターワーカー", isOn: Binding(
                         get: { model.settings.preloadPlotter },
                         set: { model.settings.preloadPlotter = $0; model.saveSettings() }
                     ))
                     Divider()
-                    Toggle("要約ワーカー", isOn: Binding(
+                    AccessibleToggle("要約ワーカー", isOn: Binding(
                         get: { model.settings.preloadSummarization },
                         set: { model.settings.preloadSummarization = $0; model.saveSettings() }
                     ))
                 }
-                .toggleStyle(RightAlignedSwitchStyle())
+
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
                 .background(Color(nsColor: .windowBackgroundColor).opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
@@ -453,7 +427,7 @@ struct SettingsWorkspace: View {
     }
 
     private func modelSelectionRow(_ id: String, title: String) -> some View {
-        HistorySelectionRow(isSelected: model.selectedPresetId == id, action: { model.selectPreset(id) }) {
+        HistorySelectionRow(title, isSelected: model.selectedPresetId == id, action: { model.selectPreset(id) }) {
             HStack(spacing: 8) {
                 Image(systemName: model.selectedPresetId == id ? "largecircle.fill.circle" : "circle")
                     .foregroundStyle(model.selectedPresetId == id ? Color.accentColor : Color.secondary)
@@ -478,7 +452,7 @@ struct SettingsWorkspace: View {
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
 
-            Toggle(isOn: Binding(
+            AccessibleToggle("Visionを有効にする", isOn: Binding(
                 get: { model.settings.visionEnabled },
                 set: { model.settings.visionEnabled = $0; model.saveSettings() }
             )) {
@@ -500,7 +474,7 @@ struct SettingsWorkspace: View {
                     ))
                     .textFieldStyle(.roundedBorder)
 
-                    Button("選択…") {
+                    AccessibleButton("Visionのmmprojファイルを選択") {
                         let panel = NSOpenPanel()
                         if let gguf = UTType(filenameExtension: "gguf") { panel.allowedContentTypes = [gguf] }
                         panel.canChooseFiles = true
@@ -573,27 +547,27 @@ struct SettingsWorkspace: View {
                     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
 
                 HStack(spacing: 10) {
-                    Button("設定を再読込") {
+                    AccessibleButton("設定を再読込") {
                         model.loadSettings()
                     }
-                    .buttonStyle(.bordered)
+                    .accessibleButtonStyle(.standard)
 
-                    Button("設定を保存") {
+                    AccessibleButton("設定を保存") {
                         model.saveSettings()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .accessibleButtonStyle(.prominent)
 
-                    Button("設定フォルダを Finder で開く") {
+                    AccessibleButton("設定フォルダを Finder で開く") {
                         model.openSettingsDirectory()
                     }
-                    .buttonStyle(.bordered)
+                    .accessibleButtonStyle(.standard)
 
                     Spacer()
 
-                    Button(role: .destructive, action: model.resetSettingsToDefault) {
+                    AccessibleButton("設定を初期値に戻す", role: .destructive, action: model.resetSettingsToDefault) {
                         Text("デフォルトにリセット")
                     }
-                    .buttonStyle(.borderless)
+                    .accessibleButtonStyle(.plain)
                     .foregroundStyle(.red)
                 }
             }
@@ -631,8 +605,8 @@ private struct FolderPickerRow: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title).font(.system(size: 14, weight: .medium))
             HStack(spacing: 8) {
-                TextField("フォルダのパス", text: $path).textFieldStyle(.roundedBorder)
-                Button("選択…") {
+                TextField("フォルダのパス", text: $path).textFieldStyle(.roundedBorder).accessibilityLabel(title)
+                AccessibleButton("\(title)を選択") {
                     let panel = NSOpenPanel()
                     panel.canChooseDirectories = true
                     panel.canChooseFiles = false

@@ -11,7 +11,11 @@ struct SessionRow: View {
 
     var body: some View {
         EditableChatTitle(title: session.title, onRename: onRename) { beginEditing in
-            HistorySelectionRow(isSelected: isSelected, action: onSelect) {
+            HistorySelectionRow(session.title, isSelected: isSelected, action: onSelect,
+                                accessibilityActions: [
+                                    AccessibleControlAction(title: "名前を変更", perform: beginEditing),
+                                    AccessibleControlAction(title: "削除", perform: onDelete)
+                                ], onRename: beginEditing) {
                 HoverScrollTitle(title: session.title, isHovered: isHovered)
             }
             .contextMenu {
@@ -107,6 +111,8 @@ struct HoverScrollTitle: View {
             }
         }
         .frame(height: 20)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
         .onHover { isSelfHovered = $0 }
         .onDisappear {
             scrollTask?.cancel()

@@ -52,3 +52,13 @@ Swift unit testsおよびRust fake transportで承認・planner・tool結果を�
 ```sh
 MIKOMAI_WINDOW_CHECK_SOURCE="$PWD/mikomai-desktop-mac/Tests/NetworkDiagramChecks/NetworkDiagramChecks.swift" sh mikomai-desktop-mac/test-chat-window.sh
 ```
+
+### アクセシビリティとキーボード操作
+
+アイコンボタン、履歴、ワークスペースタブ、機器・監視の操作にはVoiceOver用の名前を付け、選択行には選択状態を公開します。NW図の代替テキストにはMarkdown画像のタイトルを使用します。
+
+アプリ内のボタン・選択メニュー・スイッチ・入力欄はTabで次へ、Shift+Tabで前へ移動できます。システム全体の「キーボードナビゲーション」を有効にしなくても操作できます。Enter／Spaceでフォーカス中のボタンを実行し、スライダーは矢印キーで値を調整します。ホスト編集のEnterはフォーカス中の操作を優先し、入力欄では保存を実行します。日本語変換中は保存しません。Escでキャンセルできます。
+
+履歴行は完全な会話名と選択状態を読み上げ要素に直接設定し、Enterで選択、F2で名前変更、VoiceOverのカスタムアクションで名前変更・削除ができます。質問欄の機器名候補が開いている場合だけ、Tabで候補を補完します。Shift+Tabは候補表示中も前へ移動します。日本語変換中は入力メソッドを優先します。
+
+`sh mikomai-desktop-mac/test-accessibility.sh` は全ワークスペースと設定の全カテゴリの操作名、履歴の選択・名前変更、ホスト編集の前後移動、フォーカス中の操作と保存の優先順、独立した機器一覧の編集ボタン、無効状態、スイッチ・スライダーのキー／アクセシビリティ操作を検証します。`test-chat-composer.sh` は入力保持、Tab移動、候補補完、IME、設定欄の改行を検証します。VoiceOverの実音声は自動試験に含みません。

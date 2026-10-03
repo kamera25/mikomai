@@ -19,6 +19,9 @@ compile_checks() {
         -I "$TEST_DIR" -L "$TEST_DIR" -lMikomaiDesktopCore \
         -Xlinker -rpath -Xlinker "$TEST_DIR" \
         "$APP/Sources/MikomaiDesktopMac/ChatComposer.swift" \
+        "$APP/Sources/MikomaiDesktopMac/KeyboardNavigation.swift" \
+        "$APP/Sources/MikomaiDesktopMac/AccessibleButton.swift" \
+        "$APP/Sources/MikomaiDesktopMac/AccessibleControls.swift" \
         "$APP/Tests/ChatComposerChecks/ChatComposerChecks.swift" \
         -o "$TEST_DIR/checks"
 }

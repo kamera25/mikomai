@@ -37,7 +37,7 @@ struct WorkspaceTabButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        AccessibleButton(title, value: isSelected ? "選択中" : "未選択", action: action) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                 if showsTitle { Text(title).lineLimit(1) }
@@ -48,8 +48,8 @@ struct WorkspaceTabButton: View {
             .background(isSelected ? Color(nsColor: .selectedControlColor).opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 6))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .accessibleButtonStyle(.plain)
         .help(title)
-        .accessibilityLabel(title)
+
     }
 }

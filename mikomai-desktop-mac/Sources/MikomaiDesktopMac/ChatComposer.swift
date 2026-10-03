@@ -51,6 +51,8 @@ struct ChatMentionPresentation {
 /// Checking afterwards would mistake the Return that commits Japanese text
 /// for a request to send that text.
 final class ChatComposerTextView: NSTextView {
+    var submitsOnReturn = true
+    var placeholder = "質問を入力… (Enter で送信、Shift+Enter で改行)"
     var onSubmit: () -> Void = {}
     var onEscape: () -> Void = {}
     var onSuggestionKey: (ChatSuggestionKey) -> Bool = { _ in false }
@@ -140,13 +142,26 @@ final class ChatComposerTextView: NSTextView {
             let key: ChatSuggestionKey? = switch event.keyCode {
             case 125: .next
             case 126: .previous
-            case 36, 76, 48: .accept
+            case 36, 76: .accept
+            case 48 where modifiers.isEmpty: .accept
             case 53: .dismiss
             default: nil
             }
             if let key, onSuggestionKey(key) { return }
         }
-        if (event.keyCode == 36 || event.keyCode == 76), !hasMarkedText() {
+        // Tab leaves the multiline editor instead of inserting a tab character.
+        // Shift+Tab always goes backwards, even when mention suggestions are open.
+        if event.keyCode == 48, !hasMarkedText(),
+           modifiers.intersection([.command, .option, .control]).isEmpty {
+            if let window, KeyboardNavigation.move(in: window, backwards: modifiers.contains(.shift)) { return }
+            if modifiers.contains(.shift) {
+                window?.selectPreviousKeyView(self)
+            } else {
+                window?.selectNextKeyView(self)
+            }
+            return
+        }
+        if submitsOnReturn, (event.keyCode == 36 || event.keyCode == 76), !hasMarkedText() {
             if modifiers.contains(.shift) {
                 if isEditable { insertNewline(nil) }
                 return
@@ -166,7 +181,6 @@ final class ChatComposerTextView: NSTextView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         if string.isEmpty, !hasMarkedText() {
-            let placeholder = "質問を入力… (Enter で送信、Shift+Enter で改行)"
             placeholder.draw(at: NSPoint(x: textContainerInset.width, y: textContainerInset.height),
                              withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 15),
                                               .foregroundColor: NSColor.placeholderTextColor])
@@ -188,6 +202,7 @@ final class ChatComposerScrollView: NSScrollView {
 struct ChatComposer: NSViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
+    @Environment(\.isEnabled) private var environmentIsEnabled
     let isEnabled: Bool
     let onSubmit: () -> Void
     let onEscape: () -> Void
@@ -196,6 +211,11 @@ struct ChatComposer: NSViewRepresentable {
     var completion: ChatMentionCompletion? = nil
     var onFileDrop: (([URL]) -> Bool)? = nil
     var onDragTargetChanged: ((Bool) -> Void)? = nil
+
+    var submitsOnReturn = true
+    var accessibilityLabel = "質問"
+    var editorFont = NSFont.systemFont(ofSize: 15)
+    var placeholder = "質問を入力… (Enter で送信、Shift+Enter で改行)"
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -211,7 +231,7 @@ struct ChatComposer: NSViewRepresentable {
         editor.isRichText = false
         editor.allowsUndo = true
         editor.drawsBackground = false
-        editor.font = .systemFont(ofSize: 15)
+        editor.font = editorFont
         editor.textColor = .textColor
         editor.insertionPointColor = .textColor
         editor.textContainerInset = NSSize(width: 4, height: 4)
@@ -223,7 +243,10 @@ struct ChatComposer: NSViewRepresentable {
         editor.textContainer?.widthTracksTextView = true
         editor.isAutomaticQuoteSubstitutionEnabled = false
         editor.isAutomaticDashSubstitutionEnabled = false
-        editor.setAccessibilityLabel("質問")
+        editor.setAccessibilityLabel(accessibilityLabel)
+        editor.setAccessibilityHelp(submitsOnReturn
+            ? "Enterで送信、Shift+Enterで改行。Tabで次の項目、Shift+Tabで前の項目へ移動。候補表示中のTabで機器名を補完します。"
+            : "Enterで改行。Tabで次の項目、Shift+Tabで前の項目へ移動。")
         editor.delegate = context.coordinator
         scroll.documentView = editor
         updateNSView(scroll, context: context)
@@ -232,6 +255,7 @@ struct ChatComposer: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.owner = self
+        let enabled = isEnabled && environmentIsEnabled
         guard let editor = scroll.documentView as? ChatComposerTextView else { return }
         // Never replace the text storage while an input method owns marked text.
         if !editor.hasMarkedText(), editor.string != text {
@@ -240,8 +264,11 @@ struct ChatComposer: NSViewRepresentable {
             editor.scheduleMentionReport()
             editor.needsDisplay = true
         }
-        editor.isEditable = isEnabled
-        editor.isSelectable = isEnabled
+        editor.font = editorFont
+        editor.submitsOnReturn = submitsOnReturn
+        editor.placeholder = placeholder
+        editor.isEditable = enabled
+        editor.isSelectable = enabled
         editor.onSubmit = onSubmit
         editor.onEscape = onEscape
         editor.onSuggestionKey = onSuggestionKey
@@ -257,12 +284,12 @@ struct ChatComposer: NSViewRepresentable {
             }
         }
         if let scroll = scroll as? ChatComposerScrollView {
-            scroll.focusOnAttachment = isFocused && isEnabled
+            scroll.focusOnAttachment = isFocused && enabled
         }
-        if isFocused && isEnabled && !context.coordinator.requestedFocus {
+        if isFocused && enabled && !context.coordinator.requestedFocus {
             scroll.window?.makeFirstResponder(editor)
         }
-        context.coordinator.requestedFocus = isFocused && isEnabled
+        context.coordinator.requestedFocus = isFocused && enabled
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {

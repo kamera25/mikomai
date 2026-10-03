@@ -17,6 +17,7 @@ struct MarkdownMessage: View {
                     inline(content)
                         .font(.system(size: level == 3 ? 23 : level == 4 ? 20 : 17, weight: .semibold))
                         .padding(.top, level <= 2 ? 5 : 2)
+                        .accessibilityAddTraits(.isHeader)
                 case let .paragraph(content):
                     inline(content).font(.system(size: 15)).lineSpacing(3)
                 case let .code(language, content):
@@ -24,14 +25,14 @@ struct MarkdownMessage: View {
                         HStack {
                             if !language.isEmpty { Text(language).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary) }
                             Spacer()
-                            Button("コピー") {
+                            AccessibleButton("コピー") {
                                 ChatMessageClipboard.copy(text: content)
                             }
-                            .buttonStyle(.borderless)
+                            .accessibleButtonStyle(.plain)
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
-                            Button("変更計画として確認") { onSelectConfig(content) }
-                                .buttonStyle(.borderless).font(.system(size: 12))
+                            AccessibleButton("変更計画として確認") { onSelectConfig(content) }
+                                .accessibleButtonStyle(.plain).font(.system(size: 12))
                                 .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                         Text(content).font(.system(size: 14, design: .monospaced)).textSelection(.enabled)
@@ -56,6 +57,7 @@ struct MarkdownMessage: View {
                     }
                     .font(.system(size: 15))
                     .help(url.path)
+                    .accessibilityLabel("画像ファイル: \(url.lastPathComponent)")
                     .environment(\.openURL, OpenURLAction { destination in
                         NSWorkspace.shared.open(destination) ? .handled : .discarded
                     })

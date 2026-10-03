@@ -41,12 +41,12 @@ struct MessageRow: View {
                                 if let name = result.probeDisplayName {
                                     Text("\(name)を実行しました。")
                                         .font(.system(size: 15))
-                                    Button(action: onShowTraceResults) {
+                                    AccessibleButton("\(name)の結果を右ペインに表示", action: onShowTraceResults) {
                                         Label("\(name)の結果", systemImage: "terminal")
                                             .font(.system(size: 13))
                                             .contentShape(Rectangle())
                                     }
-                                    .buttonStyle(.link)
+                                    .accessibleButtonStyle(.plain)
                                     .accessibilityLabel("\(name)の結果を右ペインに表示")
                                 }
                             }
@@ -54,7 +54,7 @@ struct MessageRow: View {
                     }
                 }
             }
-            Button {
+            AccessibleButton("メッセージをコピー") {
                 guard ChatMessageClipboard.copy(text: message.conversationText) else { return }
                 showsCopyConfirmation = true
                 copyFeedbackGeneration += 1
@@ -65,7 +65,7 @@ struct MessageRow: View {
                     .frame(width: 28, height: 26)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .accessibleButtonStyle(.plain)
             .help("メッセージをコピー")
             .accessibilityLabel("メッセージをコピー")
             .disabled(message.conversationText.isEmpty)

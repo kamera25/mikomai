@@ -17,10 +17,10 @@ struct CoreDebugView: View {
             HStack {
                 Text("\(matches.count) / \(model.debugRecords.count) 件").font(.caption)
                 Spacer()
-                Button("保存", action: save).disabled(model.debugRecords.isEmpty)
-                Button("クリア") { model.debugRecords.removeAll() }.disabled(model.debugRecords.isEmpty)
+                AccessibleButton("保存", action: save).disabled(model.debugRecords.isEmpty)
+                AccessibleButton("クリア") { model.debugRecords.removeAll() }.disabled(model.debugRecords.isEmpty)
             }
-            Toggle("末尾に追従", isOn: $followsOutput).font(.caption)
+            AccessibleToggle("末尾に追従", isOn: $followsOutput).font(.caption)
             CoreDebugTerminal(
                 text: model.debugRecords.isEmpty
                     ? "チャットを送信するとcoreとの送受信を表示します。\nログはアプリ終了時に消去されます。"

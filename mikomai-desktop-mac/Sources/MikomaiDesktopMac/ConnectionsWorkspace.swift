@@ -20,8 +20,8 @@ struct ConnectionsWorkspace: View {
             HStack {
                 Text("機器情報一覧").font(.system(size: 15, weight: .semibold))
                 Spacer()
-                Button { model.editingConnection = SavedConnection(name: "", host: "") } label: { Label("機器を追加", systemImage: "plus") }
-                    .buttonStyle(.borderedProminent).controlSize(.small)
+                AccessibleButton("機器を追加") { model.editingConnection = SavedConnection(name: "", host: "") } label: { Label("機器を追加", systemImage: "plus") }
+                    .accessibleButtonStyle(.prominent).controlSize(.small)
             }.padding(16)
             Divider()
             if model.connections.isEmpty {
@@ -52,21 +52,22 @@ struct ConnectionsWorkspace: View {
                     }.width(90)
                     TableColumn("操作") { connection in
                         HStack(spacing: 6) {
-                            Button {
+                            AccessibleButton("機器を編集: \(connection.name)") {
                                 model.editingConnection = connection
                             } label: {
                                 Image(systemName: "pencil")
                             }
-                            .help("編集")
+                            .help("編集").accessibilityLabel("機器を編集: \(connection.name)")
 
-                            Button(role: .destructive) {
+                            AccessibleButton("機器を削除: \(connection.name)", role: .destructive) {
                                 model.deleteConnection(connection.id)
                             } label: {
                                 Image(systemName: "trash")
                             }
-                            .help("削除")
+                            .help("削除").accessibilityLabel("機器を削除: \(connection.name)")
                         }
-                        .buttonStyle(.borderless)
+                        .accessibleButtonStyle(.plain)
+                        .accessibilityElement(children: .contain)
                     }.width(115)
                 }
             }
@@ -75,9 +76,9 @@ struct ConnectionsWorkspace: View {
                 Text("資格情報は macOS Keychain に暗号化保存されます。CSV 形式での入出力に対応しています。")
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                 Spacer()
-                Button("CSV を読み込む") { importCSV() }
-                Button("旧 JSON を読み込む") { importLegacyRegistry() }
-                Button("CSV を書き出す") { exportCSV() }.disabled(model.connections.isEmpty)
+                AccessibleButton("CSV を読み込む") { importCSV() }
+                AccessibleButton("旧 JSON を読み込む") { importLegacyRegistry() }
+                AccessibleButton("CSV を書き出す") { exportCSV() }.disabled(model.connections.isEmpty)
             }.padding(12).background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         }
         .alert("機器情報", isPresented: $showsCSVAlert) { Button("OK", role: .cancel) {} } message: { Text(csvAlert) }
@@ -189,16 +190,12 @@ struct ConnectionEditor: View {
                 TextField("ホスト名または IP", text: $connection.host)
                 TextField("ポート", text: $connection.port)
                 TextField("ユーザー名", text: $connection.username)
-                Picker("接続方式", selection: Binding(
+                AccessiblePicker("接続方式", selection: Binding(
                     get: { connection.connectionType ?? "SSH" },
                     set: { connection.selectConnectionType($0) }
-                )) {
-                    Text("SSH").tag("SSH")
-                    Text("Telnet").tag("Telnet")
-                    Text("Console").tag("Console")
-                }
+                ), options: ["SSH", "Telnet", "Console"].map { ($0, $0) })
                 LabeledContent("機器タイプ") {
-                    Button {
+                    AccessibleButton("機器タイプを選択", value: DeviceTypeCatalog.displayName(for: connection.deviceType)) {
                         deviceTypeQuery = ""
                         showsDeviceTypes = true
                     } label: {
@@ -207,15 +204,16 @@ struct ConnectionEditor: View {
                             Image(systemName: "chevron.up.chevron.down")
                         }
                     }
-                    .popover(isPresented: $showsDeviceTypes) {
+                    .sheet(isPresented: $showsDeviceTypes) {
                         VStack(spacing: 8) {
+                            Text("機器タイプを選択").font(.headline)
                             TextField("機器タイプを検索", text: $deviceTypeQuery)
                                 .textFieldStyle(.roundedBorder)
                             ScrollView {
-                                LazyVStack(spacing: 2) {
+                                VStack(spacing: 2) {
                                     ForEach(DeviceTypeCatalog.matching(deviceTypeQuery), id: \.self) { id in
                                         HistorySelectionRow(
-                                            isSelected: DeviceTypeCatalog.canonicalID(for: connection.deviceType) == id,
+                                            DeviceTypeCatalog.optionLabel(for: id), isSelected: DeviceTypeCatalog.canonicalID(for: connection.deviceType) == id,
                                             action: {
                                                 connection.deviceType = id
                                                 showsDeviceTypes = false
@@ -230,8 +228,14 @@ struct ConnectionEditor: View {
                                     }
                                 }
                             }
+                            HStack {
+                                Spacer()
+                                AccessibleButton("機器タイプの選択をキャンセル") { showsDeviceTypes = false }
+                                    .accessibleCancelAction()
+                            }
                         }
-                        .padding(12).frame(width: 360, height: 340)
+                        .padding(12).frame(width: 360, height: 380)
+                        .background(KeyboardNavigationScope())
                     }
                 }
 
@@ -248,15 +252,16 @@ struct ConnectionEditor: View {
             }
             HStack {
                 Spacer()
-                Button("キャンセル") { dismiss() }
-                Button("保存") {
+                AccessibleButton("キャンセル") { dismiss() }.accessibleCancelAction()
+                AccessibleButton("保存") {
                     guard connection.validationError == nil else { return }
                     onSave(connection, password, enablePassword)
                     dismiss()
                 }
-                .keyboardShortcut(.defaultAction)
+                .accessibleDefaultAction()
                 .disabled(connection.validationError != nil)
             }
         }.padding(18).frame(width: 440, height: 440)
+        .background(KeyboardNavigationScope())
     }
 }

@@ -13,7 +13,7 @@ struct NetworkDiagramView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.isEmpty ? "NW図" : title).font(.headline)
-            DiagramSVGView(source: image.source)
+            DiagramSVGView(source: image.source, alternativeText: title.isEmpty ? "ネットワーク構成図" : title)
                 .aspectRatio(image.aspectRatio, contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: 600)
                 .accessibilityLabel(title.isEmpty ? "ネットワーク構成図" : title)
@@ -49,13 +49,13 @@ private struct DiagramControls: View {
     }
 
     private func action(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        AccessibleButton(label, action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 17, weight: .medium))
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .accessibleButtonStyle(.plain)
         .help(label)
         .accessibilityLabel(label)
     }
@@ -97,6 +97,7 @@ struct ChatDiagramExpansion: ViewModifier {
         content
             .environment(\.expandNetworkDiagram, { presentation.show($0) })
             .allowsHitTesting(presentation.image == nil)
+            .disabled(presentation.image != nil)
             .accessibilityHidden(presentation.image != nil)
             .overlay {
                 if let image = presentation.image {
@@ -122,7 +123,7 @@ private struct ExpandedNetworkDiagram: View {
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .accessibilityLabel("ネットワーク構成図")
                 } else {
-                    DiagramSVGView(source: image.source)
+                    DiagramSVGView(source: image.source, alternativeText: "ネットワーク構成図")
                         .frame(width: geometry.size.width, height: geometry.size.height)
                 }
                 VStack(alignment: .trailing, spacing: 8) {
@@ -155,6 +156,8 @@ private func saveDiagram(_ image: ChatDiagramImage, onError: @escaping @MainActo
 /// SVG is loaded as an image, keeping scripts and external resources disabled.
 struct DiagramSVGView: NSViewRepresentable {
     let source: String
+    var alternativeText = "ネットワーク構成図"
+
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
@@ -164,16 +167,26 @@ struct DiagramSVGView: NSViewRepresentable {
         return view
     }
     func updateNSView(_ view: WKWebView, context: Context) {
-        guard context.coordinator.source != source else { return }
+        view.setAccessibilityLabel(alternativeText)
+        guard context.coordinator.source != source || context.coordinator.alternativeText != alternativeText else { return }
         context.coordinator.source = source
+        context.coordinator.alternativeText = alternativeText
+        let escapedAlternativeText = alternativeText
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
         // source is a validated base64 data URL and cannot contain HTML delimiters.
         view.loadHTMLString("""
         <!doctype html><html><head><meta name="viewport" content="width=device-width">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
         <style>html,body{margin:0;width:100%;height:100%;overflow:auto;background:white}img{display:block;width:100%;height:100%;object-fit:contain}</style>
-        </head><body><img alt="Network diagram" src="\(source)"></body></html>
+        </head><body><img alt="\(escapedAlternativeText)" src="\(source)"></body></html>
         """, baseURL: nil)
     }
     func makeCoordinator() -> Coordinator { Coordinator() }
-    final class Coordinator { var source: String? }
+    final class Coordinator {
+        var source: String?
+        var alternativeText: String?
+    }
 }

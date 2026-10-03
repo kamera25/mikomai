@@ -20,24 +20,26 @@ struct ExecutionTerminalView: View {
                 Label("Ping / Traceroute", systemImage: "terminal")
                     .font(.system(size: 14, weight: .semibold))
                 Spacer()
-                Button {
+                AccessibleButton("ログをコピー") {
                     showsCopyConfirmation = ChatMessageClipboard.copy(text: logText)
                 } label: {
                     Image(systemName: showsCopyConfirmation ? "checkmark" : "doc.on.doc")
+                        .foregroundStyle(Color.white.opacity(0.8))
                         .frame(width: 26, height: 26)
                         .contentShape(Rectangle())
                 }
                 .help(showsCopyConfirmation ? "コピーしました" : "ログをコピー")
                 .accessibilityLabel("ログをコピー")
-                Button(action: saveLog) {
+                AccessibleButton("ログをファイルに保存", action: saveLog) {
                     Image(systemName: "arrow.down.to.line")
+                        .foregroundStyle(Color.white.opacity(0.8))
                         .frame(width: 26, height: 26)
                         .contentShape(Rectangle())
                 }
                 .help("ログをファイルに保存")
                 .accessibilityLabel("ログをファイルに保存")
             }
-            .buttonStyle(.plain)
+            .accessibleButtonStyle(.plain)
             .foregroundStyle(Color.white.opacity(0.8))
             .disabled(results.isEmpty)
             .padding(14)
@@ -127,8 +129,8 @@ struct QueuedSubmissionView: View {
                 Label("次回送信予定", systemImage: "clock")
                     .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Spacer()
-                Button(action: onRemove) { Image(systemName: "xmark") }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                AccessibleButton("送信予定を取り消す", action: onRemove) { Image(systemName: "xmark") }
+                    .accessibleButtonStyle(.plain).foregroundStyle(.secondary)
                     .help("送信予定を取り消す")
                     .accessibilityLabel("送信予定を取り消す")
             }

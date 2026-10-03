@@ -19,7 +19,7 @@ struct AgentProgressView: View {
                 field("目的", text: goal)
                 field("次のアクション", text: current.nextAction)
                 Text(current.detail).font(.system(size: 15)).foregroundStyle(.secondary).lineLimit(3)
-                DisclosureGroup("実行内容 · \(entries.count)件") {
+                AccessibleDisclosureGroup("実行内容 · \(entries.count)件") {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                             VStack(alignment: .leading, spacing: 4) {
