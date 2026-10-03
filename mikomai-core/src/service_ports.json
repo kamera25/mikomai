@@ -1,14 +1,3025 @@
 [
-  {"name":"ssh","port":22,"protocol":"tcp","transports":["tcp"],"aliases":[]},
-  {"name":"dns","port":53,"protocol":"tcp","transports":["tcp","udp"],"aliases":["domain"]},
-  {"name":"http","port":80,"protocol":"tcp","transports":["tcp"],"aliases":["www"]},
-  {"name":"https","port":443,"protocol":"tcp","transports":["tcp","udp"],"aliases":[]},
-  {"name":"ftp","port":21,"protocol":"tcp","transports":["tcp"],"aliases":[]},
-  {"name":"telnet","port":23,"protocol":"tcp","transports":["tcp"],"aliases":[]},
-  {"name":"smtp","port":25,"protocol":"tcp","transports":["tcp"],"aliases":[]},
-  {"name":"ntp","port":123,"protocol":"udp","transports":["udp"],"aliases":[]},
-  {"name":"snmp","port":161,"protocol":"udp","transports":["udp"],"aliases":[]},
-  {"name":"ldap","port":389,"protocol":"tcp","transports":["tcp","udp"],"aliases":[]},
-  {"name":"ldaps","port":636,"protocol":"tcp","transports":["tcp"],"aliases":[]},
-  {"name":"rdp","port":3389,"protocol":"tcp","transports":["tcp","udp"],"aliases":[]}
+  {
+    "name": "ssh",
+    "port": 22,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "dns",
+    "port": 53,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "domain"
+    ]
+  },
+  {
+    "name": "http",
+    "port": 80,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "www"
+    ]
+  },
+  {
+    "name": "https",
+    "port": 443,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ftp",
+    "port": 21,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "telnet",
+    "port": 23,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "smtp",
+    "port": 25,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ntp",
+    "port": 123,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "snmp",
+    "port": 161,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ldap",
+    "port": 389,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ldaps",
+    "port": 636,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "rdp",
+    "port": 3389,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "http-alt",
+    "port": 8080,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "webcache"
+    ]
+  },
+  {
+    "name": "https-alt",
+    "port": 8443,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "pcs-jp-https"
+    ]
+  },
+  {
+    "name": "squid",
+    "port": 3128,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "squid-proxy"
+    ]
+  },
+  {
+    "name": "socks",
+    "port": 1080,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "socks5"
+    ]
+  },
+  {
+    "name": "privoxy",
+    "port": 8118,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "tor-socks",
+    "port": 9050,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "tor-control",
+    "port": 9051,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "varnish",
+    "port": 6081,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "varnish-admin",
+    "port": 6082,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "haproxy-stats",
+    "port": 8404,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nginx-status",
+    "port": 8081,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "tcpmux",
+    "port": 1,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "echo",
+    "port": 7,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "discard",
+    "port": 9,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "sink"
+    ]
+  },
+  {
+    "name": "systat",
+    "port": 11,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "users"
+    ]
+  },
+  {
+    "name": "daytime",
+    "port": 13,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "qotd",
+    "port": 17,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "quote"
+    ]
+  },
+  {
+    "name": "msp",
+    "port": 18,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "chargen",
+    "port": 19,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "ttytst"
+    ]
+  },
+  {
+    "name": "ftp-data",
+    "port": 20,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "time",
+    "port": 37,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "timserver"
+    ]
+  },
+  {
+    "name": "rap",
+    "port": 38,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "rlp",
+    "port": 39,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "resource"
+    ]
+  },
+  {
+    "name": "graphics",
+    "port": 41,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "name",
+    "port": 42,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": [
+      "nameserver"
+    ]
+  },
+  {
+    "name": "whois",
+    "port": 43,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "nicname"
+    ]
+  },
+  {
+    "name": "mpm-flags",
+    "port": 44,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "mpm",
+    "port": 45,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "mpm-snd",
+    "port": 46,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ni-ftp",
+    "port": 47,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "auditd",
+    "port": 48,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "tacacs",
+    "port": 49,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "tacacs-plus"
+    ]
+  },
+  {
+    "name": "re-mail-ck",
+    "port": 50,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "la-maint",
+    "port": 51,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "xns-time",
+    "port": 52,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "xns-ch",
+    "port": 54,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "isi-gl",
+    "port": 55,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "xns-auth",
+    "port": 56,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "xns-mail",
+    "port": 58,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ni-mail",
+    "port": 61,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "acas",
+    "port": 62,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "whoispp",
+    "port": 63,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "covia",
+    "port": 64,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "tacacs-database",
+    "port": 65,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "sql-net",
+    "port": 66,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "bootps",
+    "port": 67,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "dhcp",
+      "dhcps"
+    ]
+  },
+  {
+    "name": "bootpc",
+    "port": 68,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "dhcpc"
+    ]
+  },
+  {
+    "name": "tftp",
+    "port": 69,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "gopher",
+    "port": 70,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "netrjs",
+    "port": 71,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "netrjs-2",
+    "port": 72,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "netrjs-3",
+    "port": 73,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "netrjs-4",
+    "port": 74,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "finger",
+    "port": 79,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "hosts2-ns",
+    "port": 81,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "xfer",
+    "port": 82,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ctf",
+    "port": 84,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "mfcsm",
+    "port": 86,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "kerberos",
+    "port": 88,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "krb5"
+    ]
+  },
+  {
+    "name": "dnsix",
+    "port": 90,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "npp",
+    "port": 92,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "dcp",
+    "port": 93,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "supdup",
+    "port": 95,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "hostname",
+    "port": 101,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "nicname-host"
+    ]
+  },
+  {
+    "name": "iso-tsap",
+    "port": 102,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "tsap"
+    ]
+  },
+  {
+    "name": "acr-nema",
+    "port": 104,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "dicom"
+    ]
+  },
+  {
+    "name": "pop2",
+    "port": 109,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "postoffice"
+    ]
+  },
+  {
+    "name": "pop3",
+    "port": 110,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "sunrpc",
+    "port": 111,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "rpcbind",
+      "portmap"
+    ]
+  },
+  {
+    "name": "auth",
+    "port": 113,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "ident"
+    ]
+  },
+  {
+    "name": "sftp",
+    "port": 115,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nntp",
+    "port": 119,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "usenet"
+    ]
+  },
+  {
+    "name": "epmap",
+    "port": 135,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "msrpc",
+      "loc-srv"
+    ]
+  },
+  {
+    "name": "netbios-ns",
+    "port": 137,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": [
+      "nbns"
+    ]
+  },
+  {
+    "name": "netbios-dgm",
+    "port": 138,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "nbdgm"
+    ]
+  },
+  {
+    "name": "netbios-ssn",
+    "port": 139,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "nbssn"
+    ]
+  },
+  {
+    "name": "imap",
+    "port": 143,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "imap4"
+    ]
+  },
+  {
+    "name": "snmptrap",
+    "port": 162,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "snmp-trap"
+    ]
+  },
+  {
+    "name": "smx",
+    "port": 165,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "xdmcp",
+    "port": 177,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "bgp",
+    "port": 179,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "prospero",
+    "port": 191,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "irc",
+    "port": 194,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "smux",
+    "port": 199,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "at-rtmp",
+    "port": 201,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "appletalk-rtmp"
+    ]
+  },
+  {
+    "name": "at-nbp",
+    "port": 202,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "appletalk-nbp"
+    ]
+  },
+  {
+    "name": "at-echo",
+    "port": 204,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "appletalk-echo"
+    ]
+  },
+  {
+    "name": "at-zis",
+    "port": 206,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "appletalk-zis"
+    ]
+  },
+  {
+    "name": "qmtp",
+    "port": 209,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "z39-50",
+    "port": 210,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "wais"
+    ]
+  },
+  {
+    "name": "ipx",
+    "port": 213,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "imap3",
+    "port": 220,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ptp-event",
+    "port": 319,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ptp-general",
+    "port": 320,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "smb",
+    "port": 445,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "microsoft-ds"
+    ]
+  },
+  {
+    "name": "kpasswd",
+    "port": 464,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "kpasswdd"
+    ]
+  },
+  {
+    "name": "smtps",
+    "port": 465,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "ssmtp"
+    ]
+  },
+  {
+    "name": "ike",
+    "port": 500,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "isakmp",
+      "ipsec-ike"
+    ]
+  },
+  {
+    "name": "rexec",
+    "port": 512,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "exec"
+    ]
+  },
+  {
+    "name": "rlogin",
+    "port": 513,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "login"
+    ]
+  },
+  {
+    "name": "rsh",
+    "port": 514,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "shell",
+      "cmd"
+    ]
+  },
+  {
+    "name": "syslog",
+    "port": 514,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "printer",
+    "port": 515,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "lpd",
+      "spooler"
+    ]
+  },
+  {
+    "name": "talk",
+    "port": 517,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ntalk",
+    "port": 518,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "rip",
+    "port": 520,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "routed",
+      "route"
+    ]
+  },
+  {
+    "name": "ripng",
+    "port": 521,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "timed",
+    "port": 525,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "timeserver"
+    ]
+  },
+  {
+    "name": "uucp",
+    "port": 540,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "uucpd"
+    ]
+  },
+  {
+    "name": "klogin",
+    "port": 543,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "kshell",
+    "port": 544,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "krcmd"
+    ]
+  },
+  {
+    "name": "dhcpv6-client",
+    "port": 546,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "dhcpv6-server",
+    "port": 547,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "afp",
+    "port": 548,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "afpovertcp"
+    ]
+  },
+  {
+    "name": "rtsp",
+    "port": 554,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nntps",
+    "port": 563,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "snntp"
+    ]
+  },
+  {
+    "name": "submission",
+    "port": 587,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "msa"
+    ]
+  },
+  {
+    "name": "ipp",
+    "port": 631,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "cups"
+    ]
+  },
+  {
+    "name": "ldaps-alt",
+    "port": 3269,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "global-catalog-ssl"
+    ]
+  },
+  {
+    "name": "global-catalog",
+    "port": 3268,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "msdp",
+    "port": 639,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ldp",
+    "port": 646,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "dhcp-failover",
+    "port": 647,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ipmi",
+    "port": 623,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": [
+      "asf-rmcp"
+    ]
+  },
+  {
+    "name": "kadmin",
+    "port": 749,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "kerberos-adm"
+    ]
+  },
+  {
+    "name": "krb-prop",
+    "port": 754,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "krb524"
+    ]
+  },
+  {
+    "name": "mdns",
+    "port": 5353,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "multicast-dns",
+      "zeroconf"
+    ]
+  },
+  {
+    "name": "llmnr",
+    "port": 5355,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "rsync",
+    "port": 873,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ftps-data",
+    "port": 989,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ftps",
+    "port": 990,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "telnets",
+    "port": 992,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "imaps",
+    "port": 993,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "pop3s",
+    "port": 995,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "openvpn",
+    "port": 1194,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "l2tp",
+    "port": 1701,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "pptp",
+    "port": 1723,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "radius",
+    "port": 1812,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "radius-acct",
+    "port": 1813,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "radacct"
+    ]
+  },
+  {
+    "name": "radius-old",
+    "port": 1645,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "radius-acct-old",
+    "port": 1646,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ssdp",
+    "port": 1900,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "upnp"
+    ]
+  },
+  {
+    "name": "rtmp",
+    "port": 1935,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nfs",
+    "port": 2049,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "nfsd"
+    ]
+  },
+  {
+    "name": "netflow",
+    "port": 2055,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "sflow",
+    "port": 6343,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ipfix",
+    "port": 4739,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "bfd-control",
+    "port": 3784,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "bfd-echo",
+    "port": 3785,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "vxlan",
+    "port": 4789,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "geneve",
+    "port": 6081,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "geneve-overlay"
+    ]
+  },
+  {
+    "name": "ipsec-nat-t",
+    "port": 4500,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "nat-t"
+    ]
+  },
+  {
+    "name": "wireguard",
+    "port": 51820,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "wg"
+    ]
+  },
+  {
+    "name": "syslog-tls",
+    "port": 6514,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "diameter",
+    "port": 3868,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "stun",
+    "port": 3478,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "stuns",
+    "port": 5349,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "turns"
+    ]
+  },
+  {
+    "name": "sip",
+    "port": 5060,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "sips",
+    "port": 5061,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "sip-tls"
+    ]
+  },
+  {
+    "name": "h323",
+    "port": 1720,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "h323hostcall"
+    ]
+  },
+  {
+    "name": "mgcp-gateway",
+    "port": 2427,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "mgcp-callagent",
+    "port": 2727,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "wins",
+    "port": 1512,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "ms-wins"
+    ]
+  },
+  {
+    "name": "mysql",
+    "port": 3306,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "postgresql",
+    "port": 5432,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "postgres"
+    ]
+  },
+  {
+    "name": "mssql",
+    "port": 1433,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "ms-sql-s",
+      "sqlserver"
+    ]
+  },
+  {
+    "name": "mssql-monitor",
+    "port": 1434,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "ms-sql-m"
+    ]
+  },
+  {
+    "name": "oracle-tns",
+    "port": 1521,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "oracle",
+      "tns"
+    ]
+  },
+  {
+    "name": "db2",
+    "port": 50000,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "drda"
+    ]
+  },
+  {
+    "name": "sybase",
+    "port": 5000,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "informix",
+    "port": 9088,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "redis",
+    "port": 6379,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "redis-sentinel",
+    "port": 26379,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "memcached",
+    "port": 11211,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "mongodb",
+    "port": 27017,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "mongo"
+    ]
+  },
+  {
+    "name": "cassandra",
+    "port": 9042,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "cql"
+    ]
+  },
+  {
+    "name": "cassandra-jmx",
+    "port": 7199,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "elasticsearch",
+    "port": 9200,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "es-http"
+    ]
+  },
+  {
+    "name": "elasticsearch-node",
+    "port": 9300,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "es-transport"
+    ]
+  },
+  {
+    "name": "couchdb",
+    "port": 5984,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "neo4j",
+    "port": 7474,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "neo4j-bolt",
+    "port": 7687,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "bolt"
+    ]
+  },
+  {
+    "name": "clickhouse-http",
+    "port": 8123,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "clickhouse-native",
+    "port": 9000,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "influxdb",
+    "port": 8086,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "cockroachdb",
+    "port": 26257,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "etcd-client",
+    "port": 2379,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "etcd-peer",
+    "port": 2380,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "zookeeper",
+    "port": 2181,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "zk"
+    ]
+  },
+  {
+    "name": "zookeeper-peer",
+    "port": 2888,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "zookeeper-leader",
+    "port": 3888,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "minio-api",
+    "port": 9002,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "minio-console",
+    "port": 9001,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ceph-mon",
+    "port": 6789,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ceph-osd",
+    "port": 6800,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "h2-console",
+    "port": 8082,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "rabbitmq",
+    "port": 5672,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "amqp"
+    ]
+  },
+  {
+    "name": "rabbitmq-management",
+    "port": 15672,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "amqps",
+    "port": 5671,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "kafka",
+    "port": 9092,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "mqtt",
+    "port": 1883,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "mqtts",
+    "port": 8883,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "secure-mqtt"
+    ]
+  },
+  {
+    "name": "coap",
+    "port": 5683,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "coaps",
+    "port": 5684,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nats",
+    "port": 4222,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "activemq",
+    "port": 61616,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "openwire"
+    ]
+  },
+  {
+    "name": "activemq-web",
+    "port": 8161,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "stomp",
+    "port": 61613,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "xmpp-client",
+    "port": 5222,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "jabber-client"
+    ]
+  },
+  {
+    "name": "xmpp-server",
+    "port": 5269,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "jabber-server"
+    ]
+  },
+  {
+    "name": "grpc",
+    "port": 50051,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "zeromq",
+    "port": 5555,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "vnc",
+    "port": 5900,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "rfb"
+    ]
+  },
+  {
+    "name": "vnc-1",
+    "port": 5901,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "x11",
+    "port": 6000,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "x11-0"
+    ]
+  },
+  {
+    "name": "winrm-http",
+    "port": 5985,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "wsman"
+    ]
+  },
+  {
+    "name": "winrm-https",
+    "port": 5986,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "wsmans"
+    ]
+  },
+  {
+    "name": "teamviewer",
+    "port": 5938,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "anydesk",
+    "port": 7070,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "raw-print",
+    "port": 9100,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "jetdirect",
+      "pdl-datastream"
+    ]
+  },
+  {
+    "name": "kubernetes-api",
+    "port": 6443,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "k8s-api"
+    ]
+  },
+  {
+    "name": "kubelet",
+    "port": 10250,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "kubelet-readonly",
+    "port": 10255,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "kube-scheduler",
+    "port": 10259,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "kube-controller",
+    "port": 10257,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "docker",
+    "port": 2375,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "docker-tls",
+    "port": 2376,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "consul-http",
+    "port": 8500,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "consul-dns",
+    "port": 8600,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "consul-serf-lan",
+    "port": 8301,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "consul-serf-wan",
+    "port": 8302,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "consul-rpc",
+    "port": 8300,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "vault",
+    "port": 8200,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nomad-http",
+    "port": 4646,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nomad-rpc",
+    "port": 4647,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nomad-serf",
+    "port": 4648,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "prometheus",
+    "port": 9090,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "alertmanager",
+    "port": 9093,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "node-exporter",
+    "port": 9100,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "prometheus-node"
+    ]
+  },
+  {
+    "name": "grafana",
+    "port": 3000,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "zabbix-agent",
+    "port": 10050,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "zabbix-server",
+    "port": 10051,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nagios-nrpe",
+    "port": 5666,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "nrpe"
+    ]
+  },
+  {
+    "name": "loki",
+    "port": 3100,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "jaeger-ui",
+    "port": 16686,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "jaeger-compact",
+    "port": 6831,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "jaeger-binary",
+    "port": 6832,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "git",
+    "port": 9418,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "svn",
+    "port": 3690,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "subversion"
+    ]
+  },
+  {
+    "name": "sonarqube",
+    "port": 9000,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nexus",
+    "port": 8081,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "nexus-repo"
+    ]
+  },
+  {
+    "name": "jenkins-agent",
+    "port": 50000,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "jnlp"
+    ]
+  },
+  {
+    "name": "glusterfs",
+    "port": 24007,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "spark-master",
+    "port": 7077,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "hadoop-namenode",
+    "port": 9870,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "hadoop-datanode",
+    "port": 9864,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "matrix-federation",
+    "port": 8448,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "gemini",
+    "port": 1965,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "ircs",
+    "port": 6697,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "bittorrent",
+    "port": 6881,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "torrent"
+    ]
+  },
+  {
+    "name": "dht",
+    "port": 6882,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "bittorrent-dht"
+    ]
+  },
+  {
+    "name": "steam",
+    "port": 27015,
+    "protocol": "udp",
+    "transports": [
+      "udp",
+      "tcp"
+    ],
+    "aliases": [
+      "srcds"
+    ]
+  },
+  {
+    "name": "minecraft",
+    "port": 25565,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "dns-over-tls",
+    "port": 853,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "dot"
+    ]
+  },
+  {
+    "name": "modbus",
+    "port": 502,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "modbus-tcp"
+    ]
+  },
+  {
+    "name": "dnp3",
+    "port": 20000,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "bacnet",
+    "port": 47808,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "bacnet-ip"
+    ]
+  },
+  {
+    "name": "opc-ua",
+    "port": 4840,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "opcua"
+    ]
+  },
+  {
+    "name": "enip",
+    "port": 44818,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "ethernet-ip"
+    ]
+  },
+  {
+    "name": "iec-104",
+    "port": 2404,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "iec-60870-5-104"
+    ]
+  },
+  {
+    "name": "iscsi",
+    "port": 3260,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "iscsi-target",
+    "port": 860,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "skinny",
+    "port": 2000,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "cisco-sccp"
+    ]
+  },
+  {
+    "name": "rtp",
+    "port": 5004,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "rtcp",
+    "port": 5005,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "mms",
+    "port": 1755,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": [
+      "ms-streaming"
+    ]
+  },
+  {
+    "name": "radius-coa",
+    "port": 3799,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": [
+      "dynauth"
+    ]
+  },
+  {
+    "name": "kibana",
+    "port": 5601,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "logstash-beats",
+    "port": 5044,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "beats"
+    ]
+  },
+  {
+    "name": "fluentd",
+    "port": 24224,
+    "protocol": "tcp",
+    "transports": [
+      "tcp",
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "splunk-web",
+    "port": 8000,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "splunk-mgmt",
+    "port": 8089,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "splunk-forwarder",
+    "port": 9997,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "nessus",
+    "port": 8834,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "openvas",
+    "port": 9390,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "squid-icp",
+    "port": 3130,
+    "protocol": "udp",
+    "transports": [
+      "udp"
+    ],
+    "aliases": []
+  },
+  {
+    "name": "zebra",
+    "port": 2601,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "quagga-zebra"
+    ]
+  },
+  {
+    "name": "ripd",
+    "port": 2602,
+    "protocol": "tcp",
+    "transports": [
+      "tcp"
+    ],
+    "aliases": [
+      "quagga-ripd"
+    ]
+  }
 ]
