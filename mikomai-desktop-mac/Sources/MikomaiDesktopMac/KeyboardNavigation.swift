@@ -69,6 +69,10 @@ enum KeyboardNavigation {
         }
         let backwards = event.modifierFlags.contains(.shift)
         if let text = window.firstResponder as? NSTextView, text.isFieldEditor {
+            let field = controls(in: window).compactMap { $0 as? NSTextField }.first { $0.currentEditor() === text }
+            if field is AccessibleSecureField || (field as? AccessibleInputField)?.defersTabNavigation == false {
+                return move(in: window, backwards: backwards)
+            }
             // Search fields can replace their results after the text event.
             // Let SwiftUI finish that update before focusing a result that may
             // otherwise be removed from the view hierarchy immediately.

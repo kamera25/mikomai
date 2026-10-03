@@ -141,14 +141,30 @@ import MikomaiDesktopCore
     for control in [deviceType, cancel, save] { precondition(control.canBecomeKeyView && !control.isHiddenOrHasHiddenAncestor) }
     KeyboardNavigation.rebuild(in: window)
     let fields = descendants(editorHost).compactMap { $0 as? NSTextField }.filter { $0.isEditable }
-    precondition(!fields.isEmpty)
+    let fieldNames = ["名前（必須）", "ホスト名またはIPアドレス（必須）", "ポート", "ユーザー名", "パスワード", "Enable パスワード"]
+    precondition(fields.count == fieldNames.count)
+    for name in fieldNames {
+        let field = fields.first { $0.accessibilityLabel() == name }!
+        precondition(!(field.accessibilityHelp() ?? "").isEmpty, "Input help persists for \(name)")
+        precondition(field.canBecomeKeyView)
+    }
+    precondition(fields.filter { $0 is NSSecureTextField }.count == 2)
+    precondition(fields.first { $0.accessibilityLabel() == "名前（必須）" }?.stringValue == "検証ホスト")
+    window.makeFirstResponder(fields[0])
+    precondition(KeyboardNavigation.handleTab(key(48), in: window))
+    precondition(fields[1].currentEditor() === window.firstResponder, "Native field Tab changes focus synchronously before the next typed character")
     window.makeFirstResponder(fields[0])
     var visited = Set<ObjectIdentifier>()
+    var visitedFields = Set<String>()
     for _ in 0..<30 {
         precondition(KeyboardNavigation.handleTab(key(48), in: window))
         pump()
         if let responder = window.firstResponder { visited.insert(ObjectIdentifier(responder)) }
+        for field in fields where field.currentEditor() === window.firstResponder || field === window.firstResponder {
+            visitedFields.insert(field.accessibilityLabel() ?? "")
+        }
     }
+    precondition(Set(fieldNames).isSubset(of: visitedFields), "Tab reaches every named input, including protected fields")
     for control in [deviceType, cancel, save] { precondition(visited.contains(ObjectIdentifier(control)), "Tab loop reaches \(control.accessibilityLabel()!)") }
     window.makeFirstResponder(save)
     precondition(KeyboardNavigation.handleTab(key(48, modifiers: .shift), in: window))
@@ -164,6 +180,39 @@ import MikomaiDesktopCore
     save.keyDown(with: key(36, repeatKey: true))
     precondition(saves == 1, "Key repeat cannot submit twice")
     print("PASS: host editor Tab reaches type/Cancel/Save; focused action beats default Save; Return saves once")
+
+    let invalidEditor = NSHostingView(rootView: ConnectionEditor(connection: SavedConnection(name: "", host: "")) { _, _, _ in saves += 1 })
+    window.contentView = invalidEditor
+    invalidEditor.layoutSubtreeIfNeeded()
+    pump()
+    let error = readableViews(invalidEditor).first { ($0.accessibilityLabel() ?? "").hasPrefix("入力エラー:") }!
+    let privacy = readableViews(invalidEditor).first { ($0.accessibilityLabel() ?? "").hasPrefix("資格情報の保存について:") }!
+    precondition(window.makeFirstResponder(error) && window.makeFirstResponder(privacy))
+    precondition(!button("保存", in: invalidEditor).isEnabled)
+    let invalidName = descendants(invalidEditor).compactMap { $0 as? AccessibleInputField }.first { $0.accessibilityLabel() == "名前（必須）" }!
+    precondition((invalidName.accessibilityHelp() ?? "").contains("入力エラー:"))
+    print("PASS: registration has six persistent named/helped fields, protected passwords, readable validation and privacy text")
+
+    // Native edit notifications round-trip the binding without losing the AX
+    // name; protected values must never become public accessibility strings.
+    var input = "before"
+    var secret = "test-only-password"
+    let fieldHost = NSHostingView(rootView: VStack {
+        AccessibleTextField(title: "入力検証", text: Binding(get: { input }, set: { input = $0 }), help: "説明")
+        AccessibleTextField(title: "保護入力検証", text: Binding(get: { secret }, set: { secret = $0 }), isSecure: true)
+    })
+    window.contentView = fieldHost
+    fieldHost.layoutSubtreeIfNeeded()
+    pump()
+    let nativeInput = descendants(fieldHost).compactMap { $0 as? AccessibleInputField }.first!
+    nativeInput.stringValue = "after"
+    nativeInput.delegate?.controlTextDidChange?(Notification(name: NSControl.textDidChangeNotification, object: nativeInput))
+    pump()
+    precondition(input == "after" && nativeInput.accessibilityLabel() == "入力検証")
+    let protected = descendants(fieldHost).compactMap { $0 as? AccessibleSecureField }.first!
+    precondition(!(String(describing: protected.accessibilityValue())).contains(secret))
+    precondition(!(protected.accessibilityLabel() ?? "").contains(secret))
+    print("PASS: input edits update binding while names persist; protected input does not expose its value")
 
     // Disabled controls cannot be focused or invoked through AX or the keyboard.
     let disabledHost = NSHostingView(rootView: AccessibleButton("無効", action: { saves += 1 }).disabled(true))

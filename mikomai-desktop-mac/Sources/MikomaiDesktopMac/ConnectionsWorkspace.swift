@@ -195,9 +195,11 @@ struct ConnectionEditor: View {
     let onSave: (SavedConnection, String?, String?) -> Void
     @State private var showsDeviceTypes = false
     @State private var deviceTypeQuery = ""
+    private let isNewConnection: Bool
 
     init(connection: SavedConnection, onSave: @escaping (SavedConnection, String?, String?) -> Void) {
         self._connection = State(initialValue: connection)
+        self.isNewConnection = connection.name.isEmpty
         self.onSave = onSave
         let credentials = ConnectionCredentialPersistence(store: KeychainCredentialAdapter()).load(for: connection.id)
         self._password = State(initialValue: credentials.password ?? "")
@@ -206,71 +208,76 @@ struct ConnectionEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(connection.name.isEmpty ? "機器を追加" : "機器情報を編集").font(.system(size: 18, weight: .semibold))
-            Form {
-                TextField("名前", text: $connection.name)
-                TextField("ホスト名または IP", text: $connection.host)
-                TextField("ポート", text: $connection.port)
-                TextField("ユーザー名", text: $connection.username)
-                AccessiblePicker("接続方式", selection: Binding(
-                    get: { connection.connectionType ?? "SSH" },
-                    set: { connection.selectConnectionType($0) }
-                ), options: ["SSH", "Telnet", "Console"].map { ($0, $0) })
-                LabeledContent("機器タイプ") {
-                    AccessibleButton("機器タイプを選択", value: DeviceTypeCatalog.displayName(for: connection.deviceType)) {
-                        deviceTypeQuery = ""
-                        showsDeviceTypes = true
-                    } label: {
-                        HStack {
-                            Text(DeviceTypeCatalog.displayName(for: connection.deviceType))
-                            Image(systemName: "chevron.up.chevron.down")
+            Text(isNewConnection ? "機器を追加" : "機器情報を編集").font(.system(size: 18, weight: .semibold))
+                .accessibilityAddTraits(.isHeader)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    AccessibleTextField(title: "名前（必須）", text: $connection.name, help: inputHelp("必須項目。機器を識別する名前を、文字・数字と . - _ で入力してください。", field: "名前"))
+                    AccessibleTextField(title: "ホスト名またはIPアドレス（必須）", text: $connection.host, help: inputHelp("必須項目。接続先のホスト名、IPv4またはIPv6アドレスを入力してください。", field: "ホスト"))
+                    AccessibleTextField(title: "ポート", text: $connection.port, help: inputHelp("1から65535の数値。空欄の場合は接続方式の既定値、\(connection.defaultPort)を使用します。", field: "ポート"))
+                    AccessibleTextField(title: "ユーザー名", text: $connection.username, help: inputHelp("接続時のユーザー名。省略可能です。128文字以内で入力してください。", field: "ユーザー名"))
+                    AccessiblePicker("接続方式", selection: Binding(
+                        get: { connection.connectionType ?? "SSH" },
+                        set: { connection.selectConnectionType($0) }
+                    ), options: ["SSH", "Telnet", "Console"].map { ($0, $0) })
+                    LabeledContent("機器タイプ") {
+                        AccessibleButton("機器タイプを選択", value: DeviceTypeCatalog.displayName(for: connection.deviceType)) {
+                            deviceTypeQuery = ""
+                            showsDeviceTypes = true
+                        } label: {
+                            HStack {
+                                Text(DeviceTypeCatalog.displayName(for: connection.deviceType))
+                                Image(systemName: "chevron.up.chevron.down")
+                            }
                         }
-                    }
-                    .sheet(isPresented: $showsDeviceTypes) {
-                        VStack(spacing: 8) {
-                            Text("機器タイプを選択").font(.headline)
-                            TextField("機器タイプを検索", text: $deviceTypeQuery)
-                                .textFieldStyle(.roundedBorder)
-                            ScrollView {
-                                VStack(spacing: 2) {
-                                    ForEach(DeviceTypeCatalog.matching(deviceTypeQuery), id: \.self) { id in
-                                        HistorySelectionRow(
-                                            DeviceTypeCatalog.optionLabel(for: id), isSelected: DeviceTypeCatalog.canonicalID(for: connection.deviceType) == id,
-                                            action: {
-                                                connection.deviceType = id
-                                                showsDeviceTypes = false
+                        .sheet(isPresented: $showsDeviceTypes) {
+                            VStack(spacing: 8) {
+                                Text("機器タイプを選択").font(.headline)
+                                AccessibleTextField(title: "機器タイプを検索", text: $deviceTypeQuery, help: "機器名またはベンダー名で候補を絞り込みます。Tabで候補に移動し、Enterで選択します。", defersTabNavigation: true)
+                                ScrollView {
+                                    VStack(spacing: 2) {
+                                        ForEach(DeviceTypeCatalog.matching(deviceTypeQuery), id: \.self) { id in
+                                            HistorySelectionRow(
+                                                DeviceTypeCatalog.optionLabel(for: id), isSelected: DeviceTypeCatalog.canonicalID(for: connection.deviceType) == id,
+                                                action: {
+                                                    connection.deviceType = id
+                                                    showsDeviceTypes = false
+                                                }
+                                            ) {
+                                                Text(DeviceTypeCatalog.optionLabel(for: id))
                                             }
-                                        ) {
-                                            Text(DeviceTypeCatalog.optionLabel(for: id))
+                                        }
+                                        if DeviceTypeCatalog.matching(deviceTypeQuery).isEmpty {
+                                            Text("一致する機器タイプがありません")
+                                                .foregroundStyle(.secondary).padding()
+                                                .keyboardReadable("検索結果", text: "一致する機器タイプがありません")
                                         }
                                     }
-                                    if DeviceTypeCatalog.matching(deviceTypeQuery).isEmpty {
-                                        Text("一致する機器タイプがありません")
-                                            .foregroundStyle(.secondary).padding()
-                                    }
+                                }
+                                HStack {
+                                    Spacer()
+                                    AccessibleButton("機器タイプの選択をキャンセル") { showsDeviceTypes = false }
+                                        .accessibleCancelAction()
                                 }
                             }
-                            HStack {
-                                Spacer()
-                                AccessibleButton("機器タイプの選択をキャンセル") { showsDeviceTypes = false }
-                                    .accessibleCancelAction()
-                            }
+                            .padding(12).frame(width: 360, height: 380)
+                            .background(KeyboardNavigationScope())
                         }
-                        .padding(12).frame(width: 360, height: 380)
-                        .background(KeyboardNavigationScope())
                     }
-                }
 
-                Section("資格情報 (Keychain)") {
-                    SecureField("パスワード", text: $password)
-                    SecureField("Enable パスワード", text: $enablePassword)
-                    Text("パスワードは macOS Keychain に暗号化されて安全に保管されます。平文ファイルには保存されません。")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("資格情報 (Keychain)").font(.headline).accessibilityAddTraits(.isHeader)
+                        AccessibleTextField(title: "パスワード", text: $password, help: "接続時に使用するパスワード。省略可能です。入力内容は保護され、Keychainに保存されます。", isSecure: true)
+                        AccessibleTextField(title: "Enable パスワード", text: $enablePassword, help: "特権モードで使用するパスワード。省略可能です。入力内容は保護され、Keychainに保存されます。", isSecure: true)
+                        Text("パスワードは macOS Keychain に暗号化されて安全に保管されます。平文ファイルには保存されません。")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .keyboardReadable("資格情報の保存について", text: "パスワードはmacOS Keychainに暗号化して保存されます。")
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(2)
             }
-            .formStyle(.grouped)
             if let validationError = connection.validationError {
                 Text(validationError).font(.system(size: 13)).foregroundStyle(.red)
+                    .keyboardReadable("入力エラー", text: validationError)
             }
             HStack {
                 Spacer()
@@ -283,7 +290,12 @@ struct ConnectionEditor: View {
                 .accessibleDefaultAction()
                 .disabled(connection.validationError != nil)
             }
-        }.padding(18).frame(width: 440, height: 440)
+        }.padding(18).frame(width: 480, height: 620)
         .background(KeyboardNavigationScope())
     }
+    private func inputHelp(_ description: String, field: String) -> String {
+        guard let error = connection.validationError, error.hasPrefix(field) else { return description }
+        return description + " 入力エラー: " + error
+    }
+
 }

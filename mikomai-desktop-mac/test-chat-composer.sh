@@ -21,6 +21,7 @@ compile_checks() {
         "$APP/Sources/MikomaiDesktopMac/ChatComposer.swift" \
         "$APP/Sources/MikomaiDesktopMac/KeyboardNavigation.swift" \
         "$APP/Sources/MikomaiDesktopMac/ReadableContent.swift" \
+        "$APP/Sources/MikomaiDesktopMac/AccessibleTextField.swift" \
         "$APP/Sources/MikomaiDesktopMac/AccessibleButton.swift" \
         "$APP/Sources/MikomaiDesktopMac/AccessibleControls.swift" \
         "$APP/Tests/ChatComposerChecks/ChatComposerChecks.swift" \
