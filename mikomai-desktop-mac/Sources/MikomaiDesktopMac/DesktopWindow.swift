@@ -59,6 +59,53 @@ private struct WindowTitleDragRegion: NSViewRepresentable {
     func updateNSView(_ nsView: DragView, context: Context) {}
 }
 
+private struct InitialHistoryPaneSizing: NSViewRepresentable {
+    let width: CGFloat
+
+    final class SizingView: NSView {
+        var initialWidth: CGFloat = 248
+        private var didSetWidth = false
+        private var isScheduled = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            scheduleSizing()
+        }
+
+        override func layout() {
+            super.layout()
+            scheduleSizing()
+        }
+
+        func scheduleSizing() {
+            guard window != nil, !didSetWidth, !isScheduled else { return }
+            isScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.isScheduled = false
+                var ancestor = self.superview
+                while let view = ancestor {
+                    if let split = view as? NSSplitView, split.isVertical,
+                       split.subviews.count > 1, split.bounds.width > 0 {
+                        // SwiftUI's idealWidth is only a proposal. Set the initial
+                        // divider once, then leave subsequent user resizing alone.
+                        self.didSetWidth = true
+                        split.setPosition(self.initialWidth, ofDividerAt: 0)
+                        return
+                    }
+                    ancestor = view.superview
+                }
+            }
+        }
+    }
+
+    func makeNSView(context: Context) -> SizingView { SizingView() }
+    func updateNSView(_ nsView: SizingView, context: Context) {
+        nsView.initialWidth = width
+        nsView.scheduleSizing()
+    }
+}
+
 private struct ToolbarHeaderSizing: NSViewRepresentable {
     @Binding var rightPaneWidth: CGFloat
     let showsRightPane: Bool
@@ -139,7 +186,7 @@ struct DesktopWindow: View {
     @State private var wasRightPaneOpenBeforeTiling = false
     @State private var currentContainerWidth: CGFloat = 1120
 
-    @AppStorage("mikomai.desktop.mac.historyWidth") private var historyWidth = 248.0
+    private let historyWidth: CGFloat = 248
     @State private var isHistoryOpen = true
     @State private var historyTab = "conversation"
     @AppStorage("mikomai.desktop.mac.rightPaneWidth") private var rightPaneWidth = 330.0
@@ -190,6 +237,7 @@ struct DesktopWindow: View {
                 if model.workspace == .chat && isHistoryOpen {
                     historySidebar
                         .frame(minWidth: 180, idealWidth: historyWidth, maxWidth: 420)
+                        .background(InitialHistoryPaneSizing(width: historyWidth))
                 }
                 VStack(spacing: 0) {
                     Group {

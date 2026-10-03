@@ -11,6 +11,22 @@ import MikomaiDesktopCore
  func pump(){RunLoop.main.run(until:Date().addingTimeInterval(0.5));host.layoutSubtreeIfNeeded()}
  func editor(_ view:NSView)->ChatComposerTextView? { if let e=view as? ChatComposerTextView{return e};return view.subviews.lazy.compactMap{editor($0)}.first }
  pump()
+ func mainSplit(_ view: NSView) -> NSSplitView? {
+     if let split = view as? NSSplitView, split.isVertical, split.subviews.count > 1 { return split }
+     return view.subviews.lazy.compactMap { mainSplit($0) }.first
+ }
+ guard let split = mainSplit(host) else { fatalError("expected history split view") }
+ precondition(abs(split.subviews[0].frame.width - 248) <= 1,
+              "History pane must start at the reference screenshot's 248pt width")
+ split.setPosition(300, ofDividerAt: 0)
+ model.draft = "resize check"
+ pump()
+ precondition(abs(split.subviews[0].frame.width - 300) <= 1,
+              "View updates must preserve manual history pane resizing")
+ model.draft = ""
+ split.setPosition(248, ofDividerAt: 0)
+ pump()
+ print("PASS: history pane starts at 248pt and preserves manual resizing")
  guard let e=editor(host) else {fatalError("no editor")}
  window.makeFirstResponder(e)
  e.insertText("@",replacementRange:NSRange(location:NSNotFound,length:0))
