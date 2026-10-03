@@ -71,6 +71,7 @@ struct ExecutionTerminalView: View {
                             // A narrow target at x=0 avoids centering an oversized row.
                             Color.clear.frame(width: 1, height: 1).id("terminalBottomLeft")
                         }
+                        .frame(minHeight: viewport.size.height, alignment: .topLeading)
                         .multilineTextAlignment(.leading)
                     }
                     .onAppear {
