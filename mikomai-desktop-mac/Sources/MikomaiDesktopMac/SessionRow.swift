@@ -7,31 +7,23 @@ struct SessionRow: View {
     let onSelect: () -> Void
     let onRename: (String) -> Void
     let onDelete: () -> Void
-    @State private var isRenaming = false
     @State private var isHovered = false
-    @State private var title = ""
 
     var body: some View {
-        Group {
-            if isRenaming {
-                TextField("会話名", text: $title, onCommit: { onRename(title); isRenaming = false })
-                    .textFieldStyle(.plain).font(.system(size: 14))
-                    .padding(.horizontal, 8).padding(.vertical, 8)
-            } else {
-                HistorySelectionRow(isSelected: isSelected, action: onSelect) {
-                    HoverScrollTitle(title: session.title, isHovered: isHovered)
-                }
+        EditableChatTitle(title: session.title, onRename: onRename) { beginEditing in
+            HistorySelectionRow(isSelected: isSelected, action: onSelect) {
+                HoverScrollTitle(title: session.title, isHovered: isHovered)
+            }
+            .contextMenu {
+                Button("名前を変更", action: beginEditing)
+                Button("削除", role: .destructive, action: onDelete)
             }
         }
+        .frame(minHeight: 36)
         .frame(maxWidth: .infinity)
-        .background(isRenaming && isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
-        }
-        .contextMenu {
-            Button("名前を変更") { title = session.title; isRenaming = true }
-            Button("削除", role: .destructive, action: onDelete)
         }
     }
 }

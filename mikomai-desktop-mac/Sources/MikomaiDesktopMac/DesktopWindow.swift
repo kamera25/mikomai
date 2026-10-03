@@ -539,12 +539,7 @@ struct DesktopWindow: View {
                     withAnimation(.easeInOut(duration: 0.18)) { isHistoryOpen.toggle() }
                 }
             }
-            Text(headerTitle)
-                .font(.system(size: 16, weight: .semibold))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay(WindowTitleDragRegion())
+            toolbarTitle.overlay(WindowTitleDragRegion())
             if model.workspace == .chat && historyTab == "conversation" {
                 paneToggleButton(symbol: "sidebar.right",
                                  title: isRightPaneOpen ? "作業タブを非表示" : "作業タブを表示") {
@@ -575,6 +570,14 @@ struct DesktopWindow: View {
         .buttonStyle(.plain)
         .help(title)
         .accessibilityLabel(title)
+    }
+
+    private var toolbarTitle: some View {
+        Text(headerTitle)
+            .font(.system(size: 16, weight: .semibold))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var headerTitle: String {

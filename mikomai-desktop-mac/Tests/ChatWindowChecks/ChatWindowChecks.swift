@@ -135,6 +135,53 @@ import MikomaiDesktopCore
  precondition(narrowSize.height > wideSize.height, "Long user text and attachment names must wrap vertically")
  print("PASS: resized production chat fits viewport; user text and attachments wrap")
 
+ // Exercise the native editor used by chat history titles.
+ for fontSize in [14.0] {
+     var savedTitle = "元のチャットタイトル"
+     var cancelled = false
+     let titleHost = NSHostingView(rootView: ChatTitleEditor(
+         title: savedTitle, fontSize: fontSize, weight: .regular,
+         onCommit: { savedTitle = $0 }, onCancel: { cancelled = true }))
+     titleHost.frame = NSRect(x: 0, y: 0, width: 300, height: 36)
+     window.contentView?.addSubview(titleHost)
+     pump()
+     func titleField(_ view: NSView) -> ChatTitleEditor.TitleField? {
+         if let field = view as? ChatTitleEditor.TitleField { return field }
+         return view.subviews.lazy.compactMap { titleField($0) }.first
+     }
+     guard let field = titleField(titleHost), let input = field.currentEditor() as? NSTextView else {
+         fatalError("Title editor must receive focus as soon as it appears")
+     }
+     precondition(input.selectedRange() == NSRange(location: 0, length: (savedTitle as NSString).length),
+                  "The whole title must be selected when editing starts")
+     input.insertText("破棄するタイトル", replacementRange: input.selectedRange())
+     let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                  windowNumber: window.windowNumber, context: nil, characters: "\u{1b}",
+                                  charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+     input.keyDown(with: escape)
+     pump()
+     precondition(cancelled && savedTitle == "元のチャットタイトル", "Esc must cancel without saving")
+     titleHost.removeFromSuperview()
+
+     let reopened = NSHostingView(rootView: ChatTitleEditor(
+         title: savedTitle, fontSize: fontSize, weight: .regular,
+         onCommit: { savedTitle = $0 }, onCancel: {}))
+     reopened.frame = NSRect(x: 0, y: 0, width: 300, height: 36)
+     window.contentView?.addSubview(reopened)
+     pump()
+     guard let reopenedField = titleField(reopened), let reopenedInput = reopenedField.currentEditor() as? NSTextView else {
+         fatalError("Reopened title editor must receive focus")
+     }
+     precondition(reopenedInput.string == "元のチャットタイトル", "Cancelled edits must be discarded")
+     precondition(reopenedInput.selectedRange().length == (savedTitle as NSString).length)
+     reopenedInput.insertText("新しいタイトル", replacementRange: reopenedInput.selectedRange())
+     reopenedInput.keyDown(with: enter)
+     pump()
+     precondition(savedTitle == "新しいタイトル", "Enter must save the edited title")
+     reopened.removeFromSuperview()
+ }
+ print("PASS: history title editor focuses, selects all, cancels with Esc, and saves with Enter")
+
  _ = app
  }
 }
