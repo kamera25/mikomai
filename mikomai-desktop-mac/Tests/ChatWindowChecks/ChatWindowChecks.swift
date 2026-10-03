@@ -1,3 +1,5 @@
+import MikomaiDesktopCore
+
 @main struct FullCheck {
  @MainActor static func main() {
  setenv("MIKOMAI_SETTINGS_PATH", "/private/tmp/mikomai-full-check/settings.json", 1)
@@ -84,6 +86,37 @@
  precondition(model.pendingAttachments.isEmpty, "unsupported file must not be attached")
  pump()
  print("PASS: file attachment and drag-and-drop validation in chat window")
+
+ // Resize the production chat after laying it out at full width, as when snapping.
+ let message = ChatMessage(role: .user, text: String(repeating: "Yamahaで設定変更するコマンドを教えて。", count: 12),
+                           attachments: [String(repeating: "長い添付ファイル名", count: 8) + ".txt"])
+ model.sessions = [ChatSession(id: initialSessionID, title: "折り返し確認", messages: [message])]
+ model.activeSessionID = initialSessionID
+ func observation(_ view: NSView) -> ChatScrollObservationView? {
+     if let result = view as? ChatScrollObservationView { return result }
+     return view.subviews.lazy.compactMap { observation($0) }.first
+ }
+ for width in [1200.0, 740.0, 600.0, 1200.0] {
+     window.setContentSize(NSSize(width: width, height: 800))
+     pump()
+     pump()
+     guard let observer = observation(host), let scroll = observer.enclosingScrollView,
+           let document = scroll.documentView else { fatalError("expected chat scroll view") }
+     precondition(document.bounds.width <= scroll.contentView.bounds.width + 1,
+                  "Chat content must fit the viewport after resizing to \(width)")
+     let viewport = scroll.convert(scroll.bounds, to: host)
+     FileHandle.standardError.write(Data("CHAT width=\(width) host=\(host.bounds.width) viewport=\(viewport) content=\(observer.bounds)\n".utf8))
+     precondition(viewport.maxX <= host.bounds.maxX + 1, "Chat viewport must fit the window")
+     let image = host.bitmapImageRepForCachingDisplay(in: host.bounds)!
+     host.cacheDisplay(in: host.bounds, to: image)
+     try! image.representation(using: .png, properties: [:])!.write(
+         to: URL(fileURLWithPath: "/private/tmp/mikomai-full-check/chat-\(Int(width)).png"))
+ }
+ let wideSize = NSHostingView(rootView: MessageRow(message: message).frame(width: 760)).fittingSize
+ let narrowSize = NSHostingView(rootView: MessageRow(message: message).frame(width: 350)).fittingSize
+ precondition(narrowSize.width <= 351, "User message must fit a narrow row")
+ precondition(narrowSize.height > wideSize.height, "Long user text and attachment names must wrap vertically")
+ print("PASS: resized production chat fits viewport; user text and attachments wrap")
 
  _ = app
  }

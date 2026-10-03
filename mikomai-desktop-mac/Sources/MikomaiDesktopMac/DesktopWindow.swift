@@ -126,13 +126,16 @@ struct DesktopWindow: View {
                     }
                     statusBar
                 }
-                .frame(minWidth: 440, maxWidth: .infinity)
+                .frame(minWidth: isTiled ? 0 : 440, maxWidth: .infinity)
+                .frame(width: isTiled && !isHistoryOpen && !isRightPaneOpen
+                       ? max(0, geometry.size.width - 50) : nil)
                 .background(Color(nsColor: .windowBackgroundColor))
                 if model.workspace == .chat && historyTab == "conversation" && isRightPaneOpen {
                     rightSidePane
                         .frame(minWidth: 180, idealWidth: rightPaneWidth, maxWidth: 600)
                 }
             }
+            .frame(width: max(0, geometry.size.width - 50))
         }
         .background(Color(nsColor: .underPageBackgroundColor))
         .background(WindowAccessor(window: $window))
@@ -662,7 +665,7 @@ struct DesktopWindow: View {
 
     private var chatWorkspace: some View {
         VStack(spacing: 0) {
-            GeometryReader { _ in
+            GeometryReader { geometry in
                 ScrollViewReader { proxy in
                     ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
@@ -686,7 +689,8 @@ struct DesktopWindow: View {
                             }
                         }
                     }
-                    .frame(maxWidth: 760).frame(maxWidth: .infinity).padding(.horizontal, 24).padding(.vertical, 24)
+                    .frame(width: min(760, max(0, geometry.size.width - 48)))
+                    .frame(maxWidth: .infinity).padding(.horizontal, 24).padding(.vertical, 24)
                     .id("chatBottom")
                     .background(ChatScrollObserver { top, atBottom in
                         chatScrollFollow.observe(contentTop: top, isAtBottom: atBottom)

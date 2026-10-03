@@ -16,12 +16,15 @@ struct MessageRow: View {
                         Spacer(minLength: 48)
                         VStack(alignment: .leading, spacing: 6) {
                             Text(message.text).font(.system(size: 15)).textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
                             ForEach(message.attachments, id: \.self) { name in
                                 Label(name, systemImage: "doc.text").font(.system(size: 13))
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14).padding(.vertical, 10)
+                        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                         .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
                     }
                 } else {
