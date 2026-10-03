@@ -506,7 +506,8 @@ struct SettingsWorkspace: View {
                         panel.canChooseFiles = true
                         panel.canChooseDirectories = false
                         panel.allowsMultipleSelection = false
-                        if panel.runModal() == .OK, let url = panel.url {
+                        FilePanelPresenter.present(panel) { response in
+                            guard response == .OK, let url = panel.url else { return }
                             model.settings.mmprojPath = url.path
                             model.saveSettings()
                         }
@@ -636,7 +637,10 @@ private struct FolderPickerRow: View {
                     panel.canChooseDirectories = true
                     panel.canChooseFiles = false
                     panel.allowsMultipleSelection = false
-                    if panel.runModal() == .OK, let url = panel.url { path = url.path }
+                    FilePanelPresenter.present(panel) { response in
+                        guard response == .OK, let url = panel.url else { return }
+                        path = url.path
+                    }
                 }
             }
         }

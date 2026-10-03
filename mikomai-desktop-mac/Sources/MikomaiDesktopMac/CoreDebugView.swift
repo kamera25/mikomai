@@ -40,7 +40,7 @@ struct CoreDebugView: View {
         panel.title = "デバッグログを保存（全件）"
         panel.nameFieldStringValue = "mikomai-debug.jsonl"
         panel.allowedContentTypes = [UTType(filenameExtension: "jsonl") ?? .plainText]
-        panel.begin { response in
+        FilePanelPresenter.present(panel) { response in
             guard response == .OK, let url = panel.url else { return }
             do { try snapshot.write(to: url, atomically: true, encoding: .utf8) }
             catch { saveError = error.localizedDescription }

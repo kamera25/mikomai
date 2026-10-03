@@ -119,44 +119,48 @@ struct ConnectionsWorkspace: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let json = url.path.withCString { path in
-            let response = mikomai_device_registry_read(path)
-            defer { mikomai_result_free(response) }
-            guard let message = response.message else { return "エラー: 機器情報を読み込めませんでした。" }
-            let text = String(cString: message)
-            return response.status == 0 ? text : "エラー: \(text)"
+        FilePanelPresenter.present(panel) { [self] response in
+            guard response == .OK, let url = panel.url else { return }
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let json = url.path.withCString { path in
+                let response = mikomai_device_registry_read(path)
+                defer { mikomai_result_free(response) }
+                guard let message = response.message else { return "エラー: 機器情報を読み込めませんでした。" }
+                let text = String(cString: message)
+                return response.status == 0 ? text : "エラー: \(text)"
+            }
+            guard !json.hasPrefix("エラー:") else {
+                presentCSVMessage(json)
+                return
+            }
+            let result: LegacyConnectionImportResult
+            do {
+                result = try model.importLegacyDevices(fromJSON: Data(json.utf8))
+            } catch {
+                presentCSVMessage("旧形式の機器情報 JSON を読み取れませんでした。元ファイルは変更していません。")
+                return
+            }
+            var note = "\(result.imported.count) 件を追加し、\(result.skipped) 件をスキップしました。元ファイルは変更していません。"
+            if result.missingIDs > 0 { note += " IDのない行は重複判定せず追加しました。" }
+            presentCSVMessage(note)
         }
-        guard !json.hasPrefix("エラー:") else {
-            presentCSVMessage(json)
-            return
-        }
-        let result: LegacyConnectionImportResult
-        do {
-            result = try model.importLegacyDevices(fromJSON: Data(json.utf8))
-        } catch {
-            presentCSVMessage("旧形式の機器情報 JSON を読み取れませんでした。元ファイルは変更していません。")
-            return
-        }
-        var note = "\(result.imported.count) 件を追加し、\(result.skipped) 件をスキップしました。元ファイルは変更していません。"
-        if result.missingIDs > 0 { note += " IDのない行は重複判定せず追加しました。" }
-        presentCSVMessage(note)
     }
 
     private func exportCSV() {
         let panel = NSSavePanel(); panel.nameFieldStringValue = "connections.csv"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        if let invalid = model.connections.first(where: { $0.validationError != nil }) {
-            presentCSVMessage("\(invalid.name) のホスト名が 旧 CSV 形式の制約に合いません。機器情報を編集してください。")
-            return
-        }
-        do {
-            let csv = try ConnectionCSVCodec.exportCSV(model.connections)
-            try csv.write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            presentCSVMessage("CSV ファイルを書き込めませんでした。\(error.localizedDescription)")
+        FilePanelPresenter.present(panel) { [self] response in
+            guard response == .OK, let url = panel.url else { return }
+            if let invalid = model.connections.first(where: { $0.validationError != nil }) {
+                presentCSVMessage("\(invalid.name) のホスト名が 旧 CSV 形式の制約に合いません。機器情報を編集してください。")
+                return
+            }
+            do {
+                let csv = try ConnectionCSVCodec.exportCSV(model.connections)
+                try csv.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                presentCSVMessage("CSV ファイルを書き込めませんでした。\(error.localizedDescription)")
+            }
         }
     }
 
@@ -164,18 +168,20 @@ struct ConnectionsWorkspace: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.commaSeparatedText]
         panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url,
-              let content = try? String(contentsOf: url, encoding: .utf8) else { return }
-        do {
-            let result = try ConnectionCSVCodec.importCSV(content, existing: model.connections)
-            model.connections = result.connections
-            let details = result.warnings.prefix(5).map { "\($0.row)行目: \($0.reason)" }
-            var message = "\(result.importedCount) 件を読み込みました。\(result.warnings.count) 件は形式が合わないためスキップしました。"
-            if !details.isEmpty { message += "\n" + details.joined(separator: "\n") }
-            if result.warnings.count > details.count { message += "\nほか \(result.warnings.count - details.count) 件" }
-            presentCSVMessage(message)
-        } catch {
-            presentCSVMessage(error.localizedDescription)
+        FilePanelPresenter.present(panel) { [self] response in
+            guard response == .OK, let url = panel.url,
+                  let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+            do {
+                let result = try ConnectionCSVCodec.importCSV(content, existing: model.connections)
+                model.connections = result.connections
+                let details = result.warnings.prefix(5).map { "\($0.row)行目: \($0.reason)" }
+                var message = "\(result.importedCount) 件を読み込みました。\(result.warnings.count) 件は形式が合わないためスキップしました。"
+                if !details.isEmpty { message += "\n" + details.joined(separator: "\n") }
+                if result.warnings.count > details.count { message += "\nほか \(result.warnings.count - details.count) 件" }
+                presentCSVMessage(message)
+            } catch {
+                presentCSVMessage(error.localizedDescription)
+            }
         }
     }
 

@@ -108,9 +108,11 @@ struct ExecutionTerminalView: View {
         panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = "ping-trace-log.txt"
         panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try text.write(to: url, atomically: true, encoding: .utf8) }
-        catch { saveError = error.localizedDescription }
+        FilePanelPresenter.present(panel) { [self] response in
+            guard response == .OK, let url = panel.url else { return }
+            do { try text.write(to: url, atomically: true, encoding: .utf8) }
+            catch { saveError = error.localizedDescription }
+        }
     }
 }
 

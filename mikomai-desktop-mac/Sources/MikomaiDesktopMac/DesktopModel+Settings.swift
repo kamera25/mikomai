@@ -139,7 +139,8 @@ extension DesktopModel {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
+        FilePanelPresenter.present(panel) { [self] response in
+            guard response == .OK, let url = panel.url else { return }
             selectPreset("custom")
             modelPath = url.path
             settings.modelPath = url.path

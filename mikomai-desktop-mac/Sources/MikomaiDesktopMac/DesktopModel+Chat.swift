@@ -323,8 +323,10 @@ extension DesktopModel {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        guard panel.runModal() == .OK else { return }
-        attachFiles(at: panel.urls)
+        FilePanelPresenter.present(panel) { [self] response in
+            guard response == .OK else { return }
+            attachFiles(at: panel.urls)
+        }
     }
 
     func removeAttachment(_ id: UUID) { pendingAttachments.removeAll { $0.id == id } }
