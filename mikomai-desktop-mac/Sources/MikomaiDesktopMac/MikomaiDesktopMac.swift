@@ -5,6 +5,7 @@ import AppKit
 // foreground app so its windows can receive keyboard and IME events.
 private final class DesktopAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
+        ProcessInfo.processInfo.processName = "Mikomai"
         // A second embedded database owner would prevent Agent startup.
         if let bundleID = Bundle.main.bundleIdentifier,
            let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)

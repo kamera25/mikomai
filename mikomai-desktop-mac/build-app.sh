@@ -60,7 +60,7 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Frameworks" "$CONTENTS/Resources"
 cp "$APP/Info.plist" "$CONTENTS/Info.plist"
 cp "$APP/Sources/MikomaiDesktopMac/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
 cp -R "$PRODUCTS/MikomaiDesktopMac_MikomaiDesktopMac.bundle" "$CONTENTS/Resources/"
-cp "$PRODUCTS/MikomaiDesktopMac" "$CONTENTS/MacOS/Mikomai-Desktop-Mac"
+cp "$PRODUCTS/MikomaiDesktopMac" "$CONTENTS/MacOS/Mikomai"
 cp "$ROOT/target/debug/deps/libmikomai_ffi.dylib" "$CONTENTS/Frameworks/libmikomai_ffi.dylib"
 cp -R "$ROOT/nw-docs" "$CONTENTS/Resources/nw-docs"
 cp "$ROOT/mikomai-core/assets/bin/netmiko_wrapper-macos-arm64" "$CONTENTS/Resources/netmiko_wrapper"
@@ -73,7 +73,7 @@ cp -R "$ROOT/mikomai-core/assets/templates" "$CONTENTS/Resources/templates"
 chmod 755 "$CONTENTS/Resources/netmiko_wrapper"
 touch "$CONTENTS/Resources/.mikomai-development-bundle"
 install_name_tool -id @rpath/libmikomai_ffi.dylib "$CONTENTS/Frameworks/libmikomai_ffi.dylib"
-install_name_tool -change "$ROOT/target/debug/deps/libmikomai_ffi.dylib" @rpath/libmikomai_ffi.dylib "$CONTENTS/MacOS/Mikomai-Desktop-Mac"
+install_name_tool -change "$ROOT/target/debug/deps/libmikomai_ffi.dylib" @rpath/libmikomai_ffi.dylib "$CONTENTS/MacOS/Mikomai"
 # macOS 27 hides the ARP cache from apps without the Network Topology
 # Observation capability. It requires an authorised signing identity; adding
 # the restricted entitlement to an ad-hoc signature prevents the app launching.
