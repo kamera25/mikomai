@@ -49,6 +49,7 @@ struct WorkspaceTabButton: View {
             .contentShape(Rectangle())
         }
         .accessibleButtonStyle(.plain)
+        .accessibleButtonHoverHighlight(cornerRadius: 6)
         .help(title)
 
     }

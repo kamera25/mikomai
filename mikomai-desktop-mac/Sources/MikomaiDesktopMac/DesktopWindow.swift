@@ -372,7 +372,9 @@ struct DesktopWindow: View {
                 .background(model.workspace == item ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 6))
                 .contentShape(Rectangle())
         }
-        .accessibleButtonStyle(.plain).help(item.rawValue)
+        .accessibleButtonStyle(.plain)
+        .accessibleButtonHoverHighlight(cornerRadius: 6)
+        .help(item.rawValue)
     }
 
     private var historySidebar: some View {
@@ -390,11 +392,25 @@ struct DesktopWindow: View {
                 }
                 Spacer()
                 if model.workspace == .chat && historyTab == "conversation" {
-                    AccessibleButton("新しい会話") { model.createSession() } label: { Image(systemName: "square.and.pencil") }
-                        .accessibleButtonStyle(.plain).help("新しい会話").accessibilityLabel("新しい会話")
+                    AccessibleButton("新しい会話") { model.createSession() } label: {
+                        Image(systemName: "square.and.pencil")
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibleButtonStyle(.plain)
+                    .accessibleButtonHoverHighlight(cornerRadius: 6)
+                    .help("新しい会話")
+                    .accessibilityLabel("新しい会話")
                 } else if model.workspace == .agentHistory {
-                    AccessibleButton("エージェント履歴を更新") { model.refreshAgentTasks() } label: { Image(systemName: "arrow.clockwise") }
-                        .accessibleButtonStyle(.plain).help("エージェント履歴を更新").accessibilityLabel("エージェント履歴を更新")
+                    AccessibleButton("エージェント履歴を更新") { model.refreshAgentTasks() } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibleButtonStyle(.plain)
+                    .accessibleButtonHoverHighlight(cornerRadius: 6)
+                    .help("エージェント履歴を更新")
+                    .accessibilityLabel("エージェント履歴を更新")
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
@@ -554,6 +570,7 @@ struct DesktopWindow: View {
                 .contentShape(Rectangle())
         }
         .accessibleButtonStyle(.plain)
+        .accessibleButtonHoverHighlight(cornerRadius: 6)
         .help(title)
         .accessibilityLabel(title)
     }

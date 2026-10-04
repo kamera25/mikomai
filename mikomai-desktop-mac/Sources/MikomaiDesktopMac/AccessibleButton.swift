@@ -23,6 +23,8 @@ struct AccessibleButton<Label: View>: NSViewRepresentable {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibleButtonAppearance) private var appearance
     @Environment(\.accessibleButtonKeyEquivalent) private var keyEquivalent
+    @Environment(\.accessibleButtonHoverHighlight) private var hoverHighlight
+    @Environment(\.accessibleButtonHoverCornerRadius) private var hoverCornerRadius
 
     init(_ title: String, value: String = "", role: ButtonRole? = nil, toggleValue: Bool? = nil, accessibilityActions: [AccessibleControlAction] = [], onRename: (() -> Void)? = nil, fillsWidth: Bool = false, action: @escaping () -> Void,
          @ViewBuilder label: () -> Label) {
@@ -50,6 +52,8 @@ struct AccessibleButton<Label: View>: NSViewRepresentable {
         context.coordinator.action = action
         button.isEnabled = isEnabled
         button.appearanceKind = appearance
+        button.showsHoverHighlight = hoverHighlight
+        button.hoverCornerRadius = hoverCornerRadius
         button.onRename = onRename
         button.setAccessibilityCustomActions(accessibilityActions.map { item in
             NSAccessibilityCustomAction(name: item.title) { [weak button] in
@@ -112,6 +116,12 @@ private struct AccessibleButtonAppearanceKey: EnvironmentKey {
 private struct AccessibleButtonKeyEquivalentKey: EnvironmentKey {
     static let defaultValue = ""
 }
+private struct AccessibleButtonHoverHighlightKey: EnvironmentKey {
+    static let defaultValue = false
+}
+private struct AccessibleButtonHoverCornerRadiusKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 6
+}
 extension EnvironmentValues {
     var accessibleButtonKeyEquivalent: String {
         get { self[AccessibleButtonKeyEquivalentKey.self] }
@@ -120,6 +130,14 @@ extension EnvironmentValues {
     var accessibleButtonAppearance: AccessibleButtonAppearance {
         get { self[AccessibleButtonAppearanceKey.self] }
         set { self[AccessibleButtonAppearanceKey.self] = newValue }
+    }
+    var accessibleButtonHoverHighlight: Bool {
+        get { self[AccessibleButtonHoverHighlightKey.self] }
+        set { self[AccessibleButtonHoverHighlightKey.self] = newValue }
+    }
+    var accessibleButtonHoverCornerRadius: CGFloat {
+        get { self[AccessibleButtonHoverCornerRadiusKey.self] }
+        set { self[AccessibleButtonHoverCornerRadiusKey.self] = newValue }
     }
 }
 extension View {
@@ -132,6 +150,10 @@ extension View {
     func accessibleButtonStyle(_ appearance: AccessibleButtonAppearance) -> some View {
         environment(\.accessibleButtonAppearance, appearance)
     }
+    func accessibleButtonHoverHighlight(_ enabled: Bool = true, cornerRadius: CGFloat = 6) -> some View {
+        environment(\.accessibleButtonHoverHighlight, enabled)
+            .environment(\.accessibleButtonHoverCornerRadius, cornerRadius)
+    }
 }
 
 final class ButtonLabelHostingView: NSHostingView<AnyView> {
@@ -142,6 +164,30 @@ final class ButtonLabelHostingView: NSHostingView<AnyView> {
 final class KeyboardActionButton: NSButton {
     var onRename: (() -> Void)?
     var labelView: ButtonLabelHostingView?
+    var showsHoverHighlight = false {
+        didSet {
+            if showsHoverHighlight != oldValue {
+                updateTrackingAreas()
+                needsDisplay = true
+            }
+        }
+    }
+    var hoverCornerRadius: CGFloat = 6 {
+        didSet {
+            if hoverCornerRadius != oldValue {
+                needsDisplay = true
+            }
+        }
+    }
+    private(set) var isHovered = false {
+        didSet {
+            if isHovered != oldValue {
+                needsDisplay = true
+            }
+        }
+    }
+    private var trackingArea: NSTrackingArea?
+
     var appearanceKind = AccessibleButtonAppearance.standard {
         didSet {
             isBordered = appearanceKind != .plain
@@ -163,8 +209,49 @@ final class KeyboardActionButton: NSButton {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if window == nil {
+            isHovered = false
+        }
         KeyboardNavigation.schedule(in: window)
     }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+            self.trackingArea = nil
+        }
+        guard showsHoverHighlight else {
+            if isHovered { isHovered = false }
+            return
+        }
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect]
+        let area = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
+        addTrackingArea(area)
+        self.trackingArea = area
+
+        if let window, isEnabled {
+            let mouseLoc = window.mouseLocationOutsideOfEventStream
+            let locInView = convert(mouseLoc, from: nil)
+            let inside = bounds.contains(locInView)
+            if isHovered != inside {
+                isHovered = inside
+            }
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        guard showsHoverHighlight, isEnabled else { return }
+        isHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        if isHovered {
+            isHovered = false
+        }
+    }
+
     override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
         if result { scrollToVisible(bounds) }
@@ -184,8 +271,20 @@ final class KeyboardActionButton: NSButton {
         let inset: CGFloat = appearanceKind == .plain ? 0 : 8
         labelView?.frame = bounds.insetBy(dx: inset, dy: appearanceKind == .plain ? 0 : 4)
     }
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        if showsHoverHighlight && isHovered && isEnabled {
+            let highlightColor = isHighlighted
+                ? NSColor.textColor.withAlphaComponent(0.18)
+                : NSColor.textColor.withAlphaComponent(0.10)
+            highlightColor.setFill()
+            let path = NSBezierPath(roundedRect: bounds, xRadius: hoverCornerRadius, yRadius: hoverCornerRadius)
+            path.fill()
+        }
+    }
     override func drawFocusRingMask() {
-        NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill()
+        let radius = showsHoverHighlight ? hoverCornerRadius : 5
+        NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
     }
     override var focusRingMaskBounds: NSRect { bounds }
 
