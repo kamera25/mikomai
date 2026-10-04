@@ -3,10 +3,28 @@
 use std::collections::HashSet;
 
 pub fn needs_selected_references(goal: &str) -> bool {
-    // Only complete, recognized direct probes can skip document prefetch.
-    // Compound goals and unfamiliar phrasing retain references: a TCP mention
-    // alone does not prove that manuals are irrelevant to the rest of the task.
-    crate::dispatch::fast_route(goal).is_none()
+    if crate::dispatch::fast_route(goal).is_some()
+        || crate::dispatch::local_next_hop_shortcut(goal).is_some()
+        || crate::dispatch::legacy_shortcut(goal).is_some_and(|shortcut| shortcut.reply.is_some())
+        || crate::plotter::is_diagram_request(goal)
+    {
+        return false;
+    }
+    // General conversation has no reason to consult network manuals. Keep
+    // technical explanations, investigations and explicit document requests.
+    let lower = goal.to_ascii_lowercase();
+    if [
+        "ネットワーク", "ルータ", "スイッチ", "機器", "ポート", "疎通", "通信",
+        "接続", "設定", "経路", "障害", "ログ", "インターフェース", "アドレス",
+        "パケット", "ファイアウォール", "ゲートウェイ", "サーバ", "帯域",
+        "ホスト", "無線", "イーサネット", "セグメント", "プロトコル", "認証",
+        "資料", "マニュアル", "手順書", "ナレッジ", "仕様書",
+    ].iter().any(|term| lower.contains(term)) {
+        return true;
+    }
+    regex::Regex::new(
+        r"(?i)(?-u:\b)(?:show|telnet|lldp|stp|vrrp|ipsec|pppoe|qos|tcp|udp|ip|ipv[46]|ping|traceroute|vlan|lan|wan|ospf|bgp|rip|vrf|vpn|nat|acl|arp|dns|dhcp|ssh|snmp|http|https|ftp|tftp|mtu|mac|ethernet|interface|routing|route|network|router|switch|firewall|config(?:uration)?|manual|documentation|yamaha|cisco|juniper|arista|fortinet|fortigate|fitelnet|furukawa|f220|fx201|fx310|rtx\d+|nvr\d+|s[wr]x\d+)(?-u:\b)|(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
+    ).is_ok_and(|pattern| pattern.is_match(&lower))
 }
 
 /// Copies of the same document under different paths contribute one body.
@@ -46,6 +64,11 @@ mod tests {
             "NakaokuGW の22/tcpって空いてますか？",
             "ping 192.0.2.1",
             "自機のデフォルトルートを確認して",
+            "やっほー！",
+            "こんにちは。",
+            "今日はいい天気ですね",
+            "ありがとう",
+            "明日の予定を相談したい",
         ] {
             assert!(!needs_selected_references(goal), "{goal}");
         }
@@ -58,6 +81,10 @@ mod tests {
             "資料に沿って22/tcpを調べて",
             "TCPの仕組みを教えて",
             "ルータの設定を変更して",
+            "やっほー、F220のVLAN設定方法を教えて",
+            "F220について教えて",
+            "OSPFについて教えて",
+            "マニュアルを検索して",
         ] {
             assert!(needs_selected_references(goal), "{goal}");
         }

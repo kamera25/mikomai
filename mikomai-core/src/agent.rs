@@ -398,7 +398,8 @@ impl AgentPlanner<'_> {
             let mode =
                 crate::dispatch::select_dispatch_mode_for_devices(&task.task.goal, &self.devices);
             if mode == DispatchMode::Worker && task.evidence.is_empty()
-                && !self.reference_material.trim().is_empty() {
+                && (!self.reference_material.trim().is_empty()
+                    || !crate::reference_context::needs_selected_references(&task.task.goal)) {
                 let evidence = self.worker.complete(&task.task.goal).await?;
                 return Ok(PlanDecision::Complete { brief: evidence });
             }
@@ -897,6 +898,28 @@ mod tests {
         assert!(matches!(result, Ok(PlanDecision::Observe { target:Some(target), .. }) if target == "R1"));
         assert_eq!(prompts.len(),2);
         assert_eq!(approvals,0);
+    }
+
+    #[test]
+    fn general_conversation_without_references_answers_without_tool_planning() {
+        let worker = Model {
+            replies: Mutex::new(vec![Ok("どういたしまして！".into())].into()),
+            prompts: Mutex::new(Vec::new()),
+        };
+        let planner_model = Model {
+            replies: Mutex::new(Vec::new().into()), prompts: Mutex::new(Vec::new()),
+        };
+        let approval = Approval(Mutex::new(0));
+        let planner = AgentPlanner {
+            inventory: &[], devices: &[], tools: &[], history: "", attachments: "",
+            reference_material: "", inference: &planner_model, worker: &worker, approval: &approval,
+        };
+        let task = TaskSnapshot::new("ありがとう");
+        let result = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+        assert!(matches!(result, PlanDecision::Complete { brief } if brief == "どういたしまして！"));
+        assert!(planner_model.prompts.lock().unwrap().is_empty());
+        assert_eq!(worker.prompts.lock().unwrap().len(), 1);
+        assert_eq!(*approval.0.lock().unwrap(), 0);
     }
 
     #[test]

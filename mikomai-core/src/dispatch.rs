@@ -426,8 +426,12 @@ pub fn legacy_shortcut(goal: &str) -> Option<LegacyShortcut> {
 }
 
 fn is_greeting(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
+    let lower = message.trim().trim_end_matches(['!', '！', '?', '？', '。', '.', '〜', '～']).trim().to_ascii_lowercase();
     [
+        "やっほー",
+        "やっほ",
+        "やほー",
+        "やほ",
         "こんにちは",
         "こんにちわ",
         "はじめまして",

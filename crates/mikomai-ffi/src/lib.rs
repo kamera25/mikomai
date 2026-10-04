@@ -2745,7 +2745,7 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
         // Plotter uses supplied topology, history and attachments, rather than
         // configuration manuals. Do not require downloading an embedding model to draw it.
         let fetch_references = !mikomai_core::plotter::is_diagram_request(&goal)
-            && (!attachments.is_empty() || mikomai_core::reference_context::needs_selected_references(&goal));
+            && mikomai_core::reference_context::needs_selected_references(&goal);
         let reference_start = std::time::Instant::now();
         let reference_material = if fetch_references && documents.is_dir() {
             chat_with_paths(&goal, documents.clone(), knowledge.clone()).unwrap_or_default()
@@ -2753,11 +2753,11 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
             String::new()
         };
         debug_trace::emit("reference_context", serde_json::json!({
-            "policy": if fetch_references { "deduplicate" } else { "direct_probe_without_references" },
+            "policy": if fetch_references { "deduplicate" } else { "without_references" },
             "prefetch":fetch_references, "characters":reference_material.chars().count(),
             "elapsed_ms":reference_start.elapsed().as_millis(),
         }));
-        if reference_material.trim().is_empty()
+        if fetch_references && reference_material.trim().is_empty()
             && mikomai_core::dispatch::select_dispatch_mode(&goal) == DispatchMode::Worker {
             debug_trace::emit("worker_fallback", serde_json::json!({
                 "from":"worker", "to":"agent", "reason":"no_similar_knowledge", "query":goal,
@@ -2987,7 +2987,20 @@ pub unsafe extern "C" fn mikomai_assistant_chat_streaming(
                 .map_err(|e| format!("attachment text is not valid UTF-8: {e}"))?
         };
         let attachments = prepare_attachments(question, attachments)?;
-        let evidence = if docs.exists() && docs.is_dir() {
+        if attachments.is_empty() {
+            if let Some(reply) = mikomai_core::dispatch::legacy_shortcut(question).and_then(|s| s.reply) {
+                if let Some(cb) = callback {
+                    let text = CString::new(reply.clone()).map_err(|e| e.to_string())?;
+                    cb(text.as_ptr(), 0, context);
+                    let done = CString::new("").unwrap();
+                    cb(done.as_ptr(), 1, context);
+                }
+                return Ok(reply);
+            }
+        }
+        let fetch_references = mikomai_core::reference_context::needs_selected_references(question);
+        let reference_start = std::time::Instant::now();
+        let evidence = if fetch_references && docs.is_dir() {
             chat_with_paths(question, docs, index).unwrap_or_else(|err| {
                 eprintln!("RAG lookup failed: {err}");
                 String::new()
@@ -2995,6 +3008,11 @@ pub unsafe extern "C" fn mikomai_assistant_chat_streaming(
         } else {
             String::new()
         };
+        debug_trace::emit("reference_context", serde_json::json!({
+            "policy": if fetch_references { "deduplicate" } else { "without_references" },
+            "prefetch": fetch_references, "characters": evidence.chars().count(),
+            "elapsed_ms": reference_start.elapsed().as_millis(),
+        }));
         let response = mikomai_core::response::ResponseContext {
             question,
             history,
@@ -4019,6 +4037,9 @@ mod tests {
     #[test]
     fn agent_greetings_preserve_legacy_reply_without_progress_or_model() {
         for greeting in [
+            "やっほー",
+            "やっほー！",
+            "こんにちは！",
             "こんにちは",
             "おはようございます",
             "こんばんは",
@@ -4060,33 +4081,36 @@ mod tests {
 
     #[test]
     fn worker_greeting_uses_the_same_legacy_reply_without_model_or_rag() {
-        let input = CString::new("こんにちは").unwrap();
-        let empty = CString::new("").unwrap();
-        let mut events: Vec<(String, i32)> = Vec::new();
-        let response = unsafe {
-            super::mikomai_assistant_chat_streaming(
-                input.as_ptr(),
-                empty.as_ptr(),
-                empty.as_ptr(),
-                empty.as_ptr(),
-                empty.as_ptr(),
-                Some(capture_chat_chunk),
-                &mut events as *mut _ as *mut _,
-            )
-        };
-        assert_eq!(response.status, 0);
-        let expected = mikomai_core::dispatch::legacy_shortcut("こんにちは")
-            .unwrap()
-            .reply
-            .unwrap();
-        assert_eq!(
-            unsafe { CStr::from_ptr(response.message) }
-                .to_str()
-                .unwrap(),
-            expected
-        );
-        assert_eq!(events, vec![(expected, 0), (String::new(), 1)]);
-        unsafe { mikomai_result_free(response) };
+        for greeting in ["こんにちは", "こんにちは！", "やっほー", "やっほー！"] {
+            let input = CString::new(greeting).unwrap();
+            let docs = CString::new("nw-docs").unwrap();
+            let empty = CString::new("").unwrap();
+            let mut events: Vec<(String, i32)> = Vec::new();
+            let response = unsafe {
+                super::mikomai_assistant_chat_streaming(
+                    input.as_ptr(),
+                    empty.as_ptr(),
+                    docs.as_ptr(),
+                    empty.as_ptr(),
+                    empty.as_ptr(),
+                    Some(capture_chat_chunk),
+                    &mut events as *mut _ as *mut _,
+                )
+            };
+            assert_eq!(response.status, 0);
+            let expected = mikomai_core::dispatch::legacy_shortcut(greeting)
+                .unwrap()
+                .reply
+                .unwrap();
+            assert_eq!(
+                unsafe { CStr::from_ptr(response.message) }
+                    .to_str()
+                    .unwrap(),
+                expected
+            );
+            assert_eq!(events, vec![(expected, 0), (String::new(), 1)]);
+            unsafe { mikomai_result_free(response) };
+        }
     }
 
     use mikomai_core::{port::PlanDecision, TaskSnapshot};

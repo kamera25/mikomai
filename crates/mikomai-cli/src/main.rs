@@ -124,6 +124,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
     let local_route = next_hop.clone().or_else(|| mikomai_core::dispatch::local_route_shortcut(&goal));
     let local_mac = mikomai_core::dispatch::local_arp_mac_target(&goal);
     let interface_check = mikomai_core::network::interface_check::request(&goal);
+    let greeting_reply = mikomai_core::dispatch::legacy_shortcut(&goal).and_then(|s| s.reply);
     let model_path = configured_model_path();
     let knowledge = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
         .map(PathBuf::from)
@@ -134,11 +135,15 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         serde_json::json!({
             "query": goal, "history": "", "attachments": "", "devices_json": "[]",
             "mode": if interface_check.is_some() { "agent" } else if next_hop.is_some() { "agent" } else if local_route.is_some() || port_check.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
-            "backend": if interface_check.is_some() { "native_device_transport_unavailable" } else if port_check.is_some() { "local_tcp" } else if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
+            "backend": if greeting_reply.is_some() { "deterministic_reply" } else if interface_check.is_some() { "native_device_transport_unavailable" } else if port_check.is_some() { "local_tcp" } else if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
         }),
     );
     let result = (|| {
-        let answer = if interface_check.is_some() {
+        let answer = if let Some(reply) = greeting_reply {
+            trace.emit("deterministic_reply", serde_json::json!({"reason":"greeting", "rag":false}));
+            trace.stream(&reply, true);
+            reply
+        } else if interface_check.is_some() {
             // Standalone CLI has no native Keychain/device callback. Do not
             // manufacture a live observation using the text-only Worker.
             trace.emit("agent_event", serde_json::json!({"event_type":"awaiting_input","reason":"native_device_transport_required","intent":"interface_up","request":interface_check}));
@@ -221,6 +226,11 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
                     &knowledge.to_string_lossy(),
                 )?
             }
+        } else if !mikomai_core::reference_context::needs_selected_references(&goal) {
+            trace.emit("reference_context", serde_json::json!({"prefetch":false,"characters":0,"policy":"without_references"}));
+            let answer = "会話を続けるには、設定画面で言語モデルを選択してください。".to_string();
+            trace.stream(&answer, true);
+            answer
         } else {
             // Keep a deterministic, explicitly non-generative fallback for headless
             // installations without a local model configured.
