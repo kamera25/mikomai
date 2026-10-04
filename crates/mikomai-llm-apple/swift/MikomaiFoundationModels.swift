@@ -52,10 +52,61 @@ public func sessionCreate(
     }
 }
 
+// Supported portable subset: objects, arrays, integers and string enums.
+// Index ranges guide generation; relationships and completeness remain Core validation.
+// Array count guides are intentionally omitted: zero minima fail on this AFM runtime.
+@available(macOS 26.0, *)
+private func dynamicSchema(_ value: [String: Any], name: String) throws -> DynamicGenerationSchema {
+    func invalid(_ message: String) -> NSError {
+        NSError(domain: "Mikomai.StructuredSchema", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+    if let choices = value["anyOf"] as? [[String: Any]], !choices.isEmpty {
+        return DynamicGenerationSchema(name: name, anyOf: try choices.enumerated().map { idx, choice in
+            try dynamicSchema(choice, name: name + "_choice" + String(idx))
+        })
+    }
+    switch value["type"] as? String {
+    case "object":
+        guard let properties = value["properties"] as? [String: [String: Any]] else { throw invalid("Object requires properties") }
+        let required = Set(value["required"] as? [String] ?? [])
+        let fields = try properties.keys.sorted().map { key in
+            DynamicGenerationSchema.Property(name: key, schema: try dynamicSchema(properties[key]!, name: name + "_" + key), isOptional: !required.contains(key))
+        }
+        return DynamicGenerationSchema(name: name, properties: fields)
+    case "array":
+        guard let items = value["items"] as? [String: Any] else { throw invalid("Array requires items") }
+        return DynamicGenerationSchema(arrayOf: try dynamicSchema(items, name: name + "_item"))
+    case "null":
+        guard #available(macOS 26.4, *) else { throw invalid("Nullable schemas require macOS 26.4 or later") }
+        return .null
+    case "integer":
+        if let lower = value["minimum"] as? Int, let upper = value["maximum"] as? Int {
+            guard lower <= upper else { throw invalid("Invalid integer range") }
+            return DynamicGenerationSchema(type: Int.self, guides: [.range(lower...upper)])
+        }
+        return DynamicGenerationSchema(type: Int.self)
+    case "string":
+        guard let choices = value["enum"] as? [String], !choices.isEmpty else { throw invalid("String requires nonempty enum") }
+        return DynamicGenerationSchema(name: name, anyOf: choices)
+    default:
+        throw invalid("Unsupported structured schema type")
+    }
+}
+
 @_cdecl("mikomai_fm_session_respond")
 public func sessionRespond(
     _ handle: UnsafeMutableRawPointer?,
     _ prompt: UnsafePointer<CChar>?,
+    _ error: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+) -> UnsafeMutablePointer<CChar>? {
+    sessionRespondStructured(handle, prompt, nil, error)
+}
+
+@_cdecl("mikomai_fm_session_respond_structured")
+public func sessionRespondStructured(
+    _ handle: UnsafeMutableRawPointer?,
+    _ prompt: UnsafePointer<CChar>?,
+    _ schema: UnsafePointer<CChar>?,
     _ error: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> UnsafeMutablePointer<CChar>? {
     error?.pointee = nil
@@ -64,12 +115,34 @@ public func sessionRespond(
         setError(error, "Invalid session, prompt UTF-8, or unsupported macOS version")
         return nil
     }
+    let generationSchema: GenerationSchema?
+    do {
+        if let schema {
+            guard let text = String(validatingCString: schema),
+                  let value = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else {
+                setError(error, "Invalid structured schema JSON or UTF-8")
+                return nil
+            }
+            generationSchema = try GenerationSchema(root: dynamicSchema(value, name: "MikomaiResult"), dependencies: [])
+        } else {
+            generationSchema = nil
+        }
+    } catch let failure {
+        setError(error, "Invalid structured schema: \(failure)")
+        return nil
+    }
     let bridge = Unmanaged<BridgeSession>.fromOpaque(handle).takeUnretainedValue()
     let completion = Completion()
     Task.detached {
         do {
-            let response = try await bridge.session.respond(to: text)
-            completion.result = .success(response.content)
+            if let generationSchema {
+                let response = try await bridge.session.respond(to: text, schema: generationSchema,
+                    options: GenerationOptions(temperature: 0, maximumResponseTokens: 1024))
+                completion.result = .success(response.content.jsonString)
+            } else {
+                let response = try await bridge.session.respond(to: text)
+                completion.result = .success(response.content)
+            }
         } catch {
             completion.result = .failure(error)
         }

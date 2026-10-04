@@ -58,6 +58,20 @@ pub fn decision(task: &TaskSnapshot, inventory: &[RegisteredDevice]) -> Option<P
     })
 }
 
+/// Complete a narrowly scoped natural-language interface observation only after
+/// the normal planner has obtained the matching Graph-backed canonical result.
+/// No initial Observe shortcut: tool/target/args are still chosen by the LLM.
+pub fn observed_completion(task: &TaskSnapshot, inventory: &[RegisteredDevice]) -> Option<PlanDecision> {
+    let re = Regex::new(r#"(?i)^\s*(.+?)\s*で\s*([a-z][a-z0-9/_.:-]*[0-9][a-z0-9/_.:-]*)\s*の\s*(?:リンク状態|インターフェース状態)\s*を\s*(?:観測|確認)(?:して(?:ください)?)?\s*[。.!！]?\s*(?:結果は「upです」「downです」「確認不能」のいずれかで報告してください[。.!！]?)?\s*$"#).ok()?;
+    let captures = re.captures(&task.task.goal)?;
+    let mut check = task.clone();
+    check.task.goal = format!("{}の{}がupしているか確認して", &captures[1], &captures[2]);
+    match decision(&check, inventory) {
+        Some(completed @ PlanDecision::Complete { .. }) => Some(completed),
+        _ => None,
+    }
+}
+
 pub fn answer(device: &str, interface: &str, raw: &str) -> String {
     let result = serde_json::from_str::<Value>(raw)
         .ok()
@@ -88,6 +102,24 @@ pub fn answer(device: &str, interface: &str, raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn natural_goal_completes_only_after_matching_observation_and_not_compound_goal() {
+        let inventory=vec![RegisteredDevice {id:None,hostname:"gw".into(),ip:None,device_type:None}];
+        let mut task=TaskSnapshot::new("gwでLAN2のリンク状態を観測してください。結果は「upです」「downです」「確認不能」のいずれかで報告してください。");
+        assert!(request(&task.task.goal).is_none());
+        assert!(decision(&task,&inventory).is_none());
+        assert!(observed_completion(&task,&inventory).is_none());
+        let table=json!({"version":"1.0","metadata":{"source_device":"gw","os_type":"generic","generated_at":chrono::Utc::now().to_rfc3339()},"interfaces":[{"name":"LAN2","status":"up","ipv4_addresses":[],"prefix_len":null}]});
+        let mut evidence=crate::Evidence::from_tool(table.to_string(),Some("gw".into()),Some("get_state".into()));
+        evidence.source.request=Some(json!({"resource":"interfaces","interface":"LAN2","refresh":true}).to_string());
+        evidence.source.success=Some(true); task.evidence.push(evidence);
+        assert!(matches!(observed_completion(&task,&inventory),Some(PlanDecision::Complete {brief}) if brief.contains("upです")));
+        task.evidence[0].source.request=Some(json!({"resource":"interfaces","interface":"LAN1","refresh":true}).to_string());
+        assert!(observed_completion(&task,&inventory).is_none());
+        task.task.goal.push_str("その後pingしてください");
+        assert!(observed_completion(&task,&inventory).is_none());
+    }
+
     #[test]
     fn single_intent_and_no_duplicate_execution() {
         let inventory = vec![RegisteredDevice {

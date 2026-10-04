@@ -17,6 +17,12 @@ import MikomaiFFI
         }
         let credentialPersistence = ConnectionCredentialPersistence(store: KeychainCredentialAdapter())
         let prompt = ProcessInfo.processInfo.environment["MIKOMAI_INTERFACE_CHECK_PROMPT"] ?? "\(target)の\(interface)がupしているか確認して"
+        if let backend = ProcessInfo.processInfo.environment["MIKOMAI_INTERFACE_CHECK_BACKEND"] {
+            let selected = backend.withCString { mikomai_model_select_backend($0) }
+            let status = selected.status
+            mikomai_result_free(selected)
+            precondition(status == 0, "backend selection failed")
+        }
         if let model = ProcessInfo.processInfo.environment["MIKOMAI_INTERFACE_CHECK_MODEL"] {
             let loaded = model.withCString { mikomai_model_load($0) }
             let status = loaded.status

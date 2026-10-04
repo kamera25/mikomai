@@ -33,6 +33,8 @@ impl PlannerDecision {
                 value = inner.clone();
             }
         }
+        let top_device = value.get("device").and_then(serde_json::Value::as_str).map(str::to_owned);
+        let top_resource = value.get("resource").and_then(serde_json::Value::as_str).map(str::to_owned);
         let mut decision: Self = serde_json::from_value(value)
             .map_err(|error| format!("invalid planner decision: {error}"))?;
         if decision.objective.trim().is_empty() {
@@ -48,9 +50,29 @@ impl PlannerDecision {
         // Recover these known tools; the normal allow-list still validates them.
         if matches!(decision.action, ActionType::Observe | ActionType::Verify) {
             let nested = decision.parameters.get("tool").and_then(serde_json::Value::as_str);
-            if decision.tool.is_none() && matches!(nested, Some("self_network_test_connection" | "self_network_test_net_connection" | "self_network_ping" | "self_network_traceroute")) {
+            if decision.tool.is_none() && matches!(nested, Some("self_network_test_connection" | "self_network_test_net_connection" | "self_network_ping" | "self_network_traceroute" | "get_state")) {
                 decision.tool = nested.map(str::to_owned);
                 decision.parameters.as_object_mut().unwrap().remove("tool");
+            }
+            if decision.tool.as_deref() == Some("get_state") && decision.target.is_none() && decision.parameters.get("device").is_none() {
+                if let Some(device) = top_device {
+                    if decision.parameters.is_null() {decision.parameters=serde_json::json!({});}
+                    decision.parameters["device"]=device.into();
+                }
+            }
+            if decision.tool.as_deref() == Some("get_state") && decision.parameters.get("resource").is_none() {
+                if let Some(resource) = top_resource {
+                    if ["arp","routes","interfaces","lldp","mac_table","bgp","ospf"].contains(&resource.as_str()) {
+                        if decision.parameters.is_null() {decision.parameters=serde_json::json!({});}
+                        decision.parameters["resource"]=resource.into();
+                    }
+                }
+            }
+            if decision.tool.as_deref() == Some("get_state") && decision.target.is_none() {
+                if let Some(target) = decision.parameters["target"].as_str().map(str::to_owned) {
+                    decision.target = Some(target);
+                    decision.parameters.as_object_mut().unwrap().remove("target");
+                }
             }
             if matches!(decision.tool.as_deref(), Some("self_network_ping" | "self_network_traceroute")) && decision.parameters.get("host").is_none() {
                 let host = decision.parameters.get("device").and_then(serde_json::Value::as_str)
@@ -90,7 +112,10 @@ impl PlannerDecision {
                 return Err("TCP port check requires a host".into());
             }
         }
-        if self.tool.as_deref() == Some("get_state") && self.parameters["resource"] == "interfaces"
+        if matches!(self.action, ActionType::Observe | ActionType::Verify) && self.tool.as_deref() == Some("get_state") && self.parameters["resource"].as_str().is_none() {
+            return Err("state observation requires a resource".into());
+        }
+        if matches!(self.action, ActionType::Observe | ActionType::Verify) && self.tool.as_deref() == Some("get_state") && self.parameters["resource"] == "interfaces"
             && self.target.as_deref().or_else(|| self.parameters["device"].as_str()).is_none_or(|target| target.trim().is_empty()) {
             return Err("interface state requires a target device".into());
         }
@@ -320,6 +345,22 @@ mod tests {
             .validate(&["get_state".into()])
             .unwrap_err()
             .contains("unknown tool"));
+    }
+
+    #[test]
+    fn nested_read_only_state_tool_and_target_are_normalized_then_validated() {
+        let d = PlannerDecision::parse(r#"{"action_type":"OBSERVE","objective":"link state","resource":"interfaces","parameters":{"tool":"get_state","target":"gw","interface":"LAN2","refresh":true}}"#).unwrap();
+        assert_eq!(d.tool.as_deref(),Some("get_state"));
+        assert_eq!(d.target.as_deref(),Some("gw"));
+        assert_eq!(d.parameters["resource"],"interfaces");
+        assert!(d.parameters.get("tool").is_none() && d.parameters.get("target").is_none());
+        assert!(d.validate(&["get_state".into()]).is_ok());
+        assert!(d.validate(&["self_network_ping".into()]).is_err());
+        let d=PlannerDecision::parse(r#"{"action_type":"OBSERVE","objective":"link state","device":"gw","resource":"interfaces","tool":"get_state","parameters":{"interface":"LAN2"}}"#).unwrap();
+        assert_eq!(d.parameters["device"],"gw");
+        assert!(d.validate(&["get_state".into()]).is_ok());
+        let finished=PlannerDecision::parse(r#"{"action_type":"FINISH","objective":"observed link","tool":"get_state","parameters":{"resource":"interfaces"},"final_answer":"upです"}"#).unwrap();
+        assert!(finished.validate(&["get_state".into()]).is_ok());
     }
 
     #[test]

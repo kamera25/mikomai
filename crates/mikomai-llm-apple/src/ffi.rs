@@ -9,9 +9,14 @@ extern "C" {
         instructions: *const c_char,
         error: *mut *mut c_char,
     ) -> *mut c_void;
+    #[cfg(test)]
     fn mikomai_fm_session_respond(
         session: *mut c_void,
         prompt: *const c_char,
+        error: *mut *mut c_char,
+    ) -> *mut c_char;
+    fn mikomai_fm_session_respond_structured(
+        session: *mut c_void, prompt: *const c_char, schema: *const c_char,
         error: *mut *mut c_char,
     ) -> *mut c_char;
     fn mikomai_fm_session_destroy(session: *mut c_void);
@@ -62,12 +67,13 @@ impl Session {
         })
     }
 
-    pub(crate) fn respond(&mut self, prompt: &str) -> Result<String, String> {
+    pub(crate) fn respond_structured(&mut self, prompt: &str, schema: Option<&str>) -> Result<String, String> {
         let prompt = input(prompt)?;
+        let schema = schema.map(input).transpose()?;
         let mut error = ptr::null_mut();
         // SAFETY: handle is live, &mut self serializes calls; both inputs remain valid.
         let response =
-            unsafe { mikomai_fm_session_respond(self.0.as_ptr(), prompt.as_ptr(), &mut error) };
+            unsafe { mikomai_fm_session_respond_structured(self.0.as_ptr(), prompt.as_ptr(), schema.as_ref().map_or(ptr::null(), |s|s.as_ptr()), &mut error) };
         let response = NativeString::take(response);
         if let Some(error) = NativeString::take(error) {
             return Err(error.to_rust()?);

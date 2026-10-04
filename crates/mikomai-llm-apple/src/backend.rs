@@ -23,6 +23,7 @@ pub fn reset_cancellation() {
 type Reply = mpsc::Sender<Result<String, String>>;
 struct Request {
     prompt: String,
+    schema: Option<String>,
     reply: Reply,
 }
 struct Worker {
@@ -52,7 +53,7 @@ impl Worker {
                     let result = if CANCELLED.load(Ordering::Relaxed) {
                         Err("生成を停止しました。".into())
                     } else {
-                        let result = session.respond(&request.prompt);
+                        let result = session.respond_structured(&request.prompt, request.schema.as_deref());
                         if CANCELLED.load(Ordering::Relaxed) {
                             Err("生成を停止しました。".into())
                         } else {
@@ -74,13 +75,14 @@ impl Worker {
         Ok(worker)
     }
 
-    fn respond(&self, prompt: &str) -> Result<String, String> {
+    fn respond(&self, prompt: &str, schema: Option<&str>) -> Result<String, String> {
         let (reply, receiver) = mpsc::channel();
         self.sender
             .as_ref()
             .expect("live worker")
             .send(Request {
                 prompt: prompt.into(),
+                schema: schema.map(str::to_owned),
                 reply,
             })
             .map_err(|_| "Apple Foundation Models worker stopped".to_owned())?;
@@ -123,7 +125,13 @@ impl AppleFoundationModel {
     }
 
     pub fn respond(&self, prompt: &str) -> Result<String, String> {
-        self.worker.as_ref().map_err(Clone::clone)?.respond(prompt)
+        self.worker.as_ref().map_err(Clone::clone)?.respond(prompt, None)
+    }
+
+    /// Generate typed JSON through Foundation Models guided generation.
+    /// A fresh backend/session should be used for each independent selection.
+    pub fn respond_structured(&self, prompt: &str, schema: &str) -> Result<String, String> {
+        self.worker.as_ref().map_err(Clone::clone)?.respond(prompt, Some(schema))
     }
 
     /// Keep existing callers compiling; Foundation Models enforces the actual
@@ -155,6 +163,7 @@ impl InferencePort for AppleFoundationModel {
     }
     fn capabilities(&self) -> InferenceCapabilities {
         InferenceCapabilities {
+            structured_output: true,
             token_limits: TokenLimits {
                 context_window: Some(CONTEXT_WINDOW),
                 max_output_tokens: None,
