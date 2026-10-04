@@ -382,6 +382,19 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         }))
     }
 
+    /// Latest observation for this explicit scope. Raw-only failed
+    /// canonicalization must never resurrect an older successful state.
+    pub async fn latest_interface_observation(&self, device: &str, scope: &str) -> Result<Option<mikomai_core::network::interface_state::InterfaceObservation>,String> {
+        let response = self.db.query("SELECT raw, canonical, collected_at FROM observation WHERE device_name = $device AND kind = 'interfaces' AND source_id = $source ORDER BY collected_at DESC LIMIT 1;")
+            .bind(("device",device.to_owned())).bind(("source",format!("get_state.interfaces:{scope}"))).await.map_err(|e|e.to_string())?;
+        let mut response = response.check().map_err(|e|e.to_string())?;
+        let records:Vec<Value> = response.take(0).map_err(|e|e.to_string())?;
+        let Some(row)=records.first() else {return Ok(None);};
+        let collected_at=DateTime::parse_from_rfc3339(row["collected_at"].as_str().ok_or("観測時刻がありません")?).map_err(|e|e.to_string())?.with_timezone(&Utc);
+        Ok(Some(mikomai_core::network::interface_state::InterfaceObservation {raw:row["raw"].as_str().unwrap_or_default().into(),
+            canonical:row.get("canonical").filter(|v|!v.is_null()).cloned(),collected_at}))
+    }
+
     async fn store_normalized(
         &self,
         device: &str,

@@ -5,6 +5,7 @@ pub mod device;
 pub mod e5_embedder;
 pub mod headless;
 pub mod inference;
+pub mod interface_state;
 pub mod knowledge;
 pub mod memory;
 pub mod persistence;

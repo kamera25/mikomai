@@ -9,7 +9,7 @@ export MIKOMAI_EXECUTION_CHECK_DIR="$CHECK_DIR"
 # Build the real application sources. The harness uses isolated preferences,
 # temporary settings/audit/graph paths, no model, and only 127.0.0.1 probes.
 sed '/^@main$/d' "$APP/Sources/MikomaiDesktopMac/MikomaiDesktopMac.swift" > "$CHECK_DIR/full.swift"
-cat "$APP/Tests/ExecutionQueueChecks/ExecutionQueueChecks.swift" >> "$CHECK_DIR/full.swift"
+cat "${MIKOMAI_EXECUTION_CHECK_SOURCE:-$APP/Tests/ExecutionQueueChecks/ExecutionQueueChecks.swift}" >> "$CHECK_DIR/full.swift"
 set -- "$CHECK_DIR/full.swift"
 for source in "$APP"/Sources/MikomaiDesktopMac/*.swift; do
     case "$source" in */MikomaiDesktopMac.swift) ;; *) set -- "$@" "$source" ;; esac

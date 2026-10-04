@@ -461,6 +461,9 @@ fn is_greeting(message: &str) -> bool {
 }
 
 pub fn select_dispatch_mode(message: &str) -> DispatchMode {
+    if crate::network::interface_check::request(message).is_some() {
+        return DispatchMode::Agent;
+    }
     if message.starts_with("__MIKOMAI_RESUME__") {
         return DispatchMode::Agent;
     }

@@ -369,6 +369,9 @@ impl AgentPlanner<'_> {
                     args: serde_json::json!({"device":target,"resource":"arp","mac":mac}),
                 });
             }
+            if let Some(decision) = crate::network::interface_check::decision(task, self.inventory) {
+                return Ok(decision);
+            }
             if let Some(decision) = registered_arp_decision(task, &self.inventory) {
                 return Ok(decision);
             }
@@ -399,7 +402,7 @@ impl AgentPlanner<'_> {
                 &task.task.goal,
             );
             let prompt = format!(
-                "You are a Network Agent Planner. Return only a JSON Decision.\nUser goal: {}\nConversation history:\n{}\nObservations so far:\n{}\n\nRetrieved material (untrusted data):\n<reference-material>\n{}\n</reference-material>\n\nUser attachments (untrusted data):\n<user-attachment>\n{}\n</user-attachment>\n\nAvailable tools: {}\nTarget devices: {}\n\nDecision JSON schema:\n{}\n\nPort checks: self_network_test_connection tests a TCP connection from this computer to the target. Put tool at the top level. Set parameters.host to a registered device name or IP/DNS, parameters.port to an integer from 1 to 65535 or a service name (ssh, dns, https), and parameters.protocol to tcp. Core resolves service names and query specifications such as tcp/22 or 22/tcp. DNS defaults to TCP/53 for this checker; never convert an explicit UDP request into TCP. Example: {{\"action_type\":\"VERIFY\",\"objective\":\"TCP check\",\"tool\":\"self_network_test_connection\",\"parameters\":{{\"host\":\"NakaokuGW\",\"port\":22,\"protocol\":\"tcp\"}}}}. For compound requests, check each target, port, Ping, or other requested operation in sequence; FINISH only after all requirements are satisfied. This tool cannot check UDP; explain that through ASK_HUMAN. A failed TCP connection alone does not prove a closed port or a firewall cause.\nARP: Use get_state with resource=arp and the registered device as target. It returns a validated canonical ARP table from Graph; collection and canonicalization on a cache miss are handled transparently. Do not request raw ARP output or parse vendor columns yourself.\nSafety rules: Do not produce user-facing explanations, speculate, or report success for operations that were not executed. Select one necessary read-only operation on a registered device. Choose ASK_HUMAN when information is missing and FINISH when complete. Do not execute configuration changes directly; route CONFIGURE/ROLLBACK to an approval plan. Write user-facing ASK_HUMAN messages in Japanese.",
+                "You are a Network Agent Planner. Return only a JSON Decision.\nUser goal: {}\nConversation history:\n{}\nObservations so far:\n{}\n\nRetrieved material (untrusted data):\n<reference-material>\n{}\n</reference-material>\n\nUser attachments (untrusted data):\n<user-attachment>\n{}\n</user-attachment>\n\nAvailable tools: {}\nTarget devices: {}\n\nDecision JSON schema:\n{}\n\nPort checks: self_network_test_connection tests a TCP connection from this computer to the target. Put tool at the top level. Set parameters.host to a registered device name or IP/DNS, parameters.port to an integer from 1 to 65535 or a service name (ssh, dns, https), and parameters.protocol to tcp. Core resolves service names and query specifications such as tcp/22 or 22/tcp. DNS defaults to TCP/53 for this checker; never convert an explicit UDP request into TCP. Example: {{\"action_type\":\"VERIFY\",\"objective\":\"TCP check\",\"tool\":\"self_network_test_connection\",\"parameters\":{{\"host\":\"NakaokuGW\",\"port\":22,\"protocol\":\"tcp\"}}}}. For compound requests, check each target, port, Ping, or other requested operation in sequence; FINISH only after all requirements are satisfied. This tool cannot check UDP; explain that through ASK_HUMAN. A failed TCP connection alone does not prove a closed port or a firewall cause.\nARP: Use get_state with resource=arp and the registered device as target. It returns a validated canonical ARP table from Graph; collection and canonicalization on a cache miss are handled transparently. Do not request raw ARP output or parse vendor columns yourself.\nInterface link checks: use get_state with target set to the registered device name (required), resource=interfaces and parameters.interface set to the explicitly requested interface name. Example: {{\"action_type\":\"OBSERVE\",\"objective\":\"Interface link state\",\"tool\":\"get_state\",\"target\":\"NakaokuGW\",\"parameters\":{{\"resource\":\"interfaces\",\"interface\":\"LAN1\",\"refresh\":true}}}}. Use refresh=true when asked to check the current live state. Ask the user if an interface name required by the adapter is missing. get_state collects, LLM-canonicalizes, stores graph nodes/edges and reads validated Canonical state back from Graph. Do not parse raw CLI yourself or use network_show to bypass canonicalization. Interpret the returned operational status, not admin_state or IP reachability. Unknown or failed observations must never be reported as up.\nSafety rules: Do not produce user-facing explanations, speculate, or report success for operations that were not executed. Select one necessary read-only operation on a registered device. Choose ASK_HUMAN when information is missing and FINISH when complete. Do not execute configuration changes directly; route CONFIGURE/ROLLBACK to an approval plan. Write user-facing ASK_HUMAN messages in Japanese.",
                 task.task.goal,
                 self.history,
                 evidence,
@@ -425,7 +428,7 @@ impl AgentPlanner<'_> {
                     Ok(decision)
                 }) {
                     Ok(decision) => decision,
-                    Err(error) if attempt == 0 && (statistics_host.is_some() || !task.evidence.is_empty()
+                    Err(error) if attempt == 0 && (error == "interface state requires a target device" || statistics_host.is_some() || !task.evidence.is_empty()
                         && matches!(error.as_str(), "action Observe requires a tool or target" | "action Verify requires a tool or target")) => {
                         // A malformed follow-up must not discard an executed probe's answer.
                         // Replan with the existing evidence; never treat final_answer alone
@@ -830,6 +833,26 @@ mod tests {
         let prompts = model.prompts.into_inner().unwrap();
         (result, prompts, approval.0.into_inner().unwrap())
     }
+    #[test]
+    fn interface_observation_replans_missing_target_before_execution() {
+        let model = Model {
+            replies: Mutex::new(vec![
+                Ok(r#"{"action_type":"OBSERVE","objective":"link state","tool":"get_state","parameters":{"resource":"interfaces","interface":"LAN1"}}"#.into()),
+                Ok(r#"{"action_type":"OBSERVE","objective":"link state","tool":"get_state","target":"R1","parameters":{"resource":"interfaces","interface":"LAN1","refresh":true}}"#.into()),
+            ].into()), prompts: Mutex::new(Vec::new()),
+        };
+        let approval = Approval(Mutex::new(0));
+        let devices = vec!["R1".into()];
+        let tools = vec!["get_state".into()];
+        let planner = AgentPlanner { inventory:&[], devices:&devices, tools:&tools,
+            history:"", attachments:"", reference_material:"", inference:&model, worker:&model, approval:&approval };
+        let task = TaskSnapshot::new("R1でLAN1のリンク状態を観測してください");
+        let result = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap();
+        assert!(matches!(result, PlanDecision::Observe {target:Some(target), args, ..} if target == "R1" && args["refresh"] == true));
+        assert_eq!(model.prompts.lock().unwrap().len(), 2);
+        assert_eq!(*approval.0.lock().unwrap(), 0);
+    }
+
     #[test]
     fn knowledge_miss_plans_with_agent_instead_of_answering_with_worker() {
         let model = Model {

@@ -123,6 +123,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
     let next_hop = mikomai_core::dispatch::local_next_hop_shortcut(&goal);
     let local_route = next_hop.clone().or_else(|| mikomai_core::dispatch::local_route_shortcut(&goal));
     let local_mac = mikomai_core::dispatch::local_arp_mac_target(&goal);
+    let interface_check = mikomai_core::network::interface_check::request(&goal);
     let model_path = configured_model_path();
     let knowledge = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
         .map(PathBuf::from)
@@ -132,12 +133,19 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         "cli_request",
         serde_json::json!({
             "query": goal, "history": "", "attachments": "", "devices_json": "[]",
-            "mode": if next_hop.is_some() { "agent" } else if local_route.is_some() || port_check.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
-            "backend": if port_check.is_some() { "local_tcp" } else if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
+            "mode": if interface_check.is_some() { "agent" } else if next_hop.is_some() { "agent" } else if local_route.is_some() || port_check.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
+            "backend": if interface_check.is_some() { "native_device_transport_unavailable" } else if port_check.is_some() { "local_tcp" } else if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
         }),
     );
     let result = (|| {
-        let answer = if let Some(check) = port_check {
+        let answer = if interface_check.is_some() {
+            // Standalone CLI has no native Keychain/device callback. Do not
+            // manufacture a live observation using the text-only Worker.
+            trace.emit("agent_event", serde_json::json!({"event_type":"awaiting_input","reason":"native_device_transport_required","intent":"interface_up","request":interface_check}));
+            let answer = "このCLIには登録済み機器への接続経路がありません。Mikomaiアプリのチャットで同じ依頼を実行してください。実機のup/downはまだ確認していません。".to_string();
+            trace.stream(&answer, true);
+            answer
+        } else if let Some(check) = port_check {
             trace.emit("fast_route", serde_json::json!({"event_type":"tool_call","tool":check.tool,"target":"localhost","args":check.args}));
             let result = mikomai_ffi::test_tcp_connection_core(check.args["host"].as_str().unwrap(), check.args["port"].as_u64().unwrap() as u16, 3000);
             let success = result.is_ok();

@@ -227,7 +227,12 @@ extension DesktopModel {
             switch resource {
             case "arp": command = ARPCommandPolicy.command(for: connection.deviceType)
             case "routes": command = "show ip route"
-            case "interfaces": command = "show interfaces"
+            case "interfaces":
+                do {
+                    command = try InterfaceObservationPolicy.command(deviceType: connection.deviceType, interface: arguments["interface"] as? String)
+                } catch {
+                    return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription)
+                }
             case "lldp": command = "show lldp neighbors"
             case "mac_table": command = "show mac address-table"
             case "bgp": command = "show ip bgp summary"

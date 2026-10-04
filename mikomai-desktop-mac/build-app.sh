@@ -38,7 +38,7 @@ build_swift() {
     SDKROOT="$SDK" \
     CLANG_MODULE_CACHE_PATH="$CLANG_CACHE" \
     SWIFTPM_MODULECACHE_OVERRIDE="$SWIFTPM_CACHE" \
-    swift build --disable-sandbox --sdk "$SDK" --package-path "$APP" --scratch-path "$SCRATCH" \
+    swift build --disable-sandbox --disable-experimental-prebuilts --sdk "$SDK" --package-path "$APP" --scratch-path "$SCRATCH" \
         -Xlinker -platform_version -Xlinker macos \
         -Xlinker "$DEPLOYMENT_VERSION" -Xlinker "$SDK_VERSION"
 }
@@ -51,7 +51,7 @@ if ! build_swift; then
     SDK="$SDK_FALLBACK"
     build_swift
 fi
-PRODUCTS="$(SDKROOT="$SDK" CLANG_MODULE_CACHE_PATH="$CLANG_CACHE" SWIFTPM_MODULECACHE_OVERRIDE="$SWIFTPM_CACHE" swift build --disable-sandbox --sdk "$SDK" --package-path "$APP" --scratch-path "$SCRATCH" --show-bin-path)"
+PRODUCTS="$(SDKROOT="$SDK" CLANG_MODULE_CACHE_PATH="$CLANG_CACHE" SWIFTPM_MODULECACHE_OVERRIDE="$SWIFTPM_CACHE" swift build --disable-sandbox --disable-experimental-prebuilts --sdk "$SDK" --package-path "$APP" --scratch-path "$SCRATCH" --show-bin-path)"
 
 STAGING="$(mktemp -d "$DIST/.Mikomai.XXXXXX")"
 STAGED_APP="$STAGING/Mikomai.app"

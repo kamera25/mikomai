@@ -90,6 +90,10 @@ impl PlannerDecision {
                 return Err("TCP port check requires a host".into());
             }
         }
+        if self.tool.as_deref() == Some("get_state") && self.parameters["resource"] == "interfaces"
+            && self.target.as_deref().or_else(|| self.parameters["device"].as_str()).is_none_or(|target| target.trim().is_empty()) {
+            return Err("interface state requires a target device".into());
+        }
         match self.action {
             ActionType::Observe | ActionType::Verify
                 if self.tool.is_none() && self.target.is_none() =>
@@ -177,6 +181,7 @@ pub fn build_decision_schema(devices: &[String], tools: &[String]) -> String {
             "parameters":{"type":"object","properties":{
                 "device":target_schema.clone(),
                 "resource":{"type":"string","enum":["arp","routes","interfaces","lldp","mac_table","bgp","ospf"]},
+                "refresh":{"type":"boolean"},
                 "roots":{"type":"array","items":{"type":"string","minLength":1},"minItems":1,"maxItems":32},
                 "depth":{"type":"integer","minimum":0,"maximum":8},
                 "relations":{"type":"array","items":{"type":"string","enum":["interface","bgp","vrf","route"]},"minItems":1},

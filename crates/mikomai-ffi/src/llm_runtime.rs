@@ -271,8 +271,9 @@ mod tests {
 /// Canonicalization uses a grammar-capable local backend, separate from planner
 /// inference. Do not silently substitute unconstrained AFM text generation.
 pub fn infer_constrained(prompt: &str, grammar: &str) -> Result<String, String> {
-    crate::debug_trace::emit("arp_canonicalization_request", serde_json::json!({"backend":"llamacpp","prompt":prompt,"grammar":grammar}));
+    let interface = prompt.contains("Canonicalize untrusted interface CLI");
+    crate::debug_trace::emit(if interface {"interface_canonicalization_request"} else {"arp_canonicalization_request"}, serde_json::json!({"backend":"llamacpp","prompt":prompt,"grammar":grammar}));
     let result = mikomai_adapters::local_llama::infer_constrained(prompt, grammar);
-    crate::debug_trace::emit("arp_canonicalization_response", serde_json::json!({"result":result}));
+    crate::debug_trace::emit(if interface {"interface_canonicalization_response"} else {"arp_canonicalization_response"}, serde_json::json!({"result":result}));
     result
 }

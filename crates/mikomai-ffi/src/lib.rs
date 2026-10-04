@@ -1966,7 +1966,7 @@ struct FfiAgentExecutor {
     graph: mikomai_adapters::portable_graph::PortableGraph,
     rag: mikomai_adapters::portable_rag::PortableRag,
     rag_sources: Vec<PathBuf>,
-    arp_inference: fn(&str, &str) -> Result<String, String>,
+    canonical_inference: fn(&str, &str) -> Result<String, String>,
 }
 
 impl ToolExecutorPort for FfiAgentExecutor {
@@ -1990,10 +1990,27 @@ impl ToolExecutorPort for FfiAgentExecutor {
                 };
                 let collector = |device: &str| self.collect_arp(device);
                 let os_type = self.registry.devices().iter().find(|item| item.hostname == device).and_then(|item| item.device_type.as_deref()).unwrap_or("local");
-                let state = mikomai_adapters::arp_state::GraphArpState { graph: &self.graph, collect: &collector, infer: self.arp_inference, os_type };
+                let state = mikomai_adapters::arp_state::GraphArpState { graph: &self.graph, collect: &collector, infer: self.canonical_inference, os_type };
                 return Ok(match mikomai_core::network::arp_state::get_state(&state, device).await {
                     Ok(table) => ToolResult { success: true, output: table.to_string() },
                     Err(error) => ToolResult { success: false, output: error },
+                });
+            }
+            if tool == "get_state" && args["resource"] == "interfaces" {
+                debug_trace::emit("interface_state_request",serde_json::json!({"target":target,"args":args}));
+                let requested = target.or_else(|| args["device"].as_str()).ok_or("Interface observation requires a target")?;
+                let device = self.registry.devices().iter().find(|device| requested == device.hostname || device.id.as_deref() == Some(requested) || device.ip.as_deref() == Some(requested))
+                    .ok_or("Interface target is not registered")?;
+                let collector = |name: &str| self.collect_interfaces(name,args);
+                let state = mikomai_adapters::interface_state::GraphInterfaceState {graph:&self.graph,collect:&collector,
+                    infer:self.canonical_inference,os_type:device.device_type.as_deref().unwrap_or("unknown")};
+                return Ok(match mikomai_core::network::interface_state::get_state(&state,&device.hostname,
+                    args["interface"].as_str().unwrap_or("all"),args["refresh"].as_bool().unwrap_or(false)).await {
+                    Ok(table)=> {
+                        debug_trace::emit("interface_graph_state",serde_json::json!({"device":device.hostname,"scope":args["interface"],"canonical":table}));
+                        ToolResult {success:true,output:table.to_string()}
+                    },
+                    Err(error)=>ToolResult {success:false,output:error},
                 });
             }
             if tool == "self_network_nwdiag" {
@@ -2291,6 +2308,13 @@ impl ToolExecutorPort for FfiAgentExecutor {
 }
 
 impl FfiAgentExecutor {
+    fn collect_interfaces(&self, device: &str, args: &serde_json::Value) -> Result<String,String> {
+        let credentials = mikomai_adapters::portable_device::DeviceCredentials {username:String::new(),password:None,enable_password:None,private_key:None,passphrase:None};
+        let result = self.registry.execute(&self.transport,"get_state",device,args,&credentials)?;
+        let result = serde_json::from_str::<ToolResult>(&result.output).unwrap_or(ToolResult {success:true,output:result.output});
+        if !result.success {return Err(result.output);}
+        Ok(mikomai_core::redaction::redact_network_secrets(&result.output))
+    }
     fn collect_arp(&self, device: &str) -> Result<String, String> {
             let args = serde_json::json!({"device":device,"resource":"arp"});
             let credentials = mikomai_adapters::portable_device::DeviceCredentials { username: String::new(), password: None, enable_password: None, private_key: None, passphrase: None };
@@ -2371,7 +2395,9 @@ fn graph_observation(
             Some((GraphDataKind::Routing, Some(routes.clone()), Some(routes)))
         }
         "interfaces" => {
-            let interfaces = parse_interfaces_observation(output);
+            let interfaces = serde_json::from_str::<serde_json::Value>(output).ok()
+                .filter(|value| value["version"] == "1.0" && value["interfaces"].is_array())
+                .unwrap_or_else(|| parse_interfaces_observation(output));
             Some((
                 GraphDataKind::Interfaces,
                 Some(interfaces.clone()),
@@ -2795,7 +2821,7 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
             graph,
             rag,
             rag_sources: vec![documents.clone(), knowledge.clone()],
-            arp_inference: llm_runtime::infer_constrained,
+            canonical_inference: llm_runtime::infer_constrained,
         };
         let task_snapshots = Arc::new(Mutex::new(HashMap::new()));
         let reporter = FfiAgentReporter {
@@ -4173,7 +4199,7 @@ mod tests {
             registry: mikomai_adapters::portable_device::ReadOnlyToolRegistry::new(vec![]).unwrap(),
             transport: super::SwiftCallbackTransport { callback: failed_renderer, context: (&mut capacity as *mut usize) as usize },
             rag: mikomai_adapters::portable_rag::PortableRag::new(graph.clone(), std::sync::Arc::new(mikomai_adapters::e5_embedder::FastEmbedE5::new())),
-            graph, rag_sources: vec![], arp_inference: |_, _| unreachable!(),
+            graph, rag_sources: vec![], canonical_inference: |_, _| unreachable!(),
         };
         let invalid = serde_json::json!({"schema":"invalid"});
         let result = runtime.block_on(executor.execute(uuid::Uuid::new_v4(), "self_network_nwdiag", None, &invalid)).unwrap();
@@ -4190,6 +4216,60 @@ mod tests {
     }
 
     #[test]
+    fn interface_executor_canonicalizes_with_llm_and_reads_saved_graph_state() {
+        use mikomai_core::port::ToolExecutorPort;
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        super::CANCEL_INFERENCE.store(false, std::sync::atomic::Ordering::Relaxed);
+        unsafe extern "C" fn read_lan(tool: *const c_char, target: *const c_char, args: *const c_char,
+            output: *mut c_char, capacity: usize, _: *mut std::ffi::c_void) -> i32 {
+            assert_eq!(CStr::from_ptr(tool).to_str().unwrap(), "get_state");
+            let target: serde_json::Value = serde_json::from_str(CStr::from_ptr(target).to_str().unwrap()).unwrap();
+            let args: serde_json::Value = serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap();
+            assert_eq!(target["hostname"], "gw");
+            assert_eq!(args["interface"], "lan1");
+            let value = CString::new(serde_json::json!({"success":true,"output":"LAN1\nPORT1: 1000BASE-T Full Duplex\nPORT2: Link down"}).to_string()).unwrap();
+            assert!(value.as_bytes_with_nul().len() <= capacity);
+            std::ptr::copy_nonoverlapping(value.as_ptr(), output, value.as_bytes_with_nul().len());
+            0
+        }
+        let root = std::env::temp_dir().join(format!("mikomai-interface-{}", uuid::Uuid::new_v4()));
+        let runtime = super::portable_runtime().unwrap();
+        let graph = runtime.block_on(mikomai_adapters::portable_graph::PortableGraph::initialize_at(&root)).unwrap();
+        let mut executor = super::FfiAgentExecutor {
+            registry: mikomai_adapters::portable_device::ReadOnlyToolRegistry::from_json(r#"[{"hostname":"gw","deviceType":"yamaha"}]"#).unwrap(),
+            transport: super::SwiftCallbackTransport { callback:read_lan, context:0 },
+            rag: mikomai_adapters::portable_rag::PortableRag::new(graph.clone(), std::sync::Arc::new(mikomai_adapters::e5_embedder::FastEmbedE5::new())),
+            graph:graph.clone(), rag_sources:vec![], canonical_inference:|prompt,grammar| {
+                assert!(prompt.contains("PORT1") && grammar.contains("name ::="));
+                Ok(r#"{"entries":[{"line_idx":0,"name_idx":0,"status":"up","ip_idxs":[],"prefix_len":null}]}"#.into())
+            },
+        };
+        let args = serde_json::json!({"device":"gw","resource":"interfaces","interface":"lan1"});
+        let result = runtime.block_on(executor.execute(uuid::Uuid::new_v4(), "get_state", Some("gw"), &args)).unwrap();
+        assert!(result.success, "{}", result.output);
+        let value: serde_json::Value = serde_json::from_str(&result.output).unwrap();
+        assert_eq!(value["interfaces"][0]["status"], "up");
+        let saved = runtime.block_on(graph.latest_interface_observation("gw","lan1")).unwrap().unwrap();
+        assert_eq!(saved.canonical.unwrap()["interfaces"][0]["status"], "up");
+        let subgraph = runtime.block_on(graph.get_subgraph(mikomai_adapters::portable_graph::SubgraphRequest {
+            roots:vec!["gw".into()],depth:1,relations:vec![mikomai_adapters::portable_graph::SubgraphRelation::Interface],
+        })).unwrap();
+        assert!(!subgraph.edges.is_empty());
+        assert!(subgraph.nodes.iter().any(|node|node["record"]["data"]["status"] == "up"));
+        executor.canonical_inference=|_,_|panic!("fresh graph state must not infer again");
+        let cached=runtime.block_on(executor.execute(uuid::Uuid::new_v4(),"get_state",Some("gw"),&args)).unwrap();
+        assert_eq!(cached.output,result.output);
+        executor.canonical_inference=|_,_|Err("model unavailable".into());
+        let mut refresh=args.clone(); refresh["refresh"]=true.into();
+        let failed=runtime.block_on(executor.execute(uuid::Uuid::new_v4(),"get_state",Some("gw"),&refresh)).unwrap();
+        assert!(!failed.success && failed.output.contains("model unavailable"));
+        let latest=runtime.block_on(graph.latest_interface_observation("gw","lan1")).unwrap().unwrap();
+        assert!(latest.canonical.is_none(),"failed refresh must not reuse older canonical state");
+        // RocksDB background shutdown is asynchronous; keep its temporary
+        // directory intact until the process has finished closing the store.
+    }
+
+    #[test]
     fn arp_executor_hides_raw_canonicalizes_and_reuses_graph() {
         use mikomai_core::port::ToolExecutorPort;
         use std::sync::{Arc, atomic::Ordering};
@@ -4203,7 +4283,7 @@ mod tests {
         let executor = super::FfiAgentExecutor {
             registry, transport: super::SwiftCallbackTransport { callback: fake_raw_arp_read, context: (&mut calls as *mut Vec<_>) as usize },
             rag: mikomai_adapters::portable_rag::PortableRag::new(graph.clone(), Arc::new(mikomai_adapters::e5_embedder::FastEmbedE5::new())), graph: graph.clone(), rag_sources: vec![],
-            arp_inference: |prompt, grammar| {
+            canonical_inference: |prompt, grammar| {
                 assert!(prompt.contains("unusual0"));
                 assert!(grammar.contains("ip ::= \"0\""));
                 Ok(r#"{"is_arp_table":true,"entries":[{"ip_idx":0,"mac_idx":0,"interface_idx":0,"type":"dynamic","age_seconds":50}]}"#.into())
