@@ -93,6 +93,22 @@ public enum ProbeResultPresentation {
 
 /// Converts persisted Rust Agent events into short, readable progress entries.
 public enum AgentTaskHistoryPresentation {
+    /// Read the first recorded user goal, before later goal changes or follow-ups.
+    public static func initialPrompt(from json: String, fallbackGoal: String) -> String {
+        if let data = json.data(using: .utf8),
+           let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let events = root["events"] as? [[String: Any]] {
+            for event in events {
+                guard let type = event["event_type"] as? String,
+                      type == "task_started" || type == "goal_set",
+                      let goal = event["goal"] as? String,
+                      !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                return goal
+            }
+        }
+        return fallbackGoal
+    }
+
     public static func taskDateGroups(
         _ tasks: [NativeAgentTask],
         calendar: Calendar = .current

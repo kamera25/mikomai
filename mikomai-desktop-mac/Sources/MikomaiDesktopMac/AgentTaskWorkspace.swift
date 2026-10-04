@@ -96,6 +96,8 @@ struct AgentTaskWorkspace: View {
     @Binding var selectedTaskID: String?
     let selectedHistory: [AgentTaskHistoryItem]
     let onRefresh: () -> Void
+    let onRerunTask: (NativeAgentTask) -> Void
+    let canRerunTask: Bool
     let onResumeTask: (NativeAgentTask) -> Void
     let onDeleteTask: (NativeAgentTask) -> Void
     let onDeleteAllTasks: () -> Void
@@ -140,6 +142,9 @@ struct AgentTaskWorkspace: View {
                         }
                         Spacer()
                         HStack(spacing: 8) {
+                            AccessibleButton("再実行") { onRerunTask(selectedTask) }
+                                .disabled(!canRerunTask)
+                                .help("最初のプロンプトを新規チャットで実行")
                             AccessibleButton("調査を再開") { onResumeTask(selectedTask) }
                                 .accessibleButtonStyle(.prominent)
                             AccessibleButton("エージェント履歴を削除: \(selectedTask.goal)", role: .destructive) {
@@ -162,7 +167,7 @@ struct AgentTaskWorkspace: View {
                             .font(.system(size: 12)).foregroundStyle(.secondary)
                     }
 
-                    Text("再開すると、過去の観測結果を引き継いだ新しい調査として実行します。元の記録は変更しません。")
+                    Text("再実行は最初のプロンプトを新規チャットで実行します。調査を再開すると、過去の観測結果を引き継ぎます。元の記録は変更しません。")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 .padding(12).frame(maxWidth: .infinity, alignment: .leading)

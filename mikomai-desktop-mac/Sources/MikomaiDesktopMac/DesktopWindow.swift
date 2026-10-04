@@ -474,6 +474,11 @@ struct DesktopWindow: View {
             selectedTaskID: $model.selectedAgentTaskID,
             selectedHistory: model.selectedTaskHistory,
             onRefresh: { model.refreshAgentTasks() },
+            onRerunTask: { task in
+                historyTab = "conversation"
+                model.rerunAgentTask(task)
+            },
+            canRerunTask: !model.isLoadingModel,
             onResumeTask: { task in
                 historyTab = "conversation"
                 model.workspace = .chat

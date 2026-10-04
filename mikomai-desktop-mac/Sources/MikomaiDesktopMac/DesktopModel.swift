@@ -208,6 +208,21 @@ final class DesktopModel: ObservableObject {
         selectedTaskHistory = AgentTaskHistoryPresentation.items(from: raw, fallbackGoal: task.goal)
     }
 
+    func rerunAgentTask(_ task: NativeAgentTask) {
+        guard !isLoadingModel else { return }
+        let response = task.id.withCString { mikomai_agent_task_history($0) }
+        defer { mikomai_result_free(response) }
+        let history = response.message.map { String(cString: $0) } ?? ""
+        let prompt = AgentTaskHistoryPresentation.initialPrompt(from: history, fallbackGoal: task.goal)
+        guard !ChatSubmissionPolicy.normalizedPrompt(prompt).isEmpty else { return }
+        createSession()
+        guard let id = activeSessionID else { return }
+        // Submit a fresh request without resume IDs or unrelated composer attachments.
+        chatQueue.enqueue(QueuedChatSubmission(sessionID: id, prompt: prompt, attachments: []))
+        draft = ""
+        startNextQueuedSubmission()
+    }
+
     func resumeAgentTask(_ task: NativeAgentTask) {
         createSession()
         if let activeSessionID { pendingSavedAgentTaskIDs[activeSessionID] = task.id }

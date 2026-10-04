@@ -4,6 +4,23 @@ import Testing
 
 @Suite
 struct AgentTaskPresentationTests {
+    @Test func rerunUsesInitialPromptBeforeChangedGoals() {
+        let prompt = "最初の依頼\nVLAN 100を確認してください"
+        let response = #"{"events":[{"event_type":"task_started","goal":"最初の依頼\nVLAN 100を確認してください"},{"event_type":"goal_set","goal":"追加の依頼"}]}"#
+        #expect(AgentTaskHistoryPresentation.initialPrompt(from: response, fallbackGoal: "最新の目標") == prompt)
+    }
+
+    @Test func rerunReadsLegacyGoalAfterStartWithoutPrompt() {
+        let response = #"{"events":[{"event_type":"task_started"},{"event_type":"goal_set","goal":"  "},{"event_type":"goal_set","goal":"最初の依頼"},{"event_type":"goal_set","goal":"後の依頼"}]}"#
+        #expect(AgentTaskHistoryPresentation.initialPrompt(from: response, fallbackGoal: "最新の目標") == "最初の依頼")
+    }
+
+    @Test func rerunFallsBackForHistoryWithoutRecordedPrompt() {
+        for response in ["", "invalid JSON", #"{"events":[]}"#, #"{"events":[{"event_type":"finished","answer":"回答"}]}"#] {
+            #expect(AgentTaskHistoryPresentation.initialPrompt(from: response, fallbackGoal: "保存済みの目標") == "保存済みの目標")
+        }
+    }
+
     @Test func formatsGoalCurrentStatusAndObservedToolOutput() throws {
         let response = #"{"events":[{"event_type":"task_started","goal":"core-router CPUを確認"},{"event_type":"observation","evidence":{"raw":"CPU usage: 91%","source":{"tool_name":"get_state"}}},{"event_type":"state_updated","status":"Running"}]}"#
 
