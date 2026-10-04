@@ -188,11 +188,13 @@ fn infer_inner<F: FnMut(&str, bool)>(
     }
     tokens.extend(user_tokens);
 
-    let mut params = LlamaContextParams::default();
-    params = params
+    // mtmd temporarily switches image decode to non-causal attention. In that
+    // mode llama.cpp requires n_ubatch to hold the entire evaluation batch;
+    // using a 512-token batch with n_ubatch=256 aborts the process.
+    let mut params = LlamaContextParams::default()
         .with_n_ctx(std::num::NonZeroU32::new(n_ctx))
         .with_n_batch(512)
-        .with_n_ubatch(256)
+        .with_n_ubatch(if vision.is_some() { 512 } else { 256 })
         .with_flash_attention_policy(1)
         .with_offload_kqv(loaded.gpu_layers > 0)
         .with_op_offload(loaded.gpu_layers > 0);
@@ -207,6 +209,7 @@ fn infer_inner<F: FnMut(&str, bool)>(
             let fallback_params = LlamaContextParams::default()
                 .with_n_ctx(std::num::NonZeroU32::new(n_ctx))
                 .with_n_batch(512)
+                .with_n_ubatch(if vision.is_some() { 512 } else { 256 })
                 .with_offload_kqv(loaded.gpu_layers > 0)
                 .with_op_offload(loaded.gpu_layers > 0);
             model
@@ -275,8 +278,12 @@ fn infer_inner<F: FnMut(&str, bool)>(
         if CANCEL_INFERENCE.load(Ordering::Relaxed) {
             return Err("画像解析を停止しました".into());
         }
+        let image_batch = ctx.n_batch().min(ctx.n_ubatch()).min(512);
+        if image_batch == 0 {
+            return Err("Vision context has no image batch capacity".into());
+        }
         chunks
-            .eval_chunks(&mtmd, &ctx, 0, 0, 512, true)
+            .eval_chunks(&mtmd, &ctx, 0, 0, image_batch as i32, true)
             .map_err(|e| format!("Vision evaluation failed: {e}"))?
     } else {
         for (chunk_index, chunk) in tokens.chunks(256).enumerate() {

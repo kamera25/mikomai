@@ -21,6 +21,8 @@ mod approval_boundary;
 
 mod debug_trace;
 mod llm_runtime;
+mod operation_worker;
+mod attachment_upload;
 use llm_runtime::infer;
 use mikomai_adapters::local_llama::CANCEL_INFERENCE;
 
@@ -1044,219 +1046,298 @@ pub unsafe extern "C" fn mikomai_operation_plan_finish(
     }
 }
 
-/// Executes only a persisted plan that Swift has already hash-approved and
-/// claimed. Keychain secrets arrive for this single call and are never saved.
+/// Synchronous compatibility entry point. The operation itself always runs on
+/// the dedicated worker; native UI callers should use the async entry point.
 #[no_mangle]
 pub unsafe extern "C" fn mikomai_operation_execute_approved(
     id: *const c_char,
     hash: *const c_char,
     credentials_json: *const c_char,
 ) -> MikomaiResult {
-    if id.is_null() || hash.is_null() || credentials_json.is_null() {
-        return error_result("operation id, hash, and credential payload are required".into());
-    }
     let caught = std::panic::catch_unwind(|| {
-        let id = CStr::from_ptr(id)
-            .to_str()
-            .map_err(|e| e.to_string())?
-            .to_owned();
-        let hash = CStr::from_ptr(hash)
-            .to_str()
-            .map_err(|e| e.to_string())?
-            .to_owned();
-        let credentials: serde_json::Value = serde_json::from_str(
-            CStr::from_ptr(credentials_json)
-                .to_str()
-                .map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| format!("invalid ephemeral credential payload: {e}"))?;
-        let plan = {
-            let plans = operation_plans()
-                .lock()
-                .map_err(|_| "operation plan state is unavailable".to_string())?;
-            let plan = plans
-                .get(&id)
-                .cloned()
-                .ok_or_else(|| "operation plan was not found".to_string())?;
-            if plan.tool_id == "network_config" {
-                return Err(
-                    "network_config must use the native dry-run/config/post-verify execution flow"
-                        .into(),
-                );
-            }
-            if plan.status != mikomai_core::OperationStatus::Executing {
-                return Err("approved operation has not been claimed for execution".into());
-            }
-            OperationGate::authorize(&plan, Some(&hash))?;
-            let mut claims = generic_execution_claims()
-                .lock()
-                .map_err(|_| "operation execution state is unavailable".to_string())?;
-            if !claims.insert(id.clone()) {
-                return Err("approved operation has already been executed or claimed".into());
-            }
-            if let Err(error) = persist_generic_execution_claims(&claims) {
-                claims.remove(&id);
-                return Err(error);
-            }
-            plan
-        };
-        let snapshot = plan
-            .args
-            .get("deviceSnapshot")
-            .ok_or_else(|| "operation plan has no registered device snapshot".to_string())?;
-        let args = &plan.args;
-        let output = if plan.tool_id == "network_send_console_message" {
-            let port_path = args
-                .get("port")
-                .or_else(|| args.get("port_path"))
-                .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| "approved plan has no serial port".to_string())?;
-            let message = args
-                .get("message")
-                .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| "approved plan has no console message".to_string())?;
-            let request = mikomai_adapters::transfer::SerialConsoleRequest {
-                port_path: port_path.to_string(),
-                message: message.to_string(),
-                baud_rate: args
-                    .get("baud_rate")
-                    .or_else(|| args.get("baudRate"))
-                    .and_then(serde_json::Value::as_u64)
-                    .and_then(|value| u32::try_from(value).ok()),
-                timeout_ms: args
-                    .get("timeout_ms")
-                    .or_else(|| args.get("timeoutMs"))
-                    .and_then(serde_json::Value::as_u64),
-            };
-            let result = mikomai_adapters::transfer::send_serial_console(request)?;
-            serde_json::to_string(&result).map_err(|e| e.to_string())?
-        } else {
-            use mikomai_adapters::transfer::{
-                TransferDirection, TransferProtocol, TransferRequest,
-            };
-            let protocol = if plan.tool_id.starts_with("network_ftp_") {
-                TransferProtocol::Ftp
-            } else {
-                TransferProtocol::Tftp
-            };
-            let direction = if plan.tool_id.ends_with("_upload") {
-                TransferDirection::Upload
-            } else {
-                TransferDirection::Download
-            };
-            let host = snapshot
-                .get("host")
-                .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| {
-                    "registered host is missing from the operation snapshot".to_string()
-                })?
-                .to_string();
-            let remote_path = args
-                .get("remote_path")
-                .or_else(|| args.get("remote_file"))
-                .or_else(|| args.get("remotePath"))
-                .or_else(|| args.get("filename"))
-                .or_else(|| args.get("file_name"))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned)
-                .unwrap_or_else(|| {
-                    if direction == TransferDirection::Upload {
-                        "upload.txt".to_string()
-                    } else {
-                        "download.bin".to_string()
-                    }
-                });
-            let local_path = args
-                .get("local_path")
-                .or_else(|| args.get("local_file"))
-                .or_else(|| args.get("localPath"))
-                .or_else(|| args.get("path"))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned)
-                .unwrap_or_else(|| {
-                    let base = std::env::var_os("HOME")
-                        .map(std::path::PathBuf::from)
-                        .unwrap_or_else(std::env::temp_dir);
-                    base.join("Library/Application Support/MikomaiDesktopMac/artifacts")
-                        .join(format!(
-                            "{}-{}",
-                            id,
-                            std::path::Path::new(&remote_path)
-                                .file_name()
-                                .and_then(|name| name.to_str())
-                                .unwrap_or("download.bin")
-                        ))
-                        .to_string_lossy()
-                        .into_owned()
-                });
-            let content = args
-                .get("content")
-                .and_then(serde_json::Value::as_str)
-                .map(|text| text.as_bytes().to_vec());
-            let credentials = mikomai_adapters::portable_device::DeviceCredentials {
-                username: snapshot
-                    .get("username")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("anonymous")
-                    .to_string(),
-                password: credentials
-                    .get("password")
-                    .and_then(serde_json::Value::as_str)
-                    .map(|password| password.to_owned()),
-                enable_password: None,
-                private_key: None,
-                passphrase: None,
-            };
-            let port = args
-                .get("port")
-                .and_then(serde_json::Value::as_u64)
-                .and_then(|value| u16::try_from(value).ok())
-                .unwrap_or(if protocol == TransferProtocol::Ftp {
-                    21
-                } else {
-                    69
-                });
-            let request = TransferRequest {
-                host,
-                port,
-                protocol,
-                direction,
-                username: (protocol == TransferProtocol::Ftp).then(|| credentials.username.clone()),
-                password: (protocol == TransferProtocol::Ftp)
-                    .then(|| credentials.password.clone())
-                    .flatten(),
-                remote_path,
-                local_path,
-                content,
-                mode: args
-                    .get("mode")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_owned),
-                timeout_secs: args
-                    .get("timeout_secs")
-                    .or_else(|| args.get("timeoutSecs"))
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(if protocol == TransferProtocol::Ftp {
-                        15
-                    } else {
-                        3
-                    }),
-            };
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| format!("could not initialize file-transfer runtime: {e}"))?;
-            let result =
-                runtime.block_on(mikomai_adapters::transfer::execute_file_transfer(request))?;
-            serde_json::to_string(&result).map_err(|e| e.to_string())?
-        };
-        Ok(output)
+        let (id, hash, credentials) = owned_operation_inputs(id, hash, credentials_json)?;
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        operation_worker::submit(
+            execute_approved_operation(id, hash, credentials),
+            move |output| {
+                let _ = sender.send(output);
+            },
+        )?;
+        receiver
+            .recv()
+            .map_err(|_| "operation worker disconnected".to_string())?
     });
+    operation_execution_result(caught)
+}
+
+type MikomaiOperationCompletionCallback =
+    unsafe extern "C" fn(status: i32, output: *const c_char, context: *mut std::ffi::c_void);
+
+/// Copies inputs, queues execution, and returns without waiting for network I/O.
+/// On successful submission the callback fires exactly once on the worker. Its
+/// output pointer is borrowed for the duration of the callback. On submission
+/// failure no callback fires, so the caller retains ownership of its context.
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_operation_execute_approved_async(
+    id: *const c_char,
+    hash: *const c_char,
+    credentials_json: *const c_char,
+    callback: Option<MikomaiOperationCompletionCallback>,
+    context: *mut std::ffi::c_void,
+) -> MikomaiResult {
+    let caught = std::panic::catch_unwind(|| {
+        let callback =
+            callback.ok_or_else(|| "operation completion callback is required".to_string())?;
+        let (id, hash, credentials) = owned_operation_inputs(id, hash, credentials_json)?;
+        let context = context as usize;
+        operation_worker::submit(
+            execute_approved_operation(id, hash, credentials),
+            move |output| {
+                let response = match output {
+                    Ok(text) => result(0, text),
+                    Err(error) => error_result(error),
+                };
+                callback(
+                    response.status,
+                    response.message,
+                    context as *mut std::ffi::c_void,
+                );
+                mikomai_result_free(response);
+            },
+        )?;
+        Ok("approved operation queued".to_string())
+    });
+    operation_execution_result(caught)
+}
+
+unsafe fn owned_operation_inputs(
+    id: *const c_char,
+    hash: *const c_char,
+    credentials: *const c_char,
+) -> Result<(String, String, String), String> {
+    if id.is_null() || hash.is_null() || credentials.is_null() {
+        return Err("operation id, hash, and credential payload are required".into());
+    }
+    Ok((
+        CStr::from_ptr(id)
+            .to_str()
+            .map_err(|e| e.to_string())?
+            .to_owned(),
+        CStr::from_ptr(hash)
+            .to_str()
+            .map_err(|e| e.to_string())?
+            .to_owned(),
+        CStr::from_ptr(credentials)
+            .to_str()
+            .map_err(|e| e.to_string())?
+            .to_owned(),
+    ))
+}
+
+fn operation_execution_result(
+    caught: std::thread::Result<Result<String, String>>,
+) -> MikomaiResult {
     match caught {
         Ok(Ok(output)) => result(0, output),
         Ok(Err(error)) => error_result(error),
         Err(_) => error_result("approved operation failed unexpectedly".into()),
     }
+}
+
+// Authorization and the persisted execution claim stay in this common path so
+// async and legacy callers cannot bypass the gate or execute the same plan twice.
+async fn execute_approved_operation(
+    id: String,
+    hash: String,
+    credentials_json: String,
+) -> Result<String, String> {
+    let credentials: serde_json::Value = serde_json::from_str(&credentials_json)
+        .map_err(|e| format!("invalid ephemeral credential payload: {e}"))?;
+    let plan = {
+        let plans = operation_plans()
+            .lock()
+            .map_err(|_| "operation plan state is unavailable".to_string())?;
+        let plan = plans
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| "operation plan was not found".to_string())?;
+        if plan.tool_id == "network_config" {
+            return Err(
+                "network_config must use the native dry-run/config/post-verify execution flow"
+                    .into(),
+            );
+        }
+        if plan.status != mikomai_core::OperationStatus::Executing {
+            return Err("approved operation has not been claimed for execution".into());
+        }
+        OperationGate::authorize(&plan, Some(&hash))?;
+        let mut claims = generic_execution_claims()
+            .lock()
+            .map_err(|_| "operation execution state is unavailable".to_string())?;
+        if !claims.insert(id.clone()) {
+            return Err("approved operation has already been executed or claimed".into());
+        }
+        if let Err(error) = persist_generic_execution_claims(&claims) {
+            claims.remove(&id);
+            return Err(error);
+        }
+        plan
+    };
+    let snapshot = plan
+        .args
+        .get("deviceSnapshot")
+        .ok_or_else(|| "operation plan has no registered device snapshot".to_string())?;
+    let args = &plan.args;
+    let output = if plan.tool_id == "network_send_console_message" {
+        let port_path = args
+            .get("port")
+            .or_else(|| args.get("port_path"))
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "approved plan has no serial port".to_string())?;
+        let message = args
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "approved plan has no console message".to_string())?;
+        let request = mikomai_adapters::transfer::SerialConsoleRequest {
+            port_path: port_path.to_string(),
+            message: message.to_string(),
+            baud_rate: args
+                .get("baud_rate")
+                .or_else(|| args.get("baudRate"))
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| u32::try_from(value).ok()),
+            timeout_ms: args
+                .get("timeout_ms")
+                .or_else(|| args.get("timeoutMs"))
+                .and_then(serde_json::Value::as_u64),
+        };
+        let result = tokio::task::spawn_blocking(move || {
+            mikomai_adapters::transfer::send_serial_console(request)
+        })
+        .await
+        .map_err(|_| "serial worker failed unexpectedly".to_string())??;
+        serde_json::to_string(&result).map_err(|e| e.to_string())?
+    } else {
+        use mikomai_adapters::transfer::{TransferDirection, TransferProtocol, TransferRequest};
+        let protocol = if plan.tool_id.starts_with("network_ftp_") {
+            TransferProtocol::Ftp
+        } else {
+            TransferProtocol::Tftp
+        };
+        let direction = if plan.tool_id.ends_with("_upload") {
+            TransferDirection::Upload
+        } else {
+            TransferDirection::Download
+        };
+        let host = snapshot
+            .get("host")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "registered host is missing from the operation snapshot".to_string())?
+            .to_string();
+        let remote_path = args
+            .get("remote_path")
+            .or_else(|| args.get("remote_file"))
+            .or_else(|| args.get("remotePath"))
+            .or_else(|| args.get("filename"))
+            .or_else(|| args.get("file_name"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_else(|| {
+                if direction == TransferDirection::Upload {
+                    "upload.txt".to_string()
+                } else {
+                    "download.bin".to_string()
+                }
+            });
+        let local_path = args
+            .get("local_path")
+            .or_else(|| args.get("local_file"))
+            .or_else(|| args.get("localPath"))
+            .or_else(|| args.get("path"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_else(|| {
+                let base = std::env::var_os("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(std::env::temp_dir);
+                base.join("Library/Application Support/MikomaiDesktopMac/artifacts")
+                    .join(format!(
+                        "{}-{}",
+                        id,
+                        std::path::Path::new(&remote_path)
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("download.bin")
+                    ))
+                    .to_string_lossy()
+                    .into_owned()
+            });
+        let content = if let Some(digest) = args
+            .get("attachment_sha256")
+            .and_then(serde_json::Value::as_str)
+        {
+            if direction != TransferDirection::Upload {
+                return Err("添付ファイルはアップロードにのみ使用できます".into());
+            }
+            Some(attachment_upload::read_verified(&local_path, digest)?)
+        } else {
+            args.get("content")
+                .and_then(serde_json::Value::as_str)
+                .map(|text| text.as_bytes().to_vec())
+        };
+        let credentials = mikomai_adapters::portable_device::DeviceCredentials {
+            username: snapshot
+                .get("username")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("anonymous")
+                .to_string(),
+            password: credentials
+                .get("password")
+                .and_then(serde_json::Value::as_str)
+                .map(|password| password.to_owned()),
+            enable_password: None,
+            private_key: None,
+            passphrase: None,
+        };
+        let port = args
+            .get("port")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| u16::try_from(value).ok())
+            .unwrap_or(if protocol == TransferProtocol::Ftp {
+                21
+            } else {
+                69
+            });
+        let request = TransferRequest {
+            host,
+            port,
+            protocol,
+            direction,
+            username: (protocol == TransferProtocol::Ftp).then(|| credentials.username.clone()),
+            password: (protocol == TransferProtocol::Ftp)
+                .then(|| credentials.password.clone())
+                .flatten(),
+            remote_path,
+            local_path,
+            content,
+            mode: args
+                .get("mode")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+            timeout_secs: args
+                .get("timeout_secs")
+                .or_else(|| args.get("timeoutSecs"))
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(if protocol == TransferProtocol::Ftp {
+                    15
+                } else {
+                    3
+                }),
+        };
+        let result = mikomai_adapters::transfer::execute_file_transfer(request).await?;
+        serde_json::to_string(&result).map_err(|e| e.to_string())?
+    };
+    Ok(output)
 }
 
 #[no_mangle]
@@ -2634,6 +2715,27 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
             .map_err(|e| e.to_string())?
             .to_owned();
         llm_runtime::reset_cancellation();
+        let raw_attachments = if attachments.is_null() { "" } else {
+            CStr::from_ptr(attachments).to_str().map_err(|e| e.to_string())?
+        };
+        if let Some(outcome) = attachment_upload::prepare(&incoming, raw_attachments, plan_callback, context as usize)? {
+            let answer = match outcome {
+                attachment_upload::Outcome::Ask(answer) => answer,
+                attachment_upload::Outcome::Plan(plan, answer) => {
+                    if let Some(cb) = callback {
+                        let event = CString::new(format!("__MIKOMAI_APPROVAL_PLAN__{}", serde_json::to_string(&plan).map_err(|e| e.to_string())?)).map_err(|e| e.to_string())?;
+                        cb(event.as_ptr(), 0, context);
+                    }
+                    answer
+                }
+            };
+            if let Some(cb) = callback {
+                let text = CString::new(answer.clone()).map_err(|e| e.to_string())?;
+                cb(text.as_ptr(), 0, context);
+                cb(c"".as_ptr(), 1, context);
+            }
+            return Ok(answer);
+        }
         // Deterministic replies need neither RAG nor an agent task/status event.
         let empty_attachments =
             attachments.is_null() || CStr::from_ptr(attachments).to_bytes().is_empty();
@@ -4891,6 +4993,381 @@ mod tests {
         restore_env("MIKOMAI_OPERATION_PLANS_PATH", previous);
     }
 
+    #[test]
+    fn async_approved_operation_transfers_on_worker_without_blocking_and_rejects_replays() {
+        async_upload_worker(false);
+    }
+
+    #[test]
+    fn async_approved_ftp_operation_transfers_on_worker_without_blocking_and_rejects_replays() {
+        async_upload_worker(true);
+    }
+
+    fn async_upload_worker(ftp: bool) {
+        use super::{
+            mikomai_operation_execute_approved_async, mikomai_operation_plan_approve,
+            mikomai_operation_plan_begin, mikomai_operation_plan_create_generic,
+        };
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            mpsc, Arc,
+        };
+        use std::time::{Duration, Instant};
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        let root =
+            std::env::temp_dir().join(format!("mikomai-transfer-worker-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let old_path = std::env::var_os("MIKOMAI_OPERATION_PLANS_PATH");
+        std::env::set_var("MIKOMAI_OPERATION_PLANS_PATH", root.join("plans.json"));
+
+        struct Completion {
+            tx: mpsc::Sender<(i32, String, String)>,
+            calls: AtomicUsize,
+        }
+        unsafe extern "C" fn completed(
+            status: i32,
+            output: *const std::ffi::c_char,
+            context: *mut std::ffi::c_void,
+        ) {
+            let state = &*(context as *const Completion);
+            state.calls.fetch_add(1, Ordering::SeqCst);
+            let _ = state.tx.send((
+                status,
+                CStr::from_ptr(output).to_string_lossy().into_owned(),
+                std::thread::current().name().unwrap_or("").to_owned(),
+            ));
+        }
+        let submit = |id: &CString, hash: &CString| {
+            let (tx, rx) = mpsc::channel();
+            let state = Arc::new(Completion {
+                tx,
+                calls: AtomicUsize::new(0),
+            });
+            let credentials = CString::new(r#"{"password":"worker-secret"}"#).unwrap();
+            let res = unsafe {
+                mikomai_operation_execute_approved_async(
+                    id.as_ptr(),
+                    hash.as_ptr(),
+                    credentials.as_ptr(),
+                    Some(completed),
+                    Arc::as_ptr(&state) as *mut std::ffi::c_void,
+                )
+            };
+            assert_eq!(res.status, 0);
+            unsafe { mikomai_result_free(res) };
+            (state, rx)
+        };
+        const UPLOAD: &[u8] = b"\x89PNG\r\n\x1a\n\x00\xffbinary-image";
+        let source = root.join("image.upload");
+        fs::write(&source, UPLOAD).unwrap();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (port, server) = if ftp {
+            use std::io::{BufRead, BufReader, Read, Write};
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = std::thread::spawn(move || {
+                let (stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut control = BufReader::new(stream);
+                control.get_mut().write_all(b"220 local FTP\r\n").unwrap();
+                let mut passive = None;
+                loop {
+                    let mut line = String::new();
+                    assert!(control.read_line(&mut line).unwrap() > 0);
+                    let reply = match line.trim_end() {
+                        "USER worker-user" => "331 password required\r\n".to_string(),
+                        "PASS worker-secret" => "230 logged in\r\n".to_string(),
+                        "TYPE I" => "200 binary\r\n".to_string(),
+                        "EPSV" => {
+                            let data = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+                            let port = data.local_addr().unwrap().port();
+                            passive = Some(data);
+                            format!("229 Extended Passive Mode (|||{port}|)\r\n")
+                        }
+                        "STOR config.txt" => {
+                            started_tx.send(()).unwrap();
+                            release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                            control
+                                .get_mut()
+                                .write_all(b"150 opening data\r\n")
+                                .unwrap();
+                            let (mut data, _) = passive.take().unwrap().accept().unwrap();
+                            data.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                            let mut uploaded = Vec::new();
+                            data.read_to_end(&mut uploaded).unwrap();
+                            assert_eq!(uploaded, UPLOAD);
+                            control
+                                .get_mut()
+                                .write_all(b"226 transfer complete\r\n")
+                                .unwrap();
+                            break;
+                        }
+                        _ => panic!("unexpected FTP command"),
+                    };
+                    control.get_mut().write_all(reply.as_bytes()).unwrap();
+                }
+            });
+            (port, server)
+        } else {
+            let socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let port = socket.local_addr().unwrap().port();
+            let server = std::thread::spawn(move || {
+                let mut bytes = [0u8; 1024];
+                let (n, peer) = socket.recv_from(&mut bytes).unwrap();
+                assert_eq!(&bytes[..n], b"\x00\x02config.txt\x00octet\x00");
+                started_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                socket.send_to(&[0, 4, 0, 0], peer).unwrap();
+                let (n, peer) = socket.recv_from(&mut bytes).unwrap();
+                assert_eq!(&bytes[..4], &[0, 3, 0, 1]);
+                assert_eq!(&bytes[4..n], UPLOAD);
+                socket.send_to(&[0, 4, 0, 1], peer).unwrap();
+            });
+            (port, server)
+        };
+        let target = CString::new("loopback-transfer").unwrap();
+        let tool = CString::new(if ftp {
+            "network_ftp_upload"
+        } else {
+            "network_tftp_upload"
+        })
+        .unwrap();
+        let snapshot =
+            CString::new(r#"{"id":"loopback","host":"127.0.0.1","username":"worker-user"}"#).unwrap();
+        let args = CString::new(serde_json::json!({"port":port, "remote_path":"config.txt", "local_path":source, "attachment_sha256": format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(UPLOAD))}).to_string()).unwrap();
+        let reason = CString::new("worker acceptance check").unwrap();
+        let res = unsafe {
+            mikomai_operation_plan_create_generic(
+                target.as_ptr(),
+                tool.as_ptr(),
+                snapshot.as_ptr(),
+                args.as_ptr(),
+                reason.as_ptr(),
+            )
+        };
+        assert_eq!(res.status, 0);
+        let plan: serde_json::Value =
+            unsafe { serde_json::from_str(CStr::from_ptr(res.message).to_str().unwrap()).unwrap() };
+        unsafe { mikomai_result_free(res) };
+        let id = CString::new(plan["id"].as_str().unwrap()).unwrap();
+        let hash = CString::new(plan["planHash"].as_str().unwrap()).unwrap();
+        let (unapproved, rx) = submit(&id, &hash);
+        let (status, text, _) = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(status, 1);
+        assert!(text.contains("not been claimed"));
+        assert_eq!(unapproved.calls.load(Ordering::SeqCst), 1);
+        for res in unsafe {
+            [
+                mikomai_operation_plan_approve(id.as_ptr(), hash.as_ptr()),
+                mikomai_operation_plan_begin(id.as_ptr(), hash.as_ptr()),
+            ]
+        } {
+            assert_eq!(res.status, 0);
+            unsafe { mikomai_result_free(res) };
+        }
+        let (wrong_hash, rx) = submit(&id, &CString::new("wrong").unwrap());
+        assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap().0, 1);
+        assert_eq!(wrong_hash.calls.load(Ordering::SeqCst), 1);
+
+        let start = Instant::now();
+        let (success, success_rx) = submit(&id, &hash);
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "submission waited for transfer"
+        );
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(
+            success_rx.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        // A pending transfer must yield the worker to another async job.
+        let (replay, rx) = submit(&id, &hash);
+        let (status, text, _) = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(status, 1);
+        assert!(text.contains("already been executed"));
+        assert_eq!(replay.calls.load(Ordering::SeqCst), 1);
+        release_tx.send(()).unwrap();
+        let (status, text, thread) = success_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(status, 0, "{text}");
+        assert_eq!(thread, "mikomai-operation-worker");
+        assert!(!text.contains("worker-secret"));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&text).unwrap()["bytes_transferred"],
+            UPLOAD.len()
+        );
+        assert_eq!(success.calls.load(Ordering::SeqCst), 1);
+        server.join().unwrap();
+        restore_env("MIKOMAI_OPERATION_PLANS_PATH", old_path);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn opaque_tftp_attachment_bypasses_vision_and_preserves_original_bytes() {
+        opaque_attachment_upload("TFTP", "network_tftp_upload", 69);
+    }
+
+    #[test]
+    fn opaque_ftp_attachment_bypasses_vision_and_preserves_original_bytes() {
+        opaque_attachment_upload("FTP", "network_ftp_upload", 21);
+    }
+
+    fn opaque_attachment_upload(protocol: &str, expected_tool: &'static str, port: u16) {
+        use super::*;
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Mutex,
+        };
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!("mikomai-opaque-upload-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let old_data = std::env::var_os("MIKOMAI_DATA_DIR");
+        let old_plans = std::env::var_os("MIKOMAI_OPERATION_PLANS_PATH");
+        std::env::set_var("MIKOMAI_DATA_DIR", &root);
+        std::env::set_var("MIKOMAI_OPERATION_PLANS_PATH", root.join("plans.json"));
+        struct State {
+            expected_tool: &'static str,
+            args: Mutex<Option<serde_json::Value>>,
+            records: Mutex<Vec<String>>,
+            tools: AtomicUsize,
+            plans: AtomicUsize,
+        }
+        let state = State {
+            expected_tool,
+            args: Mutex::new(None),
+            records: Mutex::new(vec![]),
+            tools: AtomicUsize::new(0),
+            plans: AtomicUsize::new(0),
+        };
+        unsafe extern "C" fn stream(
+            chunk: *const std::ffi::c_char,
+            _: i32,
+            context: *mut std::ffi::c_void,
+        ) {
+            (&*(context as *const State))
+                .records
+                .lock()
+                .unwrap()
+                .push(CStr::from_ptr(chunk).to_string_lossy().into_owned());
+        }
+        unsafe extern "C" fn tool(
+            _: *const std::ffi::c_char,
+            _: *const std::ffi::c_char,
+            _: *const std::ffi::c_char,
+            _: *mut std::ffi::c_char,
+            _: usize,
+            context: *mut std::ffi::c_void,
+        ) -> i32 {
+            (&*(context as *const State))
+                .tools
+                .fetch_add(1, Ordering::SeqCst);
+            1
+        }
+        unsafe extern "C" fn plan(
+            target: *const std::ffi::c_char,
+            tool: *const std::ffi::c_char,
+            args: *const std::ffi::c_char,
+            reason: *const std::ffi::c_char,
+            output: *mut std::ffi::c_char,
+            capacity: usize,
+            context: *mut std::ffi::c_void,
+        ) -> i32 {
+            let state = &*(context as *const State);
+            state.plans.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(CStr::from_ptr(target).to_str().unwrap(), "192.168.50.200");
+            assert_eq!(CStr::from_ptr(tool).to_str().unwrap(), state.expected_tool);
+            *state.args.lock().unwrap() =
+                Some(serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap());
+            let snapshot = CString::new(r#"{"id":"test-server","host":"192.168.50.200"}"#).unwrap();
+            let response =
+                mikomai_operation_plan_create_generic(target, tool, snapshot.as_ptr(), args, reason);
+            assert_eq!(response.status, 0);
+            let bytes = CStr::from_ptr(response.message).to_bytes_with_nul();
+            assert!(bytes.len() <= capacity);
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr() as *const std::ffi::c_char,
+                output,
+                bytes.len(),
+            );
+            mikomai_result_free(response);
+            0
+        }
+        let png = std::env::var_os("MIKOMAI_TEST_TRANSFER_IMAGE")
+            .map(|p| fs::read(p).unwrap())
+            .unwrap_or_else(|| include_bytes!("../tests/fixtures/red-rectangle-large.png").to_vec());
+        let name = "スクリーンショット 2026-10-03 23.29.37.png";
+        let payload = CString::new(format!("{}{}", mikomai_adapters::attachments::WIRE_PREFIX,
+                    serde_json::json!({"text":"", "images":[{"name":name,"mimeType":"image/png","base64":STANDARD.encode(&png)}]}))).unwrap();
+        let question = CString::new(format!("添付を192.168.50.200へ{protocol}へアップロード")).unwrap();
+        let empty = CString::new("").unwrap();
+        let devices = CString::new("[]").unwrap();
+        let result = unsafe {
+            mikomai_agent_chat_streaming(
+                question.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                payload.as_ptr(),
+                devices.as_ptr(),
+                Some(stream),
+                Some(tool),
+                Some(plan),
+                &state as *const State as *mut std::ffi::c_void,
+            )
+        };
+        let answer = consume_result(result).unwrap();
+        assert!(answer.starts_with("### ✅ 承認待ち"));
+        assert!(answer.contains(name));
+        assert_eq!(state.tools.load(Ordering::SeqCst), 0);
+        assert_eq!(state.plans.load(Ordering::SeqCst), 1);
+        let records = state.records.lock().unwrap();
+        assert!(records
+            .iter()
+            .any(|record| record.contains("attachment_route")));
+        assert!(!records.iter().any(|record| record.contains("llm_request")
+            || record.contains("reference_context")
+            || record.contains("画像解析:")));
+        drop(records);
+        let args = state.args.lock().unwrap();
+        let args = args.as_ref().unwrap();
+        assert_eq!(args["remote_path"], name);
+        assert_eq!(args["port"], port);
+        assert!(answer.contains(&format!("192.168.50.200:{port}")));
+        let path = args["local_path"].as_str().unwrap();
+        let digest = args["attachment_sha256"].as_str().unwrap();
+        assert_eq!(attachment_upload::read_verified(path, digest).unwrap(), png);
+        fs::write(path, b"modified after planning").unwrap();
+        assert!(attachment_upload::read_verified(path, digest).is_err());
+        // Missing attachment asks for a file without touching Vision or the model.
+        let response = unsafe {
+            mikomai_agent_chat_streaming(
+                question.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                devices.as_ptr(),
+                Some(stream),
+                Some(tool),
+                Some(plan),
+                &state as *const State as *mut std::ffi::c_void,
+            )
+        };
+        assert!(consume_result(response)
+            .unwrap()
+            .starts_with("### ❓ 確認要求"));
+        assert_eq!(state.plans.load(Ordering::SeqCst), 1);
+        restore_env("MIKOMAI_DATA_DIR", old_data);
+        restore_env("MIKOMAI_OPERATION_PLANS_PATH", old_plans);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     fn restore_env(key: &str, value: Option<std::ffi::OsString>) {
         if let Some(value) = value {
             std::env::set_var(key, value);
@@ -4986,4 +5463,39 @@ mod vision_integration_tests {
             println!("Vision answer (expected {expected}): {answer}");
         }
     }
+    #[test]
+    #[ignore = "requires MIKOMAI_TEST_VISION_MODEL and MIKOMAI_TEST_VISION_PROJECTOR"]
+    fn real_large_image_with_tftp_prompt_does_not_abort_native_decode() {
+        load_local_model(&std::env::var("MIKOMAI_TEST_VISION_MODEL").expect("vision model path"))
+            .unwrap();
+        let projector =
+            CString::new(std::env::var("MIKOMAI_TEST_VISION_PROJECTOR").expect("projector path"))
+                .unwrap();
+        let result = unsafe { mikomai_configure_vision(1, projector.as_ptr()) };
+        assert_eq!(result.status, 0);
+        unsafe { mikomai_result_free(result) };
+        let result = unsafe { mikomai_set_inference_params(0.0, 1.1, 8192, 128) };
+        assert_eq!(result.status, 0);
+        unsafe { mikomai_result_free(result) };
+        // This image produces batches larger than the text-only n_ubatch=256.
+        // An assertion in native non-causal attention used to abort the process.
+        let attachments = CString::new(format!("{}{}", mikomai_adapters::attachments::WIRE_PREFIX,
+                serde_json::json!({"text":"", "images":[{"name":"red-rectangle-large.png","mimeType":"image/png",
+                    "base64":STANDARD.encode(include_bytes!("../tests/fixtures/red-rectangle-large.png"))}]}))).unwrap();
+        let question = CString::new("添付を192.168.50.200へTFTPへアップロード").unwrap();
+        let empty = CString::new("").unwrap();
+        let result = unsafe {
+            mikomai_assistant_chat_with_attachments(
+                question.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                empty.as_ptr(),
+                attachments.as_ptr(),
+            )
+        };
+        let answer = consume_result(result).unwrap();
+        assert!(!answer.trim().is_empty());
+        println!("Large-image TFTP prompt answer: {answer}");
+    }
+
 }

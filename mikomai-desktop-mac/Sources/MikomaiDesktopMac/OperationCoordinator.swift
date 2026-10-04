@@ -89,9 +89,9 @@ final class OperationCoordinator: ObservableObject {
         if plan.toolId != "network_config" {
             model.operationPhase = "承認済み操作を実行中…"
             model.operationLogs.append("[STATUS] 承認済み操作を実行中")
-            let output = await Task.detached {
-                DesktopModel.executeApprovedAgentOperation(planID: plan.id, planHash: plan.planHash, password: credentials.password)
-            }.value
+            let output = await DesktopModel.executeApprovedAgentOperation(
+                planID: plan.id, planHash: plan.planHash, password: credentials.password
+            )
             model.operationLogs.append(contentsOf: output.stdout.split(whereSeparator: \.isNewline).map(String.init))
             if !output.stderr.isEmpty {
                 model.operationLogs.append(contentsOf: output.stderr.split(whereSeparator: \.isNewline).map(String.init))

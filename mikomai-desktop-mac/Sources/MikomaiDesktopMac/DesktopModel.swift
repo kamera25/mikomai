@@ -470,7 +470,7 @@ final class DesktopModel: ObservableObject {
     }
 
 
-    nonisolated static func executeApprovedAgentOperation(planID: String, planHash: String, password: String?) -> NetworkOperationOutput {
-        MikomaiFFIBridge.executeApprovedAgentOperation(planID: planID, planHash: planHash, password: password)
+    nonisolated static func executeApprovedAgentOperation(planID: String, planHash: String, password: String?) async -> NetworkOperationOutput {
+        await MikomaiFFIBridge.executeApprovedAgentOperation(planID: planID, planHash: planHash, password: password)
     }
 }

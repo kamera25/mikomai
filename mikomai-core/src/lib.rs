@@ -2,6 +2,7 @@
 pub mod agent;
 pub mod application;
 pub mod attachment_policy;
+pub mod attachment_transfer;
 pub mod audit;
 pub mod desired_change;
 pub mod dispatch;

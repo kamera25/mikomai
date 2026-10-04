@@ -68,7 +68,7 @@ enum MikomaiFFIBridge {
         call { mikomai_set_inference_params(temperature, repetitionPenalty, nCtx, maxGen) }
     }
 
-    static func executeApprovedAgentOperation(planID: String, planHash: String, password: String?) -> NetworkOperationOutput {
+    static func executeApprovedAgentOperation(planID: String, planHash: String, password: String?) async -> NetworkOperationOutput {
         let credentials: String
         do {
             credentials = String(decoding: try JSONSerialization.data(withJSONObject: ["password": password ?? ""]), as: UTF8.self)
@@ -76,14 +76,31 @@ enum MikomaiFFIBridge {
             return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription)
         }
 
-        let res = planID.withCString { id in
-            planHash.withCString { hash in
-                credentials.withCString { secretJSON in
-                    call { mikomai_operation_execute_approved(id, hash, secretJSON) }
+        return await withCheckedContinuation { continuation in
+            let completion = ApprovedOperationCompletion(continuation)
+            let context = Unmanaged.passRetained(completion).toOpaque()
+            let submission = planID.withCString { id in
+                planHash.withCString { hash in
+                    credentials.withCString { secretJSON in
+                        call {
+                            mikomai_operation_execute_approved_async(
+                                id, hash, secretJSON, approvedOperationCompletionBridge, context
+                            )
+                        }
+                    }
                 }
             }
+            // Failed submissions never invoke the callback. Successful ones
+            // transfer context ownership to the callback, even if it fires
+            // before this function returns from the FFI call.
+            if !submission.isSuccess {
+                Unmanaged<ApprovedOperationCompletion>.fromOpaque(context).release()
+                continuation.resume(returning: operationOutput(submission))
+            }
         }
+    }
 
+    fileprivate static func operationOutput(_ res: FFIResult) -> NetworkOperationOutput {
         guard res.isSuccess else {
             return NetworkOperationOutput(success: false, stdout: "", stderr: res.message.isEmpty ? "承認済み操作が失敗しました。" : res.message)
         }
@@ -95,4 +112,21 @@ enum MikomaiFFIBridge {
         }
         return NetworkOperationOutput(success: true, stdout: text, stderr: "")
     }
+}
+
+private final class ApprovedOperationCompletion: Sendable {
+    let continuation: CheckedContinuation<NetworkOperationOutput, Never>
+
+    init(_ continuation: CheckedContinuation<NetworkOperationOutput, Never>) {
+        self.continuation = continuation
+    }
+}
+
+private func approvedOperationCompletionBridge(
+    _ status: Int32, _ output: UnsafePointer<CChar>?, _ context: UnsafeMutableRawPointer?
+) {
+    guard let context else { return }
+    let completion = Unmanaged<ApprovedOperationCompletion>.fromOpaque(context).takeRetainedValue()
+    let result = FFIResult(status: status, message: output.map { String(cString: $0) } ?? "")
+    completion.continuation.resume(returning: MikomaiFFIBridge.operationOutput(result))
 }

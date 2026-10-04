@@ -12,6 +12,8 @@ typedef void (*MikomaiStreamCallback)(const char *chunk, int32_t is_done, void *
 typedef int32_t (*MikomaiToolCallback)(const char *tool_id, const char *target_json, const char *args_json, char *output, uintptr_t output_capacity, void *context);
 typedef int32_t (*MikomaiPlanCallback)(const char *target, const char *tool_id, const char *args_json, const char *rationale, char *output, uintptr_t output_capacity, void *context);
 typedef void (*MikomaiWatchNotificationCallback)(const char *notification_json, void *context);
+/* output is borrowed for the callback duration; copy it before returning. */
+typedef void (*MikomaiOperationCompletionCallback)(int32_t status, const char *output, void *context);
 
 MikomaiResult mikomai_dispatch_mode(const char *message, const char *devices_json);
 MikomaiResult mikomai_agent_chat_streaming(const char *message, const char *history, const char *documents_dir, const char *knowledge_dir, const char *attachments, const char *devices_json, MikomaiStreamCallback callback, MikomaiToolCallback tool_callback, MikomaiPlanCallback plan_callback, void *context);
@@ -51,6 +53,9 @@ MikomaiResult mikomai_operation_audit_list(void);
 MikomaiResult mikomai_operation_plan_begin(const char *id, const char *plan_hash);
 MikomaiResult mikomai_operation_plan_finish(const char *id, int32_t succeeded);
 MikomaiResult mikomai_operation_execute_approved(const char *id, const char *plan_hash, const char *credentials_json);
+/* Successful submission returns immediately and invokes completion exactly once
+ * on the dedicated worker. On submission failure completion is not invoked. */
+MikomaiResult mikomai_operation_execute_approved_async(const char *id, const char *plan_hash, const char *credentials_json, MikomaiOperationCompletionCallback completion, void *context);
 void mikomai_result_free(MikomaiResult result);
 
 #endif

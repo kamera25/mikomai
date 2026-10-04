@@ -12,6 +12,10 @@ AgentはFFI allow-list経由で疎通確認、route/IP情報、serial port列挙
 
 設定変更、serial console送信、FTP/TFTP file transferはhash付きOperationPlanを作成し、Swiftの確認・承認UIに送ります。実行は承認後だけ可能で、FFIのplan hash gate、開始済み状態確認、結果確定を通ります。資格情報はSwift Keychainから必要なFTP接続に限って渡します。Ask-user choiceは候補を表示し、返信を同じpending Agent taskへ続けます。NW図生成はSVG artifactとして保存・表示します。
 
+承認済みFTP/TFTP転送は、推論とは独立した専用Rustワーカーに非同期で送ります。Swiftは完了コールバックを`async/await`で受け取り、実際の転送結果から完了・失敗を表示します。画像解析は非因果attentionのバッチ上限に合わせて処理し、画像バッチが推論コンテキストの物理バッチ上限を超えないようにします。
+
+「添付を192.168.50.200へTFTPへアップロード」（FTPも同様）のような添付転送依頼は、Vision解析・RAG検索・Planner推論を通さずに承認計画を作成します。元のPNG/JPEGまたはUTF-8添付を転送用に保存し、承認計画にファイルのSHA-256を固定して、専用ワーカーが送信直前に一致を確認します。送信先は登録端末と照合し、送信先や対象ファイルが曖昧な場合は確認を求めます。画像の解析・説明を依頼した場合は通常のVision経路を使います。
+
 React/Tauri UI/runtimeとIPC、専用MCP server process群を削除しました。旧Scheduler/Watch/TaskAuditの画面レイアウトは再現していませんが、定期実行、CPU監視、通知、run historyは「CPU監視」に、agent task履歴・再開は左アイコンから開く独立した「エージェント履歴」に分けています。操作監査は会話履歴のメニューから表示できます。GUIの専用ネットワークツール（TCP接続テスト、Ping/Trace、ARPテーブル、ルーティング）と機器一覧の診断ボタンは廃止し、ネットワーク調査はチャットのAgent経由で実行します。旧 `watches.json` とtask event JSONはSwift版Application Supportへ一度だけ取り込みます。agentの登録済みtool契約はportable FFI/Swift callback/承認済みadapterへ移しています。古いtool名と現在の実行経路は [`doc/tauri-retirement.md`](../doc/tauri-retirement.md) に記録しています。
 
 ## 設定と起動

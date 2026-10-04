@@ -141,6 +141,13 @@ extension DesktopModel {
                         self.operationPlan = plan
                         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            var args = object["args"] as? [String: Any] {
+                            if ["network_tftp_upload", "network_ftp_upload"].contains(plan.toolId), args["attachment_sha256"] != nil {
+                                let snapshot = args["deviceSnapshot"] as? [String: Any]
+                                let port = args["port"] as? Int ?? (plan.toolId == "network_ftp_upload" ? 21 : 69)
+                                args["送信先"] = "\(snapshot?["host"] as? String ?? ""):\(port)"
+                                args.removeValue(forKey: "local_path")
+                                args.removeValue(forKey: "attachment_sha256")
+                            }
                             args.removeValue(forKey: "deviceSnapshot")
                             self.operationProposal = plan.args.commands?.joined(separator: "\n") ?? String(decoding: (try? JSONSerialization.data(withJSONObject: args, options: [.prettyPrinted, .sortedKeys])) ?? Data(), as: UTF8.self)
                         } else {

@@ -471,6 +471,9 @@ fn is_greeting(message: &str) -> bool {
 }
 
 pub fn select_dispatch_mode(message: &str) -> DispatchMode {
+    if crate::attachment_transfer::upload_protocol(message).is_some() {
+        return DispatchMode::Agent;
+    }
     if crate::network::interface_check::request(message).is_some() {
         return DispatchMode::Agent;
     }
