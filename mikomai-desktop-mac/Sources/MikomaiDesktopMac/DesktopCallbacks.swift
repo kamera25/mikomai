@@ -176,7 +176,7 @@ func agentToolBridge(
             connections: box.connections,
             credentialPersistence: box.credentialPersistence
         )
-        box.onDebug(CoreDebugRecord.encode(kind: "tool_response", payload: ["tool":tool, "success":result.success, "stdout":result.stdout, "stderr":result.stderr]))
+        box.onDebug(CoreDebugRecord.encode(kind: "tool_response", payload: ["tool":tool, "success":result.success, "stdout":result.stdout, "stderr":result.stderr, "command":result.command ?? "", "exit_code":result.exitCode.map { $0 as Any } ?? NSNull()]))
         let toolOutput = AgentToolResult.isLocalProbe(tool: tool)
             ? AgentToolResult.terminalOutput(stdout: result.stdout, stderr: result.stderr)
             : result.success ? result.stdout : result.stderr

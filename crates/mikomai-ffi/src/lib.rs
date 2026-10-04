@@ -2654,14 +2654,16 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
             debug_trace::emit(if next_hop.is_some() { "agent_event" } else { "fast_route_result" }, serde_json::json!({
                 "event_type":"observation", "target":"localhost", "tool":shortcut.tool, "success":outcome.success, "output":outcome.output,
             }));
-            if shortcut.tool.as_deref() == Some("self_network_route")
+            if (shortcut.tool.as_deref() == Some("self_network_route") || shortcut.args["resource"] == "ndp")
                 && (!outcome.success || outcome.output.trim().is_empty())
             {
-                return Err(format!("自機の経路の取得に失敗しました: {}",
+                return Err(format!("自機の{}の取得に失敗しました: {}", if shortcut.args["resource"] == "ndp" { "NDP" } else { "経路" },
                     if outcome.output.trim().is_empty() { "取得結果が空です。" } else { &outcome.output }));
             }
             if outcome.success {
-                let answer = if shortcut.tool.as_deref() == Some("self_network_route") {
+                let answer = if shortcut.tool.as_deref() == Some("get_state") && shortcut.args["resource"] == "ndp" {
+                    mikomai_core::network::ndp::local_answer(&outcome.output)?
+                } else if shortcut.tool.as_deref() == Some("self_network_route") {
                     mikomai_core::network::route::local_route_answer(
                         shortcut.args["destination"].as_str().or_else(|| shortcut.args["scope"].as_str()).unwrap_or("default"), &outcome.output,
                     )
@@ -2745,6 +2747,7 @@ pub unsafe extern "C" fn mikomai_agent_chat_streaming(
         // Plotter uses supplied topology, history and attachments, rather than
         // configuration manuals. Do not require downloading an embedding model to draw it.
         let fetch_references = !mikomai_core::plotter::is_diagram_request(&goal)
+            && !mikomai_core::network::ndp::is_local_request(&goal)
             && mikomai_core::reference_context::needs_selected_references(&goal);
         let reference_start = std::time::Instant::now();
         let reference_material = if fetch_references && documents.is_dir() {

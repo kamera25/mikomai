@@ -180,6 +180,7 @@ struct NetworkOperationOutput: Sendable {
     let stdout: String
     let stderr: String
     var command: String? = nil
+    var exitCode: Int32? = nil
 }
 
 // MARK: - Keychain Helper

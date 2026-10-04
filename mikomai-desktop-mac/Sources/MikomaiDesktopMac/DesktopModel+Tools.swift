@@ -90,6 +90,13 @@ extension DesktopModel {
                 return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription)
             }
         }
+        if tool == "get_state", arguments["resource"] as? String == "ndp" {
+            guard target.hostname == "localhost" else {
+                return NetworkOperationOutput(success: false, stdout: "", stderr: "NDP取得は自機（localhost）のみ対応しています。")
+            }
+            let result = LocalNDPUtility.read()
+            return NetworkOperationOutput(success: result.success, stdout: result.stdout, stderr: result.stderr, command: result.command, exitCode: result.exitCode)
+        }
         if tool == "get_state", target.hostname == "localhost", arguments["resource"] as? String == "arp" {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/sbin/arp")

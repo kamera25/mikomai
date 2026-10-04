@@ -10,6 +10,12 @@ pub enum DispatchMode {
 /// A full command match is high confidence; partial matches and compound goals
 /// stay with the agent. Never infer an execution target from surrounding prose.
 pub fn fast_route(message: &str) -> Option<LegacyShortcut> {
+    if crate::network::ndp::is_command(message) {
+        return Some(LegacyShortcut {
+            tool: Some("get_state".into()), target: Some("localhost".into()),
+            args: serde_json::json!({"device":"localhost","resource":"ndp"}), reply: None,
+        });
+    }
     if let Some(shortcut) = explicit_probe_shortcut(message) {
         return Some(shortcut);
     }
@@ -480,6 +486,9 @@ pub fn select_dispatch_mode(message: &str) -> DispatchMode {
     }
     if fast_route(message).is_some() {
         return DispatchMode::FastRouter;
+    }
+    if crate::network::ndp::is_local_request(message) {
+        return DispatchMode::Agent;
     }
     if crate::plotter::is_diagram_request(message) || legacy_shortcut(message).is_some() {
         return DispatchMode::Agent;

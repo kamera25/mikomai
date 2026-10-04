@@ -205,7 +205,7 @@ pub fn build_decision_schema(devices: &[String], tools: &[String]) -> String {
             "target":target_schema,
             "parameters":{"type":"object","properties":{
                 "device":target_schema.clone(),
-                "resource":{"type":"string","enum":["arp","routes","interfaces","lldp","mac_table","bgp","ospf"]},
+                "resource":{"type":"string","enum":["arp","ndp","routes","interfaces","lldp","mac_table","bgp","ospf"]},
                 "refresh":{"type":"boolean"},
                 "roots":{"type":"array","items":{"type":"string","minLength":1},"minItems":1,"maxItems":32},
                 "depth":{"type":"integer","minimum":0,"maximum":8},
@@ -230,8 +230,13 @@ pub fn build_decision_schema(devices: &[String], tools: &[String]) -> String {
 /// Builds the runtime schema and narrows MAC address queries to the legacy
 /// deterministic ARP lookup tools.
 pub fn build_goal_decision_schema(devices: &[String], tools: &[String], goal: &str) -> String {
+    let lower = goal.to_lowercase();
+    let mut targets = devices.to_vec();
+    if ["ndp", "近隣", "隣接", "neighbor"].iter().any(|term| lower.contains(term)) && !targets.iter().any(|target| target == "localhost") {
+        targets.push("localhost".into());
+    }
     let mut schema: serde_json::Value =
-        serde_json::from_str(&build_decision_schema(devices, tools))
+        serde_json::from_str(&build_decision_schema(&targets, tools))
             .expect("generated decision schema is valid JSON");
     if let Some(host) = crate::agent::ping_statistics_target(goal) {
         schema["properties"]["tool"] = serde_json::json!({"enum":["self_network_ping", null]});

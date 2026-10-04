@@ -253,7 +253,11 @@ impl ReadOnlyToolRegistry {
         }
         let args = &resolved_args;
         validate_tool_args(tool, args)?;
-        let target = if is_local_tool_id(tool_id) {
+        let local_ndp = tool == ReadOnlyDeviceTool::GetState && args["resource"] == "ndp";
+        if local_ndp && (target_id != "localhost" || args["device"].as_str().is_some_and(|device| device != "localhost")) {
+            return Err("NDP observation is supported only on localhost".into());
+        }
+        let target = if is_local_tool_id(tool_id) || local_ndp {
             RegisteredDevice {
                 id: None,
                 hostname: target_id.to_owned(),
@@ -405,6 +409,23 @@ pub fn is_local_tool_id(tool_id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn ndp_accepts_localhost_without_registration_and_rejects_remote_targets() {
+        struct Capture(std::sync::Mutex<Vec<String>>);
+        impl CredentialedReadOnlyTransport for Capture {
+            fn execute_read_only(&self, target: &RegisteredDevice, _: &DeviceCredentials, _: ReadOnlyDeviceTool, _: &Value) -> Result<String, String> {
+                self.0.lock().unwrap().push(target.hostname.clone()); Ok("observed".into())
+            }
+        }
+        let registry = ReadOnlyToolRegistry::from_json(r#"[{"hostname":"router"}]"#).unwrap();
+        let transport = Capture(std::sync::Mutex::new(vec![]));
+        let args = serde_json::json!({"resource":"ndp","device":"localhost"});
+        registry.execute(&transport, "get_state", "localhost", &args, &creds()).unwrap();
+        assert!(registry.execute(&transport, "get_state", "router", &args, &creds()).is_err());
+        assert!(registry.execute(&transport, "get_state", "localhost", &serde_json::json!({"resource":"ndp","device":"router"}), &creds()).is_err());
+        assert_eq!(*transport.0.lock().unwrap(), vec!["localhost"]);
+    }
 
     #[test]
     fn registered_hosts_take_priority_for_all_local_network_probes() {

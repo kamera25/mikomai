@@ -105,7 +105,7 @@ pub fn run(mut args: Vec<String>, json: bool) -> Result<String, String> {
                     .join("\n")
             })
         }
-        Some("resources") => { let resources = ["interfaces", "routes", "arp", "mac-table", "config", "system"]; Ok(if json { serde_json::json!({"ok": true, "data": resources}).to_string() } else { resources.join("\n") }) }
+        Some("resources") => { let resources = ["interfaces", "routes", "arp", "ndp", "mac-table", "config", "system"]; Ok(if json { serde_json::json!({"ok": true, "data": resources}).to_string() } else { resources.join("\n") }) }
         Some("get-state") => { let device = args.get(1).cloned().ok_or("get-state device is required")?; let resource = args.get(2).cloned().ok_or("get-state resource is required")?; let output = serde_json::json!({"device": device, "resource": resource, "success": false, "error": "No device transport is configured in the standalone CLI"}); if json { Ok(serde_json::json!({"ok": false, "data": output}).to_string()) } else { Err(output["error"].as_str().unwrap_or("get-state failed").into()) } }
         _ => Err("usage: mikomai-cli [--json] [--debug|-d] [--debug-jsonl] <chat|rag-ingest|rag-search|devices|resources|get-state> ...".into()),
     }
@@ -122,6 +122,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         .filter(|route| route.tool.as_deref() == Some("self_network_test_connection"));
     let next_hop = mikomai_core::dispatch::local_next_hop_shortcut(&goal);
     let local_route = next_hop.clone().or_else(|| mikomai_core::dispatch::local_route_shortcut(&goal));
+    let local_ndp = mikomai_core::network::ndp::is_local_request(&goal);
     let local_mac = mikomai_core::dispatch::local_arp_mac_target(&goal);
     let interface_check = mikomai_core::network::interface_check::request(&goal);
     let greeting_reply = mikomai_core::dispatch::legacy_shortcut(&goal).and_then(|s| s.reply);
@@ -134,8 +135,8 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         "cli_request",
         serde_json::json!({
             "query": goal, "history": "", "attachments": "", "devices_json": "[]",
-            "mode": if interface_check.is_some() { "agent" } else if next_hop.is_some() { "agent" } else if local_route.is_some() || port_check.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
-            "backend": if greeting_reply.is_some() { "deterministic_reply" } else if interface_check.is_some() { "native_device_transport_unavailable" } else if port_check.is_some() { "local_tcp" } else if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
+            "mode": if local_ndp { if mikomai_core::network::ndp::is_command(&goal) { "fast_router" } else { "agent" } } else if interface_check.is_some() { "agent" } else if next_hop.is_some() { "agent" } else if local_route.is_some() || port_check.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
+            "backend": if greeting_reply.is_some() { "deterministic_reply" } else if local_ndp { "local_ndp" } else if interface_check.is_some() { "native_device_transport_unavailable" } else if port_check.is_some() { "local_tcp" } else if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
         }),
     );
     let result = (|| {
@@ -143,6 +144,21 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
             trace.emit("deterministic_reply", serde_json::json!({"reason":"greeting", "rag":false}));
             trace.stream(&reply, true);
             reply
+        } else if local_ndp {
+            let args = serde_json::json!({"device":"localhost","resource":"ndp"});
+            trace.emit("agent_event", serde_json::json!({"event_type":"tool_call", "tool":"get_state", "target":"localhost", "args":args, "command":"/usr/sbin/ndp -a"}));
+            #[cfg(target_os = "macos")]
+            let output = std::process::Command::new("/usr/sbin/ndp").arg("-a").output();
+            #[cfg(not(target_os = "macos"))]
+            let output: std::io::Result<std::process::Output> = Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "NDP observation is supported only on macOS"));
+            let output = output.map_err(|error| format!("自機のNDP取得に失敗しました: {error}"))?;
+            let raw = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            trace.emit("agent_event", serde_json::json!({"event_type":"observation", "tool":"get_state", "target":"localhost", "args":args, "command":"/usr/sbin/ndp -a", "success":output.status.success(), "exit_code":output.status.code(), "output":raw, "stderr":stderr}));
+            if !output.status.success() { return Err(format!("自機のNDP取得に失敗しました: {stderr}")); }
+            let answer = mikomai_core::network::ndp::local_answer(&raw)?;
+            trace.stream(&answer, true);
+            answer
         } else if interface_check.is_some() {
             // Standalone CLI has no native Keychain/device callback. Do not
             // manufacture a live observation using the text-only Worker.
