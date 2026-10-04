@@ -22,10 +22,4 @@ extension DesktopModel {
         connections = ConnectionInventoryPolicy.removing(id, from: connections)
         credentialPersistence.delete(for: id)
     }
-
-    func importLegacyDevices(fromJSON data: Data) throws -> LegacyConnectionImportResult {
-        let result = try LegacyConnectionImporter.importJSON(data, existing: connections)
-        connections.append(contentsOf: result.imported)
-        return result
-    }
 }

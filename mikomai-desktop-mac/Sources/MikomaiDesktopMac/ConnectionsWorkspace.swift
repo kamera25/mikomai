@@ -4,7 +4,6 @@ import Foundation
 import Darwin
 import Security
 import CryptoKit
-import MikomaiFFI
 import MikomaiDesktopCore
 import UniformTypeIdentifiers
 
@@ -99,45 +98,10 @@ struct ConnectionsWorkspace: View {
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                 Spacer()
                 AccessibleButton("CSV を読み込む") { importCSV() }
-                AccessibleButton("旧 JSON を読み込む") { importLegacyRegistry() }
                 AccessibleButton("CSV を書き出す") { exportCSV() }.disabled(model.connections.isEmpty)
             }.padding(12).background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         }
         .alert("機器情報", isPresented: $showsCSVAlert) { Button("OK", role: .cancel) {} } message: { Text(csvAlert) }
-    }
-
-    private func importLegacyRegistry() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        FilePanelPresenter.present(panel) { [self] response in
-            guard response == .OK, let url = panel.url else { return }
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            let json = url.path.withCString { path in
-                let response = mikomai_device_registry_read(path)
-                defer { mikomai_result_free(response) }
-                guard let message = response.message else { return "エラー: 機器情報を読み込めませんでした。" }
-                let text = String(cString: message)
-                return response.status == 0 ? text : "エラー: \(text)"
-            }
-            guard !json.hasPrefix("エラー:") else {
-                presentCSVMessage(json)
-                return
-            }
-            let result: LegacyConnectionImportResult
-            do {
-                result = try model.importLegacyDevices(fromJSON: Data(json.utf8))
-            } catch {
-                presentCSVMessage("旧形式の機器情報 JSON を読み取れませんでした。元ファイルは変更していません。")
-                return
-            }
-            var note = "\(result.imported.count) 件を追加し、\(result.skipped) 件をスキップしました。元ファイルは変更していません。"
-            if result.missingIDs > 0 { note += " IDのない行は重複判定せず追加しました。" }
-            presentCSVMessage(note)
-        }
     }
 
     private func exportCSV() {
