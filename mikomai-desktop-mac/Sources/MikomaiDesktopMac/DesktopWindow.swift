@@ -822,12 +822,7 @@ struct DesktopWindow: View {
                             }
                         }
                         if model.isWorkingInActiveSession && model.activeSession?.messages.last?.agentProgress == nil {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small)
-                                Text(model.isCancelling ? "生成を停止しています…" : "資料を検索して回答を生成しています…")
-                                    .font(.system(size: 14)).foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            WorkingStatusView(isCancelling: model.isCancelling)
                         }
                         ForEach(model.queuedSubmissionsInActiveSession) { submission in
                             QueuedSubmissionView(submission: submission) {
