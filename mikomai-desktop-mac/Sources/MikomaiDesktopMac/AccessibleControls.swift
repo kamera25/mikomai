@@ -47,6 +47,7 @@ struct AccessiblePicker<Value: Hashable>: View {
             control.setAccessibilityLabel(title)
             KeyboardNavigation.schedule(in: control.window)
         }
+        @MainActor
         final class Coordinator: NSObject {
             var owner: NativePicker
             init(_ owner: NativePicker) { self.owner = owner }
@@ -161,6 +162,7 @@ struct AccessibleSlider: NSViewRepresentable {
         control.setAccessibilityLabel(title)
         KeyboardNavigation.schedule(in: control.window)
     }
+    @MainActor
     final class Coordinator: NSObject {
         var owner: AccessibleSlider
         init(_ owner: AccessibleSlider) { self.owner = owner }

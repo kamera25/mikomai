@@ -88,6 +88,7 @@ struct AccessibleButton<Label: View>: NSViewRepresentable {
         return CGSize(width: width, height: min(natural.height, proposal.height ?? natural.height))
     }
 
+    @MainActor
     final class Coordinator: NSObject {
         var action: () -> Void
         init(action: @escaping () -> Void) { self.action = action }

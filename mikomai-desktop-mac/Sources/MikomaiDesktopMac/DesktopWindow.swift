@@ -146,14 +146,6 @@ private struct ToolbarHeaderSizing: NSViewRepresentable {
 
     func updateNSView(_ nsView: ObserverView, context: Context) {
         nsView.onResize = { window in
-            guard let item = window.toolbar?.items.first(where: {
-                $0.itemIdentifier.rawValue == "windowHeader"
-            }) else { return }
-            // Keep the native item flexible without replacing it during live resize.
-            let minimum = NSSize(width: 120, height: 36)
-            let maximum = NSSize(width: max(120, (window.contentView?.bounds.width ?? 520) - 120), height: 36)
-            if item.minSize != minimum { item.minSize = minimum }
-            if item.maxSize != maximum { item.maxSize = maximum }
             if showsRightPane, let content = window.contentView,
                let split = Self.mainSplit(in: content), let pane = split.subviews.last {
                 let width = pane.frame.width
