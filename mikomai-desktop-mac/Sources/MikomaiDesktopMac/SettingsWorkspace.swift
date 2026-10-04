@@ -82,6 +82,7 @@ struct SettingsWorkspace: View {
             .background(Color(nsColor: .underPageBackgroundColor))
         }
 
+        .accessibleButtonHoverHighlight(cornerRadius: 6)
         .onAppear {
             availablePorts = SerialPortDetector.listPorts()
         }

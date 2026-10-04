@@ -463,6 +463,7 @@ struct DesktopWindow: View {
             }.padding(12)
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.7))
+        .accessibleButtonHoverHighlight(cornerRadius: 6)
     }
 
     private var historyTabTitle: String {
@@ -648,6 +649,7 @@ struct DesktopWindow: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+        .accessibleButtonHoverHighlight(cornerRadius: 6)
     }
 
     private var operationDiffPane: some View {
@@ -898,6 +900,7 @@ struct DesktopWindow: View {
             }
         }
         .modifier(ChatDiagramExpansion(presentation: diagramPresentation))
+        .accessibleButtonHoverHighlight(cornerRadius: 6)
         .onChange(of: model.activeSessionID) { _ in diagramPresentation.close() }
         .onDisappear { diagramPresentation.close() }
     }
