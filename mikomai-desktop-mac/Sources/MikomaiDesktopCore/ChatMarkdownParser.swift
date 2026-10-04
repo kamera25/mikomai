@@ -26,7 +26,8 @@ public enum ChatMarkdownParser {
 
         func flushParagraph() {
             guard !paragraph.isEmpty else { return }
-            result.append(ChatMarkdownBlock(kind: .paragraph(paragraph.joined(separator: " "))))
+            // Chat answers use single newlines for intentional line breaks.
+            result.append(ChatMarkdownBlock(kind: .paragraph(paragraph.joined(separator: "\n"))))
             paragraph.removeAll(keepingCapacity: true)
         }
 

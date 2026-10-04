@@ -91,12 +91,43 @@ struct ChatPresentationPolicyTests {
 
         #expect(blocks.map(\.kind) == [
             .heading(1, "見出し"),
-            .paragraph("説明の一行目 説明の二行目"),
+            .paragraph("説明の一行目\n説明の二行目"),
             .bullet("項目"),
             .quote("引用"),
             .separator,
             .code("ios", "interface vlan 20")
         ])
+    }
+
+    @Test func finalResponsePreservesLineBreaksThroughJSONAndInlineMarkdown() throws {
+        let answer = """
+        NakaokuGW のLAN1はupです。
+        観測時刻: 2026-10-04T05:20:55Z
+        根拠: Graphに保存・再取得したCanonicalインターフェース状態（status）。
+        管理上の有効/無効（admin_state）と、IP疎通はこの確認では判定していません。
+        """
+        let decoded = try JSONDecoder().decode(String.self, from: JSONEncoder().encode(answer))
+        let blocks = ChatMarkdownParser.parse(decoded)
+        #expect(blocks.map(\.kind) == [.paragraph(answer)])
+        let content = try #require(blocks.first)
+        guard case let .paragraph(text) = content.kind else {
+            Issue.record("Expected a paragraph for the final response")
+            return
+        }
+        let attributed = try AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+        #expect(String(attributed.characters) == answer)
+    }
+
+    @Test func markdownPreservesNewlinesAlongsideInlineFormattingAndCode() throws {
+        let blocks = ChatMarkdownParser.parse("**状態**: up\n観測時刻: 2026-10-04\n\n別の段落\n```text\n一行目\n二行目\n```\n文字通りの\\n")
+        #expect(blocks.map(\.kind) == [
+            .paragraph("**状態**: up\n観測時刻: 2026-10-04"),
+            .paragraph("別の段落"),
+            .code("text", "一行目\n二行目"),
+            .paragraph("文字通りの\\n")
+        ])
+        let attributed = try AttributedString(markdown: "**状態**: up\n観測時刻: 2026-10-04", options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+        #expect(String(attributed.characters) == "状態: up\n観測時刻: 2026-10-04")
     }
 
     @MainActor @Test func clipboardCopiesJapaneseMarkdownAndReplacesExistingContents() {
