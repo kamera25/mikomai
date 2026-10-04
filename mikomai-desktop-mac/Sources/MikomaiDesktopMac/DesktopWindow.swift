@@ -187,7 +187,6 @@ struct DesktopWindow: View {
 
     private let historyWidth: CGFloat = 248
     @State private var isHistoryOpen = true
-    @State private var historyTab = "conversation"
     @AppStorage("mikomai.desktop.mac.rightPaneWidth") private var rightPaneWidth = 330.0
     @State private var isRightPaneOpen = false
     @State private var rightPaneTab = "diff"
@@ -254,7 +253,7 @@ struct DesktopWindow: View {
                 .frame(width: isTiled && !isHistoryOpen && !isRightPaneOpen
                        ? max(0, geometry.size.width - 50) : nil)
                 .background(Color(nsColor: .windowBackgroundColor))
-                if model.workspace == .chat && historyTab == "conversation" && isRightPaneOpen {
+                if model.workspace == .chat && isRightPaneOpen {
                     rightSidePane
                         .frame(minWidth: 180, idealWidth: rightPaneWidth, maxWidth: 600)
                 }
@@ -297,7 +296,6 @@ struct DesktopWindow: View {
             isRightPaneOpen = true
         }
         .onChange(of: model.workspace) { workspace in
-            if workspace == .chat { historyTab = "conversation" }
             if (workspace == .chat || workspace == .agentHistory) && !isTiled {
                 isHistoryOpen = true
             }
@@ -383,25 +381,22 @@ struct DesktopWindow: View {
                 if model.workspace == .agentHistory {
                     Text("エージェント履歴").font(.system(size: 14, weight: .semibold))
                 } else {
-                    AccessiblePicker("履歴の種類", selection: $historyTab,
-                                     options: [("conversation", "会話"), ("audit", "操作監査")], showsTitle: false)
-                        .frame(maxWidth: .infinity, minHeight: 36)
-                        .onChange(of: historyTab) { tab in
-                            if tab == "audit" { model.refreshOperationAudit() }
+                    AccessibleButton("新規チャット") { model.createSession() } label: {
+                        HStack(spacing: 6) {
+                            Text("新規チャット")
+                            Image(systemName: "square.and.pencil")
                         }
-                }
-                Spacer()
-                if model.workspace == .chat && historyTab == "conversation" {
-                    AccessibleButton("新しい会話") { model.createSession() } label: {
-                        Image(systemName: "square.and.pencil")
-                            .frame(width: 28, height: 28)
+                        .frame(minHeight: 36)
+                        .padding(.horizontal, 6)
                             .contentShape(Rectangle())
                     }
                     .accessibleButtonStyle(.plain)
                     .accessibleButtonHoverHighlight(cornerRadius: 6)
-                    .help("新しい会話")
-                    .accessibilityLabel("新しい会話")
-                } else if model.workspace == .agentHistory {
+                    .help("新規チャット")
+                    .accessibilityLabel("新規チャット")
+                }
+                Spacer()
+                if model.workspace == .agentHistory {
                     AccessibleButton("エージェント履歴を更新") { model.refreshAgentTasks() } label: {
                         Image(systemName: "arrow.clockwise")
                             .frame(width: 28, height: 28)
@@ -424,19 +419,17 @@ struct DesktopWindow: View {
                             onSelect: { task in model.loadAgentTaskHistory(task) },
                             onDelete: { task in model.deleteAgentTask(task) }
                         )
-                    } else if historyTab == "conversation" {
+                    } else {
                         ForEach(model.sessions) { session in
                             SessionRow(session: session, isSelected: session.id == model.activeSessionID,
                                        onSelect: { model.select(session.id) },
                                        onRename: { model.renameSession(session.id, title: $0) },
                                        onDelete: { model.deleteSession(session.id) })
                         }
-                    } else {
-                        Text("承認済み操作の監査記録").font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary).padding(8)
                     }
                 }.padding(8)
             }
-            if model.workspace == .chat && historyTab == "conversation" && !model.recentToolResults.isEmpty {
+            if model.workspace == .chat && !model.recentToolResults.isEmpty {
                 Divider()
                 VStack(alignment: .leading, spacing: 7) {
                     Text("取得した状態・DB検索").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
@@ -466,13 +459,6 @@ struct DesktopWindow: View {
         .accessibleButtonHoverHighlight(cornerRadius: 6)
     }
 
-    private var historyTabTitle: String {
-        switch historyTab {
-        case "audit": "操作監査"
-        default: "会話"
-        }
-    }
-
     private var showsHistorySidebar: Bool {
         model.workspace == .chat || model.workspace == .agentHistory
     }
@@ -484,12 +470,10 @@ struct DesktopWindow: View {
             selectedHistory: model.selectedTaskHistory,
             onRefresh: { model.refreshAgentTasks() },
             onRerunTask: { task in
-                historyTab = "conversation"
                 model.rerunAgentTask(task)
             },
             canRerunTask: !model.isLoadingModel,
             onResumeTask: { task in
-                historyTab = "conversation"
                 model.workspace = .chat
                 model.resumeAgentTask(task)
             },
@@ -502,26 +486,7 @@ struct DesktopWindow: View {
 
     @ViewBuilder
     private var selectedHistoryWorkspace: some View {
-        switch historyTab {
-        case "audit":
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("承認済み操作の監査記録").font(.system(size: 16, weight: .semibold))
-                    Spacer()
-                    AccessibleButton("更新") { model.refreshOperationAudit() }
-                }
-                ScrollView {
-                    Text(model.operationAuditText.isEmpty ? "記録はありません" : model.operationAuditText)
-                        .font(.system(size: 13, design: .monospaced)).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                }.background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onAppear { model.refreshOperationAudit() }
-        default:
-            chatWorkspace
-        }
+        chatWorkspace
     }
 
     @ToolbarContentBuilder
@@ -543,7 +508,7 @@ struct DesktopWindow: View {
                 }
             }
             toolbarTitle.overlay(WindowTitleDragRegion())
-            if model.workspace == .chat && historyTab == "conversation" {
+            if model.workspace == .chat {
                 paneToggleButton(symbol: "sidebar.right",
                                  title: isRightPaneOpen ? "作業タブを非表示" : "作業タブを表示") {
                     withAnimation(.easeInOut(duration: 0.18)) { isRightPaneOpen.toggle() }
@@ -560,7 +525,7 @@ struct DesktopWindow: View {
                maxWidth: max(0, currentContainerWidth - 120))
         .frame(height: 36)
         .background(ToolbarHeaderSizing(rightPaneWidth: $renderedRightPaneWidth,
-                                        showsRightPane: model.workspace == .chat && historyTab == "conversation" && isRightPaneOpen))
+                                        showsRightPane: model.workspace == .chat && isRightPaneOpen))
     }
 
     private func paneToggleButton(symbol: String, title: String,
@@ -586,10 +551,7 @@ struct DesktopWindow: View {
 
     private var headerTitle: String {
         guard model.workspace == .chat else { return model.workspace.rawValue }
-        switch historyTab {
-        case "audit": return "操作監査"
-        default: return model.activeSession?.title ?? "mikomai"
-        }
+        return model.activeSession?.title ?? "mikomai"
     }
 
     private func handleSelectedConfig(_ config: String) {
