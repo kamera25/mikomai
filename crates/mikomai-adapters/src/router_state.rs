@@ -6,7 +6,7 @@ use crate::{
 use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,serde::Serialize,serde::Deserialize)]
 pub struct RouterObservation {
     pub raw: String,
     pub canonical: Option<Value>,

@@ -1,5 +1,5 @@
 import MikomaiDesktopCore
-import MikomaiFFI
+import MikomaiBindings
 
 // Explicit opt-in read against a saved target. Isolated graph/events, no settings writes.
 @main struct InterfaceCheck {

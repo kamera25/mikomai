@@ -127,6 +127,7 @@ extension DesktopModel {
                 knowledge: knowledge,
                 attachments: attachmentText,
                 connections: agentConnections,
+                onTaskState: { state in DispatchQueue.main.async { self.chatWaitingDeviceDecision = state == "awaiting_user" } },
                 onTaskID: { taskID in
                     DispatchQueue.main.async {
                         self.activeRustTaskID = taskID

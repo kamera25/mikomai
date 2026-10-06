@@ -3017,6 +3017,7 @@ dependencies = [
  "fs2",
  "futures-lite",
  "keyring",
+ "libc",
  "mikomai-core",
  "mikomai-llm-apple",
  "mikomai-llm-llamacpp",
@@ -3046,6 +3047,7 @@ dependencies = [
  "sha2",
  "tokio",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -3069,6 +3071,8 @@ dependencies = [
  "mikomai-llm-llamacpp",
  "serde_json",
  "tokio",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]

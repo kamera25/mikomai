@@ -1,4 +1,3 @@
-use mikomai_adapters::device::JsonDeviceRegistry;
 use mikomai_adapters::headless::{EchoToolExecutor, JsonTaskRepository, StdoutReporter};
 use mikomai_adapters::knowledge::{KnowledgePlanner, KnowledgeStore};
 use mikomai_core::application::ChatService;
@@ -45,7 +44,6 @@ mod graph_path_tests {
         let cli = cli_graph_path(None, Some(home.clone().into_os_string())).unwrap();
         assert_ne!(cli, home.join("Library/Application Support/com.mikomai.agent/surrealdb"));
         assert_eq!(cli, home.join("Library/Application Support/MikomaiDesktopMac/surrealdb"));
-        assert_eq!(cli, home.join("Library/Application Support/MikomaiDesktopMac/surrealdb"));
     }
 
     #[test]
@@ -56,16 +54,16 @@ mod graph_path_tests {
     }
 
     #[tokio::test]
-    async fn cli_can_open_its_index_while_desktop_holds_a_lock() {
+    async fn cli_shares_the_canonical_store_while_desktop_owns_it() {
         use mikomai_adapters::portable_graph::PortableGraph;
-        let home = std::env::temp_dir().join(format!("mikomai-cli-lock-test-{}", std::process::id()));
-        let desktop_path = home.join("Library/Application Support/com.mikomai.agent/surrealdb");
-        let _desktop = PortableGraph::initialize_at(&desktop_path).await.unwrap();
-        // Reproduce the original conflict before checking the separated path.
-        let duplicate = PortableGraph::initialize_at(&desktop_path).await;
-        assert!(matches!(duplicate, Err(ref error) if error.contains("lock") || error.contains("LOCK")));
-        let cli_path = cli_graph_path(None, Some(home.into_os_string())).unwrap();
-        let _cli = PortableGraph::initialize_at(&cli_path).await.unwrap();
+        let home=std::env::temp_dir().join(format!("mikomai-cli-lock-test-{}",uuid::Uuid::new_v4()));
+        let path=cli_graph_path(None,Some(home.into_os_string())).unwrap();
+        let desktop=PortableGraph::initialize_at(&path).await.unwrap();
+        desktop.save_app_document("settings",&serde_json::json!({"marker":"desktop"})).await.unwrap();
+        let cli=PortableGraph::initialize_at(&path).await.unwrap();
+        assert_eq!(cli.load_app_document("settings").await.unwrap().unwrap()["marker"],"desktop");
+        cli.save_app_document("settings",&serde_json::json!({"marker":"cli"})).await.unwrap();
+        assert_eq!(desktop.load_app_document("settings").await.unwrap().unwrap()["marker"],"cli");
     }
 }
 
@@ -92,20 +90,49 @@ pub fn run(mut args: Vec<String>, json: bool) -> Result<String, String> {
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
         }
+        Some("task-query") => {
+            let snapshot = mikomai_app::api::engine().query(args.get(1).ok_or("task ID required")?)?;
+            serde_json::to_string(&snapshot).map_err(|e| e.to_string())
+        }
+        Some("device-register") => {
+            if args.len()!=8{return Err("device-register <id> <name> <host/serial-path> <device-type> <transport> <port> <username>".into());}
+            let record=serde_json::json!({"id":args[1],"name":args[2],"host":args[3],"deviceType":args[4],"connectionType":args[5],"port":args[6],"username":args[7]});
+            mikomai_app::native_features::register_connection(&record)?;Ok("Device registered".into())
+        }
+        Some("operation-approve") => {
+            mikomai_app::owned_bridge::invoke("mikomai_operation_plan_approve",&[args.get(1).ok_or("plan ID required")?.clone(),args.get(2).ok_or("plan hash required")?.clone()],None)
+        }
+        Some("operation-execute") => {
+            let engine=mikomai_app::api::engine();let id=engine.submit(mikomai_app::api::Command::ExecuteApproved{plan_id:args.get(1).ok_or("plan ID required")?.clone(),plan_hash:args.get(2).ok_or("plan hash required")?.clone()})?;
+            wait_task(engine,&id)
+        }
         Some("device-show") => {
             let target=args.get(1).ok_or("registered target required")?.clone();let commands=vec![args.get(2).ok_or("show command required")?.clone()];
             let engine=mikomai_app::api::engine();let id=engine.submit(mikomai_app::api::Command::ReadDevice{target,commands,timeout_seconds:60})?;
-            loop {let snapshot=engine.query(&id)?;if ["completed","failed","cancelled","unknown","awaiting_user"].contains(&snapshot.state.as_str()) {return if snapshot.state=="completed" {Ok(snapshot.result)} else {Err(snapshot.result)}};std::thread::sleep(std::time::Duration::from_millis(5));}
+            wait_task(engine,&id)
+        }
+        Some("credentials-stdin") => {
+            // Secrets are read only from stdin and never accepted in argv/env.
+            let mut input=zeroize::Zeroizing::new(String::new());use std::io::Read;
+            std::io::stdin().take(64*1024).read_to_string(&mut input).map_err(|_|"credential stdin unavailable")?;
+            let mut value:serde_json::Value=serde_json::from_str(&input).map_err(|_|"invalid credential JSON")?;
+            let result = mikomai_adapters::secrets::update(args.get(1).ok_or("credential reference required")?,value["password"].as_str(),value["enablePassword"].as_str());
+            mikomai_adapters::secrets::wipe(&mut value);
+            result?;
+            Ok("Credentials updated".into())
         }
         Some("native-query") => {
-            let request=serde_json::from_str(args.get(1).ok_or("query JSON required")?).map_err(|e|e.to_string())?;
+            let request:serde_json::Value=serde_json::from_str(args.get(1).ok_or("query JSON required")?).map_err(|e|e.to_string())?;
+            if request["op"]=="store_save"&&request["collection"]=="connections" {return Err("bulk connection import is not supported; register devices individually".into());}
+            if request["op"]=="credential_update" {return Err("use credentials-stdin; secrets must not appear in argv".into());}
             Ok(mikomai_app::native_features::query(&request)?.to_string())
         }
         Some("chat") => chat(args.into_iter().skip(1).collect::<Vec<_>>().join(" "), json, debug_jsonl),
         Some("rag-ingest") => { let path = args.get(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("nw-docs")); let store = knowledge_store(); let chunks = store.ingest(path)?; Ok(if json { serde_json::json!({"ok": true, "data": {"chunks": chunks}}).to_string() } else { format!("Ingested {chunks} knowledge documents.") }) }
         Some("rag-search") => { let query = args.get(1..).unwrap_or(&[]).join(" "); if query.trim().is_empty() { return Err("rag-search query is required".into()); } let hits = futures_lite::future::block_on(knowledge_store().search(&query, 8))?; Ok(if json { serde_json::json!({"ok": true, "data": hits}).to_string() } else { hits.into_iter().map(|hit| format!("## {}\n{}", hit.title, hit.content)).collect::<Vec<_>>().join("\n\n") }) }
         Some("devices") => {
-            let devices = JsonDeviceRegistry::from_env().list()?;
+            let records=mikomai_app::native_features::query(&serde_json::json!({"op":"store_load","collection":"connections"}))?;
+            let devices=records.as_array().cloned().unwrap_or_default();
             Ok(if json {
                 serde_json::json!({"ok": true, "data": devices}).to_string()
             } else if devices.is_empty() {
@@ -116,9 +143,9 @@ pub fn run(mut args: Vec<String>, json: bool) -> Result<String, String> {
                     .map(|device| {
                         format!(
                             "{}\t{}\t{}",
-                            device.hostname,
-                            device.ip.unwrap_or_default(),
-                            device.connection_type.unwrap_or_default()
+                            device["name"].as_str().unwrap_or(""),
+                            device["host"].as_str().unwrap_or(""),
+                            device["connectionType"].as_str().unwrap_or("")
                         )
                     })
                     .collect::<Vec<_>>()
@@ -126,8 +153,28 @@ pub fn run(mut args: Vec<String>, json: bool) -> Result<String, String> {
             })
         }
         Some("resources") => { let resources = ["interfaces", "routes", "arp", "ndp", "mac-table", "config", "system"]; Ok(if json { serde_json::json!({"ok": true, "data": resources}).to_string() } else { resources.join("\n") }) }
-        Some("get-state") => { let device = args.get(1).cloned().ok_or("get-state device is required")?; let resource = args.get(2).cloned().ok_or("get-state resource is required")?; let output = serde_json::json!({"device": device, "resource": resource, "success": false, "error": "No device transport is configured in the standalone CLI"}); if json { Ok(serde_json::json!({"ok": false, "data": output}).to_string()) } else { Err(output["error"].as_str().unwrap_or("get-state failed").into()) } }
+        Some("get-state") => {
+            let device = args.get(1).ok_or("get-state device is required")?;
+            let resource = args.get(2).ok_or("get-state resource is required")?;
+            let output = mikomai_app::native_execution::execute_tool("get_state", &serde_json::json!({"id":device}), &serde_json::json!({"resource":resource}))?;
+            Ok(output)
+        }
         _ => Err("usage: mikomai-cli [--json] [--debug|-d] [--debug-jsonl] <chat|rag-ingest|rag-search|devices|resources|get-state> ...".into()),
+    }
+}
+
+fn wait_task(engine:&mikomai_app::api::Engine,id:&str)->Result<String,String> {
+    loop {
+        let snapshot=engine.query(id)?;
+        match snapshot.state.as_str() {
+            "completed"=>return Ok(snapshot.result),"failed"|"cancelled"|"unknown"=>return Err(snapshot.result),
+            "awaiting_user"=>{
+                eprintln!("{}\n待機を続ける場合は continue、中止する場合は cancel を入力してください。",snapshot.result);
+                let mut answer=String::new();std::io::stdin().read_line(&mut answer).map_err(|e|e.to_string())?;
+                if answer.trim()=="continue" {engine.resume(id)?;} else {engine.cancel(id)?;}
+            },_=>{}
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }
 
@@ -151,16 +198,17 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
     let knowledge = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::temp_dir().join("mikomai-knowledge"));
-    let mut trace = debug_trace::Trace::new(std::io::stdout(), debug_jsonl);
+    let mut trace = debug_trace::Trace::journaled(std::io::stdout(), debug_jsonl);
     trace.emit(
         "cli_request",
         serde_json::json!({
             "query": goal, "history": "", "attachments": "", "devices_json": "[]",
             "mode": if local_ndp { if mikomai_core::network::ndp::is_command(&goal) { "fast_router" } else { "agent" } } else if interface_check.is_some() { "agent" } else if next_hop.is_some() { "agent" } else if local_route.is_some() || port_check.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
-            "backend": if greeting_reply.is_some() { "deterministic_reply" } else if local_ndp { "local_ndp" } else if interface_check.is_some() { "native_device_transport_unavailable" } else if port_check.is_some() { "local_tcp" } else if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
+            "backend": if greeting_reply.is_some() { "deterministic_reply" } else if local_ndp { "local_ndp" } else if interface_check.is_some() { "native_device_transport" } else if port_check.is_some() { "local_tcp" } else if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
         }),
     );
     let result = (|| {
+        trace.check()?;
         model_configuration?;
         let answer = if let Some(reply) = greeting_reply {
             trace.emit("deterministic_reply", serde_json::json!({"reason":"greeting", "rag":false}));
@@ -169,23 +217,17 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         } else if local_ndp {
             let args = serde_json::json!({"device":"localhost","resource":"ndp"});
             trace.emit("agent_event", serde_json::json!({"event_type":"tool_call", "tool":"get_state", "target":"localhost", "args":args, "command":"/usr/sbin/ndp -a"}));
-            #[cfg(target_os = "macos")]
-            let output = std::process::Command::new("/usr/sbin/ndp").arg("-a").output();
-            #[cfg(not(target_os = "macos"))]
-            let output: std::io::Result<std::process::Output> = Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "NDP observation is supported only on macOS"));
-            let output = output.map_err(|error| format!("自機のNDP取得に失敗しました: {error}"))?;
-            let raw = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            trace.emit("agent_event", serde_json::json!({"event_type":"observation", "tool":"get_state", "target":"localhost", "args":args, "command":"/usr/sbin/ndp -a", "success":output.status.success(), "exit_code":output.status.code(), "output":raw, "stderr":stderr}));
-            if !output.status.success() { return Err(format!("自機のNDP取得に失敗しました: {stderr}")); }
+            let raw = mikomai_app::native_execution::execute_tool("self_network_ndp", &serde_json::Value::Null, &args)?;
+            trace.emit("agent_event", serde_json::json!({"event_type":"observation","tool":"get_state","target":"localhost","args":args,"success":true,"output":raw}));
             let answer = mikomai_core::network::ndp::local_answer(&raw)?;
             trace.stream(&answer, true);
             answer
-        } else if interface_check.is_some() {
-            // Standalone CLI has no native Keychain/device callback. Do not
-            // manufacture a live observation using the text-only Worker.
-            trace.emit("agent_event", serde_json::json!({"event_type":"awaiting_input","reason":"native_device_transport_required","intent":"interface_up","request":interface_check}));
-            let answer = "このCLIには登録済み機器への接続経路がありません。Mikomaiアプリのチャットで同じ依頼を実行してください。実機のup/downはまだ確認していません。".to_string();
+        } else if let Some((device, interface)) = interface_check {
+            let args = serde_json::json!({"resource":"interfaces","interface":interface,"refresh":true});
+            trace.emit("agent_event", serde_json::json!({"event_type":"tool_call","tool":"get_state","target":device,"args":args}));
+            let output = mikomai_app::native_execution::execute_tool("get_state", &serde_json::json!({"hostname":device}), &args)?;
+            trace.emit("agent_event", serde_json::json!({"event_type":"observation","tool":"get_state","target":device,"success":true,"output":output}));
+            let answer = mikomai_core::network::interface_check::answer(&device, &interface, &output);
             trace.stream(&answer, true);
             answer
         } else if let Some(check) = port_check {
@@ -198,37 +240,8 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
             answer
         } else if let Some(route) = local_route {
             trace.emit(if next_hop.is_some() { "agent_event" } else { "fast_route" }, serde_json::json!({"event_type":"tool_call", "tool":route.tool, "target":"localhost", "args":route.args}));
-            let table = route.args["scope"] == "table";
-            #[cfg(target_os = "macos")]
-            let output = if let Some(destination) = route.args["destination"].as_str() {
-                let mut command = std::process::Command::new("/sbin/route");
-                command.args(["-n", "get"]);
-                if destination.contains(':') { command.arg("-inet6"); }
-                command.arg(destination).output()
-            } else if table {
-                std::process::Command::new("/usr/sbin/netstat").args(["-rn"]).output()
-            } else {
-                std::process::Command::new("/sbin/route").args(["-n", "get", "default"]).output()
-            };
-            #[cfg(target_os = "linux")]
-            let output = if let Some(destination) = route.args["destination"].as_str() {
-                std::process::Command::new("ip").args(["route", "get", destination]).output()
-            } else if table {
-                std::process::Command::new("ip").args(["route", "show", "table", "all"]).output()
-            } else {
-                std::process::Command::new("ip").args(["route", "show", "default"]).output()
-            };
-            #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-            let output: std::io::Result<std::process::Output> = Err(std::io::Error::new(
-                std::io::ErrorKind::Unsupported, "Local routing is supported on macOS and Linux",
-            ));
-            let output = output.map_err(|error| format!("自機の経路の取得に失敗しました: {error}"))?;
-            let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            trace.emit(if next_hop.is_some() { "agent_event" } else { "fast_route_result" }, serde_json::json!({"event_type":"observation", "target":"localhost", "tool":route.tool, "success":output.status.success(), "output":raw, "stderr":stderr}));
-            if !output.status.success() {
-                return Err(format!("自機の経路の取得に失敗しました: {stderr}"));
-            }
+            let raw = mikomai_app::native_execution::execute_tool("self_network_route", &serde_json::Value::Null, &route.args)?.trim().to_owned();
+            trace.emit(if next_hop.is_some() { "agent_event" } else { "fast_route_result" }, serde_json::json!({"event_type":"observation","target":"localhost","tool":route.tool,"success":true,"output":raw}));
             if raw.is_empty() {
                 return Err("自機の経路の取得結果が空です。".into());
             }
@@ -248,21 +261,22 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
             answer
         } else if let Some(path) = model_path {
             mikomai_app::load_local_model(&path)?;
-            if debug_jsonl {
-                mikomai_app::local_model_chat_with_callback(
-                    &goal,
-                    "",
-                    &docs.to_string_lossy(),
-                    &knowledge.to_string_lossy(),
-                    |text, done| trace.stream(text, done),
-                )?
-            } else {
-                mikomai_app::local_model_chat(
-                    &goal,
-                    "",
-                    &docs.to_string_lossy(),
-                    &knowledge.to_string_lossy(),
-                )?
+            let engine=mikomai_app::api::engine();
+            let id=engine.submit(mikomai_app::api::Command::Chat{message:goal.clone(),history:String::new(),documents_dir:docs.to_string_lossy().into(),knowledge_dir:knowledge.to_string_lossy().into(),attachments:String::new(),devices_json:"[]".into(),agent:false})?;
+            let mut seq=0;
+            loop {
+                let snapshot=engine.query(&id)?;
+                for event in snapshot.events.iter().filter(|event|event.seq>seq).collect::<Vec<_>>() {
+                    let payload:serde_json::Value=serde_json::from_str(&event.payload).unwrap_or(serde_json::Value::Null);
+                    if let Some(text)=payload["text"].as_str(){trace.stream(text,payload["done"].as_bool().unwrap_or(false));}
+                    else {trace.emit(&event.kind,payload);}
+                    seq=event.seq;
+                }
+                if ["completed","failed","cancelled","unknown","awaiting_user","awaiting_approval"].contains(&snapshot.state.as_str()) {
+                    if ["failed","cancelled","unknown"].contains(&snapshot.state.as_str()){return Err(snapshot.result);}
+                    break snapshot.result;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
             }
         } else if !mikomai_core::reference_context::needs_selected_references(&goal) {
             trace.emit("reference_context", serde_json::json!({"prefetch":false,"characters":0,"policy":"without_references"}));

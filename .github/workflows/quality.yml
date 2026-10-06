@@ -1,14 +1,33 @@
 name: quality
-
 on:
   pull_request:
   push:
     branches: [main]
-
 jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --workspace
+      - run: cargo test --workspace -- --test-threads=1
+  native-contracts:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python3 -m venv venv
+          venv/bin/pip install -r workers/device-worker/requirements-build.txt
+          sh scripts/build-device-worker.sh
+          cargo install --root target/bindgen --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag v0.11.0+v0.31.0 --locked uniffi-bindgen-cs
+          MIKOMAI_CSHARP_BINDGEN="$PWD/target/bindgen/bin/uniffi-bindgen-cs" sh scripts/generate-bindings.sh
+          git diff --exit-code -- mikomai-desktop-mac/Sources/MikomaiBindings/MikomaiBindings.swift mikomai-desktop-mac/Sources/MikomaiGeneratedFFI contracts/csharp/Generated
+          sh scripts/test-contracts.sh
+          venv/bin/python workers/device-worker/tests/bundled_helpers.py
+          venv/bin/python workers/device-worker/tests/fake_devices.py

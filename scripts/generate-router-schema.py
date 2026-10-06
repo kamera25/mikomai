@@ -14,6 +14,7 @@ for resource in resources:
     assert re.fullmatch(r"[a-z_]+", table)
     lines += [f"\n-- {resource['yang_file']} ({resource['yang_revision']})",
               f"DEFINE TABLE IF NOT EXISTS {table} SCHEMAFULL;"]
+    lines.append(f"DEFINE FIELD IF NOT EXISTS schema_version ON TABLE {table} TYPE int DEFAULT 1 ASSERT $value = 1;")
     for field in ["key", "device_name", "observation_id", "observed_at"]:
         lines.append(f"DEFINE FIELD IF NOT EXISTS {field} ON TABLE {table} TYPE string;")
     for field in resource["fields"]:

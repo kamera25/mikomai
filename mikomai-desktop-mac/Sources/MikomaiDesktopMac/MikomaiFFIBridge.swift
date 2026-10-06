@@ -68,21 +68,4 @@ enum MikomaiFFIBridge {
         call { mikomai_set_inference_params(temperature, repetitionPenalty, nCtx, maxGen) }
     }
 
-    static func executeApprovedAgentOperation(planID: String, planHash: String) async -> NetworkOperationOutput {
-        let response = await Task.detached { legacyInvoke(op:"mikomai_operation_execute_approved",args:[planID,planHash],listener:nil) }.value
-        return operationOutput(FFIResult(status:response.status,message:response.text))
-    }
-
-    fileprivate static func operationOutput(_ res: FFIResult) -> NetworkOperationOutput {
-        guard res.isSuccess else {
-            return NetworkOperationOutput(success: false, stdout: "", stderr: res.message.isEmpty ? "承認済み操作が失敗しました。" : res.message)
-        }
-
-        let text = res.message
-        if let data = text.data(using: .utf8), let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            let output = payload["output"] as? String ?? text
-            return NetworkOperationOutput(success: true, stdout: output, stderr: "")
-        }
-        return NetworkOperationOutput(success: true, stdout: text, stderr: "")
-    }
 }

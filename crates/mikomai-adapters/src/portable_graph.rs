@@ -23,7 +23,7 @@ use surrealdb::{
 
 pub const GRAPH_TTL_MINUTES: i64 = 20;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq,Serialize,Deserialize)]
 pub enum EndpointLookup {
     IpByMac,
     MacByIp,
@@ -199,6 +199,9 @@ fn stable_rag_id(value: &str) -> String {
 #[derive(Clone)]
 pub struct PortableGraph {
     db: Surreal<Db>,
+    remote:Option<std::path::PathBuf>,
+    operations_lock:std::sync::Arc<tokio::sync::Mutex<()>>,
+    documents_lock:std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 impl PortableGraph {
@@ -208,15 +211,34 @@ impl PortableGraph {
     pub async fn initialize_at(path: &Path) -> Result<Self, String> {
         std::fs::create_dir_all(path)
             .map_err(|e| format!("Failed to create SurrealDB directory: {e}"))?;
-        let db = Surreal::new::<RocksDb>(path)
-            .await
-            .map_err(|e| format!("Failed to open embedded SurrealDB: {e}"))?;
+        let db = match Surreal::new::<RocksDb>(path).await {
+            Ok(db)=>db,
+            Err(error)=>{
+                #[cfg(unix)]
+                if error.to_string().to_ascii_lowercase().contains("lock") {
+                    let socket=crate::store_broker::socket_path(path)?;
+                    for _ in 0..40 {
+                        if crate::store_broker::call::<Value>(&socket,"ping",json!({})).await.is_ok(){return Ok(Self{db:Surreal::init(),remote:Some(socket),operations_lock:Default::default(),documents_lock:Default::default()});}
+                        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                    }
+                }
+                return Err(format!("Failed to open canonical SurrealDB: {error}"));
+            }
+        };
         db.use_ns("mikomai")
             .use_db("network_graph")
             .await
             .map_err(|e| format!("Failed to select SurrealDB namespace: {e}"))?;
-        let state = Self { db };
+        let state = Self { db,remote:None,operations_lock:Default::default(),documents_lock:Default::default() };
         state.define_schema().await?;
+        // Only the process that owns the RocksDB lock performs crash recovery.
+        if let Some(mut plans)=state.load_app_document("operations").await? {
+            let mut changed=false;
+            for plan in plans.as_object_mut().ok_or("invalid operation store")?.values_mut(){if plan["status"]=="executing" {plan["status"]=json!("unknown");changed=true;}}
+            if changed {state.commit_operation_state(&plans).await?;}
+        }
+        #[cfg(unix)]
+        crate::store_broker::serve(path,state.clone())?;
         Ok(state)
     }
 
@@ -248,6 +270,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
 
     /// Canonical application documents share the graph/RAG database connection.
     pub async fn load_app_document(&self, table: &str) -> Result<Option<Value>, String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"load_app_document",json!({"table":table})).await;}
+
         validate_app_table(table)?;
         let mut response = self.db.query("SELECT schema_version, payload FROM type::record($table, 'current');")
             .bind(("table", table.to_owned())).await.map_err(|e| e.to_string())?
@@ -261,6 +286,10 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
 
     /// One UPSERT is atomic. Failure leaves the previous document intact.
     pub async fn save_app_document(&self, table: &str, value: &Value) -> Result<(), String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"save_app_document",json!({"table":table,"value":value})).await;}
+
+        let _guard=self.documents_lock.lock().await;
         validate_app_table(table)?;
         // Do not replace data written by a newer application schema.
         self.load_app_document(table).await?;
@@ -268,6 +297,57 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         self.db.query("UPSERT type::record($table, 'current') CONTENT {schema_version: 1, payload: $payload};")
             .bind(("table", table.to_owned())).bind(("payload", payload)).await.map_err(|e| e.to_string())?
             .check().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Merge disjoint process updates; reject conflicting edits rather than losing them.
+    pub async fn merge_app_document(&self,table:&str,previous:&Value,changed:&Value)->Result<(),String>{
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote{return crate::store_broker::call(socket,"merge_app_document",json!({"table":table,"previous":previous,"changed":changed})).await;}
+        let _guard=self.documents_lock.lock().await;
+        let current=self.load_app_document(table).await?.unwrap_or(json!({}));
+        let merged=merge_document(&current,previous,changed)?;
+        let payload=serde_json::to_string(&merged).map_err(|e|e.to_string())?;
+        self.db.query("UPSERT type::record($table,'current') CONTENT {schema_version:1,payload:$payload};")
+            .bind(("table",table.to_owned())).bind(("payload",payload)).await.map_err(|e|e.to_string())?.check().map_err(|e|e.to_string())?;Ok(())
+    }
+
+    /// A plan and its hash-bound approval move together in one transaction.
+    pub async fn save_operation_state(&self, plans:&Value)->Result<(),String>{
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"save_operation_state",json!({"plans":plans})).await;}
+
+        let _guard=self.operations_lock.lock().await;
+        let mut merged=self.load_app_document("operations").await?.unwrap_or(json!({}));
+        for (id,plan) in plans.as_object().ok_or("invalid operation state")? {
+            if let Some(previous)=merged.get(id) {
+                for key in ["id","toolId","target","args","rationale","planHash","operationClass"] {
+                    if previous[key]!=plan[key]{return Err("immutable operation plan changed".into());}
+                }
+                let before=previous["status"].as_str().unwrap_or("");let after=plan["status"].as_str().unwrap_or("");
+                if before==after||matches!((before,after),("pending","approved"|"rejected")|("approved","executing")|("executing","executed"|"failed"|"unknown")){merged[id]=plan.clone();}
+            } else {merged[id]=plan.clone();}
+        }
+        self.commit_operation_state(&merged).await
+    }
+    pub async fn claim_operation(&self,id:&str,hash:&str)->Result<Value,String>{
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote{return crate::store_broker::call(socket,"claim_operation",json!({"id":id,"hash":hash})).await;}
+        let _guard=self.operations_lock.lock().await;
+        let mut plans=self.load_app_document("operations").await?.ok_or("operation plan not found")?;
+        let plan=plans.get_mut(id).ok_or("operation plan not found")?;
+        if plan["status"]!="approved"||plan["planHash"]!=hash{return Err("operation requires an unclaimed matching approval".into());}
+        plan["status"]=json!("executing");let claimed=plan.clone();
+        self.commit_operation_state(&plans).await?;Ok(claimed)
+    }
+    async fn commit_operation_state(&self,plans:&Value)->Result<(),String>{
+        self.load_app_document("approvals").await?;
+        let approvals:serde_json::Map<String,Value>=plans.as_object().ok_or("invalid operation state")?.iter()
+            .filter(|(_,plan)|matches!(plan["status"].as_str(),Some("approved"|"executing"|"executed"|"failed"|"unknown")))
+            .map(|(id,plan)|(id.clone(),serde_json::json!({"plan_hash":plan["planHash"],"status":plan["status"]}))).collect();
+        self.db.query("BEGIN TRANSACTION; UPSERT operations:current CONTENT {schema_version:1,payload:$operations}; UPSERT approvals:current CONTENT {schema_version:1,payload:$approvals}; COMMIT TRANSACTION;")
+            .bind(("operations",serde_json::to_string(plans).map_err(|e|e.to_string())?))
+            .bind(("approvals",serde_json::to_string(&approvals).map_err(|e|e.to_string())?)).await.map_err(|e|e.to_string())?.check().map_err(|e|e.to_string())?;
         Ok(())
     }
 
@@ -279,6 +359,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         path: &str,
         chunks: &[RagChunkRecord],
     ) -> Result<(), String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"replace_rag_document",json!({"path":path,"chunks":chunks})).await;}
+
         for chunk in chunks {
             if chunk.path != path {
                 return Err(format!("RAG chunk path mismatch while storing {path}"));
@@ -296,14 +379,14 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
             .await
             .map_err(|e| format!("Failed to replace existing chunks for {path}: {e}"))?;
         for chunk in chunks {
+            let mut record=serde_json::to_value(chunk).map_err(|e|e.to_string())?;record["schema_version"]=serde_json::json!(1);
             let id = stable_rag_id(&format!("{}:{}", chunk.path, chunk.chunk_index));
             self.db
                 .query("UPSERT type::record('rag_chunk', $id) CONTENT $record;")
                 .bind(("id", id))
                 .bind((
                     "record",
-                    serde_json::to_value(chunk)
-                        .map_err(|e| format!("Failed to encode RAG chunk for {path}: {e}"))?,
+                    record,
                 ))
                 .await
                 .map_err(|e| format!("Failed to ingest {path}: {e}"))?;
@@ -317,6 +400,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         embedding: &[f32],
         brand: Option<&str>,
     ) -> Result<Vec<RagChunkCandidate>, String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"search_rag_vectors",json!({"embedding":embedding,"brand":brand})).await;}
+
         if embedding.len() != 1024 {
             return Err(format!(
                 "RAG query embedding must contain 1024 values (got {})",
@@ -347,6 +433,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         query: &str,
         brand: Option<&str>,
     ) -> Result<Vec<RagChunkCandidate>, String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"search_rag_lexical",json!({"query":query,"brand":brand})).await;}
+
         let sql = if brand.is_some() {
             "SELECT path, text, brand, chunk_index, 2.0 AS distance FROM rag_chunk WHERE brand = $brand AND text @1@ $query LIMIT 30;"
         } else {
@@ -365,6 +454,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
     }
 
     pub async fn rag_document_chunks(&self, path: &str) -> Result<Vec<RagDocumentChunk>, String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"rag_document_chunks",json!({"path":path})).await;}
+
         let mut response = self
             .db
             .query("SELECT path, text, chunk_index, title, summary FROM rag_chunk WHERE path = $path ORDER BY chunk_index ASC;")
@@ -376,7 +468,8 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
             .map_err(|e| format!("Failed to decode RAG document {path}: {e}"))
     }
 
-    async fn upsert(&self, table: &str, key: &str, record: Value) -> Result<(), String> {
+    async fn upsert(&self, table: &str, key: &str, mut record: Value) -> Result<(), String> {
+        record["schema_version"]=serde_json::json!(1);
         let sql = format!("UPSERT type::record('{table}', $id) CONTENT $record;");
         self.db
             .query(sql)
@@ -422,6 +515,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
     /// Persist a collected observation while preserving raw data, provenance,
     /// canonical output, and a device record compatible with the old graph.
     pub async fn ingest(&self, input: GraphIngestInput) -> Result<(), String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"ingest",json!({"input":input})).await;}
+
         if input.device_name.trim().is_empty() || input.source_id.trim().is_empty() {
             return Err("Graph ingestion requires a device name and source ID".into());
         }
@@ -458,6 +554,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
     /// Only the latest observation of this device/resource is authoritative.
     /// Never resurrect an older canonical table after a newer failed refresh.
     pub async fn fresh_arp_observation(&self, device: &str) -> Result<Option<mikomai_core::network::arp_state::ArpObservation>, String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"fresh_arp_observation",json!({"device":device})).await;}
+
         let mut response = self.db.query("SELECT raw, canonical, collected_at FROM observation WHERE device_name = $device AND kind = 'arp' ORDER BY collected_at DESC LIMIT 10;")
             .bind(("device", device.to_owned())).await.map_err(|e| e.to_string())?;
         let records: Vec<Value> = response.take(0).map_err(|e| e.to_string())?;
@@ -477,6 +576,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
     /// Latest observation for this explicit scope. Raw-only failed
     /// canonicalization must never resurrect an older successful state.
     pub async fn latest_interface_observation(&self, device: &str, scope: &str) -> Result<Option<mikomai_core::network::interface_state::InterfaceObservation>,String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"latest_interface_observation",json!({"device":device,"scope":scope})).await;}
+
         let response = self.db.query("SELECT raw, canonical, collected_at FROM observation WHERE device_name = $device AND kind = 'interfaces' AND source_id = $source ORDER BY collected_at DESC LIMIT 1;")
             .bind(("device",device.to_owned())).bind(("source",format!("get_state.interfaces:{scope}"))).await.map_err(|e|e.to_string())?;
         let mut response = response.check().map_err(|e|e.to_string())?;
@@ -489,6 +591,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
 
     /// Latest resource observation, including raw-only or failed refreshes.
     pub async fn latest_router_observation(&self, device: &str, table: &str) -> Result<Option<crate::router_state::RouterObservation>, String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"latest_router_observation",json!({"device":device,"table":table})).await;}
+
         router_schema::resource_schema(table)?;
         let response = self.db.query("SELECT raw, canonical, collected_at, source_id FROM observation WHERE device_name = $device AND kind = $kind ORDER BY collected_at DESC LIMIT 1;")
             .bind(("device", device.to_owned())).bind(("kind", table.to_owned())).await.map_err(|e| e.to_string())?;
@@ -575,13 +680,14 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
                 let key = Value::Array(identity).to_string();
                 let id = record_key(&key);
                 let mut record = row.clone();
+                record["schema_version"] = json!(1);
                 record["key"] = json!(key);
                 record["device_name"] = json!(device);
                 record["observation_id"] = json!(observation_id);
                 record["observed_at"] = json!(observed_at.to_rfc3339());
                 let kind = format!("device_has_{}", resource.table);
                 let edge_key = format!("{kind}:{device_key}:{id}");
-                let edge = json!({"key":edge_key,"kind":kind,"from":device_key,"to":id,
+                let edge = json!({"schema_version":1,"key":edge_key,"kind":kind,"from":device_key,"to":id,
                     "observation_id":observation_id,"updated_at":observed_at.to_rfc3339()});
                 // Delayed observations cannot replace newer feature state.
                 self.db.query("BEGIN TRANSACTION;
@@ -603,11 +709,17 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
     /// Native feature facts with observation provenance. Callers must check
     /// observed_at; persisted facts do not imply current live device state.
     pub async fn router_facts(&self, table: &str, device: &str) -> Result<Vec<Value>, String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"router_facts",json!({"table":table,"device":device})).await;}
+
         let resource = router_schema::resource_schema(table)?;
         self.select(&format!("SELECT * FROM {} WHERE device_name = $value ORDER BY key;", resource.table), device).await
     }
 
     pub async fn query_network(&self, query: GraphQuery) -> Result<GraphQueryResult, String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"query_network",json!({"query":query})).await;}
+
         let citations = if let Some(device) = &query.device_name {
             let mut res = self.db.query("SELECT * FROM observation WHERE device_name = $device ORDER BY collected_at DESC LIMIT 10;")
                 .bind(("device", device.clone())).await.map_err(|e| e.to_string())?;
@@ -760,6 +872,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         value: &str,
         device: Option<&str>,
     ) -> Result<Value, String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"find_endpoint",json!({"lookup":lookup,"value":value,"device":device})).await;}
+
         let needle = match lookup {
             EndpointLookup::MacByIp => value
                 .parse::<std::net::IpAddr>()
@@ -839,6 +954,9 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
     }
 
     pub async fn get_subgraph(&self, request: SubgraphRequest) -> Result<SubgraphResult, String> {
+        #[cfg(unix)]
+        if let Some(socket)=&self.remote {return crate::store_broker::call(socket,"get_subgraph",json!({"request":request})).await;}
+
         request.validate()?;
         let mut result = SubgraphResult {
             nodes: vec![],
@@ -920,13 +1038,13 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize,Deserialize)]
 pub struct SubgraphRequest {
     pub roots: Vec<String>,
     pub depth: u8,
     pub relations: Vec<SubgraphRelation>,
 }
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize,Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SubgraphRelation {
     Interface,
@@ -1008,7 +1126,7 @@ impl SubgraphRelation {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize,Deserialize)]
 pub struct SubgraphResult {
     pub nodes: Vec<Value>,
     pub edges: Vec<Value>,
@@ -1327,5 +1445,48 @@ mod app_document_tests {
         assert!(db.load_app_document("settings").await.unwrap_err().contains("unsupported"));
         assert!(db.save_app_document("settings", &json!({})).await.unwrap_err().contains("unsupported"));
         assert!(db.load_app_document("settings").await.unwrap_err().contains("999"));
+    }
+}
+
+fn merge_document(current:&Value,previous:&Value,changed:&Value)->Result<Value,String>{
+    if previous==changed{return Ok(current.clone());}
+    if current==previous{return Ok(changed.clone());}
+    let empty = serde_json::Map::new();
+    let previous_object = if previous.is_null() { Some(&empty) } else { previous.as_object() };
+    if let (Some(current),Some(previous),Some(changed))=(current.as_object(),previous_object,changed.as_object()) {
+        let mut merged=current.clone();let keys=previous.keys().chain(changed.keys()).collect::<BTreeSet<_>>();
+        for key in keys {if previous.get(key)==changed.get(key){continue;}
+            if let Some(value)=changed.get(key){merged.insert(key.clone(),merge_document(current.get(key).unwrap_or(&Value::Null),previous.get(key).unwrap_or(&Value::Null),value)?);}
+            else {if current.get(key)!=previous.get(key){return Err("canonical document changed; reload before editing".into());}merged.remove(key);}
+        }return Ok(Value::Object(merged));
+    }
+    if let (Some(current),Some(previous),Some(changed))=(current.as_array(),previous.as_array(),changed.as_array()) {
+        if current.starts_with(previous)&&changed.starts_with(previous){let mut merged=current.clone();merged.extend_from_slice(&changed[previous.len()..]);return Ok(Value::Array(merged));}
+    }
+    Err("canonical document changed; reload before editing".into())
+}
+
+#[cfg(test)]
+mod canonical_concurrency_tests {
+    use super::*;
+    #[tokio::test]
+    async fn clients_merge_disjoint_updates_claim_once_and_rollback_transaction_failure(){
+        let path=std::env::temp_dir().join(format!("mikomai-canonical-{}",uuid::Uuid::new_v4()));
+        let owner=PortableGraph::initialize_at(&path).await.unwrap();
+        let client=PortableGraph::initialize_at(&path).await.unwrap();
+        owner.merge_app_document("tasks",&json!({}),&json!({"scheduled":{"one":{"seq":1}}})).await.unwrap();
+        client.merge_app_document("tasks",&json!({}),&json!({"scheduled":{"two":{"seq":1}}})).await.unwrap();
+        let tasks=owner.load_app_document("tasks").await.unwrap().unwrap();assert_eq!(tasks["scheduled"].as_object().unwrap().len(),2);
+        let mut plan=mikomai_core::OperationPlan::new("network_config",Some("fixture".into()),json!({"commands":["hostname fixture"]}),"test").unwrap();
+        let hash=plan.plan_hash.clone();mikomai_core::OperationGate::approve(&mut plan,&hash).unwrap();let id=plan.id.to_string();
+        owner.save_operation_state(&json!({id.clone():plan})).await.unwrap();
+        assert!(client.claim_operation(&id,"wrong").await.is_err());
+        owner.db.query("DEFINE FIELD OVERWRITE payload ON TABLE approvals TYPE int;").await.unwrap().check().unwrap();
+        assert!(client.claim_operation(&id,&hash).await.is_err());
+        assert_eq!(owner.load_app_document("operations").await.unwrap().unwrap()[&id]["status"],"approved");
+        owner.db.query("REMOVE FIELD payload ON TABLE approvals;").await.unwrap().check().unwrap();
+        assert_eq!(client.claim_operation(&id,&hash).await.unwrap()["status"],"executing");
+        assert!(owner.claim_operation(&id,&hash).await.is_err());
+        assert_eq!(owner.load_app_document("approvals").await.unwrap().unwrap()[&id]["status"],"executing");
     }
 }

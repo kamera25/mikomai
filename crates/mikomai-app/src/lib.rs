@@ -1,6 +1,6 @@
 //! Application orchestration and service-owned process state.
 //! The `mikomai_*` Rust functions retain the legacy bridge contract during the
-//! staged migration; only mikomai-ffi exports C symbols.
+//! owned compatibility facade; UniFFI is the sole exported foreign ABI.
 use mikomai_adapters::device::JsonDeviceRegistry;
 use mikomai_adapters::headless::{EchoToolExecutor, JsonTaskRepository, StdoutReporter};
 use mikomai_adapters::knowledge::{KnowledgePlanner, KnowledgeStore};
@@ -234,10 +234,7 @@ fn rag_ingested_paths() -> &'static Mutex<std::collections::HashSet<PathBuf>> {
 fn operation_plans() -> Result<&'static Mutex<HashMap<String, OperationPlan>>, String> {
     shared_service().operation_plans.get_or_init(|| {
         let value = shared_service().load_document("operations")?.unwrap_or(serde_json::json!({}));
-        let mut plans:HashMap<String,OperationPlan>=serde_json::from_value(value).map_err(|e|format!("invalid operation store: {e}"))?;
-        let mut recovered=false;
-        for plan in plans.values_mut() {if plan.status==mikomai_core::OperationStatus::Executing {plan.status=mikomai_core::OperationStatus::Unknown;recovered=true;}}
-        if recovered {persist_operation_plans(&plans)?;}
+        let plans:HashMap<String,OperationPlan>=serde_json::from_value(value).map_err(|e|format!("invalid operation store: {e}"))?;
         Ok(Mutex::new(plans))
     }).as_ref().map_err(Clone::clone)
 }
@@ -313,7 +310,7 @@ fn persist_generic_execution_claims_at(
 
 
 fn persist_operation_plans(plans: &HashMap<String, OperationPlan>) -> Result<(), String> {
-    shared_service().save_internal("operations", &serde_json::to_value(plans).map_err(|e| e.to_string())?)
+    shared_service().run(shared_service().graph()?.save_operation_state(&serde_json::to_value(plans).map_err(|e|e.to_string())?))?
 }
 
 fn validate_native_config_command(command: &str) -> Result<(), String> {
@@ -3196,7 +3193,7 @@ mod tests {
     use std::ffi::{CStr, CString};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
-    static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     static WATCH_NOTIFICATIONS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
@@ -3406,8 +3403,8 @@ mod tests {
 
     #[test]
     fn agent_task_deletion_removes_single_and_all_audits() {
-        super::delete_all_agent_audits().unwrap();
         let _guard = TEST_ENV_LOCK.lock().unwrap();
+        super::delete_all_agent_audits().unwrap();
         let root = std::env::temp_dir().join(format!("mikomai-agent-del-{}", uuid::Uuid::new_v4()));
         let previous = std::env::var_os("MIKOMAI_DATA_DIR");
         std::env::set_var("MIKOMAI_DATA_DIR", &root);
@@ -4410,10 +4407,10 @@ mod tests {
         let root = std::env::temp_dir().join(format!("mikomai-ffi-test-{unique}"));
         let docs = root.join("docs");
         let index = root.join("index");
-        fs::create_dir_all(&docs).expect("create temporary docs directory");
+        fs::create_dir_all(docs.join("fitelnet")).expect("create temporary docs directory");
         fs::write(
-            docs.join("acceptance.md"),
-            "# F220 VLAN acceptance\n\nUnique answer marker: NATIVE-FFI-ANSWER-7319.",
+            docs.join("fitelnet/acceptance.md"),
+            "---\nbrand: furukawa_fitelnet\ntarget_model: F220\n---\n# F220 VLAN acceptance\n\nF220 VLAN configuration reference. Unique answer marker: NATIVE-FFI-ANSWER-7319.",
         )
         .expect("write temporary knowledge document");
 

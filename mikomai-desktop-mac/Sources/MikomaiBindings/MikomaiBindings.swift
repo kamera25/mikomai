@@ -352,7 +352,7 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-// Initial value and increment amount for handles. 
+// Initial value and increment amount for handles.
 // These ensure that SWIFT handles always have the lowest bit set
 fileprivate let UNIFFI_HANDLEMAP_INITIAL: UInt64 = 1
 fileprivate let UNIFFI_HANDLEMAP_DELTA: UInt64 = 2
@@ -539,15 +539,17 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 
 public protocol MikomaiServiceProtocol: AnyObject, Sendable {
-    
-    func cancel(taskId: String) throws 
-    
+
+    func cancel(taskId: String) throws
+
     func query(query: Query) throws  -> Snapshot
-    
+
+    func resume(taskId: String) throws
+
     func submit(command: Command) throws  -> String
-    
-    func subscribe(listener: EventListener) 
-    
+
+    func subscribe(listener: EventListener)
+
 }
 open class MikomaiService: MikomaiServiceProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -606,9 +608,9 @@ public convenience init() {
         try! rustCall { uniffi_mikomai_bindings_fn_free_mikomaiservice(handle, $0) }
     }
 
-    
 
-    
+
+
 open func cancel(taskId: String)throws   {try rustCallWithError(FfiConverterTypeAppError_lift) {
     uniffi_mikomai_bindings_fn_method_mikomaiservice_cancel(
             self.uniffiCloneHandle(),
@@ -616,7 +618,7 @@ open func cancel(taskId: String)throws   {try rustCallWithError(FfiConverterType
     )
 }
 }
-    
+
 open func query(query: Query)throws  -> Snapshot  {
     return try  FfiConverterTypeSnapshot_lift(try rustCallWithError(FfiConverterTypeAppError_lift) {
     uniffi_mikomai_bindings_fn_method_mikomaiservice_query(
@@ -625,7 +627,15 @@ open func query(query: Query)throws  -> Snapshot  {
     )
 })
 }
-    
+
+open func resume(taskId: String)throws   {try rustCallWithError(FfiConverterTypeAppError_lift) {
+    uniffi_mikomai_bindings_fn_method_mikomaiservice_resume(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(taskId),$0
+    )
+}
+}
+
 open func submit(command: Command)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeAppError_lift) {
     uniffi_mikomai_bindings_fn_method_mikomaiservice_submit(
@@ -634,7 +644,7 @@ open func submit(command: Command)throws  -> String  {
     )
 })
 }
-    
+
 open func subscribe(listener: EventListener)  {try! rustCall() {
     uniffi_mikomai_bindings_fn_method_mikomaiservice_subscribe(
             self.uniffiCloneHandle(),
@@ -642,9 +652,9 @@ open func subscribe(listener: EventListener)  {try! rustCall() {
     )
 }
 }
-    
 
-    
+
+
 }
 
 
@@ -702,9 +712,9 @@ public struct LegacyResult: Equatable, Hashable {
         self.text = text
     }
 
-    
 
-    
+
+
 }
 
 #if compiler(>=6)
@@ -718,7 +728,7 @@ public struct FfiConverterTypeLegacyResult: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LegacyResult {
         return
             try LegacyResult(
-                status: FfiConverterInt32.read(from: &buf), 
+                status: FfiConverterInt32.read(from: &buf),
                 text: FfiConverterString.read(from: &buf)
         )
     }
@@ -762,9 +772,9 @@ public struct Snapshot: Equatable, Hashable {
         self.events = events
     }
 
-    
 
-    
+
+
 }
 
 #if compiler(>=6)
@@ -778,10 +788,10 @@ public struct FfiConverterTypeSnapshot: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Snapshot {
         return
             try Snapshot(
-                taskId: FfiConverterString.read(from: &buf), 
-                state: FfiConverterString.read(from: &buf), 
-                seq: FfiConverterUInt64.read(from: &buf), 
-                result: FfiConverterString.read(from: &buf), 
+                taskId: FfiConverterString.read(from: &buf),
+                state: FfiConverterString.read(from: &buf),
+                seq: FfiConverterUInt64.read(from: &buf),
+                result: FfiConverterString.read(from: &buf),
                 events: FfiConverterSequenceTypeTaskEvent.read(from: &buf)
         )
     }
@@ -828,9 +838,9 @@ public struct TaskEvent: Equatable, Hashable {
         self.payload = payload
     }
 
-    
 
-    
+
+
 }
 
 #if compiler(>=6)
@@ -844,10 +854,10 @@ public struct FfiConverterTypeTaskEvent: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TaskEvent {
         return
             try TaskEvent(
-                taskId: FfiConverterString.read(from: &buf), 
-                seq: FfiConverterUInt64.read(from: &buf), 
-                version: FfiConverterUInt32.read(from: &buf), 
-                kind: FfiConverterString.read(from: &buf), 
+                taskId: FfiConverterString.read(from: &buf),
+                seq: FfiConverterUInt64.read(from: &buf),
+                version: FfiConverterUInt32.read(from: &buf),
+                kind: FfiConverterString.read(from: &buf),
                 payload: FfiConverterString.read(from: &buf)
         )
     }
@@ -879,20 +889,20 @@ public func FfiConverterTypeTaskEvent_lower(_ value: TaskEvent) -> RustBuffer {
 
 public enum AppError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-    
-    
+
+
     case Failure(message: String
     )
 
-    
 
-    
 
-    
+
+
+
     public var errorDescription: String? {
         String(reflecting: self)
     }
-    
+
 }
 
 #if compiler(>=6)
@@ -909,9 +919,9 @@ public struct FfiConverterTypeAppError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
-        
 
-        
+
+
         case 1: return .Failure(
             message: try FfiConverterString.read(from: &buf)
             )
@@ -923,14 +933,14 @@ public struct FfiConverterTypeAppError: FfiConverterRustBuffer {
     public static func write(_ value: AppError, into buf: inout [UInt8]) {
         switch value {
 
-        
 
-        
-        
+
+
+
         case let .Failure(message):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(message, into: &buf)
-            
+
         }
     }
 }
@@ -954,7 +964,7 @@ public func FfiConverterTypeAppError_lower(_ value: AppError) -> RustBuffer {
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
 public enum Command: Equatable, Hashable {
-    
+
     case chat(message: String, history: String, documentsDir: String, knowledgeDir: String, attachments: String, devicesJson: String, agent: Bool
     )
     case readDevice(target: String, commands: [String], timeoutSeconds: UInt32
@@ -983,27 +993,27 @@ public struct FfiConverterTypeCommand: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Command {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
+
         case 1: return .chat(message: try FfiConverterString.read(from: &buf), history: try FfiConverterString.read(from: &buf), documentsDir: try FfiConverterString.read(from: &buf), knowledgeDir: try FfiConverterString.read(from: &buf), attachments: try FfiConverterString.read(from: &buf), devicesJson: try FfiConverterString.read(from: &buf), agent: try FfiConverterBool.read(from: &buf)
         )
-        
+
         case 2: return .readDevice(target: try FfiConverterString.read(from: &buf), commands: try FfiConverterSequenceString.read(from: &buf), timeoutSeconds: try FfiConverterUInt32.read(from: &buf)
         )
-        
+
         case 3: return .executeApproved(planId: try FfiConverterString.read(from: &buf), planHash: try FfiConverterString.read(from: &buf)
         )
-        
+
         case 4: return .contract(fixtureJson: try FfiConverterString.read(from: &buf)
         )
-        
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: Command, into buf: inout [UInt8]) {
         switch value {
-        
-        
+
+
         case let .chat(message,history,documentsDir,knowledgeDir,attachments,devicesJson,agent):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(message, into: &buf)
@@ -1013,25 +1023,25 @@ public struct FfiConverterTypeCommand: FfiConverterRustBuffer {
             FfiConverterString.write(attachments, into: &buf)
             FfiConverterString.write(devicesJson, into: &buf)
             FfiConverterBool.write(agent, into: &buf)
-            
-        
+
+
         case let .readDevice(target,commands,timeoutSeconds):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(target, into: &buf)
             FfiConverterSequenceString.write(commands, into: &buf)
             FfiConverterUInt32.write(timeoutSeconds, into: &buf)
-            
-        
+
+
         case let .executeApproved(planId,planHash):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(planId, into: &buf)
             FfiConverterString.write(planHash, into: &buf)
-            
-        
+
+
         case let .contract(fixtureJson):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(fixtureJson, into: &buf)
-            
+
         }
     }
 }
@@ -1056,7 +1066,7 @@ public func FfiConverterTypeCommand_lower(_ value: Command) -> RustBuffer {
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
 public enum Query: Equatable, Hashable {
-    
+
     case task(taskId: String
     )
 
@@ -1079,22 +1089,22 @@ public struct FfiConverterTypeQuery: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Query {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
+
         case 1: return .task(taskId: try FfiConverterString.read(from: &buf)
         )
-        
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: Query, into buf: inout [UInt8]) {
         switch value {
-        
-        
+
+
         case let .task(taskId):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(taskId, into: &buf)
-            
+
         }
     }
 }
@@ -1119,9 +1129,9 @@ public func FfiConverterTypeQuery_lower(_ value: Query) -> RustBuffer {
 
 
 public protocol EventListener: AnyObject, Sendable {
-    
-    func onEvent(event: TaskEvent) 
-    
+
+    func onEvent(event: TaskEvent)
+
 }
 
 
@@ -1164,7 +1174,7 @@ fileprivate struct UniffiCallbackInterfaceEventListener {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1243,9 +1253,9 @@ public func FfiConverterCallbackInterfaceEventListener_lower(_ v: EventListener)
 
 
 public protocol LegacyListener: AnyObject, Sendable {
-    
-    func event(kind: String, text: String, done: Bool) 
-    
+
+    func event(kind: String, text: String, done: Bool)
+
 }
 
 
@@ -1292,7 +1302,7 @@ fileprivate struct UniffiCallbackInterfaceLegacyListener {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1472,6 +1482,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_mikomai_bindings_checksum_method_mikomaiservice_query() != 19033) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_mikomai_bindings_checksum_method_mikomaiservice_resume() != 4507) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_mikomai_bindings_checksum_method_mikomaiservice_submit() != 55264) {

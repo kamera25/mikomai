@@ -15,11 +15,32 @@ final class OperationCoordinator: ObservableObject {
         guard let model, let plan = model.operationPlan else { return "変更計画がありません。" }
         if let error = model.approveOperationPlan() { return error }
         model.operationPhase = "承認済み操作を実行中…"
-        let output = await MikomaiFFIBridge.executeApprovedAgentOperation(planID: plan.id, planHash: plan.planHash)
-        model.operationLogs.append(output.success ? output.stdout : output.stderr)
-        let response = plan.id.withCString { pointer in MikomaiFFIBridge.call { mikomai_operation_plan_get(pointer) } }
-        if response.status == 0 { model.operationPlan = try? JSONDecoder().decode(NativeOperationPlan.self, from: Data(response.message.utf8)) }
-        model.operationPhase = output.success ? "操作完了" : "操作結果を確認してください"
-        return output.success ? nil : output.stderr
+        let service=MikomaiService()
+        do {
+            let id=try service.submit(command:.executeApproved(planId:plan.id,planHash:plan.planHash))
+            model.operationTaskID=id
+            defer {model.operationTaskID=nil;model.operationWaitingDecision=false}
+            while true {
+                let snapshot=try service.query(query:.task(taskId:id))
+                model.operationWaitingDecision=snapshot.state == "awaiting_user"
+                if model.operationWaitingDecision {model.operationPhase="機器のロック待ちが続いています。継続か中止を選んでください。"}
+                if ["completed","failed","cancelled","unknown"].contains(snapshot.state) {
+                    model.operationLogs.append(snapshot.result)
+                    let result=legacyInvoke(op:"mikomai_operation_plan_get",args:[plan.id],listener:nil)
+                    if result.status == 0 {model.operationPlan=try? JSONDecoder().decode(NativeOperationPlan.self,from:Data(result.text.utf8))}
+                    if snapshot.state == "completed" {
+                        if let object=try? JSONSerialization.jsonObject(with:Data(snapshot.result.utf8)) as? [String:Any] {
+                            model.operationBeforeConfig=object["before_config"] as? String ?? ""
+                            model.operationAfterConfig=object["after_config"] as? String ?? ""
+                            model.operationDiffLines=object["diff"] as? [String] ?? []
+                        }
+                        model.operationPhase="操作完了・差分を確認";return nil
+                    }
+                    model.operationPhase=snapshot.state == "unknown" ? "結果不明・実機を確認してください" : "操作を完了できませんでした"
+                    return snapshot.result.isEmpty ? "操作を中止しました。" : snapshot.result
+                }
+                try await Task.sleep(for:.milliseconds(20))
+            }
+        } catch {return error.localizedDescription}
     }
 }

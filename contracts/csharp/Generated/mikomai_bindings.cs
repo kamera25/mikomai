@@ -711,82 +711,84 @@ static class _UniFFILib {
         public IntPtr @uniffiClone;
         public IntPtr @event;
     }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
-        
+
         UniffiCallbackInterfaceEventListener.Register();
         UniffiCallbackInterfaceLegacyListener.Register();
         }
@@ -844,6 +846,17 @@ static class _UniFFILib {
     public static extern
 #endif
      RustBuffer uniffi_mikomai_bindings_fn_method_mikomaiservice_query(ulong @ptr,RustBuffer @query,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("mikomai_bindings")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("mikomai_bindings", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_mikomai_bindings_fn_method_mikomaiservice_resume(ulong @ptr,RustBuffer @taskId,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -1514,6 +1527,17 @@ static class _UniFFILib {
     [DllImport("mikomai_bindings", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_mikomai_bindings_checksum_method_mikomaiservice_resume(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("mikomai_bindings")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("mikomai_bindings", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_mikomai_bindings_checksum_method_mikomaiservice_submit(
     );
 
@@ -1572,7 +1596,7 @@ static class _UniFFILib {
      uint ffi_mikomai_bindings_uniffi_contract_version(
     );
 
-    
+
 
     static void uniffiCheckContractApiVersion() {
         var scaffolding_contract_version = _UniFFILib.ffi_mikomai_bindings_uniffi_contract_version();
@@ -1597,6 +1621,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_mikomai_bindings_checksum_method_mikomaiservice_query();
             if (checksum != 19033) {
                 throw new UniffiContractChecksumException($"Mikomai.Bindings: uniffi bindings expected function `uniffi_mikomai_bindings_checksum_method_mikomaiservice_query` checksum `19033`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_mikomai_bindings_checksum_method_mikomaiservice_resume();
+            if (checksum != 4507) {
+                throw new UniffiContractChecksumException($"Mikomai.Bindings: uniffi bindings expected function `uniffi_mikomai_bindings_checksum_method_mikomaiservice_resume` checksum `4507`, library returned `{checksum}`");
             }
         }
         {
@@ -1796,6 +1826,8 @@ internal interface IMikomaiService {
     /// <exception cref="AppException"></exception>
     Snapshot Query(Query @query);
     /// <exception cref="AppException"></exception>
+    void Resume(string @taskId);
+    /// <exception cref="AppException"></exception>
     string Submit(Command @command);
     void Subscribe(EventListener @listener);
 }
@@ -1848,7 +1880,7 @@ internal class MikomaiService : IMikomaiService, IDisposable {
         GC.SuppressFinalize(this); // Suppress finalization to avoid unnecessary GC overhead.
     }
 
-    private void IncrementCallCounter() 
+    private void IncrementCallCounter()
     {
         // Check and increment the call counter, to keep the object alive.
         // This needs a compare-and-set retry loop in case of concurrent updates.
@@ -1862,7 +1894,7 @@ internal class MikomaiService : IMikomaiService, IDisposable {
         } while (Interlocked.CompareExchange(ref _callCounter, count + 1, count) != count);
     }
 
-    private void DecrementCallCounter() 
+    private void DecrementCallCounter()
     {
         // This decrement always matches the increment we performed above.
         if (Interlocked.Decrement(ref _callCounter) == 0) {
@@ -1882,7 +1914,7 @@ internal class MikomaiService : IMikomaiService, IDisposable {
     }
 
     internal T CallWithPointer<T>(Func<ulong, T> func)
-    {   
+    {
         IncrementCallCounter();
         try {
             return func(CloneRustArcPtr());
@@ -1892,7 +1924,7 @@ internal class MikomaiService : IMikomaiService, IDisposable {
         }
     }
 
-    
+
     /// <exception cref="AppException"></exception>
     public void Cancel(string @taskId) {
         CallWithPointer(thisPtr =>
@@ -1900,9 +1932,9 @@ internal class MikomaiService : IMikomaiService, IDisposable {
     _UniFFILib.uniffi_mikomai_bindings_fn_method_mikomaiservice_cancel(thisPtr, FfiConverterString.INSTANCE.Lower(@taskId), ref _status)
 ));
     }
-    
-    
-    
+
+
+
     /// <exception cref="AppException"></exception>
     public Snapshot Query(Query @query) {
         return CallWithPointer(thisPtr => FfiConverterTypeSnapshot.INSTANCE.Lift(
@@ -1910,8 +1942,18 @@ internal class MikomaiService : IMikomaiService, IDisposable {
     _UniFFILib.uniffi_mikomai_bindings_fn_method_mikomaiservice_query(thisPtr, FfiConverterTypeQuery.INSTANCE.Lower(@query), ref _status)
 )));
     }
-    
-    
+
+
+    /// <exception cref="AppException"></exception>
+    public void Resume(string @taskId) {
+        CallWithPointer(thisPtr =>
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeAppError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_mikomai_bindings_fn_method_mikomaiservice_resume(thisPtr, FfiConverterString.INSTANCE.Lower(@taskId), ref _status)
+));
+    }
+
+
+
     /// <exception cref="AppException"></exception>
     public string Submit(Command @command) {
         return CallWithPointer(thisPtr => FfiConverterString.INSTANCE.Lift(
@@ -1919,19 +1961,19 @@ internal class MikomaiService : IMikomaiService, IDisposable {
     _UniFFILib.uniffi_mikomai_bindings_fn_method_mikomaiservice_submit(thisPtr, FfiConverterTypeCommand.INSTANCE.Lower(@command), ref _status)
 )));
     }
-    
-    
+
+
     public void Subscribe(EventListener @listener) {
         CallWithPointer(thisPtr =>
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_mikomai_bindings_fn_method_mikomaiservice_subscribe(thisPtr, FfiConverterTypeEventListener.INSTANCE.Lower(@listener), ref _status)
 ));
     }
-    
-    
-    
 
-    
+
+
+
+
 }
 class FfiConverterTypeMikomaiService: FfiConverter<MikomaiService, ulong> {
     public static FfiConverterTypeMikomaiService INSTANCE = new FfiConverterTypeMikomaiService();
@@ -1961,7 +2003,7 @@ class FfiConverterTypeMikomaiService: FfiConverter<MikomaiService, ulong> {
 
 
 internal record LegacyResult (
-    int Status, 
+    int Status,
     string Text
 ) {
 }
@@ -1991,10 +2033,10 @@ class FfiConverterTypeLegacyResult: FfiConverterRustBuffer<LegacyResult> {
 
 
 internal record Snapshot (
-    string TaskId, 
-    string State, 
-    ulong Seq, 
-    string Result, 
+    string TaskId,
+    string State,
+    ulong Seq,
+    string Result,
     TaskEvent[] Events
 ) {
 }
@@ -2033,10 +2075,10 @@ class FfiConverterTypeSnapshot: FfiConverterRustBuffer<Snapshot> {
 
 
 internal record TaskEvent (
-    string TaskId, 
-    ulong Seq, 
-    uint Version, 
-    string Kind, 
+    string TaskId,
+    ulong Seq,
+    uint Version,
+    string Kind,
     string Payload
 ) {
 }
@@ -2081,8 +2123,8 @@ internal class AppException: UniffiException {
     AppException(String @Message) : base(@Message) {}
 
     // Each variant is a nested class
-    
-    
+
+
     public class Failure : AppException {
         // Members
         public string @message;
@@ -2095,9 +2137,9 @@ internal class AppException: UniffiException {
             this.@message = @message;
         }
     }
-    
 
-    
+
+
 }
 
 class FfiConverterTypeAppError : FfiConverterRustBuffer<AppException>, CallStatusErrorHandler<AppException> {
@@ -2142,7 +2184,7 @@ class FfiConverterTypeAppError : FfiConverterRustBuffer<AppException>, CallStatu
 
 
 internal record Command {
-    
+
     public record Chat (
         string Message,
         string History,
@@ -2152,24 +2194,24 @@ internal record Command {
         string DevicesJson,
         bool Agent
     ) : Command {}
-    
+
     public record ReadDevice (
         string Target,
         string[] Commands,
         uint TimeoutSeconds
     ) : Command {}
-    
+
     public record ExecuteApproved (
         string PlanId,
         string PlanHash
     ) : Command {}
-    
+
     public record Contract (
         string FixtureJson
     ) : Command {}
-    
 
-    
+
+
 }
 
 class FfiConverterTypeCommand : FfiConverterRustBuffer<Command>{
@@ -2276,13 +2318,13 @@ class FfiConverterTypeCommand : FfiConverterRustBuffer<Command>{
 
 
 internal record Query {
-    
+
     public record Task (
         string TaskId
     ) : Query {}
-    
 
-    
+
+
 }
 
 class FfiConverterTypeQuery : FfiConverterRustBuffer<Query>{
@@ -2478,8 +2520,8 @@ class UniffiCallbackInterfaceLegacyListener {
                 throw new InternalException($"No callback in handlemap '{handle}'");
             }
             uniffiObject.Event(
-                FfiConverterString.INSTANCE.Lift(@kind), 
-                FfiConverterString.INSTANCE.Lift(@text), 
+                FfiConverterString.INSTANCE.Lift(@kind),
+                FfiConverterString.INSTANCE.Lift(@text),
                 FfiConverterBoolean.INSTANCE.Lift(@done));
 
             _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;

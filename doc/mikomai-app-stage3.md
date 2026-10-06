@@ -1,5 +1,7 @@
 # 段階3の業務ルール移動・旧取込廃止
 
+2026-10-06時点の記録。現在の段階3〜6の状態は[統合実装・検証記録](mikomai-app-stage3-6.md)を参照。
+
 2026-10-06。再設計書の未実施事項を照合し、段階3を進めた。
 
 ## 実装した範囲
@@ -18,7 +20,7 @@
 
 ## 未完了
 
-sessions/connections/settingsの保存サービスは後続の[保存サービス実装](mikomai-app-stage3-storage.md)で追加した。段階3全体は完了していない。tasks/operations/approvals/watches/auditのSurrealDB集約、Swift内の操作実行・OS資格情報・プロセス管理は残る。段階4–6のワーカー、排他/推論キュー、UniFFI、共通契約テストも未実施。Windows/Vulkan/WinUI（段階7–8）はユーザー指示により現在の実装対象から除外する。既存JSONLは最終設計のTaskEventではない。
+sessions/connections/settingsは[保存サービス実装](mikomai-app-stage3-storage.md)で追加し、その後、残っていた正本集約・Rust資格情報/操作/プロセス管理・ワーカー・排他/推論キュー・UniFFI・TaskEvent・共通契約試験を[段階3〜6](mikomai-app-stage3-6.md)で実装した。Windows/Vulkan/WinUI（段階7〜8）は現在の対象外。以下の検証欄は段階3初回実装当時の記録。
 
 ## 検証
 

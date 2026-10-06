@@ -3,14 +3,10 @@ import Foundation
 /// Read-only Yamaha LAN MVP: never guess a port or interpolate arbitrary CLI text.
 public enum InterfaceObservationPolicy {
     public static func command(deviceType: String, interface: String?) throws -> String {
-        if DeviceTypeCatalog.canonicalID(for: deviceType) == "yamaha" {
-            guard let name = interface?.lowercased(),
-                  name.range(of: "^lan[1-9][0-9]{0,2}$", options: .regularExpression) != nil else {
-                throw InterfaceObservationError.lanRequired
-            }
-            return "show status \(name)"
-        }
-        return "show interfaces"
+        var request:[String:Any]=["op":"interface_command","deviceType":deviceType]
+        if let interface {request["interface"]=interface}
+        do {return try JSONDecoder().decode(String.self,from:RustPolicy.data(request))}
+        catch {throw InterfaceObservationError.lanRequired}
     }
 }
 

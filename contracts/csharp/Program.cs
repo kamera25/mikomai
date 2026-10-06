@@ -11,6 +11,7 @@ sealed class Listener : EventListener {
 }
 static class Program {
     static void Main(string[] args) {
+        bool serve=args[0]=="--serve"; if(serve) args=args.Skip(1).ToArray();
         using var service = new MikomaiService();
         var listener = new Listener(); service.Subscribe(listener);
         var id = service.Submit(new Command.Contract(File.ReadAllText(args[0])));
@@ -21,7 +22,9 @@ static class Program {
         var events=snapshot.Events;
         if (!events.Select(e=>e.Seq).SequenceEqual(Enumerable.Range(1,events.Length).Select(n=>(ulong)n))) throw new Exception("event sequence gap");
         if(events.Any(e=>e.Version!=1||e.TaskId!=id)) throw new Exception("event contract mismatch");
+        while(listener.Events.Count(e=>e.TaskId==id)<events.Length && DateTime.UtcNow<deadline) Thread.Sleep(1);
         if(!listener.Events.Where(e=>e.TaskId==id).Select(e=>e.Seq).SequenceEqual(events.Select(e=>e.Seq))) throw new Exception("callback and query differ");
         Console.WriteLine(JsonSerializer.Serialize(new {version=1,kinds=events.Select(e=>e.Kind).ToArray(),result=snapshot.Result}));
+        if(serve) Console.ReadLine();
     }
 }

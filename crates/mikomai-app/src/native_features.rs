@@ -5,26 +5,74 @@ use serde_json::{json, Value};
 pub fn query(request: &Value) -> Result<Value, String> {
     let text = |key: &str| request[key].as_str().unwrap_or("");
     Ok(match text("op") {
+        "public_ip" => json!(public_ip(text("value"))),
+        "cpu_command" => json!(crate::native_execution::cpu_command(
+            &json!({"deviceType":canonical_device_id(text("value"))})
+        )),
+        "cpu_usage" => json!(crate::native_execution::cpu_usage(text("value")).ok()),
+        "arp_command" => json!(crate::native_execution::arp_command(
+            &json!({"deviceType":canonical_device_id(text("value"))})
+        )),
+        "interface_command" => json!(interface_command(
+            text("deviceType"),
+            request["interface"].as_str()
+        )?),
+        "ping_parse" => parse_ping(text("value")),
+        "ping_arguments" => ping_arguments(&request["command"]),
+        "network_error" => network_error(text("value")),
+        "diagnostic_host" => match diagnostic_host(text("host"), &request["connections"]) {
+            Ok(host) => json!({"host":host}),
+            Err(error) => json!({"error":error}),
+        },
         "credential_update" => {
-            mikomai_adapters::secrets::update(text("id"),request["password"].as_str(),request["enablePassword"].as_str())?;
+            mikomai_adapters::secrets::update(
+                text("id"),
+                request["password"].as_str(),
+                request["enablePassword"].as_str(),
+            )?;
             Value::Null
-        },
-        "device_snapshot" => crate::native_execution::snapshot(&crate::native_execution::connection(text("id"))?)?,
-        "native_tool" => json!(crate::native_execution::execute_tool(text("tool"),&request["target"],&request["args"])?),
+        }
+        "device_snapshot" => {
+            crate::native_execution::snapshot(&crate::native_execution::connection(text("id"))?)?
+        }
+        "native_tool" => json!(crate::native_execution::execute_tool(
+            text("tool"),
+            &request["target"],
+            &request["args"]
+        )?),
         "operation_prepare" => {
-            let connection=crate::native_execution::connection(text("id"))?;
-            let snapshot=std::ffi::CString::new(crate::native_execution::snapshot(&connection)?.to_string()).map_err(|e|e.to_string())?;
-            let target=std::ffi::CString::new(connection["name"].as_str().ok_or("device name missing")?).map_err(|e|e.to_string())?;
-            let commands:Vec<&str>=text("proposal").lines().map(str::trim).filter(|s|!s.is_empty()).collect();
-            let commands=std::ffi::CString::new(json!(commands).to_string()).map_err(|e|e.to_string())?;
-            let rationale=std::ffi::CString::new(text("rationale")).map_err(|e|e.to_string())?;
-            serde_json::from_str(&unsafe {crate::consume_result(crate::mikomai_operation_plan_create(target.as_ptr(),snapshot.as_ptr(),commands.as_ptr(),rationale.as_ptr()))?}).map_err(|e|e.to_string())?
-        },
-        "store_load" => crate::shared_service().load_document(text("collection"))?.unwrap_or(Value::Null),
+            let connection = crate::native_execution::connection(text("id"))?;
+            let snapshot =
+                std::ffi::CString::new(crate::native_execution::snapshot(&connection)?.to_string())
+                    .map_err(|e| e.to_string())?;
+            let target =
+                std::ffi::CString::new(connection["name"].as_str().ok_or("device name missing")?)
+                    .map_err(|e| e.to_string())?;
+            let commands: Vec<&str> = text("proposal")
+                .lines()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
+            let commands =
+                std::ffi::CString::new(json!(commands).to_string()).map_err(|e| e.to_string())?;
+            let rationale = std::ffi::CString::new(text("rationale")).map_err(|e| e.to_string())?;
+            serde_json::from_str(&unsafe {
+                crate::consume_result(crate::mikomai_operation_plan_create(
+                    target.as_ptr(),
+                    snapshot.as_ptr(),
+                    commands.as_ptr(),
+                    rationale.as_ptr(),
+                ))?
+            })
+            .map_err(|e| e.to_string())?
+        }
+        "store_load" => crate::shared_service()
+            .load_document(text("collection"))?
+            .unwrap_or(Value::Null),
         "store_save" => {
             crate::shared_service().save_document(text("collection"), &request["value"])?;
             Value::Null
-        },
+        }
         "device_catalog" => {
             serde_json::from_str(include_str!("device_catalog.json")).map_err(|e| e.to_string())?
         }
@@ -167,11 +215,25 @@ pub fn validate_connection(connection: &Value) -> Option<String> {
     if !safe(name) {
         return Some("名前は文字・数字と . - _ で入力してください。".into());
     }
-    if !safe(host) && !(host.len() <= 255 && host.parse::<std::net::Ipv6Addr>().is_ok()) {
+    let serial = matches!(
+        field("connectionType").to_ascii_lowercase().as_str(),
+        "console" | "serial"
+    );
+    let serial_path = serial
+        && host.starts_with("/dev/")
+        && host.len() <= 255
+        && !host.contains("..")
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/._-".contains(c));
+    if !serial_path
+        && !safe(host)
+        && !(host.len() <= 255 && host.parse::<std::net::Ipv6Addr>().is_ok())
+    {
         return Some("ホストは IP アドレスまたは文字・数字と . - _ で入力してください。".into());
     }
     let port = field("port");
-    if !port.is_empty() && !port.parse::<u16>().is_ok_and(|p| p > 0) {
+    if !serial && !port.is_empty() && !port.parse::<u16>().is_ok_and(|p| p > 0) {
         return Some("ポートは 1 から 65535 の数値で入力してください。".into());
     }
     let username = field("username");
@@ -297,4 +359,165 @@ mod tests {
         assert_ne!(deleted["activeSessionID"], "first");
         assert_eq!(deleted["activeSessionID"], deleted["sessions"][0]["id"]);
     }
+}
+
+fn public_ip(value: &str) -> bool {
+    match value.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => {
+            let [a, b, _, _] = ip.octets();
+            !matches!(a, 0 | 10 | 127 | 224..=255)
+                && !(a == 172 && (16..=31).contains(&b))
+                && !(a == 192 && b == 168)
+                && !(a == 169 && b == 254)
+        }
+        Ok(std::net::IpAddr::V6(ip)) => {
+            !ip.is_loopback()
+                && !ip.is_unspecified()
+                && ip.segments()[0] & 0xffc0 != 0xfe80
+                && ip.segments()[0] & 0xfe00 != 0xfc00
+                && !ip.is_multicast()
+        }
+        Err(_) => false,
+    }
+}
+pub(crate) fn ping_arguments(command: &Value) -> Value {
+    let host = command["host"].as_str().unwrap_or("");
+    if host.is_empty()
+        || host.starts_with('-')
+        || !host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._:%-".contains(c))
+    {
+        return Value::Null;
+    }
+    let mut args = vec![
+        "-c".to_owned(),
+        command["count"]
+            .as_i64()
+            .unwrap_or(4)
+            .clamp(1, 10)
+            .to_string(),
+    ];
+    if let Some(size) = command["size"].as_i64() {
+        if !(1..=65500).contains(&size) {
+            return Value::Null;
+        }
+        args.extend(["-s".into(), size.to_string()]);
+    }
+    if command["df"] == true {
+        args.push("-D".into());
+    }
+    args.push(host.into());
+    json!(args)
+}
+fn parse_ping(text: &str) -> Value {
+    let text = text.to_lowercase();
+    let capture = |pattern: &str| {
+        regex::Regex::new(pattern)
+            .ok()?
+            .captures(&text)?
+            .get(1)
+            .map(|m| m.as_str().to_owned())
+    };
+    let Some(host) = capture(r"(?:ping|ピン|ピング)\s+([a-zA-Z0-9.:-]+)")
+        .or_else(|| capture(r"([a-zA-Z0-9.:-]+)\s*(?:に|へ)?\s*(?:ping|ピン|ピング)"))
+    else {
+        return Value::Null;
+    };
+    let size = capture(r"(?:size|サイズ)\s*(\d+)").and_then(|n| n.parse::<i64>().ok());
+    let count = capture(r"(?:count|回数|回)\s*(\d+)")
+        .or_else(|| capture(r"(\d+)\s*回(?:実行)?"))
+        .and_then(|n| n.parse::<i64>().ok());
+    json!({"host":host,"size":size,"count":count,"df":if ["df","フラグメント禁止","断片化禁止"].iter().any(|word|text.contains(word)){Some(true)}else{None}})
+}
+fn network_error(text: &str) -> Value {
+    let lower = text.to_lowercase();
+    for (kind, marker) in [
+        ("invalidInput", "% invalid input"),
+        ("incompleteCommand", "% incomplete command"),
+        ("ambiguousCommand", "% ambiguous command"),
+        ("syntaxError", "syntax error"),
+        ("netmikoError", "netmiko error:"),
+        ("deviceError", "error: device"),
+    ] {
+        if lower.contains(marker) {
+            return json!({"kind":kind,"detail":marker});
+        }
+    }
+    Value::Null
+}
+pub(crate) fn diagnostic_host(host: &str, connections: &Value) -> Result<String, String> {
+    let host = host.trim();
+    let matches = connections
+        .as_array()
+        .ok_or("ambiguous")?
+        .iter()
+        .filter(|v| {
+            v["name"]
+                .as_str()
+                .is_some_and(|s| s.trim().eq_ignore_ascii_case(host))
+                || v["id"]
+                    .as_str()
+                    .is_some_and(|s| s.eq_ignore_ascii_case(host))
+                || v["sourceID"].as_str() == Some(host)
+        })
+        .collect::<Vec<_>>();
+    if matches.len() > 1 {
+        return Err("ambiguous".into());
+    }
+    let Some(record) = matches.first() else {
+        return Ok(host.into());
+    };
+    let address = record["host"].as_str().unwrap_or("").trim();
+    if address.is_empty() {
+        return Err("missingAddress".into());
+    }
+    if address.parse::<std::net::IpAddr>().is_err() {
+        return Err("invalidAddress".into());
+    }
+    Ok(address.into())
+}
+pub(crate) fn interface_command(
+    device_type: &str,
+    interface: Option<&str>,
+) -> Result<String, String> {
+    if canonical_device_id(device_type) == "yamaha" {
+        let name = interface.unwrap_or("").to_ascii_lowercase();
+        if !regex::Regex::new(r"^lan[1-9][0-9]{0,2}$")
+            .unwrap()
+            .is_match(&name)
+        {
+            return Err("ヤマハルータの確認対象LAN名（例: LAN1）を1つ指定してください。".into());
+        }
+        Ok(format!("show status {name}"))
+    } else {
+        Ok("show interfaces".into())
+    }
+}
+
+/// Individual connection registration; no bulk file import path.
+pub fn register_connection(record: &Value) -> Result<(), String> {
+    crate::service::validate_document("connections", &json!([record]))?;
+    if let Some(error) = validate_connection(record) {
+        return Err(error);
+    }
+    let id = record["id"]
+        .as_str()
+        .and_then(|id| uuid::Uuid::parse_str(id).ok())
+        .ok_or("connection ID must be a UUID")?;
+    crate::shared_service().update_internal("connections", |value| {
+        if !value.is_array() {
+            *value = json!([]);
+        }
+        let records = value.as_array_mut().unwrap();
+        if let Some(existing) = records
+            .iter_mut()
+            .find(|v| v["id"].as_str().and_then(|s| uuid::Uuid::parse_str(s).ok()) == Some(id))
+        {
+            *existing = record.clone();
+        } else {
+            records.push(record.clone());
+        }
+        Ok(())
+    })
 }

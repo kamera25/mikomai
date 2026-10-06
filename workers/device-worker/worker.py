@@ -46,15 +46,42 @@ def execute(req):
             raise RuntimeError('Bundled Japanese font is missing')
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / 'network.svg'
-            image = drawer.DiagramDraw('SVG', diagram, filename=str(target), fontmap=bootstrap.create_fontmap(SimpleNamespace(fontmap=None,font=str(font))))
+            image = drawer.DiagramDraw('SVG', diagram, filename=str(target), fontmap=bootstrap.create_fontmap(SimpleNamespace(fontmap=None,font=[str(font)])))
             image.draw(); image.save()
             svg = target.read_text()
+            # SVG embeds only the glyphs it uses, so rendering needs no OS font.
+            import base64
+            from fontTools import subset
+            from fontTools.ttLib import TTFont
+            from xml.etree import ElementTree
+            text = ''.join(ElementTree.fromstring(svg).itertext())
+            subset_font = TTFont(font)
+            subsetter = subset.Subsetter(); subsetter.populate(text=text)
+            subsetter.subset(subset_font)
+            buffer = io.BytesIO(); subset_font.save(buffer); subset_font.close()
+            encoded = base64.b64encode(buffer.getvalue()).decode('ascii')
+            style = '<style>@font-face{font-family:MikomaiDiagram;src:url(data:font/ttf;base64,' + encoded + ')}text{font-family:MikomaiDiagram!important}</style>'
+            start = svg.index('>', svg.index('<svg')) + 1
+            svg = svg[:start] + style + svg[start:]
             if len(svg.encode()) > 4 * 1024 * 1024:
                 raise RuntimeError('Diagram exceeds 4 MiB')
             return {'success': True, 'svg': svg}
     if op not in ('show', 'config', 'console'):
         raise ValueError('Unknown worker operation')
     import netmiko_patches
+    import netmiko.base_connection
+    import stat
+    # Explicit Unix character-device paths include PTYs and valid ports that
+    # pySerial discovery does not enumerate. Keep the normal name resolver.
+    if not getattr(netmiko.base_connection, '_mikomai_serial_paths', False):
+        original_port = netmiko.base_connection.check_serial_port
+        def resolve_port(name):
+            path = Path(name)
+            if path.is_absolute() and str(path).startswith('/dev/') and '..' not in path.parts and stat.S_ISCHR(path.stat().st_mode):
+                return str(path)
+            return original_port(name)
+        netmiko.base_connection.check_serial_port = resolve_port
+        netmiko.base_connection._mikomai_serial_paths = True
     from netmiko import ConnectHandler
     credentials = req.get('credentials', {})
     transport = req['transport']
@@ -110,9 +137,10 @@ def run():
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                     payload = execute(req)
                 response.update(status='completed' if payload.get('success', True) else 'failed', payload=payload)
-        except Exception:
+        except Exception as error:
             # Exceptions can contain credentials or command contents.
             response['error'] = 'Worker operation failed'
+            response['error_code'] = type(error).__name__
         emit(response)
         cancelled.discard(req.get('id'))
         req.clear()

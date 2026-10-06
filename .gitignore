@@ -30,3 +30,8 @@ venv/
 coverage/
 build/
 .fastembed_cache
+
+# Generated build products; checked-in bindings remain source.
+contracts/csharp/bin/
+contracts/csharp/obj/
+workers/device-worker/**/__pycache__/

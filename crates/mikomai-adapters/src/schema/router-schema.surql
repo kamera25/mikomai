@@ -2,6 +2,7 @@
 
 -- ospf/openconfig-ospfv2.yang (2024-06-17)
 DEFINE TABLE IF NOT EXISTS ospf SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE ospf TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE ospf TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE ospf TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE ospf TYPE string;
@@ -18,6 +19,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE ospf FIELDS device_name
 
 -- ospf/openconfig-ospfv2-area-interface.yang (2024-06-17)
 DEFINE TABLE IF NOT EXISTS ospf_neighbor SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE ospf_neighbor TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE ospf_neighbor TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE ospf_neighbor TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE ospf_neighbor TYPE string;
@@ -37,6 +39,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE ospf_neighbor FIELDS de
 
 -- isis/openconfig-isis.yang (2026-05-23)
 DEFINE TABLE IF NOT EXISTS isis SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE isis TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE isis TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE isis TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE isis TYPE string;
@@ -53,6 +56,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE isis FIELDS device_name
 
 -- bfd/openconfig-bfd.yang (2025-09-03)
 DEFINE TABLE IF NOT EXISTS bfd SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE bfd TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE bfd TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE bfd TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE bfd TYPE string;
@@ -73,6 +77,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE bfd FIELDS device_name,
 
 -- lldp/openconfig-lldp.yang (2026-04-14)
 DEFINE TABLE IF NOT EXISTS lldp SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE lldp TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE lldp TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE lldp TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE lldp TYPE string;
@@ -94,6 +99,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE lldp FIELDS device_name
 
 -- interfaces/openconfig-if-ip.yang (2026-06-01)
 DEFINE TABLE IF NOT EXISTS ndp SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE ndp TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE ndp TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE ndp TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE ndp TYPE string;
@@ -110,6 +116,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE ndp FIELDS device_name,
 
 -- interfaces/openconfig-if-ip.yang (2026-06-01)
 DEFINE TABLE IF NOT EXISTS vrrp SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE vrrp TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE vrrp TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE vrrp TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE vrrp TYPE string;
@@ -129,6 +136,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE vrrp FIELDS device_name
 
 -- lacp/openconfig-lacp.yang (2026-04-09)
 DEFINE TABLE IF NOT EXISTS lacp SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE lacp TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE lacp TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE lacp TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE lacp TYPE string;
@@ -149,6 +157,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE lacp FIELDS device_name
 
 -- interfaces/openconfig-if-tunnel.yang (2018-11-21)
 DEFINE TABLE IF NOT EXISTS tunnel SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE tunnel TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE tunnel TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE tunnel TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE tunnel TYPE string;
@@ -164,6 +173,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE tunnel FIELDS device_na
 
 -- policy/openconfig-routing-policy.yang (2024-11-26)
 DEFINE TABLE IF NOT EXISTS routing_policy SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE routing_policy TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE routing_policy TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE routing_policy TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE routing_policy TYPE string;
@@ -175,6 +185,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE routing_policy FIELDS d
 
 -- policy/openconfig-routing-policy.yang (2024-11-26)
 DEFINE TABLE IF NOT EXISTS prefix_set SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE prefix_set TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE prefix_set TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE prefix_set TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE prefix_set TYPE string;
@@ -187,6 +198,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE prefix_set FIELDS devic
 
 -- policy-forwarding/openconfig-policy-forwarding.yang (2026-03-13)
 DEFINE TABLE IF NOT EXISTS policy_forwarding SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE policy_forwarding TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE policy_forwarding TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE policy_forwarding TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE policy_forwarding TYPE string;
@@ -201,6 +213,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE policy_forwarding FIELD
 
 -- acl/openconfig-acl.yang (2023-02-06)
 DEFINE TABLE IF NOT EXISTS acl_entry SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE acl_entry TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE acl_entry TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE acl_entry TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE acl_entry TYPE string;
@@ -221,6 +234,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE acl_entry FIELDS device
 
 -- acl/openconfig-acl.yang (2023-02-06)
 DEFINE TABLE IF NOT EXISTS acl_binding SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE acl_binding TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE acl_binding TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE acl_binding TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE acl_binding TYPE string;
@@ -234,6 +248,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE acl_binding FIELDS devi
 
 -- nat/openconfig-nat.yang (2025-07-15)
 DEFINE TABLE IF NOT EXISTS nat SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE nat TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE nat TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE nat TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE nat TYPE string;
@@ -251,6 +266,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE nat FIELDS device_name,
 
 -- relay-agent/openconfig-relay-agent.yang (2023-02-06)
 DEFINE TABLE IF NOT EXISTS dhcp_relay SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE dhcp_relay TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE dhcp_relay TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE dhcp_relay TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE dhcp_relay TYPE string;
@@ -267,6 +283,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE dhcp_relay FIELDS devic
 
 -- qos/openconfig-qos-elements.yang (2026-04-30)
 DEFINE TABLE IF NOT EXISTS qos SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE qos TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE qos TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE qos TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE qos TYPE string;
@@ -281,6 +298,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE qos FIELDS device_name,
 
 -- qos/openconfig-qos-interfaces.yang (2026-04-30)
 DEFINE TABLE IF NOT EXISTS qos_interface SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE qos_interface TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE qos_interface TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE qos_interface TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE qos_interface TYPE string;
@@ -295,6 +313,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE qos_interface FIELDS de
 
 -- multicast/openconfig-pim.yang (2024-12-06)
 DEFINE TABLE IF NOT EXISTS pim SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE pim TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE pim TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE pim TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE pim TYPE string;
@@ -311,6 +330,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE pim FIELDS device_name,
 
 -- multicast/openconfig-igmp.yang (2023-02-03)
 DEFINE TABLE IF NOT EXISTS igmp SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE igmp TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE igmp TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE igmp TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE igmp TYPE string;
@@ -326,6 +346,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE igmp FIELDS device_name
 
 -- mpls/openconfig-mpls.yang (2025-12-10)
 DEFINE TABLE IF NOT EXISTS mpls SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE mpls TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE mpls TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE mpls TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE mpls TYPE string;
@@ -344,6 +365,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE mpls FIELDS device_name
 
 -- system/openconfig-system.yang (2026-07-20)
 DEFINE TABLE IF NOT EXISTS dns_server SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE dns_server TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE dns_server TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE dns_server TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE dns_server TYPE string;
@@ -357,6 +379,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE dns_server FIELDS devic
 
 -- system/openconfig-system-logging.yang (2024-08-20)
 DEFINE TABLE IF NOT EXISTS syslog_server SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE syslog_server TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE syslog_server TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE syslog_server TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE syslog_server TYPE string;
@@ -371,6 +394,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE syslog_server FIELDS de
 
 -- system/openconfig-aaa.yang (2025-10-31)
 DEFINE TABLE IF NOT EXISTS aaa_server SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE aaa_server TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE aaa_server TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE aaa_server TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE aaa_server TYPE string;
@@ -388,6 +412,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE aaa_server FIELDS devic
 
 -- system/openconfig-snmp.yang (2026-05-05)
 DEFINE TABLE IF NOT EXISTS snmp SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE snmp TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE snmp TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE snmp TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE snmp TYPE string;
@@ -402,6 +427,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE snmp FIELDS device_name
 
 -- telemetry/openconfig-telemetry.yang (2018-11-21)
 DEFINE TABLE IF NOT EXISTS telemetry_subscription SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE telemetry_subscription TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE telemetry_subscription TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE telemetry_subscription TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE telemetry_subscription TYPE string;
@@ -418,6 +444,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE telemetry_subscription 
 
 -- platform/openconfig-platform.yang (2026-07-08)
 DEFINE TABLE IF NOT EXISTS platform_component SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE platform_component TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE platform_component TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE platform_component TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE platform_component TYPE string;
@@ -438,6 +465,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE platform_component FIEL
 
 -- system/openconfig-system.yang (2026-07-20)
 DEFINE TABLE IF NOT EXISTS system SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE system TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE system TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE system TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE system TYPE string;
@@ -455,6 +483,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE system FIELDS device_na
 
 -- network-instance/openconfig-network-instance-l2.yang (2026-03-17)
 DEFINE TABLE IF NOT EXISTS mac_entry SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE mac_entry TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE mac_entry TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE mac_entry TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE mac_entry TYPE string;
@@ -470,6 +499,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE mac_entry FIELDS device
 
 -- security/openconfig-security-ipsec.yang (2025-12-03)
 DEFINE TABLE IF NOT EXISTS ipsec_connection SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE ipsec_connection TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE ipsec_connection TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE ipsec_connection TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE ipsec_connection TYPE string;
@@ -492,6 +522,7 @@ DEFINE INDEX IF NOT EXISTS resource_device_time ON TABLE ipsec_connection FIELDS
 
 -- security/openconfig-security-ike.yang (2025-12-03)
 DEFINE TABLE IF NOT EXISTS ike_sa SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS schema_version ON TABLE ike_sa TYPE int DEFAULT 1 ASSERT $value = 1;
 DEFINE FIELD IF NOT EXISTS key ON TABLE ike_sa TYPE string;
 DEFINE FIELD IF NOT EXISTS device_name ON TABLE ike_sa TYPE string;
 DEFINE FIELD IF NOT EXISTS observation_id ON TABLE ike_sa TYPE string;

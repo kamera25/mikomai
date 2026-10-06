@@ -2,8 +2,6 @@ import SwiftUI
 import AppKit
 import Foundation
 import Darwin
-import Security
-import CryptoKit
 import MikomaiBindings
 import MikomaiDesktopCore
 import UniformTypeIdentifiers
@@ -673,6 +671,12 @@ struct DesktopWindow: View {
                 Spacer(minLength: 0)
                 if isOperationRunning {
                     HStack(spacing: 7) { ProgressView().controlSize(.small); Text(model.operationPhase).font(.system(size: 13)) }
+                    if model.operationWaitingDecision, let id=model.operationTaskID {
+                        HStack {
+                            AccessibleButton("待機を続ける") { try? MikomaiService().resume(taskId:id) }
+                            AccessibleButton("中止") { try? MikomaiService().cancel(taskId:id) }
+                        }
+                    }
                 } else if model.operationPlan == nil {
                     AccessibleButton("現状を取得して差分を確認") { Task { await prepareOperationPlan() } }
                         .accessibleButtonStyle(.prominent).disabled(selectedConnectionID == nil || model.connections.isEmpty)
@@ -800,6 +804,9 @@ struct DesktopWindow: View {
                         }
                         if model.isWorkingInActiveSession && model.activeSession?.messages.last?.agentProgress == nil {
                             WorkingStatusView(isCancelling: model.isCancelling)
+                            if model.chatWaitingDeviceDecision, let id=model.activeRustTaskID {
+                                AccessibleButton("機器のロック待ちを続ける") { try? MikomaiService().resume(taskId:id) }
+                            }
                         }
                         ForEach(model.queuedSubmissionsInActiveSession) { submission in
                             QueuedSubmissionView(submission: submission) {

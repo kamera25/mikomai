@@ -29,11 +29,11 @@ swift_environment() {
     swift "$@"
 }
 
-cargo build -p mikomai-ffi
+sh "$ROOT/scripts/build-device-worker.sh"
+cargo build -p mikomai-bindings
 swift_environment build --disable-sandbox --package-path "$APP" --scratch-path "$SCRATCH"
 MIKOMAI_DOCS_DIR="$ROOT/nw-docs" \
-MIKOMAI_NETMIKO_WRAPPER="$ROOT/mikomai-core/assets/bin/netmiko_wrapper-macos-arm64" \
+MIKOMAI_DEVICE_WORKER="$ROOT/target/debug/mikomai-device-worker-macos-arm64" \
 MIKOMAI_ASSETS_DIR="$ROOT/mikomai-core/assets" \
-MIKOMAI_PYTHON="$ROOT/venv/bin/python" \
 DYLD_LIBRARY_PATH="$ROOT/target/debug${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" \
 swift_environment run --disable-sandbox --package-path "$APP" --scratch-path "$SCRATCH" MikomaiDesktopMac

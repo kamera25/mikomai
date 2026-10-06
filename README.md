@@ -1,6 +1,6 @@
 # mikomai - ネットワークAIアシスタントツール
 
-ネットワーク機器の診断と技術文書の参照を支援する、macOSネイティブのAIアシスタントです。Swift製デスクトップアプリは `mikomai-desktop-mac/`、共有Rustロジックは `mikomai-core/`、Swiftから呼び出すRust FFIは `crates/mikomai-ffi/` にあります。
+ネットワーク機器の診断と技術文書の参照を支援する、macOSネイティブのAIアシスタントです。Swift製デスクトップアプリは `mikomai-desktop-mac/`、共有Rustロジックは `mikomai-core/`、Swift/C#から呼び出す生成UniFFIは `crates/mikomai-bindings/` にあります。
 
 ## 機能
 

@@ -245,14 +245,14 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_EVENT_LISTENER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_EVENT_LISTENER_METHOD0
-typedef void (*UniffiCallbackInterfaceEventListenerMethod0)(uint64_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceEventListenerMethod0)(uint64_t, RustBuffer, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LEGACY_LISTENER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LEGACY_LISTENER_METHOD0
-typedef void (*UniffiCallbackInterfaceLegacyListenerMethod0)(uint64_t, RustBuffer, RustBuffer, int8_t, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceLegacyListenerMethod0)(uint64_t, RustBuffer, RustBuffer, int8_t, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
@@ -288,7 +288,7 @@ void uniffi_mikomai_bindings_fn_free_mikomaiservice(uint64_t handle, RustCallSta
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_FN_CONSTRUCTOR_MIKOMAISERVICE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_FN_CONSTRUCTOR_MIKOMAISERVICE_NEW
 uint64_t uniffi_mikomai_bindings_fn_constructor_mikomaiservice_new(RustCallStatus *_Nonnull out_status
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_FN_METHOD_MIKOMAISERVICE_CANCEL
@@ -299,6 +299,11 @@ void uniffi_mikomai_bindings_fn_method_mikomaiservice_cancel(uint64_t ptr, RustB
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_FN_METHOD_MIKOMAISERVICE_QUERY
 #define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_FN_METHOD_MIKOMAISERVICE_QUERY
 RustBuffer uniffi_mikomai_bindings_fn_method_mikomaiservice_query(uint64_t ptr, RustBuffer query, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_FN_METHOD_MIKOMAISERVICE_RESUME
+#define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_FN_METHOD_MIKOMAISERVICE_RESUME
+void uniffi_mikomai_bindings_fn_method_mikomaiservice_resume(uint64_t ptr, RustBuffer task_id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_FN_METHOD_MIKOMAISERVICE_SUBMIT
@@ -589,55 +594,61 @@ void ffi_mikomai_bindings_rust_future_complete_void(uint64_t handle, RustCallSta
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_FUNC_LEGACY_INVOKE
 #define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_FUNC_LEGACY_INVOKE
 uint16_t uniffi_mikomai_bindings_checksum_func_legacy_invoke(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_MIKOMAISERVICE_CANCEL
 #define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_MIKOMAISERVICE_CANCEL
 uint16_t uniffi_mikomai_bindings_checksum_method_mikomaiservice_cancel(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_MIKOMAISERVICE_QUERY
 #define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_MIKOMAISERVICE_QUERY
 uint16_t uniffi_mikomai_bindings_checksum_method_mikomaiservice_query(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_MIKOMAISERVICE_RESUME
+#define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_MIKOMAISERVICE_RESUME
+uint16_t uniffi_mikomai_bindings_checksum_method_mikomaiservice_resume(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_MIKOMAISERVICE_SUBMIT
 #define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_MIKOMAISERVICE_SUBMIT
 uint16_t uniffi_mikomai_bindings_checksum_method_mikomaiservice_submit(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_MIKOMAISERVICE_SUBSCRIBE
 #define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_MIKOMAISERVICE_SUBSCRIBE
 uint16_t uniffi_mikomai_bindings_checksum_method_mikomaiservice_subscribe(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_CONSTRUCTOR_MIKOMAISERVICE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_CONSTRUCTOR_MIKOMAISERVICE_NEW
 uint16_t uniffi_mikomai_bindings_checksum_constructor_mikomaiservice_new(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_EVENTLISTENER_ON_EVENT
 #define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_EVENTLISTENER_ON_EVENT
 uint16_t uniffi_mikomai_bindings_checksum_method_eventlistener_on_event(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_LEGACYLISTENER_EVENT
 #define UNIFFI_FFIDEF_UNIFFI_MIKOMAI_BINDINGS_CHECKSUM_METHOD_LEGACYLISTENER_EVENT
 uint16_t uniffi_mikomai_bindings_checksum_method_legacylistener_event(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_MIKOMAI_BINDINGS_UNIFFI_CONTRACT_VERSION
 #define UNIFFI_FFIDEF_FFI_MIKOMAI_BINDINGS_UNIFFI_CONTRACT_VERSION
 uint32_t ffi_mikomai_bindings_uniffi_contract_version(void
-    
+
 );
 #endif
 

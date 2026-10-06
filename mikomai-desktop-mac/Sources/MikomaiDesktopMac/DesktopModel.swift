@@ -2,8 +2,6 @@ import SwiftUI
 import AppKit
 import Foundation
 import Darwin
-import Security
-import CryptoKit
 import MikomaiBindings
 import MikomaiDesktopCore
 import UniformTypeIdentifiers
@@ -30,6 +28,9 @@ final class DesktopModel: ObservableObject {
     @Published var operationBeforeConfig = ""
     @Published var operationAfterConfig = ""
     @Published var operationDiffLines: [String] = []
+    @Published var operationTaskID: String?
+    @Published var operationWaitingDecision = false
+    @Published var chatWaitingDeviceDecision = false
     @Published var operationPhase = "idle"
     lazy var operationCoordinator: OperationCoordinator = OperationCoordinator(model: self)
     @Published var watches: [NativeWatch] = []
@@ -323,7 +324,8 @@ final class DesktopModel: ObservableObject {
         knowledge: String,
         attachments: String,
         connections: [SavedConnection],
-        onTaskID: @escaping (String) -> Void,
+        onTaskState: @escaping (String) -> Void = { _ in },
+        onTaskID: @escaping (String) -> Void = { _ in },
         onOperationPlan: @escaping (Data) -> Void,
         onDebug: @escaping (String) -> Void,
         onToolResult: @escaping (AgentToolResult) -> Void,
@@ -334,16 +336,24 @@ final class DesktopModel: ObservableObject {
             let taskID = try service.submit(command: .chat(message:prompt,history:history,documentsDir:documents,knowledgeDir:knowledge,attachments:attachments,devicesJson:Self.publicDevicesJSON(connections),agent:true))
             onTaskID(taskID)
             var seq: UInt64 = 0
+            var previousState = ""
             while true {
                 let snapshot = try service.query(query:.task(taskId:taskID))
+                if previousState != snapshot.state { previousState = snapshot.state; onTaskState(snapshot.state) }
                 for event in snapshot.events where event.seq > seq {
                     seq = event.seq
                     guard let object = try? JSONSerialization.jsonObject(with:Data(event.payload.utf8)) as? [String:Any], let text = object["text"] as? String else { continue }
-                    if text.hasPrefix("__MIKOMAI_DEBUG__") { onDebug(String(text.dropFirst("__MIKOMAI_DEBUG__".count))) }
+                    if text.hasPrefix("__MIKOMAI_DEBUG__") {
+                        let record = String(text.dropFirst("__MIKOMAI_DEBUG__".count)); onDebug(record)
+                        if let data=record.data(using:.utf8), let object=try? JSONSerialization.jsonObject(with:data) as? [String:Any], object["kind"] as? String == "tool_response", let payload=object["payload"] as? [String:Any] {
+                            onToolResult(AgentToolResult(tool:payload["tool"] as? String ?? "",output:payload["output"] as? String ?? "",succeeded:payload["success"] as? Bool ?? false))
+                        }
+                    }
                     else if text.hasPrefix("__MIKOMAI_APPROVAL_PLAN__") { onOperationPlan(Data(text.dropFirst("__MIKOMAI_APPROVAL_PLAN__".count).utf8)) }
                     else { onChunk(text,object["done"] as? Bool ?? false) }
                 }
-                if ["completed","awaiting_user","awaiting_approval","failed","cancelled","unknown"].contains(snapshot.state) {
+                let lockDecision = snapshot.state == "awaiting_user" && snapshot.result.contains("device_lock_timeout")
+                if !lockDecision && ["completed","awaiting_user","awaiting_approval","failed","cancelled","unknown"].contains(snapshot.state) {
                     return ["failed","unknown"].contains(snapshot.state) ? "エラー: \(snapshot.result)" : snapshot.result
                 }
                 Thread.sleep(forTimeInterval:0.01)

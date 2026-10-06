@@ -11,6 +11,7 @@ serde = { version = "1", features = ["derive"] }
 zeroize = "1"
 sha2 = "0.10"
 fs2 = "=0.4.3"
+libc = "0.2"
 chrono = { version = "0.4.44", features = ["serde"] }
 surrealdb = { version = "=3.1.0", default-features = false, features = ["kv-rocksdb"] }
 tokio = { version = "1.52.1", features = ["full"] }

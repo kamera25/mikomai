@@ -2,61 +2,9 @@ import SwiftUI
 import AppKit
 import Foundation
 import Darwin
-import Security
-import CryptoKit
 import MikomaiBindings
 import MikomaiDesktopCore
 import UniformTypeIdentifiers
-
-// MARK: - C ABI Streaming Callback Bridge
-
-final class StreamBox: @unchecked Sendable {
-    let onChunk: (String, Bool) -> Void
-    init(onChunk: @escaping (String, Bool) -> Void) {
-        self.onChunk = onChunk
-    }
-}
-
-final class ChatCallbackBox: @unchecked Sendable {
-    let stream: StreamBox
-    let connections: [SavedConnection]
-    let onOperationPlan: (Data) -> Void
-    let onToolResult: (AgentToolResult) -> Void
-    let onDebug: (String) -> Void
-
-    init(stream: StreamBox, connections: [SavedConnection], onOperationPlan: @escaping (Data) -> Void, onToolResult: @escaping (AgentToolResult) -> Void, onDebug: @escaping (String) -> Void) {
-        self.stream = stream
-        self.connections = connections
-        self.onOperationPlan = onOperationPlan
-        self.onToolResult = onToolResult
-        self.onDebug = onDebug
-    }
-}
-
-func streamBridge(chunk: UnsafePointer<CChar>?, isDone: Int32, context: UnsafeMutableRawPointer?) {
-    guard let context else { return }
-    let box = Unmanaged<ChatCallbackBox>.fromOpaque(context).takeUnretainedValue()
-    let text = chunk.flatMap { String(cString: $0) } ?? ""
-    if text.hasPrefix("__MIKOMAI_DEBUG__") {
-        box.onDebug(String(text.dropFirst("__MIKOMAI_DEBUG__".count)))
-        return
-    }
-    box.onDebug(CoreDebugRecord.encode(kind: "core_stream", payload: ["text": text, "done": isDone != 0]))
-    let approvalPrefix = "__MIKOMAI_APPROVAL_PLAN__"
-    if text.hasPrefix(approvalPrefix) {
-        let json = String(text.dropFirst(approvalPrefix.count)).components(separatedBy: "\n").first ?? ""
-        box.onOperationPlan(Data(json.utf8))
-        return
-    }
-    box.stream.onChunk(text, isDone != 0)
-}
-
-struct PortableDeviceTarget: Decodable {
-    let id: String?
-    let hostname: String
-    let ip: String?
-    let deviceType: String?
-}
 
 struct NativeWatch: Codable, Identifiable {
     struct IR: Codable {

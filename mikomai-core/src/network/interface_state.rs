@@ -4,7 +4,7 @@ use crate::port::PortFuture;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug,serde::Serialize,serde::Deserialize)]
 pub struct InterfaceObservation {
     pub raw: String,
     pub canonical: Option<Value>,

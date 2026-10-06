@@ -1,5 +1,7 @@
 # 段階3: Rust 保存サービス
 
+2026-10-06時点の記録。現在の段階3〜6の状態は[統合実装・検証記録](mikomai-app-stage3-6.md)を参照。
+
 2026-10-06。Windows/Vulkan/WinUIを除外して、残っていた保存サービスから実装を進めた。
 
 ## 実装
@@ -23,10 +25,6 @@
 
 ログ: `/tmp/mikomai-storage-rust.log`、`/tmp/mikomai-storage-adapter-final.log`、`/tmp/mikomai-storage-cli-final-tests.log`、`/tmp/mikomai-storage-swift-final.log`、`/tmp/mikomai-storage-reopen.log`、`/tmp/mikomai-storage-cli-failure.jsonl`、`/tmp/mikomai-storage-vlan-final.jsonl`。
 
-## 残作業と制約
+## 後続実装
 
-段階3全体と段階4–6はまだ完了していない。tasks/operations/approvals/watches/auditは従来のファイル保存が残る。Rust keyring、常駐ワーカー・期限/中断/Unknown、Swift内の操作実行・プロセス管理、Scheduler/InferenceQueue/DeviceLockManager、TaskEvent/Query、UniFFIと共通fixture契約テストを続ける必要がある。今回のSwift/Rust保存テストは段階6の共通契約テストではない。
-
-CLIは既定で専用の組込みDBを使用する。GUI/CLIの単一正本と同時起動を両立するサービス接続は未実装で、RocksDBを同時に二重オープンする構成にはしていない。`MIKOMAI_GRAPH_DB_PATH` による明示パス指定は可能だが、複数プロセスで同時に開くことはできない。
-
-Windows/Vulkan/WinUI、実機への変更、実KeychainのRust移行は検証対象にしていない。
+ここで残っていたtasks/operations/approvals/watches/auditの正本集約、Rust keyring、常駐ワーカー、排他/推論キュー、UniFFI、Swift切替、共通契約試験とGUI/CLI同時起動は[段階3〜6](mikomai-app-stage3-6.md)で実装した。上記の検証結果と一時C ABIの説明は当時の記録であり、現在は生成UniFFIを使う。Windows/Vulkan/WinUIと実機検証は今回の対象外。

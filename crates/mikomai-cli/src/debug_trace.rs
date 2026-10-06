@@ -6,6 +6,9 @@ pub struct Trace<W> {
     writer: W,
     enabled: bool,
     error: Option<std::io::Error>,
+    task_id: String,
+    seq: u64,
+    journal: bool,
 }
 
 impl<W: Write> Trace<W> {
@@ -14,7 +17,16 @@ impl<W: Write> Trace<W> {
             writer,
             enabled,
             error: None,
+            task_id: uuid::Uuid::new_v4().to_string(),
+            seq: 0,
+            journal: false,
         }
+    }
+
+    pub fn journaled(writer: W, enabled: bool) -> Self {
+        let mut trace = Self::new(writer, enabled);
+        trace.journal = enabled;
+        trace
     }
 
     fn write_record(&mut self, record: &str) {
@@ -29,8 +41,14 @@ impl<W: Write> Trace<W> {
 
     pub fn emit(&mut self, kind: &str, payload: Value) {
         if self.enabled {
+            if self.journal {
+                match mikomai_app::api::engine().trace_event(&self.task_id, kind, payload.to_string()) {
+                    Ok(event) => self.seq = event.seq,
+                    Err(error) => { self.error = Some(std::io::Error::other(error)); return; }
+                }
+            } else { self.seq += 1; }
             self.write_record(
-                &json!({"timestamp": chrono::Utc::now(), "kind": kind, "payload": payload})
+                &json!({"task_id":self.task_id,"seq":self.seq,"version":1,"timestamp": chrono::Utc::now(), "kind": kind, "payload": payload})
                     .to_string(),
             );
         }
@@ -38,8 +56,17 @@ impl<W: Write> Trace<W> {
 
     pub fn stream(&mut self, text: &str, done: bool) {
         if let Some(record) = text.strip_prefix("__MIKOMAI_DEBUG__") {
-            // Forward the core record without changing its timestamp or payload.
-            self.write_record(record);
+            if let Ok(value) = serde_json::from_str::<Value>(record) {
+                self.emit(
+                    value["kind"].as_str().unwrap_or("debug"),
+                    value["payload"].clone(),
+                );
+            } else {
+                self.emit(
+                    "invalid_debug_record",
+                    json!({"error":"invalid internal JSON"}),
+                );
+            }
         } else {
             self.emit("core_stream", json!({"text": text, "done": done}));
         }
@@ -70,6 +97,10 @@ impl<W: Write> Trace<W> {
         self.emit("agent_event", payload);
     }
 
+    pub fn check(&self) -> Result<(), String> {
+        self.error.as_ref().map_or(Ok(()), |error| Err(format!("TaskEvent journal failed: {error}")))
+    }
+
     pub fn finish(self) -> Result<(), String> {
         self.error.map_or(Ok(()), |error| {
             Err(format!("JSONL stdout write failed: {error}"))
@@ -92,7 +123,13 @@ mod tests {
         let text = String::from_utf8(output).unwrap();
         let lines: Vec<_> = text.lines().collect();
         assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0], core);
+        let forwarded: Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(
+            forwarded["payload"],
+            serde_json::from_str::<Value>(&core).unwrap()["payload"]
+        );
+        assert_eq!(forwarded["seq"], 1);
+        assert_eq!(forwarded["version"], 1);
         let chunk: Value = serde_json::from_str(lines[1]).unwrap();
         assert_eq!(chunk["kind"], "core_stream");
         assert_eq!(

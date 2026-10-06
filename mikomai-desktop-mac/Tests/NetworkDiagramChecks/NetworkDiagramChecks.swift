@@ -1,12 +1,6 @@
 import WebKit
-import MikomaiFFI
+import MikomaiBindings
 import MikomaiDesktopCore
-
-private struct EmptyCredentials: CredentialStore {
-    func save(key: String, value: String) {}
-    func load(key: String) -> String? { nil }
-    func delete(key: String) {}
-}
 
 @main struct NetworkDiagramChecks {
     @MainActor static func main() {
@@ -20,13 +14,13 @@ private struct EmptyCredentials: CredentialStore {
         setenv("MIKOMAI_E5_CACHE_DIR", "\(root)/e5", 1)
         let schema = "nwdiag {\n network lan {\n address = \"192.168.1.0/24\";\n router01 [address = \"192.168.1.1\"];\n switch01 [address = \"192.168.1.2\"];\n }\n}"
         var records: [String] = []
-        var answer = DesktopModel.askRustStreaming("次のNW図を表示して\n```nwdiag\n\(schema)\n```", history: "", documents: documents, knowledge: documents, attachments: "", connections: [], credentialPersistence: .init(store: EmptyCredentials()), onOperationPlan: { _ in fatalError("drawing must not request device changes") }, onDebug: { records.append($0) }, onToolResult: { _ in }, onChunk: { _, _ in })
+        var answer = DesktopModel.askRustStreaming("次のNW図を表示して\n```nwdiag\n\(schema)\n```", history: "", documents: documents, knowledge: documents, attachments: "", connections: [], onOperationPlan: { _ in fatalError("drawing must not request device changes") }, onDebug: { records.append($0) }, onToolResult: { _ in }, onChunk: { _, _ in })
         precondition(!answer.hasPrefix("エラー:"), answer)
         if let modelPath = ProcessInfo.processInfo.environment["MIKOMAI_DIAGRAM_CHECK_MODEL"] {
             let loaded = DesktopModel.callRust { modelPath.withCString { mikomai_model_load($0) } }
             precondition(!loaded.hasPrefix("エラー:"), loaded)
             let request = "LAN 192.168.1.0/24にrouter01とswitch01を接続したNW図を作成して"
-            let generated = DesktopModel.askRustStreaming(request, history: "", documents: documents, knowledge: documents, attachments: "", connections: [], credentialPersistence: .init(store: EmptyCredentials()), onOperationPlan: { _ in fatalError("drawing must not request changes") }, onDebug: { records.append($0) }, onToolResult: { _ in }, onChunk: { _, _ in })
+            let generated = DesktopModel.askRustStreaming(request, history: "", documents: documents, knowledge: documents, attachments: "", connections: [], onOperationPlan: { _ in fatalError("drawing must not request changes") }, onDebug: { records.append($0) }, onToolResult: { _ in }, onChunk: { _, _ in })
             try! records.joined(separator: "\n").write(toFile: "\(root)/debug.jsonl", atomically: true, encoding: .utf8)
             guard let block = ChatMarkdownParser.parse(generated).first(where: { if case .image = $0.kind { return true }; return false }), case let .image(_, source) = block.kind,
                   let image = ChatDiagramImage(source: source), let svg = String(data: image.data, encoding: .utf8) else { fatalError("Natural-language Plotter did not render: \(generated)") }

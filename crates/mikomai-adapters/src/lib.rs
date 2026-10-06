@@ -30,3 +30,6 @@ pub use mikomai_llm_apple as apple;
 
 pub mod device_worker;
 pub mod secrets;
+
+#[cfg(unix)]
+mod store_broker;

@@ -286,11 +286,11 @@ CLIは終了コード0だけでなく、質問に対応した完結した最終�
 | --- | --- | --- |
 | 1 | 完了 | [app新設・状態移動](mikomai-app-stage1.md)。FFI static 0、Runtime統合 |
 | 2 | 完了 | [CLI直接依存](mikomai-app-stage2.md)。FFI依存0 |
-| 3 | 実施中 | [業務ルール移動](mikomai-app-stage3.md)、[保存サービス](mikomai-app-stage3-storage.md)。sessions/connections/settingsとパス設定をschema_version付きSurrealDBへ移動。tasks/operations/approvals/watches/auditの集約、Swift内の操作・資格情報・プロセス処理は未完了 |
-| 4 | 未着手 | 常駐Netmikoワーカー、Rust keyring、期限/中断/再起動、CLI SSH/Telnet/serial、変換/nwdiag/フォント同梱 |
-| 5 | 未着手 | Command/Event/Query、Scheduler、InferenceQueue、機器/ポート/プロセス間ロック、実行ゲートへの統合と監査 |
-| 6 | 未着手 | C#互換版固定、UniFFI、Swift移行、手書きC ABI廃止、共通fixture契約試験 |
+| 3 | 完了 | [段階3〜6の実装・検証](mikomai-app-stage3-6.md)。正本をSurrealDBに集約し、操作・資格情報・OS処理をRustへ移動。旧データ取込を廃止 |
+| 4 | 完了 | Rust管理の同梱常駐ワーカー。CLIからSSH/Telnet/serialをフェイク機器で検証 |
+| 5 | 完了 | 5実行枠、推論優先度、機器/ポート排他、プロセス間排他、永続承認ゲート、TaskEvent/snapshot回復 |
+| 6 | 完了 | UniFFI 0.31.0固定、Swift/C#生成、macOS移行、手書き外国語ABI廃止、3言語の共通契約試験 |
 | 7 | 未着手 | Windows platform/Vulkan/CPU退避、x64 worker exe、Windows CLI/CI/MSIX |
 | 8 | 未着手 | WinUI 3、C#契約試験、配布検証 |
 
-既存のJSONL出力は継続している。TaskEventの連番・形式バージョンとsnapshot回復、UIディレクトリの移設、parser/platform crate分離、正本全テーブルのschema_versionは未実施。旧ファイルは自動削除せず、検出時の案内だけを行う。
+CLIのJSONLは正本に保存するTaskEventのtask_id/seq/versionを持ち、`task-query`で再照会できる。UIディレクトリ移設、parser/platform crateの独立化、Windows/Vulkan/WinUIは後続作業。旧ファイルは自動取込・削除しない。実機・GUI画面操作・公証・リモートCIの検証状況は実装記録を参照する。

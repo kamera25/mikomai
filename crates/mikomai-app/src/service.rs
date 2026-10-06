@@ -14,9 +14,10 @@ pub struct MikomaiService {
     pub(crate) rag_ingested_paths: OnceLock<Mutex<HashSet<PathBuf>>>,
     pub(crate) portable_graph:
         OnceLock<Mutex<Option<mikomai_adapters::portable_graph::PortableGraph>>>,
-    pub(crate) device_workers: OnceLock<Result<mikomai_adapters::device_worker::WorkerPool,String>>,
+    pub(crate) device_workers:
+        OnceLock<Result<mikomai_adapters::device_worker::WorkerPool, String>>,
     pub(crate) device_locks: OnceLock<crate::scheduling::DeviceLockManager>,
-    pub(crate) watch_listener: OnceLock<std::sync::Arc<dyn crate::owned_bridge::LegacyListener>>,
+    pub(crate) watch_listener: OnceLock<std::sync::Arc<crate::owned_bridge::WatchListener>>,
     pub(crate) watch_runtime: OnceLock<Mutex<Option<FfiWatchRuntime>>>,
     pub(crate) apple_selected: AtomicBool,
     runtime: OnceLock<Result<tokio::runtime::Runtime, String>>,
@@ -48,10 +49,9 @@ impl MikomaiService {
                 .clone()
                 .map(Ok)
                 .unwrap_or_else(crate::resolve_portable_graph_path)?;
-            *graph =
-                Some(self.run(
-                    mikomai_adapters::portable_graph::PortableGraph::initialize_at(&path),
-                )??);
+            *graph = Some(
+                self.run(mikomai_adapters::portable_graph::PortableGraph::initialize_at(&path))??,
+            );
         }
         graph
             .as_ref()
@@ -72,26 +72,54 @@ impl MikomaiService {
     }
 
     pub(crate) fn run<F: std::future::Future + Send>(&self, future: F) -> Result<F::Output, String>
-    where F::Output: Send {
+    where
+        F::Output: Send,
+    {
         let runtime = self.runtime()?;
-        if let Ok(handle)=tokio::runtime::Handle::try_current() {
-            let run=||std::thread::scope(|scope|scope.spawn(||runtime.block_on(future)).join()).map_err(|_|"application job panicked".to_string());
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let run = || {
+                std::thread::scope(|scope| scope.spawn(|| runtime.block_on(future)).join())
+                    .map_err(|_| "application job panicked".to_string())
+            };
             // Return this runtime worker to Tokio while synchronous callers wait
             // for database work. Otherwise a one-worker runtime deadlocks itself.
-            if handle.runtime_flavor()==tokio::runtime::RuntimeFlavor::MultiThread {tokio::task::block_in_place(run)} else {run()}
-        } else { Ok(runtime.block_on(future)) }
+            if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
+                tokio::task::block_in_place(run)
+            } else {
+                run()
+            }
+        } else {
+            Ok(runtime.block_on(future))
+        }
     }
 
-    pub(crate) fn save_internal(&self, collection: &str, value: &serde_json::Value) -> Result<(), String> {
+    pub(crate) fn save_internal(
+        &self,
+        collection: &str,
+        value: &serde_json::Value,
+    ) -> Result<(), String> {
         let graph = self.graph()?;
         self.run(graph.save_app_document(collection, value))?
     }
 
-    pub(crate) fn update_internal<T>(&self, collection: &str, update: impl FnOnce(&mut serde_json::Value) -> Result<T, String>) -> Result<T, String> {
-        let _guard = self.document_lock.lock().map_err(|_| "store lock poisoned")?;
-        let mut value = self.load_document(collection)?.unwrap_or(serde_json::json!({}));
+    pub(crate) fn update_internal<T>(
+        &self,
+        collection: &str,
+        update: impl FnOnce(&mut serde_json::Value) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let _guard = self
+            .document_lock
+            .lock()
+            .map_err(|_| "store lock poisoned")?;
+        let mut value = self
+            .load_document(collection)?
+            .unwrap_or(serde_json::json!({}));
+        let previous = value.clone();
         let result = update(&mut value)?;
-        self.save_internal(collection, &value)?;
+        self.run(
+            self.graph()?
+                .merge_app_document(collection, &previous, &value),
+        )??;
         Ok(result)
     }
 
@@ -189,7 +217,7 @@ mod tests {
     }
 }
 
-fn validate_document(collection: &str, value: &serde_json::Value) -> Result<(), String> {
+pub(crate) fn validate_document(collection: &str, value: &serde_json::Value) -> Result<(), String> {
     fn contains_secret(value: &serde_json::Value) -> bool {
         match value {
             serde_json::Value::Object(object) => object.iter().any(|(key, value)| {

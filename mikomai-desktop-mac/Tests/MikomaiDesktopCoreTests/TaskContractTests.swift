@@ -22,6 +22,11 @@ struct TaskContractTests {
         #expect(snapshot.events.map(\.kind)==expected["kinds"] as? [String])
         #expect(snapshot.events.map(\.seq)==Array(1...UInt64(snapshot.events.count)))
         #expect(snapshot.events.allSatisfy{$0.version==1 && $0.taskId==id})
+        while listener.received(id:id).count<snapshot.events.count && Date()<deadline {Thread.sleep(forTimeInterval:0.001)}
         #expect(listener.received(id:id)==snapshot.events.map(\.seq))
+        if let path=ProcessInfo.processInfo.environment["MIKOMAI_CONTRACT_RESULT_PATH"] {
+            let result:[String:Any]=["version":1,"kinds":snapshot.events.map(\.kind),"result":snapshot.result]
+            try JSONSerialization.data(withJSONObject:result,options:[.sortedKeys]).write(to:URL(fileURLWithPath:path))
+        }
     }
 }
