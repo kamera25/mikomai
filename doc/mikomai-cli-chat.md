@@ -1,6 +1,6 @@
 # mikomai-cli chat
 
-`chat` はヘッドレスCLIから質問に回答するコマンドです。`MIKOMAI_MODEL_PATH` または保存済みアプリ設定から有効なGGUFモデルを取得できる場合、Swift版と共通のFFIでローカルLLMと資料検索を使います。モデル未設定時は `mikomai-core` のアプリケーションサービスとローカルMarkdown用知識ストアへフォールバックします。会話履歴、Keychain、実機接続状態は共有しません。
+`chat` はヘッドレスCLIから質問に回答するコマンドです。`MIKOMAI_MODEL_PATH` または保存済みアプリ設定から有効なGGUFモデルを取得できる場合、`mikomai-app` を直接呼び出し、Swift版のFFIと同じローカルLLM・資料検索の実装を使います。モデル未設定時は `mikomai-core` のアプリケーションサービスとローカルMarkdown用知識ストアへフォールバックします。会話履歴、Keychain、実機接続状態は共有しません。
 
 ```bash
 npm run cli -- chat "FITELnet F220 の VLAN 設定方法を教えて"
@@ -18,7 +18,7 @@ npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --debug-jsonl
 npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --debug-jsonl --debug > mikomai-debug.jsonl 2> mikomai-debug.log
 ```
 
-入力は `cli_request`、ストリームは `core_stream`、最終応答は `core_response`（`payload.status` が成功時 `0`、失敗時 `1`、回答またはエラーは `payload.text`）に入ります。ローカルモデル使用時は、Swiftと共通のFFIから `llm_request`・`llm_response` などの内部記録も受け取り、そのまま出力します。モデル未設定時はMarkdown検索へフォールバックし、処理後に `agent_event` を出力します。`cli_request.payload.backend` で `local_model` / `markdown` を判別できます。
+入力は `cli_request`、ストリームは `core_stream`、最終応答は `core_response`（`payload.status` が成功時 `0`、失敗時 `1`、回答またはエラーは `payload.text`）に入ります。ローカルモデル使用時は、SwiftのFFIも利用する共通の `mikomai-app` から `llm_request`・`llm_response` などの内部記録も受け取り、そのまま出力します。モデル未設定時はMarkdown検索へフォールバックし、処理後に `agent_event` を出力します。`cli_request.payload.backend` で `local_model` / `markdown` を判別できます。
 
 このオプションでは通常の回答テキストを別途標準出力へ追加しません。`--json` / `-j` との同時指定、および `chat` 以外での指定はエラーになります。Rustから返された実行時エラーもJSONLへ記録し、標準エラー出力と終了コード `1` で通知します。引数エラーやネイティブライブラリの強制終了では最終レコードが出ない場合があります。記録には入力、プロンプト、資料、回答が含まれます。
 

@@ -168,7 +168,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
             answer
         } else if let Some(check) = port_check {
             trace.emit("fast_route", serde_json::json!({"event_type":"tool_call","tool":check.tool,"target":"localhost","args":check.args}));
-            let result = mikomai_ffi::test_tcp_connection_core(check.args["host"].as_str().unwrap(), check.args["port"].as_u64().unwrap() as u16, 3000);
+            let result = mikomai_app::test_tcp_connection_core(check.args["host"].as_str().unwrap(), check.args["port"].as_u64().unwrap() as u16, 3000);
             let success = result.is_ok();
             let answer = result.unwrap_or_else(|error| format!("TCP接続を確認できませんでした。{error}\n接続失敗だけではポート閉鎖と経路・フィルタによる遮断を区別できません。"));
             trace.emit("fast_route_result", serde_json::json!({"event_type":"observation","tool":check.tool,"target":"localhost","success":success,"output":answer}));
@@ -218,16 +218,16 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         } else if let Some(mac) = local_mac {
             let args = serde_json::json!({"device":"localhost", "resource":"arp", "mac":mac});
             trace.emit("agent_event", serde_json::json!({"event_type":"tool_call", "tool":"get_state", "target":"localhost", "args":args}));
-            if let Some(path) = model_path.as_deref() { mikomai_ffi::load_local_model(path)?; }
-            let table = mikomai_ffi::local_arp_state()?;
+            if let Some(path) = model_path.as_deref() { mikomai_app::load_local_model(path)?; }
+            let table = mikomai_app::local_arp_state()?;
             trace.emit("agent_event", serde_json::json!({"event_type":"observation", "tool":"get_state", "target":"localhost", "success":true, "output":table}));
             let answer = mikomai_core::network::arp::mac_lookup_answer("localhost", &mac, &table.to_string());
             trace.stream(&answer, true);
             answer
         } else if let Some(path) = model_path {
-            mikomai_ffi::load_local_model(&path)?;
+            mikomai_app::load_local_model(&path)?;
             if debug_jsonl {
-                mikomai_ffi::local_model_chat_with_callback(
+                mikomai_app::local_model_chat_with_callback(
                     &goal,
                     "",
                     &docs.to_string_lossy(),
@@ -235,7 +235,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
                     |text, done| trace.stream(text, done),
                 )?
             } else {
-                mikomai_ffi::local_model_chat(
+                mikomai_app::local_model_chat(
                     &goal,
                     "",
                     &docs.to_string_lossy(),

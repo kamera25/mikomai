@@ -1,7 +1,6 @@
 # mikomai-app
 
-Application orchestration shared by the native bridge and, in the next migration
-stage, the CLI. This crate depends on core and adapters; it does not depend on
+Application orchestration shared by the native bridge and CLI. This crate depends on core and adapters; it does not depend on
 `mikomai-ffi` or export C symbols.
 
 ## Stage 1
@@ -19,7 +18,9 @@ will be replaced as the later worker and UniFFI stages introduce new contracts.
 The public service type is the state owner, not yet the Command/Event/Query API.
 Creating a service does not switch the legacy bridge to that instance.
 
-The CLI still depends on FFI in this stage. Scheduler, InferenceQueue,
+Stage 2 switches CLI model, chat, ARP and TCP calls directly to `mikomai-app`;
+its dependency graph no longer includes `mikomai-ffi`. Existing JSONL records
+and routing behavior are preserved. Scheduler, InferenceQueue,
 DeviceLockManager, new persistence, native UI migration, and legacy import
 removal belong to later stages. Existing persistence behavior is preserved.
 
@@ -36,3 +37,6 @@ and parse every stdout line through the final `core_response`.
 
 See [stage 1 verification](../../doc/mikomai-app-stage1.md) for results and a
 pre-existing reference-search test failure reproduced on the original source.
+
+See [stage 2 verification](../../doc/mikomai-app-stage2.md) for the direct CLI
+dependency change and JSONL FastRouter/Agent-mode/RAG verification.
