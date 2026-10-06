@@ -1,13 +1,12 @@
 //! Application-level backend selection. Core never selects OS implementations.
 #[cfg(target_os = "macos")]
 use mikomai_core::port::{InferencePort, ModelAvailability};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
-static APPLE_SELECTED: AtomicBool = AtomicBool::new(false);
 pub const APPLE_MODEL_ID: &str = "apple:afm-3-core";
 
 pub fn apple_selected() -> bool {
-    APPLE_SELECTED.load(Ordering::Relaxed)
+    crate::shared_service().apple_selected.load(Ordering::Relaxed)
 }
 
 pub fn reset_cancellation() {
@@ -25,13 +24,13 @@ pub fn cancel() {
 pub fn select(name: &str) -> Result<String, String> {
     match name {
         "llamacpp" => {
-            APPLE_SELECTED.store(false, Ordering::Relaxed);
+            crate::shared_service().apple_selected.store(false, Ordering::Relaxed);
             Ok("llama.cpp を選択しました".into())
         }
         "apple" => {
             // Keep the user's selection even if the model is not ready. Never
             // silently answer with a previously loaded GGUF instead.
-            APPLE_SELECTED.store(true, Ordering::Relaxed);
+            crate::shared_service().apple_selected.store(true, Ordering::Relaxed);
             apple_ready()?;
             Ok("AFM 3 Core を選択しました".into())
         }

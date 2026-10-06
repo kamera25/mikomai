@@ -7,15 +7,7 @@ edition = "2021"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
-mikomai-core = { path = "../../mikomai-core" }
-mikomai-adapters = { path = "../mikomai-adapters" }
-futures-lite = "2"
-serde_json = "1"
-sha2 = "0.10"
-serde = { version = "1", features = ["derive"] }
-uuid = { version = "1", features = ["v4", "serde"] }
-chrono = { version = "0.4.44", features = ["serde"] }
-tokio = { version = "1.52.1", features = ["rt-multi-thread", "rt", "time", "net", "fs", "io-util"] }
+mikomai-app = { path = "../mikomai-app" }
 
 [dev-dependencies]
-base64 = "0.22"
+serde_json = "1"

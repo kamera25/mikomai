@@ -1,25 +1,11 @@
-//! Network operations use their own runtime, independent of inference and UI.
+//! Approved operations run on the shared application runtime.
 use std::future::Future;
-use std::sync::OnceLock;
-
-static RUNTIME: OnceLock<Result<tokio::runtime::Runtime, String>> = OnceLock::new();
 
 pub(crate) fn submit(
     operation: impl Future<Output = Result<String, String>> + Send + 'static,
     completion: impl FnOnce(Result<String, String>) + Send + 'static,
 ) -> Result<(), String> {
-    let runtime = RUNTIME
-        .get_or_init(|| {
-            tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(1)
-                .max_blocking_threads(2)
-                .thread_name("mikomai-operation-worker")
-                .enable_all()
-                .build()
-                .map_err(|e| format!("could not initialize operation worker: {e}"))
-        })
-        .as_ref()
-        .map_err(Clone::clone)?;
+    let runtime = crate::shared_service().runtime()?;
     let job = runtime.spawn(operation);
     // The task boundary catches Rust panics without poisoning the runtime or
     // leaving Swift's continuation suspended forever.
@@ -38,7 +24,7 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn dedicated_worker_accepts_jobs_inside_another_runtime_and_reports_errors() {
+    fn shared_worker_accepts_jobs_inside_another_runtime_and_reports_errors() {
         let caller = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -68,7 +54,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap(),
-            "mikomai-operation-worker"
+            "mikomai-app-worker"
         );
     }
 }

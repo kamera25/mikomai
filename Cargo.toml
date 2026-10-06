@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "mikomai-core",
   "crates/mikomai-adapters",
+  "crates/mikomai-app",
   "crates/mikomai-cli",
   "crates/mikomai-ffi",
   "crates/mikomai-llm",
