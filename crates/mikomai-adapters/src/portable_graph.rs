@@ -460,6 +460,22 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
             canonical:row.get("canonical").filter(|v|!v.is_null()).cloned(),collected_at}))
     }
 
+    /// Latest resource observation, including raw-only or failed refreshes.
+    pub async fn latest_router_observation(&self, device: &str, table: &str) -> Result<Option<crate::router_state::RouterObservation>, String> {
+        router_schema::resource_schema(table)?;
+        let response = self.db.query("SELECT raw, canonical, collected_at, source_id FROM observation WHERE device_name = $device AND kind = $kind ORDER BY collected_at DESC LIMIT 1;")
+            .bind(("device", device.to_owned())).bind(("kind", table.to_owned())).await.map_err(|e| e.to_string())?;
+        let mut response = response.check().map_err(|e| e.to_string())?;
+        let records: Vec<Value> = response.take(0).map_err(|e| e.to_string())?;
+        let Some(row) = records.first() else { return Ok(None); };
+        Ok(Some(crate::router_state::RouterObservation {
+            raw: row["raw"].as_str().unwrap_or_default().into(),
+            canonical: row.get("canonical").filter(|v| !v.is_null()).cloned(),
+            collected_at: DateTime::parse_from_rfc3339(row["collected_at"].as_str().ok_or("Missing observation timestamp")?).map_err(|e|e.to_string())?.with_timezone(&Utc),
+            source_id: row["source_id"].as_str().ok_or("Missing observation source")?.into(),
+        }))
+    }
+
     async fn store_normalized(
         &self,
         device: &str,

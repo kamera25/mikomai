@@ -2082,7 +2082,7 @@ impl ToolExecutorPort for FfiAgentExecutor {
                 let requested = target.or_else(|| args["device"].as_str()).ok_or("Interface observation requires a target")?;
                 let device = self.registry.devices().iter().find(|device| requested == device.hostname || device.id.as_deref() == Some(requested) || device.ip.as_deref() == Some(requested))
                     .ok_or("Interface target is not registered")?;
-                let collector = |name: &str| self.collect_interfaces(name,args);
+                let collector = |name: &str| self.collect_resource(name,args);
                 let state = mikomai_adapters::interface_state::GraphInterfaceState {graph:&self.graph,collect:&collector,
                     infer:self.canonical_inference,os_type:device.device_type.as_deref().unwrap_or("unknown")};
                 return Ok(match mikomai_core::network::interface_state::get_state(&state,&device.hostname,
@@ -2093,6 +2093,27 @@ impl ToolExecutorPort for FfiAgentExecutor {
                     },
                     Err(error)=>ToolResult {success:false,output:error},
                 });
+            }
+            if tool == "get_state" {
+                if let Some(resource) = args["resource"].as_str().filter(|resource| mikomai_adapters::router_schema::resource_schema(resource).is_ok()) {
+                    let requested = target.or_else(|| args["device"].as_str()).ok_or("Router observation requires a target")?;
+                    // Local NDP has its own deterministic observation path.
+                    if !(resource == "ndp" && requested == "localhost") {
+                        let device = self.registry.devices().iter().find(|device| requested == device.hostname || device.id.as_deref() == Some(requested) || device.ip.as_deref() == Some(requested))
+                            .ok_or("Router observation target is not registered")?;
+                        let collector = |name: &str, _resource: &str| self.collect_resource(name, args);
+                        let state = mikomai_adapters::router_state::GraphRouterState { graph: &self.graph, collect: &collector,
+                            infer: self.canonical_inference, os_type: device.device_type.as_deref().unwrap_or("unknown") };
+                        debug_trace::emit("router_state_request", serde_json::json!({"device":device.hostname,"resource":resource}));
+                        return Ok(match state.get_state(&device.hostname, resource, args["refresh"].as_bool().unwrap_or(false)).await {
+                            Ok(table) => {
+                                debug_trace::emit("router_graph_state", serde_json::json!({"device":device.hostname,"resource":resource,"canonical":table}));
+                                ToolResult { success: true, output: table.to_string() }
+                            },
+                            Err(error) => ToolResult { success: false, output: error },
+                        });
+                    }
+                }
             }
             if tool == "self_network_nwdiag" {
                 let schema = args
@@ -2389,7 +2410,7 @@ impl ToolExecutorPort for FfiAgentExecutor {
 }
 
 impl FfiAgentExecutor {
-    fn collect_interfaces(&self, device: &str, args: &serde_json::Value) -> Result<String,String> {
+    fn collect_resource(&self, device: &str, args: &serde_json::Value) -> Result<String,String> {
         let credentials = mikomai_adapters::portable_device::DeviceCredentials {username:String::new(),password:None,enable_password:None,private_key:None,passphrase:None};
         let result = self.registry.execute(&self.transport,"get_state",device,args,&credentials)?;
         let result = serde_json::from_str::<ToolResult>(&result.output).unwrap_or(ToolResult {success:true,output:result.output});
@@ -4396,6 +4417,60 @@ mod tests {
         assert!(latest.canonical.is_none(),"failed refresh must not reuse older canonical state");
         // RocksDB background shutdown is asynchronous; keep its temporary
         // directory intact until the process has finished closing the store.
+    }
+
+    #[test]
+    fn router_state_executor_canonicalizes_registered_target_and_reuses_graph() {
+        use mikomai_core::port::ToolExecutorPort;
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        super::CANCEL_INFERENCE.store(false, std::sync::atomic::Ordering::Relaxed);
+        unsafe extern "C" fn read_dns(tool: *const c_char, target: *const c_char, args: *const c_char,
+            output: *mut c_char, capacity: usize, context: *mut std::ffi::c_void) -> i32 {
+            let calls = &mut *(context as *mut usize);
+            *calls += 1;
+            assert_eq!(CStr::from_ptr(tool).to_str().unwrap(), "get_state");
+            let target: serde_json::Value = serde_json::from_str(CStr::from_ptr(target).to_str().unwrap()).unwrap();
+            let args: serde_json::Value = serde_json::from_str(CStr::from_ptr(args).to_str().unwrap()).unwrap();
+            assert_eq!(target["hostname"], "gw");
+            assert_eq!(args["resource"], "dns_server");
+            let value = CString::new(serde_json::json!({"success":true,"output":"DNS resolver 192.0.2.53"}).to_string()).unwrap();
+            assert!(value.as_bytes_with_nul().len() <= capacity);
+            std::ptr::copy_nonoverlapping(value.as_ptr(), output, value.as_bytes_with_nul().len());
+            0
+        }
+        let root = std::env::temp_dir().join(format!("mikomai-router-ffi-{}", uuid::Uuid::new_v4()));
+        let runtime = super::portable_runtime().unwrap();
+        let graph = runtime.block_on(mikomai_adapters::portable_graph::PortableGraph::initialize_at(&root)).unwrap();
+        let mut calls = 0_usize;
+        let mut executor = super::FfiAgentExecutor {
+            registry: mikomai_adapters::portable_device::ReadOnlyToolRegistry::from_json(r#"[{"id":"router-id","hostname":"gw","deviceType":"cisco"}]"#).unwrap(),
+            transport: super::SwiftCallbackTransport { callback:read_dns, context:(&mut calls as *mut usize) as usize },
+            rag: mikomai_adapters::portable_rag::PortableRag::new(graph.clone(), std::sync::Arc::new(mikomai_adapters::e5_embedder::FastEmbedE5::new())),
+            graph:graph.clone(), rag_sources:vec![], canonical_inference:|prompt,grammar| {
+                assert!(prompt.contains("dns_server") && grammar.contains("field0 ::="));
+                let candidates: Vec<serde_json::Value> = serde_json::from_str(prompt.split("Candidates: ").nth(1).unwrap().split("\nRaw:").next().unwrap()).unwrap();
+                let address = candidates.iter().position(|c| c["value"] == "192.0.2.53").unwrap();
+                Ok(serde_json::json!({"complete":true,"empty_line":null,"entries":[{"start_line":1,"end_line":1,"address":address,"port":null,"source_address":null,"vrf":null}]}).to_string())
+            },
+        };
+        let args = serde_json::json!({"device":"router-id","resource":"dns_server"});
+        let result = runtime.block_on(executor.execute(uuid::Uuid::new_v4(), "get_state", Some("router-id"), &args)).unwrap();
+        assert!(result.success, "{}", result.output);
+        let table: serde_json::Value = serde_json::from_str(&result.output).unwrap();
+        assert_eq!(table["dns_server"][0]["address"], "192.0.2.53");
+        assert_eq!(table["metadata"]["source_device"], "gw");
+        assert!(!result.output.contains("DNS resolver"));
+        assert_eq!(runtime.block_on(graph.router_facts("dns_server", "gw")).unwrap()[0]["address"], "192.0.2.53");
+        executor.canonical_inference = |_,_| panic!("cached state must not infer");
+        let cached = runtime.block_on(executor.execute(uuid::Uuid::new_v4(), "get_state", Some("router-id"), &args)).unwrap();
+        assert_eq!(cached.output, result.output);
+        assert_eq!(calls, 1);
+        executor.canonical_inference = |_,_| Err("model unavailable".into());
+        let mut refresh = args.clone(); refresh["refresh"] = true.into();
+        let failed = runtime.block_on(executor.execute(uuid::Uuid::new_v4(), "get_state", Some("router-id"), &refresh)).unwrap();
+        assert!(!failed.success);
+        assert_eq!(calls, 2);
+        assert!(runtime.block_on(graph.latest_router_observation("gw", "dns_server")).unwrap().unwrap().canonical.is_none());
     }
 
     #[test]

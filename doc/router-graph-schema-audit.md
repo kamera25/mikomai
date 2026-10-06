@@ -99,3 +99,7 @@ OSPFの `process_id` はOpenConfig protocols/protocolのnameに対応するMikom
 ## 検証
 
 検証結果は `doc/router-graph-schema-verification.md` を参照する。CLIの正常応答だけを新規スキーマの検証とは扱わず、RocksDB/SurrealDBの実DB試験で型・一意キー・エッジ・永続化を確認する。
+
+## Canonical化の追加
+
+後続の全31テーブル向け叩き台は [router-canonicalization.md](router-canonicalization.md) を参照。新規 `get_state` のCanonical化と取得コマンド初期案を追加したが、ベンダー実出力での精度調整は未完了。

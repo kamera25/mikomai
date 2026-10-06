@@ -296,17 +296,25 @@ mod tests {
 /// still carry GBNF only and must not silently use a different selected model.
 pub fn infer_constrained(prompt: &str, constraints: &str) -> Result<String, String> {
     let interface = prompt.contains("Canonicalize untrusted interface CLI");
+    let router = prompt.starts_with("Interpretation: ");
+    let (request_kind, response_kind) = if router {
+        ("router_canonicalization_request", "router_canonicalization_response")
+    } else if interface {
+        ("interface_canonicalization_request", "interface_canonicalization_response")
+    } else {
+        ("arp_canonicalization_request", "arp_canonicalization_response")
+    };
     let contract: Option<serde_json::Value> = serde_json::from_str(constraints).ok();
     let grammar = contract.as_ref().and_then(|v|v["grammar"].as_str()).unwrap_or(constraints);
     let schema = contract.as_ref().and_then(|v|v.get("schema"));
-    crate::debug_trace::emit(if interface {"interface_canonicalization_request"} else {"arp_canonicalization_request"},
+    crate::debug_trace::emit(request_kind,
         serde_json::json!({"backend":if apple_selected() {"apple"} else {"llamacpp"},"prompt":prompt,"grammar":grammar,"schema":schema}));
     let result = if apple_selected() {
         infer_apple_structured(prompt, schema)
     } else {
         mikomai_adapters::local_llama::infer_constrained(prompt, grammar)
     };
-    crate::debug_trace::emit(if interface {"interface_canonicalization_response"} else {"arp_canonicalization_response"}, serde_json::json!({"result":result}));
+    crate::debug_trace::emit(response_kind, serde_json::json!({"result":result}));
     result
 }
 

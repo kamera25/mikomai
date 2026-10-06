@@ -90,10 +90,7 @@ extension DesktopModel {
                 return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription)
             }
         }
-        if tool == "get_state", arguments["resource"] as? String == "ndp" {
-            guard target.hostname == "localhost" else {
-                return NetworkOperationOutput(success: false, stdout: "", stderr: "NDP取得は自機（localhost）のみ対応しています。")
-            }
+        if tool == "get_state", target.hostname == "localhost", arguments["resource"] as? String == "ndp" {
             let result = LocalNDPUtility.read()
             return NetworkOperationOutput(success: result.success, stdout: result.stdout, stderr: result.stderr, command: result.command, exitCode: result.exitCode)
         }
@@ -240,10 +237,39 @@ extension DesktopModel {
                 } catch {
                     return NetworkOperationOutput(success: false, stdout: "", stderr: error.localizedDescription)
                 }
-            case "lldp": command = "show lldp neighbors"
+            case "lldp": command = "show lldp neighbors detail"
             case "mac_table": command = "show mac address-table"
             case "bgp": command = "show ip bgp summary"
-            case "ospf": command = "show ip ospf neighbor"
+            case "ospf": command = "show ip ospf"
+            case "ospf_neighbor": command = "show ip ospf neighbor detail"
+            case "isis": command = "show isis neighbors detail"
+            case "bfd": command = "show bfd neighbors details"
+            case "ndp": command = "show ipv6 neighbors"
+            case "vrrp": command = "show vrrp"
+            case "lacp": command = "show lacp neighbor"
+            case "tunnel": command = "show interfaces tunnel"
+            case "routing_policy": command = "show route-map"
+            case "prefix_set": command = "show ip prefix-list"
+            case "policy_forwarding": command = "show ip policy"
+            case "acl_entry": command = "show access-lists"
+            case "acl_binding": command = "show ip interface"
+            case "nat": command = "show ip nat translations verbose"
+            case "dhcp_relay": command = "show running-config | section interface"
+            case "qos": command = "show policy-map"
+            case "qos_interface": command = "show policy-map interface"
+            case "pim": command = "show ip pim interface"
+            case "igmp": command = "show ip igmp groups detail"
+            case "mpls": command = "show mpls forwarding-table"
+            case "dns_server": command = "show hosts"
+            case "syslog_server": command = "show logging"
+            case "aaa_server": command = "show aaa servers"
+            case "snmp": command = "show snmp"
+            case "telemetry_subscription": command = "show telemetry ietf subscription all"
+            case "platform_component": command = "show inventory"
+            case "system": command = "show version"
+            case "mac_entry": command = "show mac address-table"
+            case "ipsec_connection": command = "show crypto ipsec sa"
+            case "ike_sa": command = "show crypto ikev2 sa detail"
             case "cpu": command = CPUUsagePolicy.command(for: connection.deviceType)
             default: return NetworkOperationOutput(success: false, stdout: "", stderr: "未対応の状態リソースです。")
             }

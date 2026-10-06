@@ -205,7 +205,7 @@ pub fn build_decision_schema(devices: &[String], tools: &[String]) -> String {
             "target":target_schema,
             "parameters":{"type":"object","properties":{
                 "device":target_schema.clone(),
-                "resource":{"type":"string","enum":["arp","ndp","routes","interfaces","lldp","mac_table","bgp","ospf"]},
+                "resource":{"type":"string","enum":["arp","ndp","routes","interfaces","lldp","mac_table","bgp","ospf","ospf_neighbor","isis","bfd","vrrp","lacp","tunnel","routing_policy","prefix_set","policy_forwarding","acl_entry","acl_binding","nat","dhcp_relay","qos","qos_interface","pim","igmp","mpls","dns_server","syslog_server","aaa_server","snmp","telemetry_subscription","platform_component","system","mac_entry","ipsec_connection","ike_sa"]},
                 "refresh":{"type":"boolean"},
                 "roots":{"type":"array","items":{"type":"string","minLength":1},"minItems":1,"maxItems":32},
                 "depth":{"type":"integer","minimum":0,"maximum":8},

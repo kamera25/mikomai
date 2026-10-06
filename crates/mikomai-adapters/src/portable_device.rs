@@ -253,7 +253,10 @@ impl ReadOnlyToolRegistry {
         }
         let args = &resolved_args;
         validate_tool_args(tool, args)?;
-        let local_ndp = tool == ReadOnlyDeviceTool::GetState && args["resource"] == "ndp";
+        if tool == ReadOnlyDeviceTool::GetState && args["resource"] == "ndp" && args["device"] == "localhost" && target_id != "localhost" {
+            return Err("NDP target does not match requested localhost".into());
+        }
+        let local_ndp = tool == ReadOnlyDeviceTool::GetState && args["resource"] == "ndp" && target_id == "localhost";
         if local_ndp && (target_id != "localhost" || args["device"].as_str().is_some_and(|device| device != "localhost")) {
             return Err("NDP observation is supported only on localhost".into());
         }
@@ -411,7 +414,7 @@ pub fn is_local_tool_id(tool_id: &str) -> bool {
 mod tests {
 
     #[test]
-    fn ndp_accepts_localhost_without_registration_and_rejects_remote_targets() {
+    fn ndp_accepts_localhost_and_registered_remote_targets_with_matching_scope() {
         struct Capture(std::sync::Mutex<Vec<String>>);
         impl CredentialedReadOnlyTransport for Capture {
             fn execute_read_only(&self, target: &RegisteredDevice, _: &DeviceCredentials, _: ReadOnlyDeviceTool, _: &Value) -> Result<String, String> {
@@ -424,7 +427,9 @@ mod tests {
         registry.execute(&transport, "get_state", "localhost", &args, &creds()).unwrap();
         assert!(registry.execute(&transport, "get_state", "router", &args, &creds()).is_err());
         assert!(registry.execute(&transport, "get_state", "localhost", &serde_json::json!({"resource":"ndp","device":"router"}), &creds()).is_err());
-        assert_eq!(*transport.0.lock().unwrap(), vec!["localhost"]);
+        registry.execute(&transport, "get_state", "router", &serde_json::json!({"resource":"ndp","device":"router"}), &creds()).unwrap();
+        assert!(registry.execute(&transport, "get_state", "unregistered", &serde_json::json!({"resource":"ndp"}), &creds()).is_err());
+        assert_eq!(*transport.0.lock().unwrap(), vec!["localhost", "router"]);
     }
 
     #[test]
