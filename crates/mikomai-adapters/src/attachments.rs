@@ -63,7 +63,7 @@ mod tests {
     use super::*;
     #[test]
     fn structured_images_decode_without_losing_bytes_or_text() {
-        let png = include_bytes!("../../mikomai-ffi/tests/fixtures/red-square.png");
+        let png = include_bytes!("../../mikomai-app/tests/fixtures/red-square.png");
         let payload = format!(
             "{WIRE_PREFIX}{}",
             serde_json::json!({"text":"[添付ファイル 1: note.md]\n参考", "images":[{"name":"red.png","mimeType":"image/png","base64":STANDARD.encode(png)}]})

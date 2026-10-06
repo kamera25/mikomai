@@ -18,11 +18,56 @@ pub struct MikomaiService {
     pub(crate) watch_runtime: OnceLock<Mutex<Option<FfiWatchRuntime>>>,
     pub(crate) apple_selected: AtomicBool,
     runtime: OnceLock<Result<tokio::runtime::Runtime, String>>,
+    database_path: Option<PathBuf>,
 }
 
 impl MikomaiService {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn at(path: impl Into<PathBuf>) -> Self {
+        Self {
+            database_path: Some(path.into()),
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn graph(&self) -> Result<mikomai_adapters::portable_graph::PortableGraph, String> {
+        let mut graph = self
+            .portable_graph
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .map_err(|_| "portable graph lock is poisoned".to_string())?;
+        if graph.is_none() {
+            let path = self
+                .database_path
+                .clone()
+                .map(Ok)
+                .unwrap_or_else(crate::resolve_portable_graph_path)?;
+            *graph =
+                Some(self.runtime()?.block_on(
+                    mikomai_adapters::portable_graph::PortableGraph::initialize_at(&path),
+                )?);
+        }
+        graph
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| "portable graph initialization failed".into())
+    }
+
+    pub fn load_document(&self, collection: &str) -> Result<Option<serde_json::Value>, String> {
+        // The legacy facade shares one service until explicit handles replace it.
+        let graph = self.graph()?;
+        self.runtime()?
+            .block_on(graph.load_app_document(collection))
+    }
+
+    pub fn save_document(&self, collection: &str, value: &serde_json::Value) -> Result<(), String> {
+        validate_document(collection, value)?;
+        let graph = self.graph()?;
+        self.runtime()?
+            .block_on(graph.save_app_document(collection, value))
     }
 
     /// All application jobs, including Watch and approved operations, use this
@@ -52,6 +97,44 @@ mod tests {
     use std::sync::atomic::Ordering;
 
     #[test]
+    fn stores_are_isolated_and_credentials_cannot_replace_metadata() {
+        let root =
+            std::env::temp_dir().join(format!("mikomai-service-store-{}", uuid::Uuid::new_v4()));
+        let first = MikomaiService::at(root.join("first"));
+        let second = MikomaiService::at(root.join("second"));
+        let original = serde_json::json!({"modelPath":"model.gguf", "temperature":0.2});
+        first.save_document("settings", &original).unwrap();
+        assert_eq!(
+            first.load_document("settings").unwrap(),
+            Some(original.clone())
+        );
+        assert_eq!(second.load_document("settings").unwrap(), None);
+        assert!(first
+            .save_document("settings", &serde_json::json!({"password":"do-not-store"}))
+            .is_err());
+        assert_eq!(first.load_document("settings").unwrap(), Some(original));
+        assert!(first
+            .save_document(
+                "connections",
+                &serde_json::json!([{"id":"bad","host":"host;touch"}])
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn storage_initialization_failure_is_returned_to_the_caller() {
+        let path =
+            std::env::temp_dir().join(format!("mikomai-store-file-{}", uuid::Uuid::new_v4()));
+        std::fs::write(&path, "not a directory").unwrap();
+        let service = MikomaiService::at(&path);
+        assert!(service.load_document("settings").is_err());
+        assert!(service
+            .save_document("settings", &serde_json::json!({}))
+            .is_err());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn instances_do_not_share_application_state() {
         let first = MikomaiService::new();
         let second = MikomaiService::new();
@@ -79,4 +162,54 @@ mod tests {
             crate::portable_runtime().unwrap()
         ));
     }
+}
+
+fn validate_document(collection: &str, value: &serde_json::Value) -> Result<(), String> {
+    fn contains_secret(value: &serde_json::Value) -> bool {
+        match value {
+            serde_json::Value::Object(object) => object.iter().any(|(key, value)| {
+                let normalized = key.to_ascii_lowercase().replace(['_', '-'], "");
+                [
+                    "password",
+                    "enablepassword",
+                    "secret",
+                    "passphrase",
+                    "privatekey",
+                    "token",
+                ]
+                .contains(&normalized.as_str())
+                    || contains_secret(value)
+            }),
+            serde_json::Value::Array(array) => array.iter().any(contains_secret),
+            _ => false,
+        }
+    }
+    if contains_secret(value) {
+        return Err("credentials must be stored in the OS credential store".into());
+    }
+    match collection {
+        "connections" => {
+            for connection in value.as_array().ok_or("connections must be an array")? {
+                if let Some(error) = crate::native_features::validate_connection(connection) {
+                    return Err(error);
+                }
+                connection["id"]
+                    .as_str()
+                    .and_then(|id| uuid::Uuid::parse_str(id).ok())
+                    .ok_or("connection ID must be a UUID")?;
+            }
+        }
+        "sessions" => {
+            if !value["sessions"].is_array() {
+                return Err("invalid session snapshot".into());
+            }
+        }
+        "settings" => {
+            if !value.is_object() {
+                return Err("settings must be an object".into());
+            }
+        }
+        _ => return Err("unsupported application collection".into()),
+    }
+    Ok(())
 }

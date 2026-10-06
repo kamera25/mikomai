@@ -126,7 +126,8 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
     let local_mac = mikomai_core::dispatch::local_arp_mac_target(&goal);
     let interface_check = mikomai_core::network::interface_check::request(&goal);
     let greeting_reply = mikomai_core::dispatch::legacy_shortcut(&goal).and_then(|s| s.reply);
-    let model_path = configured_model_path();
+    let model_configuration = configured_model_path();
+    let model_path = model_configuration.as_ref().ok().and_then(|value| value.clone());
     let knowledge = std::env::var_os("MIKOMAI_KNOWLEDGE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::temp_dir().join("mikomai-knowledge"));
@@ -140,6 +141,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         }),
     );
     let result = (|| {
+        model_configuration?;
         let answer = if let Some(reply) = greeting_reply {
             trace.emit("deterministic_reply", serde_json::json!({"reason":"greeting", "rag":false}));
             trace.stream(&reply, true);
@@ -297,37 +299,22 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
     })
 }
 
-fn configured_model_path() -> Option<String> {
-    if let Some(path) = std::env::var_os("MIKOMAI_MODEL_PATH") {
-        let path = PathBuf::from(path);
-        if path.is_file() {
-            return Some(path.to_string_lossy().into_owned());
-        }
-    }
-    let home = std::env::var_os("HOME").map(PathBuf::from)?;
-    let candidates = [
-        std::env::var_os("MIKOMAI_SETTINGS_PATH").map(PathBuf::from),
-        Some(home.join("Library/Application Support/MikomaiDesktopMac/settings.json")),
-    ];
-    for path in candidates.into_iter().flatten() {
-        let Ok(contents) = std::fs::read_to_string(path) else {
-            continue;
-        };
-        let Ok(settings) = serde_json::from_str::<serde_json::Value>(&contents) else {
-            continue;
-        };
-        let Some(model) = settings
-            .get("modelPath")
-            .and_then(serde_json::Value::as_str)
-        else {
-            continue;
-        };
-        let path = PathBuf::from(model.replace("~", &home.to_string_lossy()));
-        if path.is_file() {
-            return Some(path.to_string_lossy().into_owned());
-        }
-    }
-    None
+fn configured_model_path() -> Result<Option<String>, String> {
+    let configured = if let Some(path) = std::env::var_os("MIKOMAI_MODEL_PATH") {
+        Some(PathBuf::from(path))
+    } else {
+        let settings = mikomai_app::native_features::query(&serde_json::json!({
+            "op": "store_load", "collection": "settings"
+        }))?;
+        settings.get("modelPath").and_then(serde_json::Value::as_str).map(PathBuf::from)
+    };
+    Ok(configured.and_then(|path| {
+        let text = path.to_string_lossy();
+        let expanded = if let Some(relative) = text.strip_prefix("~/") {
+            PathBuf::from(std::env::var_os("HOME")?).join(relative)
+        } else { path };
+        expanded.is_file().then(|| expanded.to_string_lossy().into_owned())
+    }))
 }
 
 fn knowledge_store() -> KnowledgeStore {

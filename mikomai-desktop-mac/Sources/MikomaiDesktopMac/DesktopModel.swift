@@ -65,11 +65,11 @@ final class DesktopModel: ObservableObject {
     var pendingSavedAgentTaskIDs: [UUID: String] = [:]
 
     // Knowledge dirs
-    @Published var documentsDirectory: String { didSet { defaults.set(documentsDirectory, forKey: "mikomai.desktop.mac.documentsDirectory") } }
-    @Published var knowledgeDirectory: String { didSet { defaults.set(knowledgeDirectory, forKey: "mikomai.desktop.mac.knowledgeDirectory") } }
+    @Published var documentsDirectory: String { didSet { persistSettingsPaths() } }
+    @Published var knowledgeDirectory: String { didSet { persistSettingsPaths() } }
 
     // Model path & status
-    @Published var modelPath: String = "" { didSet { defaults.set(modelPath, forKey: "mikomai.desktop.mac.modelPath") } }
+    @Published var modelPath: String = "" { didSet { persistSettingsPaths() } }
     @Published var modelStatus = "モデル未ロード"
     @Published var isLoadingModel = false
     var isAppleModelSelected: Bool { settings.llmBackend == .apple }
@@ -91,14 +91,13 @@ final class DesktopModel: ObservableObject {
     @Published var isDownloadingModel: Bool = false
     @Published var downloadProgressText: String = ""
 
-    let defaults: UserDefaults
     let credentialPersistence = ConnectionCredentialPersistence(store: KeychainCredentialAdapter())
-    let sessionsKey = "mikomai.desktop.mac.sessions.v1"
-    let activeKey = "mikomai.desktop.mac.activeSession.v1"
-    let connectionsKey = "mikomai.desktop.mac.connections.v1"
+    var isRestoringPersistence = true
+    var persistenceAvailable = true
+    var settingsPersistenceAvailable = true
+    @Published var persistenceError = ""
 
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+    init() {
         let bundledDocuments = Bundle.main.resourceURL?.appendingPathComponent("nw-docs", isDirectory: true).path
         let repoRootDocuments = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("nw-docs").path
         let defaultDocuments: String = {
@@ -112,26 +111,22 @@ final class DesktopModel: ObservableObject {
         }()
         let defaultKnowledge = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("MikomaiDesktopMac/knowledge", isDirectory: true).path
-        let rawDocs = defaults.string(forKey: "mikomai.desktop.mac.documentsDirectory")
-            ?? ProcessInfo.processInfo.environment["MIKOMAI_DOCS_DIR"] ?? defaultDocuments
-        let rawKnowledge = defaults.string(forKey: "mikomai.desktop.mac.knowledgeDirectory")
-            ?? ProcessInfo.processInfo.environment["MIKOMAI_KNOWLEDGE_DIR"] ?? defaultKnowledge
+        let rawDocs = ProcessInfo.processInfo.environment["MIKOMAI_DOCS_DIR"] ?? defaultDocuments
+        let rawKnowledge = ProcessInfo.processInfo.environment["MIKOMAI_KNOWLEDGE_DIR"] ?? defaultKnowledge
         documentsDirectory = (rawDocs as NSString).expandingTildeInPath
         knowledgeDirectory = (rawKnowledge as NSString).expandingTildeInPath
 
-        if let data = defaults.data(forKey: sessionsKey),
-           let decoded = try? JSONDecoder().decode([ChatSession].self, from: data) {
-            sessions = decoded
+        do {
+            if let state: ChatSessionState = try NativePersistence.load("sessions") {
+                sessions = state.sessions
+                activeSessionID = state.activeSessionID
+            }
+            if let saved: [SavedConnection] = try NativePersistence.load("connections") { connections = saved }
+        } catch {
+            persistenceAvailable = false
+            persistenceError = "保存データを読み込めませんでした: \(error.localizedDescription)"
         }
-        if let value = defaults.string(forKey: activeKey), let id = UUID(uuidString: value), sessions.contains(where: { $0.id == id }) {
-            activeSessionID = id
-        } else {
-            activeSessionID = sessions.first?.id
-        }
-        if let data = defaults.data(forKey: connectionsKey),
-           let decoded = try? JSONDecoder().decode([SavedConnection].self, from: data) {
-            connections = decoded
-        }
+        isRestoringPersistence = false
         if sessions.isEmpty { createSession() }
 
         loadSettings()
@@ -360,16 +355,17 @@ final class DesktopModel: ObservableObject {
 
 
     func persistSessions() {
-        guard let data = try? JSONEncoder().encode(sessions) else { return }
-        defaults.set(data, forKey: sessionsKey)
+        guard !isRestoringPersistence && persistenceAvailable else { return }
+        do {
+            try NativePersistence.save(ChatSessionState(sessions: sessions, activeSessionID: activeSessionID), collection: "sessions")
+        } catch { persistenceError = "会話を保存できませんでした: \(error.localizedDescription)" }
     }
-
-    func persistActiveSession() { defaults.set(activeSessionID?.uuidString, forKey: activeKey) }
+    func persistActiveSession() { persistSessions() }
     func persistConnections() {
-        guard let data = try? JSONEncoder().encode(connections) else { return }
-        defaults.set(data, forKey: connectionsKey)
+        guard !isRestoringPersistence && persistenceAvailable else { return }
+        do { try NativePersistence.save(connections, collection: "connections") }
+        catch { persistenceError = "接続情報を保存できませんでした: \(error.localizedDescription)" }
     }
-
 
     // MARK: - Rust FFI Calls
 

@@ -8,19 +8,30 @@ extension DesktopModel {
     // MARK: - Native Settings Management
 
     func loadSettings() {
+        isRestoringPersistence = true
         defer {
+            isRestoringPersistence = false
             let directories = LegacyDataNotice.existingDirectories
             if !directories.isEmpty {
                 settingsStatusMessage += "\n旧版のデータは読み込みません。不要な場合はFinderで次のディレクトリを確認して削除してください: " + directories.joined(separator: ", ")
             }
         }
-        let (loadedSettings, url, source) = SettingsManager.load()
+        let loaded: (settings: AppSettings, url: URL, source: String?)
+        do { loaded = try SettingsManager.load() }
+        catch {
+            settingsPersistenceAvailable = false
+            settingsStatusMessage = "設定を読み込めませんでした: \(error.localizedDescription)"
+            return
+        }
+        let (loadedSettings, url, source) = loaded
         self.settings = loadedSettings
+        if let path = loadedSettings.documentsDirectory { documentsDirectory = (path as NSString).expandingTildeInPath }
+        if let path = loadedSettings.knowledgeDirectory { knowledgeDirectory = (path as NSString).expandingTildeInPath }
         self.settingsFileURL = url
         self.isSettingsLoaded = source != nil
 
         if loadedSettings.llmBackend == .apple && supportsAppleModelOS {
-            settingsStatusMessage = "Swift版設定を読み込みました: \(url.path)"
+            settingsStatusMessage = "SurrealDB の設定を読み込みました: \(url.path)"
             selectedPresetId = AppleModelPolicy.presetID
             modelPath = loadedSettings.modelPath ?? ""
             loadModel()
@@ -33,7 +44,7 @@ extension DesktopModel {
         _ = Self.callRust { "llamacpp".withCString { mikomai_model_select_backend($0) } }
 
         if source != nil {
-            self.settingsStatusMessage = "Swift版設定を読み込みました: \(url.path)"
+            self.settingsStatusMessage = "SurrealDB の設定を読み込みました: \(url.path)"
             if let path = loadedSettings.modelPath, !path.isEmpty {
                 let expanded = (path as NSString).expandingTildeInPath
                 self.modelPath = expanded
@@ -52,9 +63,8 @@ extension DesktopModel {
                 }
             }
         } else {
-            let savedPath = defaults.string(forKey: "mikomai.desktop.mac.modelPath") ?? ""
-            self.modelPath = (savedPath as NSString).expandingTildeInPath
-            self.settingsStatusMessage = "Swift版設定ファイルがありません。デフォルト値を使用しています: \(url.path)"
+            self.modelPath = ""
+            self.settingsStatusMessage = "保存済み設定がありません。デフォルト値を使用しています: \(url.path)"
             if !self.modelPath.isEmpty && FileManager.default.fileExists(atPath: self.modelPath) {
                 loadModel()
             }
@@ -63,17 +73,29 @@ extension DesktopModel {
         applyInferenceParams()
     }
 
+    func persistSettingsPaths() {
+        guard !isRestoringPersistence && settingsPersistenceAvailable else { return }
+        var snapshot = settings
+        snapshot.documentsDirectory = documentsDirectory
+        snapshot.knowledgeDirectory = knowledgeDirectory
+        snapshot.modelPath = modelPath.isEmpty ? nil : modelPath
+        do { try SettingsManager.save(snapshot) }
+        catch { persistenceError = "設定の保存に失敗しました: \(error.localizedDescription)" }
+    }
+
     func saveSettings() {
-        var toSave = settings
-        if !modelPath.isEmpty {
-            var patch = DesktopSettingsPatch()
-            patch.modelPath = .set(modelPath)
-            toSave.merge(patch)
+        guard settingsPersistenceAvailable else {
+            settingsStatusMessage = "読込みエラーのため、設定の上書きを停止しています。"
+            return
         }
+        var toSave = settings
+        toSave.documentsDirectory = documentsDirectory
+        toSave.knowledgeDirectory = knowledgeDirectory
+        toSave.modelPath = modelPath.isEmpty ? nil : modelPath
         do {
             try SettingsManager.save(toSave)
             self.isSettingsLoaded = true
-            self.settingsStatusMessage = "Swift版設定を保存しました: \(settingsFileURL.path)"
+            self.settingsStatusMessage = "SurrealDB の設定を保存しました: \(settingsFileURL.path)"
             applyInferenceParams()
         } catch {
             self.settingsStatusMessage = "設定の保存に失敗しました: \(error.localizedDescription)"

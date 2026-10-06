@@ -250,21 +250,7 @@ fn portable_runtime() -> Result<&'static tokio::runtime::Runtime, String> {
 }
 
 fn portable_graph() -> Result<mikomai_adapters::portable_graph::PortableGraph, String> {
-    let mut graph = shared_service().portable_graph
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .map_err(|_| "portable graph lock is poisoned".to_string())?;
-    if graph.is_none() {
-        let path = resolve_portable_graph_path()?;
-        *graph = Some(
-            portable_runtime()?
-                .block_on(mikomai_adapters::portable_graph::PortableGraph::initialize_at(&path))?,
-        );
-    }
-    graph
-        .as_ref()
-        .cloned()
-        .ok_or_else(|| "portable graph initialization failed".to_string())
+    shared_service().graph()
 }
 
 fn resolve_portable_graph_path() -> Result<PathBuf, String> {

@@ -78,37 +78,18 @@ enum SerialPortDetector {
 
 enum SettingsManager {
     static var settingsURL: URL {
-        if let env = ProcessInfo.processInfo.environment["MIKOMAI_SETTINGS_PATH"], !env.isEmpty {
-            return URL(fileURLWithPath: env)
-        }
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return support.appendingPathComponent("MikomaiDesktopMac/settings.json")
+        if let path = ProcessInfo.processInfo.environment["MIKOMAI_GRAPH_DB_PATH"] { return URL(fileURLWithPath: path) }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/MikomaiDesktopMac/surrealdb")
     }
 
-    static func load() -> (settings: AppSettings, url: URL, source: String?) {
-        let url = settingsURL
-        if let data = try? Data(contentsOf: url), let decoded = try? DesktopSettingsCodec.decode(data) {
-            return (decoded, url, "native")
-        }
-
-        return (AppSettings(), url, nil)
+    static func load() throws -> (settings: AppSettings, url: URL, source: String?) {
+        let decoded: AppSettings? = try NativePersistence.load("settings")
+        return (decoded ?? AppSettings(), settingsURL, decoded == nil ? nil : "native")
     }
-
     static func save(_ settings: AppSettings) throws {
-        let url = settingsURL
-        let dir = url.deletingLastPathComponent()
-        if !FileManager.default.fileExists(atPath: dir.path) {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        }
-        let data = try DesktopSettingsCodec.encode(settings)
-        let tempURL = url.appendingPathExtension("tmp")
-        try data.write(to: tempURL, options: .atomic)
-        if FileManager.default.fileExists(atPath: url.path) {
-            _ = try? FileManager.default.removeItem(at: url)
-        }
-        try FileManager.default.moveItem(at: tempURL, to: url)
+        try NativePersistence.save(settings, collection: "settings")
     }
+
 }
 
 // MARK: - Chat & Saved Connections Models

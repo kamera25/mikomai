@@ -228,6 +228,7 @@ DEFINE TABLE IF NOT EXISTS bgp SCHEMALESS; DEFINE TABLE IF NOT EXISTS vrf SCHEMA
 DEFINE TABLE IF NOT EXISTS ntp_server SCHEMALESS; DEFINE TABLE IF NOT EXISTS ntp_status SCHEMALESS; DEFINE TABLE IF NOT EXISTS graph_edge SCHEMALESS;
 DEFINE TABLE IF NOT EXISTS observation SCHEMALESS; DEFINE TABLE IF NOT EXISTS config_snapshot SCHEMALESS; DEFINE TABLE IF NOT EXISTS config_change SCHEMALESS;
 DEFINE TABLE IF NOT EXISTS conflict SCHEMALESS; DEFINE TABLE IF NOT EXISTS rag_chunk SCHEMALESS;
+DEFINE TABLE IF NOT EXISTS settings SCHEMALESS; DEFINE TABLE IF NOT EXISTS sessions SCHEMALESS; DEFINE TABLE IF NOT EXISTS connections SCHEMALESS;
 DEFINE ANALYZER IF NOT EXISTS rag_text TOKENIZERS class, punct FILTERS lowercase;
 DEFINE INDEX IF NOT EXISTS device_key ON TABLE device FIELDS key UNIQUE;
 DEFINE INDEX IF NOT EXISTS observation_device_time ON TABLE observation FIELDS device_name, collected_at;
@@ -241,6 +242,31 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         self.db.query(ROUTER_SCHEMA_SQL).await
             .map_err(|e| format!("Failed to define router schema: {e}"))?
             .check().map_err(|e| format!("Failed to define router schema: {e}"))?;
+        Ok(())
+    }
+
+    /// Canonical application documents share the graph/RAG database connection.
+    pub async fn load_app_document(&self, table: &str) -> Result<Option<Value>, String> {
+        validate_app_table(table)?;
+        let mut response = self.db.query("SELECT schema_version, payload FROM type::record($table, 'current');")
+            .bind(("table", table.to_owned())).await.map_err(|e| e.to_string())?
+            .check().map_err(|e| e.to_string())?;
+        let rows: Vec<AppDocument> = response.take(0).map_err(|e| e.to_string())?;
+        rows.into_iter().next().map(|record| {
+            if record.schema_version != 1 { return Err(format!("unsupported {table} schema version {}", record.schema_version)); }
+            serde_json::from_str(&record.payload).map_err(|e| e.to_string())
+        }).transpose()
+    }
+
+    /// One UPSERT is atomic. Failure leaves the previous document intact.
+    pub async fn save_app_document(&self, table: &str, value: &Value) -> Result<(), String> {
+        validate_app_table(table)?;
+        // Do not replace data written by a newer application schema.
+        self.load_app_document(table).await?;
+        let payload = serde_json::to_string(value).map_err(|e| e.to_string())?;
+        self.db.query("UPSERT type::record($table, 'current') CONTENT {schema_version: 1, payload: $payload};")
+            .bind(("table", table.to_owned())).bind(("payload", payload)).await.map_err(|e| e.to_string())?
+            .check().map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -1272,5 +1298,33 @@ mod tests {
         assert_eq!(port["matches"][0]["interface"], "Gi1/0/2");
         drop(graph);
         let _ = std::fs::remove_dir_all(path);
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, SurrealValue)]
+struct AppDocument { schema_version: u32, payload: String }
+
+fn validate_app_table(table: &str) -> Result<(), String> {
+    if ["settings", "sessions", "connections"].contains(&table) { Ok(()) }
+    else { Err("unsupported application collection".into()) }
+}
+
+#[cfg(test)]
+mod app_document_tests {
+    use super::*;
+    #[tokio::test]
+    async fn documents_share_the_graph_store_and_reject_unknown_collections() {
+        let path = std::env::temp_dir().join(format!("mikomai-documents-{}", uuid::Uuid::new_v4()));
+        let db = PortableGraph::initialize_at(&path).await.unwrap();
+        assert!(db.load_app_document("sessions").await.unwrap().is_none());
+        let payload = json!({"sessions":[{"id":"test","messages":[{"text":"日本語\nquoted"}]}], "activeSessionID":"test"});
+        db.save_app_document("sessions", &payload).await.unwrap();
+        assert_eq!(db.clone().load_app_document("sessions").await.unwrap(), Some(payload.clone()));
+        assert!(db.save_app_document("sessions;DELETE device", &json!({})).await.is_err());
+        assert_eq!(db.load_app_document("sessions").await.unwrap(), Some(payload));
+        db.db.query("UPSERT settings:current CONTENT {schema_version: 999, payload: '{}'};").await.unwrap().check().unwrap();
+        assert!(db.load_app_document("settings").await.unwrap_err().contains("unsupported"));
+        assert!(db.save_app_document("settings", &json!({})).await.unwrap_err().contains("unsupported"));
+        assert!(db.load_app_document("settings").await.unwrap_err().contains("999"));
     }
 }

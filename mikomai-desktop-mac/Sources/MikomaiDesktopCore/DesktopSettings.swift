@@ -9,6 +9,8 @@ public struct DesktopSettings: Codable, Equatable {
     public var historyLimit: Int
     public var temperature: Double
     public var repetitionPenalty: Double
+    public var documentsDirectory: String?
+    public var knowledgeDirectory: String?
     public var modelPath: String?
     public var llmBackend: LLMBackend
     public var recentIps: [String]
@@ -38,11 +40,14 @@ public struct DesktopSettings: Codable, Equatable {
         preloadPlotter: Bool = false, preloadBuilder: Bool = false, preloadSummarization: Bool = false,
         cacheExpiryMinutes: Int? = 10, nCtx: Int = 8192, maxGen: Int = 2048,
         promptKeepTokens: Int = 500, visionEnabled: Bool = false, autoDryRun: Bool = false,
-        mmprojPath: String? = nil, llmBackend: LLMBackend = .llamacpp
+        mmprojPath: String? = nil, llmBackend: LLMBackend = .llamacpp,
+        documentsDirectory: String? = nil, knowledgeDirectory: String? = nil
     ) {
         self.historyLimit = historyLimit
         self.temperature = temperature
         self.repetitionPenalty = repetitionPenalty
+        self.documentsDirectory = documentsDirectory
+        self.knowledgeDirectory = knowledgeDirectory
         self.modelPath = modelPath
         self.llmBackend = llmBackend
         self.recentIps = recentIps
@@ -69,7 +74,7 @@ public struct DesktopSettings: Codable, Equatable {
         case historyLimit, temperature, repetitionPenalty, modelPath, recentIps, mcpTimeout, ipVersion
         case consolePort, consoleBaudRate, preloadKnowledge, preloadAnalysis, preloadRag, preloadPlotter
         case preloadBuilder, preloadSummarization, cacheExpiryMinutes, nCtx, maxGen, promptKeepTokens
-        case visionEnabled, autoDryRun, mmprojPath, llmBackend
+        case visionEnabled, autoDryRun, mmprojPath, llmBackend, documentsDirectory, knowledgeDirectory
     }
 
     public init(from decoder: Decoder) throws {
@@ -97,7 +102,9 @@ public struct DesktopSettings: Codable, Equatable {
             visionEnabled: try values.decodeIfPresent(Bool.self, forKey: .visionEnabled) ?? false,
             autoDryRun: try values.decodeIfPresent(Bool.self, forKey: .autoDryRun) ?? false,
             mmprojPath: try values.decodeIfPresent(String.self, forKey: .mmprojPath),
-            llmBackend: try values.decodeIfPresent(LLMBackend.self, forKey: .llmBackend) ?? .llamacpp
+            llmBackend: try values.decodeIfPresent(LLMBackend.self, forKey: .llmBackend) ?? .llamacpp,
+            documentsDirectory: try values.decodeIfPresent(String.self, forKey: .documentsDirectory),
+            knowledgeDirectory: try values.decodeIfPresent(String.self, forKey: .knowledgeDirectory)
         )
     }
 

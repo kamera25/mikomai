@@ -1,6 +1,8 @@
 # mikomai-cli chat
 
-`chat` はヘッドレスCLIから質問に回答するコマンドです。`MIKOMAI_MODEL_PATH` または保存済みアプリ設定から有効なGGUFモデルを取得できる場合、`mikomai-app` を直接呼び出し、Swift版のFFIと同じローカルLLM・資料検索の実装を使います。モデル未設定時は `mikomai-core` のアプリケーションサービスとローカルMarkdown用知識ストアへフォールバックします。会話履歴、Keychain、実機接続状態は共有しません。
+`chat` はヘッドレスCLIから質問に回答するコマンドです。`MIKOMAI_MODEL_PATH` または現在のDBの `settings:current` から有効なGGUFモデルを取得できる場合、`mikomai-app` を直接呼び出し、Swift版のFFIと同じローカルLLM・資料検索の実装を使います。モデル未設定時は `mikomai-core` のアプリケーションサービスとローカルMarkdown用知識ストアへフォールバックします。会話履歴、Keychain、実機接続状態は共有しません。
+
+CLIの既定DBは `~/Library/Application Support/MikomaiCLI/surrealdb`、macOSアプリは `~/Library/Application Support/MikomaiDesktopMac/surrealdb` です。`MIKOMAI_GRAPH_DB_PATH` で明示したDBを使うこともできますが、組込みRocksDBは複数プロセスで同時に開けません。GUI/CLIの単一正本と同時起動の両立は未実装です。CLIでGUIと同じモデルを選ぶには `MIKOMAI_MODEL_PATH` を指定してください。旧 `settings.json` と `MIKOMAI_SETTINGS_PATH` の自動読込みは廃止しました。
 
 ```bash
 npm run cli -- chat "FITELnet F220 の VLAN 設定方法を教えて"

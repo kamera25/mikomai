@@ -5,6 +5,11 @@ use serde_json::{json, Value};
 pub fn query(request: &Value) -> Result<Value, String> {
     let text = |key: &str| request[key].as_str().unwrap_or("");
     Ok(match text("op") {
+        "store_load" => crate::shared_service().load_document(text("collection"))?.unwrap_or(Value::Null),
+        "store_save" => {
+            crate::shared_service().save_document(text("collection"), &request["value"])?;
+            Value::Null
+        },
         "device_catalog" => {
             serde_json::from_str(include_str!("device_catalog.json")).map_err(|e| e.to_string())?
         }

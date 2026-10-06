@@ -286,7 +286,7 @@ CLIは終了コード0だけでなく、質問に対応した完結した最終�
 | --- | --- | --- |
 | 1 | 完了 | [app新設・状態移動](mikomai-app-stage1.md)。FFI static 0、Runtime統合 |
 | 2 | 完了 | [CLI直接依存](mikomai-app-stage2.md)。FFI依存0 |
-| 3 | 実施中 | [今回の実装・検証](mikomai-app-stage3.md)。Swiftのセッション操作、カタログ、接続検証、dry-run判定をRustへ移動。旧設定/Watch/Agent履歴取込と接続CSV/JSON取込を廃止。正本のSurrealDB集約、Swift内の残る保存・操作処理は未完了 |
+| 3 | 実施中 | [業務ルール移動](mikomai-app-stage3.md)、[保存サービス](mikomai-app-stage3-storage.md)。sessions/connections/settingsとパス設定をschema_version付きSurrealDBへ移動。tasks/operations/approvals/watches/auditの集約、Swift内の操作・資格情報・プロセス処理は未完了 |
 | 4 | 未着手 | 常駐Netmikoワーカー、Rust keyring、期限/中断/再起動、CLI SSH/Telnet/serial、変換/nwdiag/フォント同梱 |
 | 5 | 未着手 | Command/Event/Query、Scheduler、InferenceQueue、機器/ポート/プロセス間ロック、実行ゲートへの統合と監査 |
 | 6 | 未着手 | C#互換版固定、UniFFI、Swift移行、手書きC ABI廃止、共通fixture契約試験 |

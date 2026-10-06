@@ -18,7 +18,7 @@
 
 ## 未完了
 
-段階3全体は完了していない。正本のSurrealDB集約、session/connection/settings等の保存サービス、Swift内の操作実行・OS資格情報・プロセス管理は残る。段階4–8のワーカー、排他/推論キュー、UniFFI、Windows/Vulkan/WinUI、共通契約テストも未実施。現行の保存形式・JSONLを最終設計のschema_version付き正本・TaskEventと同一とは扱わない。
+sessions/connections/settingsの保存サービスは後続の[保存サービス実装](mikomai-app-stage3-storage.md)で追加した。段階3全体は完了していない。tasks/operations/approvals/watches/auditのSurrealDB集約、Swift内の操作実行・OS資格情報・プロセス管理は残る。段階4–6のワーカー、排他/推論キュー、UniFFI、共通契約テストも未実施。Windows/Vulkan/WinUI（段階7–8）はユーザー指示により現在の実装対象から除外する。既存JSONLは最終設計のTaskEventではない。
 
 ## 検証
 

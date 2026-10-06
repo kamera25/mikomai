@@ -1,5 +1,7 @@
 # Tauri廃止とSwift移行
 
+この文書はTauri廃止時点の記録です。現在の保存・取込・CLI方針は [再設計の実施状況](refactoring-plan.md#13-実施状況) を参照してください。以下の旧保存先・import記述は現行動作を表しません。
+
 React/Tauriアプリ、Tauri Rustランタイム、専用IPC/MCP実装を削除し、デスクトップ入口をSwiftUI + Rust core/FFIへ統一しました。共有する推論・計画・実行ポリシーは `mikomai-core` と `mikomai-adapters` に置き、OS固有のKeychainとNetmiko起動はSwift callbackに閉じています。
 
 | 機能 | Swift移行後 |

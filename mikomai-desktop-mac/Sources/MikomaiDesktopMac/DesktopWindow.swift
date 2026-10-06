@@ -314,6 +314,10 @@ struct DesktopWindow: View {
                 evaluateTiling(containerWidth: currentContainerWidth)
             }
         }
+        .alert("保存エラー", isPresented: Binding(
+            get: { !model.persistenceError.isEmpty },
+            set: { if !$0 { model.persistenceError = "" } }
+        )) { Button("OK", role: .cancel) {} } message: { Text(model.persistenceError) }
         .alert(item: $model.watchAlert) { alert in
             Alert(title: Text("ネットワーク監視"), message: Text(alert.message), dismissButton: .default(Text("閉じる")))
         }
