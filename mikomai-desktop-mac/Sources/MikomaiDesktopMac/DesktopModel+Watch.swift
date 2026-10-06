@@ -12,15 +12,10 @@ extension DesktopModel {
         let support = (fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? fm.temporaryDirectory)
             .appendingPathComponent("MikomaiDesktopMac", isDirectory: true)
         let destination = support.appendingPathComponent("watches.json")
-        let legacy = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/com.mikomai.agent/watches.json")
         do {
             try fm.createDirectory(at: support, withIntermediateDirectories: true)
-            if !fm.fileExists(atPath: destination.path), fm.fileExists(atPath: legacy.path) {
-                try fm.copyItem(at: legacy, to: destination)
-                watchStatus = "旧版の監視設定をSwift版へ移行しました"
-            }
         } catch {
-            watchStatus = "監視設定の移行に失敗しました: \(error.localizedDescription)"
+            watchStatus = "監視設定の保存先を作成できませんでした: \(error.localizedDescription)"
             return
         }
         let box = WatchCallbackBox(connections: connections, credentialPersistence: credentialPersistence) { [weak self] data in

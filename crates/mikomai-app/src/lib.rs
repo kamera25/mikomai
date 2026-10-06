@@ -29,6 +29,7 @@ mod attachment_upload;
 use llm_runtime::infer;
 use mikomai_adapters::local_llama::CANCEL_INFERENCE;
 
+pub mod native_features;
 mod service;
 pub use service::MikomaiService;
 use service::shared_service;
@@ -92,183 +93,11 @@ fn agent_event_directory() -> Result<PathBuf, String> {
         .map(PathBuf::from)
         .ok_or_else(|| "home directory is unavailable".to_string())?;
     let native_path = home.join("Library/Application Support/MikomaiDesktopMac/agent-events");
-    let old_path = home.join("Library/Application Support/com.mikomai.agent/agent-events");
-    if old_path.is_dir() {
-        std::fs::create_dir_all(&native_path)
-            .map_err(|error| format!("cannot create native agent audit directory: {error}"))?;
-        for entry in std::fs::read_dir(&old_path)
-            .map_err(|error| format!("cannot list legacy agent audits: {error}"))?
-            .flatten()
-        {
-            let source = entry.path();
-            if !source.is_file()
-                || source.extension().and_then(|extension| extension.to_str()) != Some("json")
-            {
-                continue;
-            }
-            let Some(name) = source.file_name() else {
-                continue;
-            };
-            let destination = native_path.join(name);
-            if !destination.exists() {
-                std::fs::copy(&source, &destination).map_err(|error| {
-                    format!(
-                        "cannot import legacy agent audit {}: {error}",
-                        source.display()
-                    )
-                })?;
-            }
-        }
-    }
     Ok(native_path)
 }
 
 fn agent_task_path(task_id: uuid::Uuid) -> Result<PathBuf, String> {
     Ok(agent_event_directory()?.join(format!("{task_id}.json")))
-}
-
-fn legacy_task_snapshot(value: &serde_json::Value) -> Option<PersistedAgentAudit> {
-    let events = value.get("events")?.as_array()?.clone();
-    let task_id = events
-        .iter()
-        .find_map(|event| {
-            if event.get("event_type")?.as_str()? == "task_started" {
-                event.get("task_id").and_then(serde_json::Value::as_str)
-            } else {
-                None
-            }
-        })
-        .and_then(|text| uuid::Uuid::parse_str(text).ok())
-        .or_else(|| {
-            value
-                .get("snapshot")
-                .and_then(|s| s.get("task"))
-                .and_then(|t| t.get("id"))
-                .and_then(serde_json::Value::as_str)
-                .and_then(|text| uuid::Uuid::parse_str(text).ok())
-        })?;
-    let goal = events
-        .iter()
-        .rev()
-        .find_map(|event| {
-            let event_type = event.get("event_type")?.as_str()?;
-            if event_type == "goal_set" || event_type == "task_started" {
-                event
-                    .get("goal")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_owned)
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
-            value
-                .get("snapshot")
-                .and_then(|s| s.get("task"))
-                .and_then(|t| t.get("goal"))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned)
-        })
-        .unwrap_or_else(|| "エージェントタスク".to_string());
-    let mut snapshot = TaskSnapshot::new(goal);
-    snapshot.task.id = task_id;
-    for event in &events {
-        let observation = if event.get("event_type").and_then(serde_json::Value::as_str)
-            == Some("observation")
-        {
-            Some(event)
-        } else if event.get("event_type").and_then(serde_json::Value::as_str) == Some("result") {
-            event.get("observation")
-        } else {
-            None
-        };
-        if let Some(observation) = observation {
-            let content = observation
-                .get("raw")
-                .and_then(serde_json::Value::as_str)
-                .or_else(|| observation.get("content").and_then(serde_json::Value::as_str))
-                .unwrap_or_default();
-            let source = observation.get("source");
-            let target = source
-                .and_then(|value| value.get("device"))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned);
-            let tool = source
-                .and_then(|value| value.get("tool_name"))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned);
-            snapshot
-                .evidence
-                .push(mikomai_core::Evidence::from_tool(content, target, tool));
-        }
-    }
-    let now = chrono::Utc::now();
-    let started_at = events
-        .iter()
-        .find_map(|event| {
-            let is_start = event
-                .get("event_type")
-                .and_then(serde_json::Value::as_str)
-                == Some("task_started");
-            if is_start {
-                event
-                    .get("timestamp")
-                    .or_else(|| event.get("created_at"))
-                    .and_then(serde_json::Value::as_str)
-            } else {
-                None
-            }
-        })
-        .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
-        .map(|time| time.with_timezone(&chrono::Utc))
-        .unwrap_or(now);
-    let last_event_at = events
-        .iter()
-        .rev()
-        .find_map(|event| {
-            event
-                .get("timestamp")
-                .or_else(|| event.get("created_at"))
-                .or_else(|| event.get("occurred_at"))
-                .and_then(serde_json::Value::as_str)
-                .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
-                .map(|time| time.with_timezone(&chrono::Utc))
-        })
-        .unwrap_or(started_at);
-
-    // Resolve snapshot status
-    if let Some(last_event) = events.last() {
-        let last_type = last_event.get("event_type").and_then(serde_json::Value::as_str);
-        if last_type == Some("finished") {
-            if last_event.get("error").is_some() {
-                snapshot.status = mikomai_core::TaskStatus::Failed;
-            } else {
-                snapshot.status = mikomai_core::TaskStatus::Completed;
-            }
-        } else if last_type == Some("approval_required") {
-            snapshot.status = mikomai_core::TaskStatus::AwaitingApproval;
-        } else if last_type == Some("state_updated") {
-            let status_text = last_event.get("status").and_then(serde_json::Value::as_str).unwrap_or("");
-            if status_text.contains("awaiting_input") || status_text.contains("AwaitingInput") {
-                snapshot.status = mikomai_core::TaskStatus::AwaitingInput;
-            } else if status_text.contains("failed") || status_text.contains("Failed") {
-                snapshot.status = mikomai_core::TaskStatus::Failed;
-            } else if status_text.contains("completed") || status_text.contains("Completed") {
-                snapshot.status = mikomai_core::TaskStatus::Completed;
-            } else {
-                snapshot.status = mikomai_core::TaskStatus::Running;
-            }
-        } else {
-            snapshot.status = mikomai_core::TaskStatus::Failed; // stopped
-        }
-    }
-
-    Some(PersistedAgentAudit {
-        snapshot,
-        events,
-        started_at,
-        last_event_at,
-    })
 }
 
 fn read_agent_audit(task_id: uuid::Uuid) -> Result<Option<PersistedAgentAudit>, String> {
@@ -278,15 +107,9 @@ fn read_agent_audit(task_id: uuid::Uuid) -> Result<Option<PersistedAgentAudit>, 
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(format!("cannot read agent task audit: {error}")),
     };
-    if let Ok(audit) = serde_json::from_slice::<PersistedAgentAudit>(&bytes) {
-        return Ok(Some(audit));
-    }
-    let value: serde_json::Value = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("agent task audit is malformed: {error}"))?;
-    if let Ok(audit) = serde_json::from_value::<PersistedAgentAudit>(value.clone()) {
-        return Ok(Some(audit));
-    }
-    Ok(legacy_task_snapshot(&value))
+    serde_json::from_slice::<PersistedAgentAudit>(&bytes)
+        .map(Some)
+        .map_err(|error| format!("agent task audit is malformed: {error}"))
 }
 
 fn delete_agent_audit(task_id: uuid::Uuid) -> Result<(), String> {
@@ -457,12 +280,7 @@ fn resolve_portable_graph_path() -> Result<PathBuf, String> {
         let home = std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| {
             "graph database path is unavailable; set MIKOMAI_GRAPH_DB_PATH".to_string()
         })?;
-        let legacy = home.join("Library/Application Support/com.mikomai.agent/surrealdb");
-        if legacy.is_dir() {
-            Ok(legacy)
-        } else {
-            Ok(home.join("Library/Application Support/MikomaiDesktopMac/surrealdb"))
-        }
+        Ok(home.join("Library/Application Support/MikomaiDesktopMac/surrealdb"))
     }
 }
 
@@ -3664,66 +3482,24 @@ mod tests {
     }
 
     #[test]
-    fn legacy_agent_audit_resume_preserves_observations_in_a_new_task() {
+    fn old_agent_events_are_rejected_while_native_audits_can_resume() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let root =
-            std::env::temp_dir().join(format!("mikomai-agent-resume-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("mikomai-native-audit-{}", uuid::Uuid::new_v4()));
         let previous = std::env::var_os("MIKOMAI_DATA_DIR");
         std::env::set_var("MIKOMAI_DATA_DIR", &root);
-        let old_id = uuid::Uuid::new_v4();
-        let legacy = serde_json::json!({"events":[
-            {"event_type":"task_started","task_id":old_id.to_string(),"timestamp":"2026-10-01T01:00:00Z"},
-            {"event_type":"goal_set","goal":"inspect router CPU"},
-            {"event_type":"observation","raw":"CPU usage 91%","source":{"device":"router-01","tool_name":"get_state"}}
-        ]});
-        let converted = super::legacy_task_snapshot(&legacy).expect("legacy audit should convert");
-        assert_eq!(converted.snapshot.evidence.len(), 1);
-        assert_eq!(converted.snapshot.evidence[0].content, "CPU usage 91%");
-        super::persist_agent_audit(
-            &converted.snapshot,
-            serde_json::json!({"event_type":"legacy_import"}),
-        )
-        .unwrap();
-        let resumed = super::resume_saved_agent_task(old_id).unwrap();
-        assert_ne!(resumed.task.id, old_id);
-        assert!(resumed
-            .evidence
-            .iter()
-            .any(|item| item.content == "CPU usage 91%"));
-        assert!(resumed.evidence.last().unwrap().content.contains("resumed"));
-        if let Some(previous) = previous {
-            std::env::set_var("MIKOMAI_DATA_DIR", previous);
-        } else {
-            std::env::remove_var("MIKOMAI_DATA_DIR");
-        }
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn legacy_agent_audit_snapshot_restores_status_and_timestamps() {
-        let old_id = uuid::Uuid::new_v4();
-        let legacy = serde_json::json!({"events":[
-            {"event_type":"task_started","task_id":old_id.to_string(),"timestamp":"2026-10-01T01:00:00Z"},
-            {"event_type":"goal_set","goal":"inspect VLAN setup","timestamp":"2026-10-01T01:00:01Z"},
-            {"event_type":"decision","action_type":"OBSERVE","timestamp":"2026-10-01T01:00:05Z"},
-            {"event_type":"action","tool":"get_state","timestamp":"2026-10-01T01:00:06Z"},
-            {"event_type":"result","success":true,"observation":{"raw":"vlan 10 active"},"timestamp":"2026-10-01T01:00:10Z"},
-            {"event_type":"finished","answer":"VLAN 10 is configured","timestamp":"2026-10-01T01:00:15Z"}
-        ]});
-        let converted = super::legacy_task_snapshot(&legacy).expect("legacy audit should convert");
-        assert_eq!(converted.snapshot.task.goal, "inspect VLAN setup");
-        assert_eq!(converted.snapshot.status, mikomai_core::TaskStatus::Completed);
-        assert_eq!(
-            converted.started_at,
-            chrono::DateTime::parse_from_rfc3339("2026-10-01T01:00:00Z").unwrap().with_timezone(&chrono::Utc)
-        );
-        assert_eq!(
-            converted.last_event_at,
-            chrono::DateTime::parse_from_rfc3339("2026-10-01T01:00:15Z").unwrap().with_timezone(&chrono::Utc)
-        );
-        let summary = super::summarize_agent_audit(&converted);
-        assert_eq!(summary.status, "completed");
-        assert_eq!(summary.event_count, 6);
+        let id = uuid::Uuid::new_v4();
+        let path = super::agent_task_path(id).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"events":[{"event_type":"task_started"}]}"#).unwrap();
+        assert!(super::read_agent_audit(id).unwrap_err().contains("malformed"));
+        let mut snapshot = mikomai_core::TaskSnapshot::new("resume native investigation");
+        snapshot.evidence.push(mikomai_core::Evidence::from_tool("CPU usage 91%", Some("router".into()), Some("get_state".into())));
+        super::persist_agent_audit(&snapshot, serde_json::json!({"event_type":"task_started"})).unwrap();
+        let resumed = super::resume_saved_agent_task(snapshot.task.id).unwrap();
+        assert_ne!(resumed.task.id, snapshot.task.id);
+        assert_eq!(resumed.evidence[0].content, "CPU usage 91%");
+        restore_env("MIKOMAI_DATA_DIR", previous);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -5522,4 +5298,19 @@ mod vision_integration_tests {
         println!("Large-image TFTP prompt answer: {answer}");
     }
 
+}
+
+/// Transitional synchronous policy query shared by native frontends.
+pub unsafe fn mikomai_native_query(request: *const c_char) -> MikomaiResult {
+    if request.is_null() { return error_result("native query must not be null".into()); }
+    let caught = std::panic::catch_unwind(|| {
+        let input = CStr::from_ptr(request).to_str().map_err(|e| e.to_string())?;
+        let value = serde_json::from_str(input).map_err(|e| e.to_string())?;
+        serde_json::to_string(&native_features::query(&value)?).map_err(|e| e.to_string())
+    });
+    match caught {
+        Ok(Ok(value)) => result(0, value),
+        Ok(Err(error)) => error_result(error),
+        Err(_) => error_result("native query failed unexpectedly".into()),
+    }
 }

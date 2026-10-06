@@ -20,7 +20,7 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-testing.git", .upToNextMinor(from: "6.2.0"))
     ],
     targets: [
-        .target(name: "MikomaiDesktopCore", path: "Sources/MikomaiDesktopCore"),
+        .target(name: "MikomaiDesktopCore", dependencies: ["MikomaiFFI"], path: "Sources/MikomaiDesktopCore"),
         .target(
             name: "MikomaiFFI",
             path: "Sources/MikomaiFFI",

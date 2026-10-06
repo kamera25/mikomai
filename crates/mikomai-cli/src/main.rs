@@ -308,9 +308,6 @@ fn configured_model_path() -> Option<String> {
     let candidates = [
         std::env::var_os("MIKOMAI_SETTINGS_PATH").map(PathBuf::from),
         Some(home.join("Library/Application Support/MikomaiDesktopMac/settings.json")),
-        Some(home.join("Library/Application Support/com.mikomai.agent/settings.json")),
-        Some(home.join("Library/Application Support/mikomai/settings.json")),
-        Some(home.join(".config/mikomai/settings.json")),
     ];
     for path in candidates.into_iter().flatten() {
         let Ok(contents) = std::fs::read_to_string(path) else {

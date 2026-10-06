@@ -10,9 +10,7 @@ struct DeviceTypeCatalogTests {
             let restored = try JSONDecoder().decode(SavedConnection.self, from: JSONEncoder().encode(connection))
             #expect(restored.deviceType == id)
             #expect(DeviceTypeCatalog.canonicalID(for: restored.deviceType) == id)
-            let csv = try ConnectionCSVCodec.exportCSV([connection])
-            let imported = try ConnectionCSVCodec.importCSV(csv, existing: []).connections
-            #expect(imported.first?.deviceType == id)
+
         }
     }
 

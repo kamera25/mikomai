@@ -8,6 +8,12 @@ extension DesktopModel {
     // MARK: - Native Settings Management
 
     func loadSettings() {
+        defer {
+            let directories = LegacyDataNotice.existingDirectories
+            if !directories.isEmpty {
+                settingsStatusMessage += "\n旧版のデータは読み込みません。不要な場合はFinderで次のディレクトリを確認して削除してください: " + directories.joined(separator: ", ")
+            }
+        }
         let (loadedSettings, url, source) = SettingsManager.load()
         self.settings = loadedSettings
         self.settingsFileURL = url
@@ -27,9 +33,7 @@ extension DesktopModel {
         _ = Self.callRust { "llamacpp".withCString { mikomai_model_select_backend($0) } }
 
         if source != nil {
-            self.settingsStatusMessage = source == "imported"
-                ? "既存設定を読み込み、Swift版の保存先へ移行しました: \(url.path)"
-                : "Swift版設定を読み込みました: \(url.path)"
+            self.settingsStatusMessage = "Swift版設定を読み込みました: \(url.path)"
             if let path = loadedSettings.modelPath, !path.isEmpty {
                 let expanded = (path as NSString).expandingTildeInPath
                 self.modelPath = expanded

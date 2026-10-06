@@ -58,4 +58,7 @@ MikomaiResult mikomai_operation_execute_approved(const char *id, const char *pla
 MikomaiResult mikomai_operation_execute_approved_async(const char *id, const char *plan_hash, const char *credentials_json, MikomaiOperationCompletionCallback completion, void *context);
 void mikomai_result_free(MikomaiResult result);
 
+/* Temporary native policy envelope until the UniFFI migration. */
+MikomaiResult mikomai_native_query(const char *request);
+
 #endif

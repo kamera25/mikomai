@@ -40,3 +40,8 @@ pre-existing reference-search test failure reproduced on the original source.
 
 See [stage 2 verification](../../doc/mikomai-app-stage2.md) for the direct CLI
 dependency change and JSONL FastRouter/Agent-mode/RAG verification.
+
+Stage 3 moves session operations, connection policies, catalogs and dry-run
+validation into `native_features`. Swift uses a temporary JSON policy envelope
+through the compatibility bridge. Old data imports are removed, but persistence
+consolidation and worker management remain pending. See [stage 3](../../doc/mikomai-app-stage3.md).

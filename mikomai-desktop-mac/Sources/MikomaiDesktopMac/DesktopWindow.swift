@@ -1032,7 +1032,6 @@ struct DesktopWindow: View {
                                  guard mentionContext != context else { return }
                                  hostSuggestionIndex = 0
                                  mentionPresentation.update(context: context)
-                                 if context != nil { model.reloadCompletionHosts() }
                              }, completion: mentionCompletion,
                              onFileDrop: { urls in model.attachFiles(at: urls) },
                              onDragTargetChanged: { targeted in
@@ -1071,7 +1070,6 @@ struct DesktopWindow: View {
         .frame(maxWidth: 760).padding(.horizontal, 22).padding(.top, 10).padding(.bottom, 14)
         .frame(maxWidth: .infinity).background(chatBackground)
         .onAppear {
-            model.reloadCompletionHosts()
             isChatInputFocused = true
         }
         .onChange(of: model.isWorking) { isWorking in

@@ -60,3 +60,20 @@ fn bridge_and_app_share_approval_state_and_result_ownership() {
     assert_eq!(consume(unsafe { mikomai_chat(std::ptr::null()) }).0, 1);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn native_policy_bridge_preserves_scalar_results_and_rejects_imports() {
+    let input = CString::new(r#"{"op":"dry_run","processSucceeded":true,"output":"{\"success\":true,\"results\":[{\"ok\":true}]}"}"#).unwrap();
+    let (status, text) = consume(unsafe { mikomai_native_query(input.as_ptr()) });
+    assert_eq!(status, 0);
+    assert_eq!(text, "true");
+    let input = CString::new(r#"{"op":"import_json","connections":[]}"#).unwrap();
+    assert_eq!(
+        consume(unsafe { mikomai_native_query(input.as_ptr()) }).0,
+        1
+    );
+    assert_eq!(
+        consume(unsafe { mikomai_native_query(std::ptr::null()) }).0,
+        1
+    );
+}

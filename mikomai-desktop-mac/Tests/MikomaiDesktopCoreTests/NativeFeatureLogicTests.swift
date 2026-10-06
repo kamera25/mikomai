@@ -96,53 +96,6 @@ struct NativeFeatureLogicTests {
         }
     }
 
-    @Test func legacyRegistryImportMapsTypeAliasAndNumericOrStringPort() throws {
-        let json = Data(#"""
-        [
-          {"id":"router-1","hostname":"router-1","ip":"192.0.2.1","port":2222,"type":"SSH (Password)","deviceType":"cisco_ios"},
-          {"id":"console-1","hostname":"console-1","ip":"","port":"23","type":"Console (Serial)"}
-        ]
-        """#.utf8)
-
-        let result = try LegacyConnectionImporter.importJSON(json, existing: [])
-
-        #expect(result.imported.count == 2)
-        #expect(result.imported[0].port == "2222")
-        #expect(result.imported[0].deviceType == "cisco_ios")
-        #expect(result.imported[1].port == "23")
-        #expect(result.imported[1].host == "console-1")
-    }
-
-    @Test func legacyRegistrySkipsExistingDuplicateAndInvalidRowsWithoutAbortingValidRows() throws {
-        let existing = [SavedConnection(sourceID: "already", name: "old-router", host: "192.0.2.9")]
-        let json = Data(#"""
-        [
-          {"id":"already","hostname":"old-router","ip":"192.0.2.9"},
-          {"id":"new","hostname":"new-router","ip":"192.0.2.10","port":22,"type":"SSH"},
-          {"id":"new","hostname":"duplicate","ip":"192.0.2.11"},
-          {"id":"recoverable","hostname":"invalid host","ip":"192.0.2.12"},
-          {"id":"recoverable","hostname":"valid-after-invalid","ip":"192.0.2.13"},
-          {"hostname":"bad-host","ip":"bad host"},
-          {"id":"broken","ip":"192.0.2.20"},
-          {"id":"new-without-host","hostname":"new-without-host","ip":""}
-        ]
-        """#.utf8)
-
-        let result = try LegacyConnectionImporter.importJSON(json, existing: existing)
-
-        #expect(result.imported.map(\.sourceID) == ["new", "recoverable", "new-without-host"])
-        #expect(result.imported.last?.host == "new-without-host")
-        #expect(result.skipped == 5)
-        #expect(result.missingIDs == 1)
-    }
-
-    @Test func legacyRegistryRejectsNonArrayTopLevel() {
-        do {
-            _ = try LegacyConnectionImporter.importJSON(Data("{}".utf8), existing: [])
-            Issue.record("Expected a non-array registry to fail")
-        } catch {}
-    }
-
     private func expectAttachmentError(
         _ expected: AttachmentReadError,
         operation: () throws -> PendingAttachment

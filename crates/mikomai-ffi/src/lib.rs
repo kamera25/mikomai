@@ -337,3 +337,8 @@ pub unsafe extern "C" fn mikomai_configure_vision(
 ) -> MikomaiResult {
     mikomai_app::mikomai_configure_vision(enabled, projector_path)
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn mikomai_native_query(request: *const c_char) -> MikomaiResult {
+    mikomai_app::mikomai_native_query(request)
+}

@@ -11,8 +11,6 @@ import UniformTypeIdentifiers
 
 struct ConnectionsWorkspace: View {
     @ObservedObject var model: DesktopModel
-    @State private var csvAlert = ""
-    @State private var showsCSVAlert = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -94,59 +92,12 @@ struct ConnectionsWorkspace: View {
             }
             Spacer(minLength: 0)
             HStack {
-                Text("資格情報は macOS Keychain に暗号化保存されます。CSV 形式での入出力に対応しています。")
+                Text("接続情報は機器ごとに登録・編集できます。資格情報は macOS Keychain に暗号化保存されます。")
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                 Spacer()
-                AccessibleButton("CSV を読み込む") { importCSV() }
-                AccessibleButton("CSV を書き出す") { exportCSV() }.disabled(model.connections.isEmpty)
             }.padding(12).background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         }
-        .alert("機器情報", isPresented: $showsCSVAlert) { Button("OK", role: .cancel) {} } message: { Text(csvAlert) }
     }
-
-    private func exportCSV() {
-        let panel = NSSavePanel(); panel.nameFieldStringValue = "connections.csv"
-        FilePanelPresenter.present(panel) { [self] response in
-            guard response == .OK, let url = panel.url else { return }
-            if let invalid = model.connections.first(where: { $0.validationError != nil }) {
-                presentCSVMessage("\(invalid.name) のホスト名が 旧 CSV 形式の制約に合いません。機器情報を編集してください。")
-                return
-            }
-            do {
-                let csv = try ConnectionCSVCodec.exportCSV(model.connections)
-                try csv.write(to: url, atomically: true, encoding: .utf8)
-            } catch {
-                presentCSVMessage("CSV ファイルを書き込めませんでした。\(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func importCSV() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.commaSeparatedText]
-        panel.allowsMultipleSelection = false
-        FilePanelPresenter.present(panel) { [self] response in
-            guard response == .OK, let url = panel.url,
-                  let content = try? String(contentsOf: url, encoding: .utf8) else { return }
-            do {
-                let result = try ConnectionCSVCodec.importCSV(content, existing: model.connections)
-                model.connections = result.connections
-                let details = result.warnings.prefix(5).map { "\($0.row)行目: \($0.reason)" }
-                var message = "\(result.importedCount) 件を読み込みました。\(result.warnings.count) 件は形式が合わないためスキップしました。"
-                if !details.isEmpty { message += "\n" + details.joined(separator: "\n") }
-                if result.warnings.count > details.count { message += "\nほか \(result.warnings.count - details.count) 件" }
-                presentCSVMessage(message)
-            } catch {
-                presentCSVMessage(error.localizedDescription)
-            }
-        }
-    }
-
-    private func presentCSVMessage(_ message: String) {
-        csvAlert = message
-        showsCSVAlert = true
-    }
-
 }
 
 // MARK: - Connection Editor with Keychain

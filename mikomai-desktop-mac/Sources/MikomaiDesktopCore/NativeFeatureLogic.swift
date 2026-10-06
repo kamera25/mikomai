@@ -1,5 +1,4 @@
 import Foundation
-import Darwin
 
 public struct ChatMessage: Identifiable, Codable, Equatable {
     public enum Role: String, Codable { case user, assistant }
@@ -85,41 +84,28 @@ public struct ChatSession: Identifiable, Codable, Equatable {
     }
 }
 
-public struct ChatSessionState: Equatable {
+public struct ChatSessionState: Equatable, Codable {
     public var sessions: [ChatSession]
     public var activeSessionID: UUID?
-
     public init(sessions: [ChatSession] = [], activeSessionID: UUID? = nil) {
         self.sessions = sessions
-        self.activeSessionID = sessions.contains(where: { $0.id == activeSessionID })
-            ? activeSessionID
-            : sessions.first?.id
+        self.activeSessionID = activeSessionID
+        apply("normalize")
     }
-
-    @discardableResult
-    public mutating func create(title: String = "新しい会話") -> ChatSession {
-        let session = ChatSession(title: title)
-        sessions.insert(session, at: 0)
-        activeSessionID = session.id
-        return session
+    private mutating func apply(_ action: String, id: UUID? = nil, title: String? = nil) {
+        var request: [String: Any] = ["op": "sessions", "action": action, "state": RustPolicy.object(self),
+            "now": Date().timeIntervalSinceReferenceDate]
+        if let id { request["id"] = id.uuidString }
+        if let title { request["title"] = title }
+        self = RustPolicy.call(request)
     }
-
-    public mutating func select(_ id: UUID) {
-        guard sessions.contains(where: { $0.id == id }) else { return }
-        activeSessionID = id
+    @discardableResult public mutating func create(title: String = "新しい会話") -> ChatSession {
+        apply("create", title: title)
+        return sessions[0]
     }
-
-    public mutating func delete(_ id: UUID) {
-        sessions.removeAll { $0.id == id }
-        if activeSessionID == id { activeSessionID = sessions.first?.id }
-        if sessions.isEmpty { create() }
-    }
-
-    public mutating func rename(_ id: UUID, to title: String) {
-        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty, let index = sessions.firstIndex(where: { $0.id == id }) else { return }
-        sessions[index].title = normalized
-    }
+    public mutating func select(_ id: UUID) { apply("select", id: id) }
+    public mutating func delete(_ id: UUID) { apply("delete", id: id) }
+    public mutating func rename(_ id: UUID, to title: String) { apply("rename", id: id, title: title) }
 }
 
 public struct PendingAttachment: Identifiable, Equatable {
@@ -261,48 +247,23 @@ public struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
         self.hasEnablePassword = hasEnablePassword
     }
 
-    public var validationError: String? {
-        if !Self.isSafeHostname(name) { return "名前は文字・数字と . - _ で入力してください。" }
-        if !Self.isSafeHost(host) { return "ホストは IP アドレスまたは文字・数字と . - _ で入力してください。" }
-        if !port.isEmpty && (!(Int(port).map { (1...65535).contains($0) } ?? false)) { return "ポートは 1 から 65535 の数値で入力してください。" }
-        if username.count > 128 || Self.containsControl(username) { return "ユーザー名が長すぎるか、使用できない文字を含んでいます。" }
-        if deviceType.isEmpty || deviceType.count > 128 || Self.containsControl(deviceType) { return "機器タイプは 1 から 128 文字で入力してください。" }
-        return nil
+    private struct Policy: Decodable {
+        let error: String?
+        let defaultPort: String
+        let effectivePort: String
+        let driver: String
     }
-
-    public var defaultPort: String {
-        (connectionType ?? "SSH").lowercased() == "telnet" ? "23" : "22"
+    private func policy(base: String = "") -> Policy {
+        RustPolicy.call(["op": "connection", "connection": RustPolicy.object(self), "base": base])
     }
-
-    public var effectivePort: String { port.isEmpty ? defaultPort : port }
-
+    public var validationError: String? { policy().error }
+    public var defaultPort: String { policy().defaultPort }
+    public var effectivePort: String { policy().effectivePort }
     public mutating func selectConnectionType(_ type: String) {
-        let usesDefaultPort = port.isEmpty || port == defaultPort
-        connectionType = type
-        if usesDefaultPort { port = defaultPort }
+        self = RustPolicy.call(["op": "connection_select_type", "connection": RustPolicy.object(self), "type": type])
     }
+    public func transportDeviceType(_ base: String) -> String { policy(base: base).driver }
 
-    public func transportDeviceType(_ base: String) -> String {
-        guard (connectionType ?? "SSH").lowercased() == "telnet", !base.hasSuffix("_telnet") else { return base }
-        return (base.hasSuffix("_ssh") ? String(base.dropLast(4)) : base) + "_telnet"
-    }
-
-    private static func isSafeHostname(_ value: String) -> Bool {
-        !value.isEmpty && value.count <= 255 && value.allSatisfy { $0.isLetter || $0.isNumber || ".-_".contains($0) }
-    }
-
-    private static func isSafeHost(_ value: String) -> Bool {
-        if value.isEmpty || value.count > 255 || containsControl(value) { return false }
-        if value.contains(":") {
-            var address = in6_addr()
-            return value.withCString { inet_pton(AF_INET6, $0, &address) == 1 }
-        }
-        return value.allSatisfy { $0.isLetter || $0.isNumber || ".-_".contains($0) }
-    }
-
-    private static func containsControl(_ value: String) -> Bool {
-        value.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
-    }
 }
 
 public struct HostSuggestion: Equatable, Identifiable, Sendable {
@@ -364,54 +325,15 @@ public enum HostSuggestionPolicy {
     }
 }
 
-public struct LegacyDeviceSummary: Decodable {
-    public var id: String?
-    public var hostname: String
-    public var ip: String?
-    public var port: String?
-    public var connectionType: String?
-    public var deviceType: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case id, hostname, ip, port, deviceType
-        case connectionType = "type"
-    }
-
-    public init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        id = try values.decodeIfPresent(String.self, forKey: .id)
-        hostname = try values.decode(String.self, forKey: .hostname)
-        ip = try values.decodeIfPresent(String.self, forKey: .ip)
-        if let numericPort = try? values.decodeIfPresent(Int.self, forKey: .port) {
-            port = String(numericPort)
-        } else {
-            port = try values.decodeIfPresent(String.self, forKey: .port)
-        }
-        connectionType = try values.decodeIfPresent(String.self, forKey: .connectionType)
-        deviceType = try values.decodeIfPresent(String.self, forKey: .deviceType)
-    }
-}
-
-public struct LegacyConnectionImportResult {
-    public let imported: [SavedConnection]
-    public let skipped: Int
-    public let missingIDs: Int
-}
-
 public enum ConnectionInventoryPolicy {
     public static func saving(_ connection: SavedConnection, into connections: [SavedConnection]) -> [SavedConnection] {
         guard connection.validationError == nil else { return connections }
-        var updated = connections
-        if let index = updated.firstIndex(where: { $0.id == connection.id }) {
-            updated[index] = connection
-        } else {
-            updated.append(connection)
-        }
-        return updated
+        return RustPolicy.call(["op": "connection_save", "connection": RustPolicy.object(connection),
+            "connections": RustPolicy.object(connections)])
     }
 
     public static func removing(_ id: UUID, from connections: [SavedConnection]) -> [SavedConnection] {
-        connections.filter { $0.id != id }
+        RustPolicy.call(["op": "connection_remove", "id": id.uuidString, "connections": RustPolicy.object(connections)])
     }
 }
 
@@ -421,10 +343,10 @@ public enum ConnectionCredentialPolicy {
         enablePassword: String?,
         to connection: SavedConnection
     ) -> SavedConnection {
-        var updated = connection
-        if let password { updated.hasPassword = !password.isEmpty }
-        if let enablePassword { updated.hasEnablePassword = !enablePassword.isEmpty }
-        return updated
+        var request: [String: Any] = ["op": "credential_flags", "connection": RustPolicy.object(connection)]
+        if let password { request["passwordPresent"] = !password.isEmpty }
+        if let enablePassword { request["enablePresent"] = !enablePassword.isEmpty }
+        return RustPolicy.call(request)
     }
 }
 
@@ -488,256 +410,7 @@ public struct ConnectionCredentialPersistence: Sendable {
     }
 }
 
-public enum LegacyConnectionImporter {
-    public static func importJSON(_ data: Data, existing: [SavedConnection]) throws -> LegacyConnectionImportResult {
-        let raw = try JSONSerialization.jsonObject(with: data)
-        guard let rows = raw as? [Any] else {
-            throw DecodingError.typeMismatch([LegacyDeviceSummary].self, .init(codingPath: [], debugDescription: "Expected an array of device records"))
-        }
 
-        var knownIDs = Set(existing.compactMap(\.sourceID))
-        var imported: [SavedConnection] = []
-        var skipped = 0
-        var missingIDs = 0
-        let decoder = JSONDecoder()
-        for row in rows {
-            guard JSONSerialization.isValidJSONObject(row), let rowData = try? JSONSerialization.data(withJSONObject: row),
-                  let device = try? decoder.decode(LegacyDeviceSummary.self, from: rowData) else {
-                skipped += 1
-                continue
-            }
-            if device.id == nil { missingIDs += 1 }
-            if let id = device.id, knownIDs.contains(id) {
-                skipped += 1
-                continue
-            }
-            let hostname = device.hostname.trimmingCharacters(in: .whitespacesAndNewlines)
-            let host = device.ip.flatMap { $0.isEmpty ? nil : $0 } ?? hostname
-            let connection = SavedConnection(
-                sourceID: device.id,
-                name: hostname,
-                host: host,
-                port: device.port ?? "22",
-                connectionType: device.connectionType ?? "SSH",
-                deviceType: device.deviceType ?? device.connectionType ?? "不明"
-            )
-            guard connection.validationError == nil else { skipped += 1; continue }
-            if let id = device.id { knownIDs.insert(id) }
-            imported.append(connection)
-        }
-        return LegacyConnectionImportResult(imported: imported, skipped: skipped, missingIDs: missingIDs)
-    }
-}
-
-public struct ConnectionCSVWarning: Equatable {
-    public let row: Int
-    public let reason: String
-}
-
-public struct ConnectionCSVImportResult {
-    public let connections: [SavedConnection]
-    public let importedCount: Int
-    public let warnings: [ConnectionCSVWarning]
-}
-
-public enum ConnectionCSVError: LocalizedError, Equatable {
-    case malformed
-    case missingHeader
-    case invalidExportRecord(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .malformed: "CSV の引用符または行形式を確認してください。"
-        case .missingHeader: "CSV のヘッダー行がありません。"
-        case let .invalidExportRecord(reason): reason
-        }
-    }
-}
-
-public enum ConnectionCSVCodec {
-    public static let headers = [
-        "id", "status", "hostname", "ip", "port", "type", "lastConnected", "deviceType", "vendorType", "username"
-    ]
-
-    public static func importCSV(_ input: String, existing: [SavedConnection]) throws -> ConnectionCSVImportResult {
-        let records = try parse(input)
-        guard let rawHeader = records.first else { throw ConnectionCSVError.missingHeader }
-        var header = rawHeader.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-        if let first = header.first { header[0] = first.trimmingCharacters(in: CharacterSet(charactersIn: "\u{FEFF}")) }
-        guard !header.isEmpty else { throw ConnectionCSVError.missingHeader }
-
-        var columns: [String: Int] = [:]
-        for (index, name) in header.enumerated() where columns[name] == nil { columns[name] = index }
-        func value(_ row: [String], _ key: String, fallback: String = "") -> String {
-            guard let index = columns[key], row.indices.contains(index) else { return fallback }
-            return row[index].trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        var merged = existing
-        var importedCount = 0
-        var warnings: [ConnectionCSVWarning] = []
-        for (offset, row) in records.dropFirst().enumerated() {
-            let rowNumber = offset + 2
-            if row.allSatisfy({ $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) { continue }
-            func reject(_ reason: String) { warnings.append(ConnectionCSVWarning(row: rowNumber, reason: reason)) }
-
-            let name = value(row, "hostname", fallback: value(row, "name"))
-            let host = value(row, "ip", fallback: value(row, "host"))
-            guard !name.isEmpty, !host.isEmpty else {
-                reject("hostname と ip は必須です")
-                continue
-            }
-
-            let username = value(row, "username")
-            let deviceType = value(row, "devicetype", fallback: "Cisco IOS")
-            guard username.utf8.count <= 128 else { reject("username exceeds max length of 128"); continue }
-            guard deviceType.utf8.count <= 128 else { reject("deviceType exceeds max length of 128"); continue }
-            guard !containsForbiddenControl(username) else { reject("username contains forbidden control character"); continue }
-            guard !containsForbiddenControl(deviceType) else { reject("deviceType contains forbidden control character"); continue }
-
-            let rawType = value(row, "type")
-            guard let connectionType = canonicalConnectionType(rawType) else {
-                reject("未対応の接続タイプです: '\(rawType)'")
-                continue
-            }
-            let id = value(row, "id").isEmpty ? UUID().uuidString : value(row, "id")
-            let connection = SavedConnection(
-                sourceID: id,
-                name: name,
-                host: host,
-                port: value(row, "port"),
-                connectionType: connectionType,
-                username: username,
-                deviceType: deviceType
-            )
-            guard let reason = connection.validationError else {
-                importedCount += 1
-                if let existingIndex = merged.firstIndex(where: {
-                    $0.sourceID == id || $0.id.uuidString.caseInsensitiveCompare(id) == .orderedSame
-                }) {
-                    var updated = connection
-                    updated.id = merged[existingIndex].id
-                    updated.hasPassword = merged[existingIndex].hasPassword
-                    updated.hasEnablePassword = merged[existingIndex].hasEnablePassword
-                    merged[existingIndex] = updated
-                } else {
-                    merged.append(connection)
-                }
-                continue
-            }
-            reject(reason)
-        }
-        return ConnectionCSVImportResult(connections: merged, importedCount: importedCount, warnings: warnings)
-    }
-
-    public static func exportCSV(_ connections: [SavedConnection]) throws -> String {
-        var records = [headers]
-        for connection in connections {
-            if let reason = connection.validationError { throw ConnectionCSVError.invalidExportRecord(reason) }
-            let rawType = connection.connectionType ?? "SSH"
-            guard let connectionType = canonicalConnectionType(rawType) else {
-                throw ConnectionCSVError.invalidExportRecord("未対応の接続タイプです: '\(rawType)'")
-            }
-            records.append([
-                connection.sourceID ?? connection.id.uuidString,
-                "offline",
-                connection.name,
-                connection.host,
-                connection.port,
-                connectionType,
-                "Never",
-                connection.deviceType,
-                "",
-                connection.username
-            ])
-        }
-        return records.map { $0.map(escape).joined(separator: ",") }.joined(separator: "\n") + "\n"
-    }
-
-    private static func canonicalConnectionType(_ value: String) -> String? {
-        let normalized = value.lowercased()
-        if normalized.contains("console") || normalized.contains("serial") { return "Console" }
-        if normalized.contains("telnet") { return "Telnet" }
-        if normalized.contains("ssh") { return "SSH" }
-        if value.isEmpty { return "SSH" }
-        return nil
-    }
-
-    private static func containsForbiddenControl(_ value: String) -> Bool {
-        value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
-    }
-
-    private static func escape(_ value: String) -> String {
-        guard value.contains(where: { ",\"\r\n".contains($0) }) else { return value }
-        return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
-    }
-
-    private static func parse(_ input: String) throws -> [[String]] {
-        let bytes = Array(input.utf8)
-        var records: [[String]] = []
-        var row: [String] = []
-        var field: [UInt8] = []
-        var insideQuotes = false
-        var afterClosingQuote = false
-        var index = 0
-
-        while index < bytes.count {
-            let byte = bytes[index]
-            if insideQuotes {
-                if byte == 34 {
-                    if index + 1 < bytes.count && bytes[index + 1] == 34 {
-                        field.append(34)
-                        index += 1
-                    } else {
-                        insideQuotes = false
-                        afterClosingQuote = true
-                    }
-                } else {
-                    field.append(byte)
-                }
-            } else if afterClosingQuote {
-                if byte == 44 {
-                    row.append(String(decoding: field, as: UTF8.self))
-                    field = []
-                    afterClosingQuote = false
-                } else if byte == 10 || byte == 13 {
-                    row.append(String(decoding: field, as: UTF8.self))
-                    records.append(row)
-                    row = []
-                    field = []
-                    afterClosingQuote = false
-                    if byte == 13, index + 1 < bytes.count, bytes[index + 1] == 10 { index += 1 }
-                } else if byte == 32 || byte == 9 {
-                    // Ignore spaces outside a quoted cell.
-                } else {
-                    throw ConnectionCSVError.malformed
-                }
-            } else if byte == 34 {
-                guard field.isEmpty else { throw ConnectionCSVError.malformed }
-                insideQuotes = true
-            } else if byte == 44 {
-                row.append(String(decoding: field, as: UTF8.self))
-                field = []
-            } else if byte == 10 || byte == 13 {
-                row.append(String(decoding: field, as: UTF8.self))
-                records.append(row)
-                row = []
-                field = []
-                if byte == 13, index + 1 < bytes.count, bytes[index + 1] == 10 { index += 1 }
-            } else {
-                field.append(byte)
-            }
-            index += 1
-        }
-
-        guard !insideQuotes else { throw ConnectionCSVError.malformed }
-        if afterClosingQuote || !field.isEmpty || !row.isEmpty {
-            row.append(String(decoding: field, as: UTF8.self))
-            records.append(row)
-        }
-        return records
-    }
-}
 
 
 public enum ImageAttachmentError: LocalizedError {

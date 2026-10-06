@@ -81,9 +81,6 @@ final class DesktopModel: ObservableObject {
     // Native settings
     @Published var settings: AppSettings = AppSettings()
     @Published var settingsFileURL: URL = SettingsManager.settingsURL
-    @Published var registryHosts: [HostSuggestion] = []
-    private var completionReloadTask: Task<Void, Never>?
-    private var lastCompletionReload = Date.distantPast
     @Published var isSettingsLoaded: Bool = false
     @Published var settingsStatusMessage: String = ""
 
@@ -255,25 +252,7 @@ final class DesktopModel: ObservableObject {
     }
 
     var availableCompletionHosts: [HostSuggestion] {
-        HostCompletionSource.merge(
-            registry: registryHosts,
-            native: connections.map { HostSuggestion(hostname: $0.name, ip: $0.host) }
-        )
-    }
-
-    func reloadCompletionHosts() {
-        guard completionReloadTask == nil, Date().timeIntervalSince(lastCompletionReload) > 1 else { return }
-        lastCompletionReload = Date()
-        let override = ProcessInfo.processInfo.environment["MIKOMAI_CONNECTIONS_FILE"]
-        let path = override.map { URL(fileURLWithPath: $0) }
-            ?? settingsFileURL.deletingLastPathComponent().appendingPathComponent("connections.json")
-        completionReloadTask = Task {
-            let hosts = await Task.detached(priority: .utility) {
-                HostCompletionSource.read(from: path)
-            }.value
-            registryHosts = hosts
-            completionReloadTask = nil
-        }
+        connections.map { HostSuggestion(hostname: $0.name, ip: $0.host) }
     }
 
     // MARK: - Operation Plans

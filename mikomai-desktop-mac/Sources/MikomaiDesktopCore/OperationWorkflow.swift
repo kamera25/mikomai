@@ -32,10 +32,6 @@ public enum OperationWorkflow {
     }
 
     public static func acceptsDryRun(processSucceeded: Bool, json: String) -> Bool {
-        guard processSucceeded, let data = json.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              object["success"] as? Bool == true,
-              let results = object["results"] as? [[String: Any]], !results.isEmpty else { return false }
-        return results.allSatisfy { $0["ok"] as? Bool == true }
+        RustPolicy.call(["op": "dry_run", "processSucceeded": processSucceeded, "output": json])
     }
 }

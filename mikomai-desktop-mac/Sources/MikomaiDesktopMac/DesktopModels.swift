@@ -92,19 +92,6 @@ enum SettingsManager {
             return (decoded, url, "native")
         }
 
-        // Import existing installs once; all future saves go to the native app store.
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        let legacyURLs = [
-            support?.appendingPathComponent("com.mikomai.agent/settings.json"),
-            support?.appendingPathComponent("mikomai/settings.json"),
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/mikomai/settings.json")
-        ].compactMap { $0 }.filter { $0.standardizedFileURL != url.standardizedFileURL }
-        for legacyURL in legacyURLs {
-            guard let data = try? Data(contentsOf: legacyURL),
-                  let decoded = try? DesktopSettingsCodec.decode(data) else { continue }
-            try? save(decoded)
-            return (decoded, url, "imported")
-        }
         return (AppSettings(), url, nil)
     }
 
