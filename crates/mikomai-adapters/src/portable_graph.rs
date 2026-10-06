@@ -6,6 +6,7 @@
 //! observations collected by Swift or another adapter can be ingested here.
 
 use chrono::{DateTime, Duration, Utc};
+use crate::router_schema::{self, ROUTER_RESOURCES, ROUTER_SCHEMA_SQL};
 use mikomai_core::graph_identity::record_key;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -40,6 +41,35 @@ pub enum GraphDataKind {
     MacTable,
     Bgp,
     Ospf,
+    MacEntry,
+    IpsecConnection,
+    IkeSa,
+    OspfNeighbor,
+    Isis,
+    Bfd,
+    Ndp,
+    Vrrp,
+    Lacp,
+    Tunnel,
+    RoutingPolicy,
+    PrefixSet,
+    PolicyForwarding,
+    AclEntry,
+    AclBinding,
+    Nat,
+    DhcpRelay,
+    Qos,
+    QosInterface,
+    Pim,
+    Igmp,
+    Mpls,
+    DnsServer,
+    SyslogServer,
+    AaaServer,
+    Snmp,
+    TelemetrySubscription,
+    PlatformComponent,
+    System,
 }
 
 impl GraphDataKind {
@@ -53,6 +83,35 @@ impl GraphDataKind {
             Self::MacTable => "mac_table",
             Self::Bgp => "bgp",
             Self::Ospf => "ospf",
+            Self::MacEntry => "mac_entry",
+            Self::IpsecConnection => "ipsec_connection",
+            Self::IkeSa => "ike_sa",
+            Self::OspfNeighbor => "ospf_neighbor",
+            Self::Isis => "isis",
+            Self::Bfd => "bfd",
+            Self::Ndp => "ndp",
+            Self::Vrrp => "vrrp",
+            Self::Lacp => "lacp",
+            Self::Tunnel => "tunnel",
+            Self::RoutingPolicy => "routing_policy",
+            Self::PrefixSet => "prefix_set",
+            Self::PolicyForwarding => "policy_forwarding",
+            Self::AclEntry => "acl_entry",
+            Self::AclBinding => "acl_binding",
+            Self::Nat => "nat",
+            Self::DhcpRelay => "dhcp_relay",
+            Self::Qos => "qos",
+            Self::QosInterface => "qos_interface",
+            Self::Pim => "pim",
+            Self::Igmp => "igmp",
+            Self::Mpls => "mpls",
+            Self::DnsServer => "dns_server",
+            Self::SyslogServer => "syslog_server",
+            Self::AaaServer => "aaa_server",
+            Self::Snmp => "snmp",
+            Self::TelemetrySubscription => "telemetry_subscription",
+            Self::PlatformComponent => "platform_component",
+            Self::System => "system",
         }
     }
 }
@@ -163,21 +222,25 @@ impl PortableGraph {
 
     async fn define_schema(&self) -> Result<(), String> {
         self.db.query(r#"
-DEFINE TABLE device SCHEMALESS; DEFINE TABLE interface SCHEMALESS; DEFINE TABLE ip_address SCHEMALESS;
-DEFINE TABLE subnet SCHEMALESS; DEFINE TABLE vlan SCHEMALESS; DEFINE TABLE route SCHEMALESS;
-DEFINE TABLE bgp SCHEMALESS; DEFINE TABLE vrf SCHEMALESS; DEFINE TABLE acl SCHEMALESS;
-DEFINE TABLE ntp_server SCHEMALESS; DEFINE TABLE ntp_status SCHEMALESS; DEFINE TABLE graph_edge SCHEMALESS;
-DEFINE TABLE observation SCHEMALESS; DEFINE TABLE config_snapshot SCHEMALESS; DEFINE TABLE config_change SCHEMALESS;
-DEFINE TABLE conflict SCHEMALESS; DEFINE TABLE rag_chunk SCHEMALESS;
+DEFINE TABLE IF NOT EXISTS device SCHEMALESS; DEFINE TABLE IF NOT EXISTS interface SCHEMALESS; DEFINE TABLE IF NOT EXISTS ip_address SCHEMALESS;
+DEFINE TABLE IF NOT EXISTS subnet SCHEMALESS; DEFINE TABLE IF NOT EXISTS vlan SCHEMALESS; DEFINE TABLE IF NOT EXISTS route SCHEMALESS;
+DEFINE TABLE IF NOT EXISTS bgp SCHEMALESS; DEFINE TABLE IF NOT EXISTS vrf SCHEMALESS; DEFINE TABLE IF NOT EXISTS acl SCHEMALESS;
+DEFINE TABLE IF NOT EXISTS ntp_server SCHEMALESS; DEFINE TABLE IF NOT EXISTS ntp_status SCHEMALESS; DEFINE TABLE IF NOT EXISTS graph_edge SCHEMALESS;
+DEFINE TABLE IF NOT EXISTS observation SCHEMALESS; DEFINE TABLE IF NOT EXISTS config_snapshot SCHEMALESS; DEFINE TABLE IF NOT EXISTS config_change SCHEMALESS;
+DEFINE TABLE IF NOT EXISTS conflict SCHEMALESS; DEFINE TABLE IF NOT EXISTS rag_chunk SCHEMALESS;
 DEFINE ANALYZER IF NOT EXISTS rag_text TOKENIZERS class, punct FILTERS lowercase;
-DEFINE INDEX device_key ON TABLE device FIELDS key UNIQUE;
-DEFINE INDEX observation_device_time ON TABLE observation FIELDS device_name, collected_at;
-DEFINE INDEX edge_key ON TABLE graph_edge FIELDS key UNIQUE;
+DEFINE INDEX IF NOT EXISTS device_key ON TABLE device FIELDS key UNIQUE;
+DEFINE INDEX IF NOT EXISTS observation_device_time ON TABLE observation FIELDS device_name, collected_at;
+DEFINE INDEX IF NOT EXISTS edge_key ON TABLE graph_edge FIELDS key UNIQUE;
 DEFINE INDEX IF NOT EXISTS rag_chunk_path ON TABLE rag_chunk FIELDS path;
 DEFINE INDEX IF NOT EXISTS rag_chunk_brand ON TABLE rag_chunk FIELDS brand;
 DEFINE INDEX IF NOT EXISTS rag_chunk_text ON TABLE rag_chunk FIELDS text FULLTEXT ANALYZER rag_text BM25;
 DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
-"#).await.map_err(|e| format!("Failed to define graph schema: {e}"))?;
+"#).await.map_err(|e| format!("Failed to define graph schema: {e}"))?
+            .check().map_err(|e| format!("Failed to define graph schema: {e}"))?;
+        self.db.query(ROUTER_SCHEMA_SQL).await
+            .map_err(|e| format!("Failed to define router schema: {e}"))?
+            .check().map_err(|e| format!("Failed to define router schema: {e}"))?;
         Ok(())
     }
 
@@ -293,7 +356,8 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
             .bind(("id", key.to_owned()))
             .bind(("record", record))
             .await
-            .map_err(|e| format!("Failed to write {table}: {e}"))?;
+            .map_err(|e| format!("Failed to write {table}: {e}"))?
+            .check().map_err(|e| format!("Failed to write {table}: {e}"))?;
         Ok(())
     }
 
@@ -334,6 +398,7 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         if input.device_name.trim().is_empty() || input.source_id.trim().is_empty() {
             return Err("Graph ingestion requires a device name and source ID".into());
         }
+        if let Some(value) = &input.normalized { router_schema::validate_normalized(value)?; }
         // A retry/canonicalization update for the same source and collection
         // time replaces its raw observation instead of creating an ambiguous tie.
         let observation_id = stable_rag_id(&format!("{}:{}:{}:{}", input.device_name, input.kind.as_str(), input.source_id, input.collected_at.to_rfc3339()));
@@ -460,7 +525,43 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
             self.edge("device_has_route", &device_key, &id, observation_id)
                 .await?;
         }
+        for resource in ROUTER_RESOURCES.iter() {
+            for row in json_array(value, &resource.table) {
+                let mut identity = vec![json!(resource.table), json!(device)];
+                identity.extend(resource.identity.iter().map(|name| row[name].clone()));
+                let key = Value::Array(identity).to_string();
+                let id = record_key(&key);
+                let mut record = row.clone();
+                record["key"] = json!(key);
+                record["device_name"] = json!(device);
+                record["observation_id"] = json!(observation_id);
+                record["observed_at"] = json!(observed_at.to_rfc3339());
+                let kind = format!("device_has_{}", resource.table);
+                let edge_key = format!("{kind}:{device_key}:{id}");
+                let edge = json!({"key":edge_key,"kind":kind,"from":device_key,"to":id,
+                    "observation_id":observation_id,"updated_at":observed_at.to_rfc3339()});
+                // Delayed observations cannot replace newer feature state.
+                self.db.query("BEGIN TRANSACTION;
+                    LET $previous = (SELECT VALUE observed_at FROM type::record($table, $id))[0];
+                    IF $previous = NONE OR $previous <= $record.observed_at {
+                        UPSERT type::record($table, $id) CONTENT $record;
+                        UPSERT type::record('graph_edge', $edge_id) CONTENT $edge;
+                    };
+                    COMMIT TRANSACTION;")
+                    .bind(("table",resource.table.clone())).bind(("id",id))
+                    .bind(("record",record)).bind(("edge_id",record_key(&edge_key))).bind(("edge",edge))
+                    .await.map_err(|e| format!("Failed to store {}: {e}", resource.table))?
+                    .check().map_err(|e| format!("Failed to store {}: {e}", resource.table))?;
+            }
+        }
         Ok(())
+    }
+
+    /// Native feature facts with observation provenance. Callers must check
+    /// observed_at; persisted facts do not imply current live device state.
+    pub async fn router_facts(&self, table: &str, device: &str) -> Result<Vec<Value>, String> {
+        let resource = router_schema::resource_schema(table)?;
+        self.select(&format!("SELECT * FROM {} WHERE device_name = $value ORDER BY key;", resource.table), device).await
     }
 
     pub async fn query_network(&self, query: GraphQuery) -> Result<GraphQueryResult, String> {
@@ -477,7 +578,7 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
             .and_then(Value::as_str)
             .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
             .map(|d| d.with_timezone(&Utc));
-        let fresh = latest
+        let mut fresh = latest
             .map(|t| Utc::now() - t <= Duration::minutes(GRAPH_TTL_MINUTES))
             .unwrap_or(false);
         let mut facts = Vec::new();
@@ -486,6 +587,17 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
                 self.select("SELECT * FROM device WHERE name = $value;", device)
                     .await?,
             );
+            if router_schema::resource_schema(query.query.trim()).is_ok() {
+                let resources = self.router_facts(query.query.trim(), device).await?;
+                fresh = !resources.is_empty() && resources.iter().all(|row| {
+                    row["observed_at"].as_str().and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+                        .is_some_and(|t| {
+                            let age = Utc::now() - t.with_timezone(&Utc);
+                            age >= Duration::zero() && age <= Duration::minutes(GRAPH_TTL_MINUTES)
+                        })
+                });
+                facts.extend(resources);
+            }
         }
         if let Some(ip) = &query.ip_address {
             facts.extend(
@@ -706,7 +818,7 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
             .relations
             .iter()
             .flat_map(|r| r.kinds())
-            .map(|kind| (*kind).to_owned())
+            .map(|kind| kind.to_owned())
             .collect();
         let mut frontier = visited.clone();
         let mut edge_keys = BTreeSet::new();
@@ -741,7 +853,8 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
                 );
             }
         }
-        for table in ["device", "interface", "bgp", "vrf", "route"] {
+        for table in ["device", "interface", "bgp", "vrf", "route"].into_iter()
+            .chain(ROUTER_RESOURCES.iter().map(|resource| resource.table.as_str())) {
             let sql=format!("SELECT *, record::id(id) AS traversal_id FROM {table} WHERE record::id(id) IN $ids ORDER BY key;");
             let mut response = self
                 .db
@@ -777,17 +890,81 @@ pub enum SubgraphRelation {
     Bgp,
     Vrf,
     Route,
+    Ospf,
+    MacEntry,
+    IpsecConnection,
+    IkeSa,
+    OspfNeighbor,
+    Isis,
+    Bfd,
+    Lldp,
+    Ndp,
+    Vrrp,
+    Lacp,
+    Tunnel,
+    RoutingPolicy,
+    PrefixSet,
+    PolicyForwarding,
+    AclEntry,
+    AclBinding,
+    Nat,
+    DhcpRelay,
+    Qos,
+    QosInterface,
+    Pim,
+    Igmp,
+    Mpls,
+    DnsServer,
+    SyslogServer,
+    AaaServer,
+    Snmp,
+    TelemetrySubscription,
+    PlatformComponent,
+    System,
 }
 impl SubgraphRelation {
-    fn kinds(self) -> &'static [&'static str] {
-        match self {
-            Self::Interface => &["has_interface", "interface"],
-            Self::Bgp => &["device_has_bgp", "bgp"],
-            Self::Vrf => &["device_has_vrf", "vrf"],
-            Self::Route => &["device_has_route", "route"],
-        }
+    fn kinds(self) -> Vec<String> {
+        let table = match self {
+            Self::Interface => return vec!["has_interface".into(), "interface".into()],
+            Self::Bgp => return vec!["device_has_bgp".into(), "bgp".into()],
+            Self::Vrf => return vec!["device_has_vrf".into(), "vrf".into()],
+            Self::Route => return vec!["device_has_route".into(), "route".into()],
+            Self::Ospf => "ospf",
+            Self::MacEntry => "mac_entry",
+            Self::IpsecConnection => "ipsec_connection",
+            Self::IkeSa => "ike_sa",
+            Self::OspfNeighbor => "ospf_neighbor",
+            Self::Isis => "isis",
+            Self::Bfd => "bfd",
+            Self::Lldp => "lldp",
+            Self::Ndp => "ndp",
+            Self::Vrrp => "vrrp",
+            Self::Lacp => "lacp",
+            Self::Tunnel => "tunnel",
+            Self::RoutingPolicy => "routing_policy",
+            Self::PrefixSet => "prefix_set",
+            Self::PolicyForwarding => "policy_forwarding",
+            Self::AclEntry => "acl_entry",
+            Self::AclBinding => "acl_binding",
+            Self::Nat => "nat",
+            Self::DhcpRelay => "dhcp_relay",
+            Self::Qos => "qos",
+            Self::QosInterface => "qos_interface",
+            Self::Pim => "pim",
+            Self::Igmp => "igmp",
+            Self::Mpls => "mpls",
+            Self::DnsServer => "dns_server",
+            Self::SyslogServer => "syslog_server",
+            Self::AaaServer => "aaa_server",
+            Self::Snmp => "snmp",
+            Self::TelemetrySubscription => "telemetry_subscription",
+            Self::PlatformComponent => "platform_component",
+            Self::System => "system",
+        };
+        vec![format!("device_has_{table}")]
     }
 }
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SubgraphResult {
     pub nodes: Vec<Value>,
@@ -868,6 +1045,126 @@ fn mac_table_ports(raw: &str, mac: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn native_router_tables_enforce_schema_and_preserve_scoped_facts() {
+        let path = std::env::temp_dir().join(format!("mikomai-router-schema-{}", uuid::Uuid::new_v4()));
+        let graph = PortableGraph::initialize_at(&path).await.unwrap();
+        graph.define_schema().await.unwrap();
+        let now = Utc::now();
+        let input = |device: &str, normalized: Value, time: DateTime<Utc>| GraphIngestInput {
+            source_id: "test:native".into(), collected_at: time, device_name: device.into(),
+            kind: GraphDataKind::Config, raw: "fixture".into(), normalized: Some(normalized),
+            canonical: None, evidence: Some(json!({"transport":"fixture"})), normalizer_version: "test".into(),
+        };
+        // Exercise every actual table, typed column and index against RocksDB.
+        let mut normalized = serde_json::Map::new();
+        let planner_schema: Value = serde_json::from_str(&mikomai_core::planner::build_decision_schema(
+            &["r1".into()], &["get_subgraph".into()])).unwrap();
+        for resource in ROUTER_RESOURCES.iter() {
+            let relation: SubgraphRelation = serde_json::from_value(json!(resource.table)).unwrap();
+            assert_eq!(relation.kinds(), vec![format!("device_has_{}", resource.table)]);
+            assert!(planner_schema["properties"]["parameters"]["properties"]["relations"]["items"]["enum"]
+                .as_array().unwrap().contains(&json!(resource.table)));
+            let kind: GraphDataKind = serde_json::from_value(json!(resource.table)).unwrap();
+            assert_eq!(kind.as_str(), resource.table);
+            let mut row = serde_json::Map::new();
+            for field in &resource.fields {
+                let value = match field.name.as_str() {
+                    "version" => json!(2), "direction" => json!("ingress"),
+                    "address_family" => json!("ipv6"), "port" => json!(514),
+                    "mtu" => json!(1500), "virtual_router_id" => json!(42),
+                    "initiator_spi" | "responder_spi" => json!("18446744073709551615"),
+                    _ => match field.field_type.as_str() {
+                        "string" => json!("sample"), "int" => json!(1), "float" => json!(20.5),
+                        "bool" => json!(true), "object" => json!({"nested":{"packets":42}}),
+                        "array<object>" => json!([{"nested":{"packets":42}}]),
+                        "array<string>" => json!(["sample"]), "array<int>" => json!([16]),
+                        _ => unreachable!(),
+                    },
+                };
+                row.insert(field.name.clone(), value);
+            }
+            normalized.insert(resource.table.clone(), json!([row]));
+        }
+        graph.ingest(input("fixtures", Value::Object(normalized.clone()), now)).await.unwrap();
+        for resource in ROUTER_RESOURCES.iter() {
+            let rows = graph.router_facts(&resource.table, "fixtures").await.unwrap();
+            assert_eq!(rows.len(), 1, "{}", resource.table);
+            for (name, expected) in normalized[&resource.table][0].as_object().unwrap() {
+                assert_eq!(&rows[0][name], expected, "{}.{}", resource.table, name);
+            }
+            assert!(rows[0]["observation_id"].is_string());
+        }
+        let snapshot = json!({"ospf":[
+            {"vrf":"blue","version":2,"process_id":"1","router_id":"192.0.2.1","enabled":true},
+            {"vrf":"red","version":2,"process_id":"1","router_id":"192.0.2.2","enabled":false}
+        ],"lldp":[{"interface":"Gi0/1","neighbor_id":"peer-1","chassis_id":"aa:bb:cc:dd:ee:ff",
+            "port_id":"Gi0/2","system_name":"switch1","capabilities":["BRIDGE"],"ttl":120}]});
+        graph.ingest(input("r1", snapshot.clone(), now)).await.unwrap();
+        graph.ingest(input("r2", snapshot.clone(), now)).await.unwrap();
+        graph.ingest(input("r1", snapshot, now)).await.unwrap();
+        assert_eq!(graph.router_facts("ospf", "r1").await.unwrap().len(), 2);
+        assert_eq!(graph.router_facts("ospf", "r2").await.unwrap().len(), 2);
+        let subgraph = graph.get_subgraph(SubgraphRequest {roots:vec!["r1".into()],depth:1,
+            relations:vec![SubgraphRelation::Ospf,SubgraphRelation::Lldp]}).await.unwrap();
+        assert_eq!(subgraph.edges.len(), 3);
+        assert_eq!(subgraph.nodes.len(), 4);
+        assert!(subgraph.nodes.iter().any(|node| node["type"] == "lldp" && node["record"]["system_name"] == "switch1"));
+        // Out-of-order observations retain the latest fact and its citation edge.
+        graph.ingest(input("r1",json!({"ospf":[{"vrf":"blue","version":2,"process_id":"1","enabled":false}]}),now-Duration::minutes(1))).await.unwrap();
+        let rows = graph.router_facts("ospf", "r1").await.unwrap();
+        assert_eq!(rows.iter().find(|r| r["vrf"] == "blue").unwrap()["enabled"], true);
+        let query = graph.query_network(GraphQuery {query:"ospf".into(),device_name:Some("r1".into()),
+            ip_address:None,vlan:None,acl:None}).await.unwrap();
+        assert!(query.fresh);
+        assert_eq!(query.facts.len(), 3);
+        graph.ingest(input("stale",json!({"lldp":[{"interface":"Gi0/1","neighbor_id":"peer-1"}]}),now-Duration::minutes(30))).await.unwrap();
+        graph.ingest(input("stale",json!({"interfaces":[{"name":"Gi0/1"}]}),now)).await.unwrap();
+        let stale = graph.query_network(GraphQuery {query:"lldp".into(),device_name:Some("stale".into()),
+            ip_address:None,vlan:None,acl:None}).await.unwrap();
+        assert!(!stale.fresh && stale.requires_refresh);
+        for invalid in [
+            json!({"ospf":[{"vrf":"blue","version":2}]}),
+            json!({"lldp":[{"interface":"Gi0/1","neighbor_id":"peer","ttl":"120"}]}),
+            json!({"lldp":[{"interface":"Gi0/1","neighbor_id":"peer","device_name":"forged"}]}),
+            json!({"lldp":{}}),
+            json!({"ospf":[{"vrf":"blue","version":4,"process_id":"1"}]}),
+            json!({"lldp":[{"interface":"Gi0/1","neighbor_id":"peer","ttl":65536}]}),
+            json!({"lldp":[{"interface":"Gi0/1","neighbor_id":"peer"},{"interface":"Gi0/1","neighbor_id":"peer"}]}),
+        ] {
+            assert!(graph.ingest(input("invalid",invalid,now)).await.is_err());
+        }
+        assert!(graph.select("SELECT * FROM observation WHERE device_name = $value;", "invalid").await.unwrap().is_empty());
+        assert!(graph.router_facts("lldp; DELETE device", "r1").await.is_err());
+        assert!(graph.router_facts("openconfig", "r1").await.is_err());
+        // The database enforces types and protocol ranges independently of ingestion.
+        let mut bad = rows[0].clone();
+        bad.as_object_mut().unwrap().remove("id");
+        bad["version"] = json!(4);
+        assert!(graph.upsert("ospf", "bad-version",bad.clone()).await.is_err());
+        bad["version"] = json!("2");
+        assert!(graph.upsert("ospf", "bad-type",bad).await.is_err());
+        let mut response = graph.db.query("INFO FOR DB;").await.unwrap().check().unwrap();
+        let info: Option<Value> = response.take(0).unwrap();
+        let info = info.unwrap();
+        assert!(info["tables"].get("ospf").is_some());
+        assert!(info["tables"].get("lldp").is_some());
+        assert!(info["tables"].get("openconfig").is_none());
+        drop(graph);
+        let mut reopened = None;
+        for _ in 0..100 {
+            match PortableGraph::initialize_at(&path).await {
+                Ok(graph) => { reopened = Some(graph); break; }
+                Err(error) if error.contains("LOCK") || error.contains("lock") =>
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await,
+                Err(error) => panic!("Reopening graph failed: {error}"),
+            }
+        }
+        let graph = reopened.expect("RocksDB should release its lock after drop");
+        assert_eq!(graph.router_facts("ospf", "r2").await.unwrap().len(), 2);
+        drop(graph);
+        let _ = std::fs::remove_dir_all(path);
+    }
     #[test]
     fn mac_formats_normalize_and_mac_table_extracts_ports() {
         assert_eq!(

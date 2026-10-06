@@ -1,0 +1,1609 @@
+[
+  {
+    "table": "ospf",
+    "feature": "OSPFプロセス・エリア・インターフェース",
+    "identity": [
+      "vrf",
+      "version",
+      "process_id"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "version",
+        "type": "int",
+        "required": true,
+        "allowed": [
+          2,
+          3
+        ]
+      },
+      {
+        "name": "process_id",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "router_id",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "areas",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "interfaces",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "ospf/openconfig-ospfv2.yang",
+    "yang_revision": "2024-06-17",
+    "yang_sha256": "afcaca12410533a37bbd0b9441fd060c479c0cc44d70055bfb9f75758804710a"
+  },
+  {
+    "table": "ospf_neighbor",
+    "feature": "OSPF隣接",
+    "identity": [
+      "vrf",
+      "version",
+      "process_id",
+      "interface",
+      "router_id"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "version",
+        "type": "int",
+        "required": true,
+        "allowed": [
+          2,
+          3
+        ]
+      },
+      {
+        "name": "process_id",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "router_id",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "area_id",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "address",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "adjacency_state",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "priority",
+        "type": "int",
+        "required": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      {
+        "name": "dead_time",
+        "type": "int",
+        "required": false
+      }
+    ],
+    "yang_file": "ospf/openconfig-ospfv2-area-interface.yang",
+    "yang_revision": "2024-06-17",
+    "yang_sha256": "72da1a3d8768d88bb7d78ca83f9c487fb22ee71f9563129ae38a9e7afb7db870"
+  },
+  {
+    "table": "isis",
+    "feature": "IS-IS",
+    "identity": [
+      "vrf",
+      "instance"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "instance",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "net",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "level_capability",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "interfaces",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "neighbors",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "isis/openconfig-isis.yang",
+    "yang_revision": "2026-05-23",
+    "yang_sha256": "7a1b730b43fa2c93b83066ac01fc7db3d21f1810058bbeeae8341baf1fe9b6c8"
+  },
+  {
+    "table": "bfd",
+    "feature": "BFDセッション",
+    "identity": [
+      "vrf",
+      "interface",
+      "local_address",
+      "remote_address"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "local_address",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "remote_address",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "session_state",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "local_discriminator",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "remote_discriminator",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "detection_multiplier",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "desired_minimum_tx_interval",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "required_minimum_receive",
+        "type": "int",
+        "required": false
+      }
+    ],
+    "yang_file": "bfd/openconfig-bfd.yang",
+    "yang_revision": "2025-09-03",
+    "yang_sha256": "c30c87a9a2692abb6e200a9035f48bbf9236a8f11e98047fa13dace07cfce4e1"
+  },
+  {
+    "table": "lldp",
+    "feature": "LLDP隣接",
+    "identity": [
+      "interface",
+      "neighbor_id"
+    ],
+    "fields": [
+      {
+        "name": "interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "neighbor_id",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "chassis_id",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "chassis_id_type",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "port_id",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "port_id_type",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "port_description",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "system_name",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "system_description",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "management_address",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "capabilities",
+        "type": "array<string>",
+        "required": false
+      },
+      {
+        "name": "ttl",
+        "type": "int",
+        "required": false,
+        "minimum": 0,
+        "maximum": 65535
+      }
+    ],
+    "yang_file": "lldp/openconfig-lldp.yang",
+    "yang_revision": "2026-04-14",
+    "yang_sha256": "47f0acf89991bc1db9274586d7e77bcf789d0a4642b51f27192c32763bb6c197"
+  },
+  {
+    "table": "ndp",
+    "feature": "IPv6近隣",
+    "identity": [
+      "vrf",
+      "interface",
+      "ip_address"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "ip_address",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "link_layer_address",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "neighbor_state",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "origin",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "is_router",
+        "type": "bool",
+        "required": false
+      }
+    ],
+    "yang_file": "interfaces/openconfig-if-ip.yang",
+    "yang_revision": "2026-06-01",
+    "yang_sha256": "48c1ddc5d423214c0bda03b0f96c6560290ed9b805a9d39fcadbbf68749fac71"
+  },
+  {
+    "table": "vrrp",
+    "feature": "VRRP IPv4/IPv6",
+    "identity": [
+      "vrf",
+      "interface",
+      "address_family",
+      "virtual_router_id"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "address_family",
+        "type": "string",
+        "required": true,
+        "allowed": [
+          "ipv4",
+          "ipv6"
+        ]
+      },
+      {
+        "name": "virtual_router_id",
+        "type": "int",
+        "required": true,
+        "minimum": 1,
+        "maximum": 255
+      },
+      {
+        "name": "priority",
+        "type": "int",
+        "required": false,
+        "minimum": 1,
+        "maximum": 254
+      },
+      {
+        "name": "preempt",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "virtual_addresses",
+        "type": "array<string>",
+        "required": false
+      },
+      {
+        "name": "advertisement_interval",
+        "type": "int",
+        "required": false,
+        "minimum": 1,
+        "maximum": 4095
+      },
+      {
+        "name": "current_priority",
+        "type": "int",
+        "required": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      {
+        "name": "master_address",
+        "type": "string",
+        "required": false
+      }
+    ],
+    "yang_file": "interfaces/openconfig-if-ip.yang",
+    "yang_revision": "2026-06-01",
+    "yang_sha256": "48c1ddc5d423214c0bda03b0f96c6560290ed9b805a9d39fcadbbf68749fac71"
+  },
+  {
+    "table": "lacp",
+    "feature": "LAG/LACPメンバー",
+    "identity": [
+      "aggregate_interface",
+      "member_interface"
+    ],
+    "fields": [
+      {
+        "name": "aggregate_interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "member_interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "lacp_mode",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "interval",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "system_id_mac",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "system_priority",
+        "type": "int",
+        "required": false,
+        "minimum": 0,
+        "maximum": 65535
+      },
+      {
+        "name": "actor_port_num",
+        "type": "int",
+        "required": false,
+        "minimum": 0,
+        "maximum": 65535
+      },
+      {
+        "name": "partner_id",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "synchronization",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "collecting",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "distributing",
+        "type": "bool",
+        "required": false
+      }
+    ],
+    "yang_file": "lacp/openconfig-lacp.yang",
+    "yang_revision": "2026-04-09",
+    "yang_sha256": "ea1e803b165fc190ed517d66b34f53402324330a9ea651f311ab37b43aff0615"
+  },
+  {
+    "table": "tunnel",
+    "feature": "トンネルインターフェース",
+    "identity": [
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "src",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "dst",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "ttl",
+        "type": "int",
+        "required": false,
+        "minimum": 1,
+        "maximum": 255
+      },
+      {
+        "name": "gre_key",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "mtu",
+        "type": "int",
+        "required": false,
+        "minimum": 68,
+        "maximum": 65535
+      }
+    ],
+    "yang_file": "interfaces/openconfig-if-tunnel.yang",
+    "yang_revision": "2018-11-21",
+    "yang_sha256": "ae45cf3c4ac8983e9df9464230e9498b27877c27384cb0744e8b8abaf393f715"
+  },
+  {
+    "table": "routing_policy",
+    "feature": "経路ポリシー",
+    "identity": [
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "statements",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "policy/openconfig-routing-policy.yang",
+    "yang_revision": "2024-11-26",
+    "yang_sha256": "6e27336a1c44d083389800369bb7ebf885473a69218ade98e3a55d34efee2685"
+  },
+  {
+    "table": "prefix_set",
+    "feature": "経路prefix-set",
+    "identity": [
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "mode",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "prefixes",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "policy/openconfig-routing-policy.yang",
+    "yang_revision": "2024-11-26",
+    "yang_sha256": "6e27336a1c44d083389800369bb7ebf885473a69218ade98e3a55d34efee2685"
+  },
+  {
+    "table": "policy_forwarding",
+    "feature": "ポリシーベースルーティング",
+    "identity": [
+      "vrf",
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "type",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "rules",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "interfaces",
+        "type": "array<string>",
+        "required": false
+      }
+    ],
+    "yang_file": "policy-forwarding/openconfig-policy-forwarding.yang",
+    "yang_revision": "2026-03-13",
+    "yang_sha256": "94838dc43c6f48735ee10532885652b624d6d18b96dc0cc15dcce82ddc65353f"
+  },
+  {
+    "table": "acl_entry",
+    "feature": "ACL match/action",
+    "identity": [
+      "acl_name",
+      "acl_type",
+      "sequence_id"
+    ],
+    "fields": [
+      {
+        "name": "acl_name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "acl_type",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "sequence_id",
+        "type": "int",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "ipv4",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "ipv6",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "l2",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "transport",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "actions",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "matched_packets",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "matched_octets",
+        "type": "int",
+        "required": false
+      }
+    ],
+    "yang_file": "acl/openconfig-acl.yang",
+    "yang_revision": "2023-02-06",
+    "yang_sha256": "0b37eb2dea5bd240e68186f6db65d1eff775308ad6475e692c01188eeebdf946"
+  },
+  {
+    "table": "acl_binding",
+    "feature": "ACL適用先",
+    "identity": [
+      "interface",
+      "direction",
+      "acl_name",
+      "acl_type"
+    ],
+    "fields": [
+      {
+        "name": "interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "direction",
+        "type": "string",
+        "required": true,
+        "allowed": [
+          "ingress",
+          "egress"
+        ]
+      },
+      {
+        "name": "acl_name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "acl_type",
+        "type": "string",
+        "required": true
+      }
+    ],
+    "yang_file": "acl/openconfig-acl.yang",
+    "yang_revision": "2023-02-06",
+    "yang_sha256": "0b37eb2dea5bd240e68186f6db65d1eff775308ad6475e692c01188eeebdf946"
+  },
+  {
+    "table": "nat",
+    "feature": "NAT instance・pool・mapping・translation",
+    "identity": [
+      "vrf",
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "interfaces",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "pools",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "mappings",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "translations",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "counters",
+        "type": "object",
+        "required": false
+      }
+    ],
+    "yang_file": "nat/openconfig-nat.yang",
+    "yang_revision": "2025-07-15",
+    "yang_sha256": "470a5b036658ec7e954c81420198e8e2de6dd7f4f87cabe0f3734f1673d16f65"
+  },
+  {
+    "table": "dhcp_relay",
+    "feature": "DHCPv4/v6 relay",
+    "identity": [
+      "vrf",
+      "interface",
+      "address_family"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "address_family",
+        "type": "string",
+        "required": true,
+        "allowed": [
+          "ipv4",
+          "ipv6"
+        ]
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "helper_addresses",
+        "type": "array<string>",
+        "required": false
+      },
+      {
+        "name": "agent_information",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "counters",
+        "type": "object",
+        "required": false
+      }
+    ],
+    "yang_file": "relay-agent/openconfig-relay-agent.yang",
+    "yang_revision": "2023-02-06",
+    "yang_sha256": "f14a832581f9d53bb9e21a57e6d202bc23082620cb9b4428cad15dfb8db027f1"
+  },
+  {
+    "table": "qos",
+    "feature": "QoS classifier・queue・scheduler",
+    "identity": [
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "classifiers",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "forwarding_groups",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "queues",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "scheduler_policies",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "qos/openconfig-qos-elements.yang",
+    "yang_revision": "2026-04-30",
+    "yang_sha256": "dc299c048e993a7c47afec163274ccf53af53a6f2ad8a1c9499b653e0901650e"
+  },
+  {
+    "table": "qos_interface",
+    "feature": "QoSインターフェース適用",
+    "identity": [
+      "interface",
+      "direction"
+    ],
+    "fields": [
+      {
+        "name": "interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "direction",
+        "type": "string",
+        "required": true,
+        "allowed": [
+          "ingress",
+          "egress"
+        ]
+      },
+      {
+        "name": "classifiers",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "queues",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "scheduler_policy",
+        "type": "string",
+        "required": false
+      }
+    ],
+    "yang_file": "qos/openconfig-qos-interfaces.yang",
+    "yang_revision": "2026-04-30",
+    "yang_sha256": "f7608948004ffa65002c4fc38aed703ec7c668ffbd2950b83b5e9debe8a14d0e"
+  },
+  {
+    "table": "pim",
+    "feature": "PIMインターフェース",
+    "identity": [
+      "vrf",
+      "interface"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "mode",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "dr_priority",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "neighbors",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "rendezvous_points",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "multicast/openconfig-pim.yang",
+    "yang_revision": "2024-12-06",
+    "yang_sha256": "815eb90d1fe4824b873f742e1abcd0959257a6c332ee301bf1c5982a4e6bf034"
+  },
+  {
+    "table": "igmp",
+    "feature": "IGMP group/source",
+    "identity": [
+      "vrf",
+      "interface",
+      "group_address"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "interface",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "group_address",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "version",
+        "type": "int",
+        "required": false,
+        "allowed": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "name": "filter_mode",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sources",
+        "type": "array<string>",
+        "required": false
+      }
+    ],
+    "yang_file": "multicast/openconfig-igmp.yang",
+    "yang_revision": "2023-02-03",
+    "yang_sha256": "8e379212369ddc9f7bbc31a088f9ebf9ff3ec3b04a7b9c952fb1d49be8c1a2ae"
+  },
+  {
+    "table": "mpls",
+    "feature": "MPLS LSP・LDP/RSVP/SR",
+    "identity": [
+      "vrf",
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "signaling_protocol",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "ingress",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "transit",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "egress",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "label_stack",
+        "type": "array<int>",
+        "required": false
+      },
+      {
+        "name": "next_hops",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "mpls/openconfig-mpls.yang",
+    "yang_revision": "2025-12-10",
+    "yang_sha256": "95fefabaec8396b441c7aa5187afd56c629bbdbbefb8fb2b5c5305b41e9ef439"
+  },
+  {
+    "table": "dns_server",
+    "feature": "DNS resolver",
+    "identity": [
+      "address"
+    ],
+    "fields": [
+      {
+        "name": "address",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "port",
+        "type": "int",
+        "required": false,
+        "minimum": 1,
+        "maximum": 65535
+      },
+      {
+        "name": "source_address",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": false
+      }
+    ],
+    "yang_file": "system/openconfig-system.yang",
+    "yang_revision": "2026-07-20",
+    "yang_sha256": "e46d544d9f3e702353ad9bcfb3f59fb8d2ce1f0cdc868c0ae5f3c250462853c5"
+  },
+  {
+    "table": "syslog_server",
+    "feature": "Syslog送信先",
+    "identity": [
+      "address",
+      "port"
+    ],
+    "fields": [
+      {
+        "name": "address",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "port",
+        "type": "int",
+        "required": true,
+        "minimum": 1,
+        "maximum": 65535
+      },
+      {
+        "name": "source_address",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "selectors",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "system/openconfig-system-logging.yang",
+    "yang_revision": "2024-08-20",
+    "yang_sha256": "de39d13a1364fee09b87e0dd45fbdcf970fcb33004c89084edd9dbecd82e1981"
+  },
+  {
+    "table": "aaa_server",
+    "feature": "RADIUS/TACACS server",
+    "identity": [
+      "group_name",
+      "address"
+    ],
+    "fields": [
+      {
+        "name": "group_name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "address",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "protocol",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "port",
+        "type": "int",
+        "required": false,
+        "minimum": 1,
+        "maximum": 65535
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "source_address",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "auth_counters",
+        "type": "object",
+        "required": false
+      }
+    ],
+    "yang_file": "system/openconfig-aaa.yang",
+    "yang_revision": "2025-10-31",
+    "yang_sha256": "75a3d4f7e22d846c4402a809c0a9a071a76e0ee2d36ffc1d1429e24101c9b824"
+  },
+  {
+    "table": "snmp",
+    "feature": "SNMP agent・通知・アクセス制御",
+    "identity": [
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "engine_id",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "access_lists",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "receivers",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "system/openconfig-snmp.yang",
+    "yang_revision": "2026-05-05",
+    "yang_sha256": "d89c4f0c5c660389f61b46bced1606e81b20bfda71bc11a9fbd745dea2a879f1"
+  },
+  {
+    "table": "telemetry_subscription",
+    "feature": "Telemetry subscription",
+    "identity": [
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "subscription_type",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sensor_paths",
+        "type": "array<string>",
+        "required": false
+      },
+      {
+        "name": "destinations",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "sample_interval",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "heartbeat_interval",
+        "type": "int",
+        "required": false
+      },
+      {
+        "name": "suppress_redundant",
+        "type": "bool",
+        "required": false
+      }
+    ],
+    "yang_file": "telemetry/openconfig-telemetry.yang",
+    "yang_revision": "2018-11-21",
+    "yang_sha256": "c8629bf8aaf523d2dfd40c82e084518a017a5f85eef0ac70813b529a4162ac18"
+  },
+  {
+    "table": "platform_component",
+    "feature": "筐体・電源・ファン・CPU・温度",
+    "identity": [
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "type",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "parent",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "serial_no",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "part_no",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "oper_status",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "temperature",
+        "type": "float",
+        "required": false
+      },
+      {
+        "name": "memory",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "cpu",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "subcomponents",
+        "type": "array<string>",
+        "required": false
+      }
+    ],
+    "yang_file": "platform/openconfig-platform.yang",
+    "yang_revision": "2026-07-08",
+    "yang_sha256": "3110725bddf8345cf4f4df775b271a9cab4f4f0b40705cf7c53f5d6b7e2838b2"
+  },
+  {
+    "table": "system",
+    "feature": "ホスト名・時刻・リソース状態",
+    "identity": [
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "hostname",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "domain_name",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "timezone_name",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "boot_time",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "current_datetime",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "memory",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "cpus",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "system/openconfig-system.yang",
+    "yang_revision": "2026-07-20",
+    "yang_sha256": "e46d544d9f3e702353ad9bcfb3f59fb8d2ce1f0cdc868c0ae5f3c250462853c5"
+  },
+  {
+    "table": "mac_entry",
+    "feature": "ブリッジMAC/FDB",
+    "identity": [
+      "vrf",
+      "mac_address",
+      "vlan"
+    ],
+    "fields": [
+      {
+        "name": "vrf",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "mac_address",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "vlan",
+        "type": "int",
+        "required": true,
+        "minimum": 1,
+        "maximum": 4094
+      },
+      {
+        "name": "interface",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "entry_type",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "age",
+        "type": "int",
+        "required": false
+      }
+    ],
+    "yang_file": "network-instance/openconfig-network-instance-l2.yang",
+    "yang_revision": "2026-03-17",
+    "yang_sha256": "5dd37266b065cac69a4c2104251e5ecceb33de3411ce0dc80da79660652aa237"
+  },
+  {
+    "table": "ipsec_connection",
+    "feature": "IPsec VPN接続状態",
+    "identity": [
+      "address_family",
+      "name"
+    ],
+    "fields": [
+      {
+        "name": "address_family",
+        "type": "string",
+        "required": true,
+        "allowed": [
+          "ipv4",
+          "ipv6"
+        ]
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "profile_name",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "tunnel_interface",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "local_address",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "remote_address",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "connection_uptime",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "next_sa_rekey_time",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "error",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "counters",
+        "type": "object",
+        "required": false
+      },
+      {
+        "name": "ike_security_associations",
+        "type": "array<object>",
+        "required": false
+      },
+      {
+        "name": "child_security_associations",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "security/openconfig-security-ipsec.yang",
+    "yang_revision": "2025-12-03",
+    "yang_sha256": "b645debf900e747d6ee0ece645716701cabb5eb191b50c304fb4cbcdd8ca1b46"
+  },
+  {
+    "table": "ike_sa",
+    "feature": "IKE SA状態",
+    "identity": [
+      "address_family",
+      "initiator_spi",
+      "responder_spi",
+      "remote_address",
+      "local_address"
+    ],
+    "fields": [
+      {
+        "name": "address_family",
+        "type": "string",
+        "required": true,
+        "allowed": [
+          "ipv4",
+          "ipv6"
+        ]
+      },
+      {
+        "name": "initiator_spi",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "responder_spi",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "remote_address",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "local_address",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "child_security_associations",
+        "type": "array<object>",
+        "required": false
+      }
+    ],
+    "yang_file": "security/openconfig-security-ike.yang",
+    "yang_revision": "2025-12-03",
+    "yang_sha256": "e86965bb26992f9abb8cb18af141bbbc08e350c12de072863a8a8838c8d68668"
+  }
+]

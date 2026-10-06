@@ -209,7 +209,7 @@ pub fn build_decision_schema(devices: &[String], tools: &[String]) -> String {
                 "refresh":{"type":"boolean"},
                 "roots":{"type":"array","items":{"type":"string","minLength":1},"minItems":1,"maxItems":32},
                 "depth":{"type":"integer","minimum":0,"maximum":8},
-                "relations":{"type":"array","items":{"type":"string","enum":["interface","bgp","vrf","route"]},"minItems":1},
+                "relations":{"type":"array","items":{"type":"string","enum":["interface","bgp","vrf","route","ospf","ospf_neighbor","isis","bfd","lldp","ndp","vrrp","lacp","tunnel","routing_policy","prefix_set","policy_forwarding","acl_entry","acl_binding","nat","dhcp_relay","qos","qos_interface","pim","igmp","mpls","dns_server","syslog_server","aaa_server","snmp","telemetry_subscription","platform_component","system","mac_entry","ipsec_connection","ike_sa"]},"minItems":1},
                 "service":{"type":"string"},"query":{"type":"string"},"ip":{"type":"string"},"mac":{"type":"string"},
                 "port":{"type":["integer","string"],"minimum":1,"maximum":65535,"description":"Port number or service name; e.g. ssh, dns, tcp/22"},
                 "protocol":{"type":"string","enum":["tcp"]},

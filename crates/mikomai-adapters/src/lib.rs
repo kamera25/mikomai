@@ -15,6 +15,7 @@ pub mod portable_rag;
 pub mod portable_watch;
 pub mod python;
 pub mod reporter;
+pub mod router_schema;
 pub mod search;
 pub mod storage;
 pub mod transfer;
