@@ -5,6 +5,21 @@ use serde_json::{json, Value};
 pub fn query(request: &Value) -> Result<Value, String> {
     let text = |key: &str| request[key].as_str().unwrap_or("");
     Ok(match text("op") {
+        "credential_update" => {
+            mikomai_adapters::secrets::update(text("id"),request["password"].as_str(),request["enablePassword"].as_str())?;
+            Value::Null
+        },
+        "device_snapshot" => crate::native_execution::snapshot(&crate::native_execution::connection(text("id"))?)?,
+        "native_tool" => json!(crate::native_execution::execute_tool(text("tool"),&request["target"],&request["args"])?),
+        "operation_prepare" => {
+            let connection=crate::native_execution::connection(text("id"))?;
+            let snapshot=std::ffi::CString::new(crate::native_execution::snapshot(&connection)?.to_string()).map_err(|e|e.to_string())?;
+            let target=std::ffi::CString::new(connection["name"].as_str().ok_or("device name missing")?).map_err(|e|e.to_string())?;
+            let commands:Vec<&str>=text("proposal").lines().map(str::trim).filter(|s|!s.is_empty()).collect();
+            let commands=std::ffi::CString::new(json!(commands).to_string()).map_err(|e|e.to_string())?;
+            let rationale=std::ffi::CString::new(text("rationale")).map_err(|e|e.to_string())?;
+            serde_json::from_str(&unsafe {crate::consume_result(crate::mikomai_operation_plan_create(target.as_ptr(),snapshot.as_ptr(),commands.as_ptr(),rationale.as_ptr()))?}).map_err(|e|e.to_string())?
+        },
         "store_load" => crate::shared_service().load_document(text("collection"))?.unwrap_or(Value::Null),
         "store_save" => {
             crate::shared_service().save_document(text("collection"), &request["value"])?;

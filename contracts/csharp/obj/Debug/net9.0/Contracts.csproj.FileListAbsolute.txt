@@ -1,0 +1,15 @@
+/Users/kamera25/mikomai/contracts/csharp/bin/Debug/net9.0/Contracts
+/Users/kamera25/mikomai/contracts/csharp/bin/Debug/net9.0/Contracts.deps.json
+/Users/kamera25/mikomai/contracts/csharp/bin/Debug/net9.0/Contracts.runtimeconfig.json
+/Users/kamera25/mikomai/contracts/csharp/bin/Debug/net9.0/Contracts.dll
+/Users/kamera25/mikomai/contracts/csharp/bin/Debug/net9.0/Contracts.pdb
+/Users/kamera25/mikomai/contracts/csharp/obj/Debug/net9.0/Contracts.GeneratedMSBuildEditorConfig.editorconfig
+/Users/kamera25/mikomai/contracts/csharp/obj/Debug/net9.0/Contracts.AssemblyInfoInputs.cache
+/Users/kamera25/mikomai/contracts/csharp/obj/Debug/net9.0/Contracts.AssemblyInfo.cs
+/Users/kamera25/mikomai/contracts/csharp/obj/Debug/net9.0/Contracts.csproj.CoreCompileInputs.cache
+/Users/kamera25/mikomai/contracts/csharp/obj/Debug/net9.0/Contracts.sourcelink.json
+/Users/kamera25/mikomai/contracts/csharp/obj/Debug/net9.0/Contracts.dll
+/Users/kamera25/mikomai/contracts/csharp/obj/Debug/net9.0/refint/Contracts.dll
+/Users/kamera25/mikomai/contracts/csharp/obj/Debug/net9.0/Contracts.pdb
+/Users/kamera25/mikomai/contracts/csharp/obj/Debug/net9.0/Contracts.genruntimeconfig.cache
+/Users/kamera25/mikomai/contracts/csharp/obj/Debug/net9.0/ref/Contracts.dll

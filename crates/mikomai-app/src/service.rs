@@ -8,17 +8,20 @@ use std::sync::{atomic::AtomicBool, Mutex, OnceLock};
 
 #[derive(Default)]
 pub struct MikomaiService {
-    pub(crate) operation_plans: OnceLock<Mutex<HashMap<String, OperationPlan>>>,
-    pub(crate) generic_execution_claims: OnceLock<Mutex<HashSet<String>>>,
+    pub(crate) operation_plans: OnceLock<Result<Mutex<HashMap<String, OperationPlan>>, String>>,
+    pub(crate) generic_execution_claims: OnceLock<Result<Mutex<HashSet<String>>, String>>,
     pub(crate) pending_agent_tasks: OnceLock<Mutex<HashMap<uuid::Uuid, TaskSnapshot>>>,
     pub(crate) rag_ingested_paths: OnceLock<Mutex<HashSet<PathBuf>>>,
     pub(crate) portable_graph:
         OnceLock<Mutex<Option<mikomai_adapters::portable_graph::PortableGraph>>>,
-    pub(crate) operation_audit: OnceLock<mikomai_adapters::audit::FileAuditLog>,
+    pub(crate) device_workers: OnceLock<Result<mikomai_adapters::device_worker::WorkerPool,String>>,
+    pub(crate) device_locks: OnceLock<crate::scheduling::DeviceLockManager>,
+    pub(crate) watch_listener: OnceLock<std::sync::Arc<dyn crate::owned_bridge::LegacyListener>>,
     pub(crate) watch_runtime: OnceLock<Mutex<Option<FfiWatchRuntime>>>,
     pub(crate) apple_selected: AtomicBool,
     runtime: OnceLock<Result<tokio::runtime::Runtime, String>>,
     database_path: Option<PathBuf>,
+    pub(crate) document_lock: Mutex<()>,
 }
 
 impl MikomaiService {
@@ -46,9 +49,9 @@ impl MikomaiService {
                 .map(Ok)
                 .unwrap_or_else(crate::resolve_portable_graph_path)?;
             *graph =
-                Some(self.runtime()?.block_on(
+                Some(self.run(
                     mikomai_adapters::portable_graph::PortableGraph::initialize_at(&path),
-                )?);
+                )??);
         }
         graph
             .as_ref()
@@ -59,15 +62,37 @@ impl MikomaiService {
     pub fn load_document(&self, collection: &str) -> Result<Option<serde_json::Value>, String> {
         // The legacy facade shares one service until explicit handles replace it.
         let graph = self.graph()?;
-        self.runtime()?
-            .block_on(graph.load_app_document(collection))
+        self.run(graph.load_app_document(collection))?
     }
 
     pub fn save_document(&self, collection: &str, value: &serde_json::Value) -> Result<(), String> {
         validate_document(collection, value)?;
         let graph = self.graph()?;
-        self.runtime()?
-            .block_on(graph.save_app_document(collection, value))
+        self.run(graph.save_app_document(collection, value))?
+    }
+
+    pub(crate) fn run<F: std::future::Future + Send>(&self, future: F) -> Result<F::Output, String>
+    where F::Output: Send {
+        let runtime = self.runtime()?;
+        if let Ok(handle)=tokio::runtime::Handle::try_current() {
+            let run=||std::thread::scope(|scope|scope.spawn(||runtime.block_on(future)).join()).map_err(|_|"application job panicked".to_string());
+            // Return this runtime worker to Tokio while synchronous callers wait
+            // for database work. Otherwise a one-worker runtime deadlocks itself.
+            if handle.runtime_flavor()==tokio::runtime::RuntimeFlavor::MultiThread {tokio::task::block_in_place(run)} else {run()}
+        } else { Ok(runtime.block_on(future)) }
+    }
+
+    pub(crate) fn save_internal(&self, collection: &str, value: &serde_json::Value) -> Result<(), String> {
+        let graph = self.graph()?;
+        self.run(graph.save_app_document(collection, value))?
+    }
+
+    pub(crate) fn update_internal<T>(&self, collection: &str, update: impl FnOnce(&mut serde_json::Value) -> Result<T, String>) -> Result<T, String> {
+        let _guard = self.document_lock.lock().map_err(|_| "store lock poisoned")?;
+        let mut value = self.load_document(collection)?.unwrap_or(serde_json::json!({}));
+        let result = update(&mut value)?;
+        self.save_internal(collection, &value)?;
+        Ok(result)
     }
 
     /// All application jobs, including Watch and approved operations, use this

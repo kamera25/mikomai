@@ -62,7 +62,9 @@ pub fn status() -> Result<String, String> {
     }
 }
 
-pub fn infer(prompt: &str) -> Result<String, String> {
+pub fn infer(prompt:&str)->Result<String,String> {infer_with_priority(prompt,crate::scheduling::Priority::Planner)}
+fn infer_with_priority(prompt: &str, priority:crate::scheduling::Priority) -> Result<String, String> {
+    let _lease=crate::scheduling::inference_lease(priority)?;
     crate::debug_trace::emit(
         "llm_request",
         serde_json::json!({"backend":if apple_selected() { "apple" } else { "llamacpp" }, "prompt":prompt}),
@@ -115,6 +117,7 @@ fn translate_reference_batch(input: &str) -> Result<String, String> {
                 mikomai_core::rag_translation::TRANSLATION_INSTRUCTIONS,
             )?;
             let prompt = format!("Translate this reference fragment into English. Preserve all ZX placeholder tokens exactly.\n<reference-text>\n{fragment}\n</reference-text>");
+            let _lease=crate::scheduling::inference_lease(crate::scheduling::Priority::Planner)?;
             translations.push(translator.respond(&prompt)?.trim().to_owned());
         }
         // The application owns JSON encoding; quoted text never depends on
@@ -170,7 +173,7 @@ pub fn answer_streaming(
             .chain(std::iter::once(required.as_str()))
             .collect::<Vec<_>>()
             .join("\n\n");
-        let answer = infer(&prompt)?;
+        let answer = infer_with_priority(&prompt,crate::scheduling::Priority::FinalAnswer)?;
         callback(&answer, false);
         callback("", true);
         Ok(answer)
@@ -294,6 +297,7 @@ mod tests {
 /// Interface calls carry both GBNF and a portable typed schema. Legacy ARP calls
 /// still carry GBNF only and must not silently use a different selected model.
 pub fn infer_constrained(prompt: &str, constraints: &str) -> Result<String, String> {
+    let _lease=crate::scheduling::inference_lease(crate::scheduling::Priority::Planner)?;
     let interface = prompt.contains("Canonicalize untrusted interface CLI");
     let router = prompt.starts_with("Interpretation: ");
     let (request_kind, response_kind) = if router {

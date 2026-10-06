@@ -228,6 +228,7 @@ DEFINE TABLE IF NOT EXISTS bgp SCHEMALESS; DEFINE TABLE IF NOT EXISTS vrf SCHEMA
 DEFINE TABLE IF NOT EXISTS ntp_server SCHEMALESS; DEFINE TABLE IF NOT EXISTS ntp_status SCHEMALESS; DEFINE TABLE IF NOT EXISTS graph_edge SCHEMALESS;
 DEFINE TABLE IF NOT EXISTS observation SCHEMALESS; DEFINE TABLE IF NOT EXISTS config_snapshot SCHEMALESS; DEFINE TABLE IF NOT EXISTS config_change SCHEMALESS;
 DEFINE TABLE IF NOT EXISTS conflict SCHEMALESS; DEFINE TABLE IF NOT EXISTS rag_chunk SCHEMALESS;
+DEFINE TABLE IF NOT EXISTS tasks SCHEMALESS; DEFINE TABLE IF NOT EXISTS operations SCHEMALESS; DEFINE TABLE IF NOT EXISTS approvals SCHEMALESS; DEFINE TABLE IF NOT EXISTS watches SCHEMALESS; DEFINE TABLE IF NOT EXISTS audit SCHEMALESS; DEFINE TABLE IF NOT EXISTS claims SCHEMALESS;
 DEFINE TABLE IF NOT EXISTS settings SCHEMALESS; DEFINE TABLE IF NOT EXISTS sessions SCHEMALESS; DEFINE TABLE IF NOT EXISTS connections SCHEMALESS;
 DEFINE ANALYZER IF NOT EXISTS rag_text TOKENIZERS class, punct FILTERS lowercase;
 DEFINE INDEX IF NOT EXISTS device_key ON TABLE device FIELDS key UNIQUE;
@@ -1305,7 +1306,7 @@ mod tests {
 struct AppDocument { schema_version: u32, payload: String }
 
 fn validate_app_table(table: &str) -> Result<(), String> {
-    if ["settings", "sessions", "connections"].contains(&table) { Ok(()) }
+    if ["settings", "sessions", "connections", "tasks", "operations", "approvals", "watches", "audit", "claims"].contains(&table) { Ok(()) }
     else { Err("unsupported application collection".into()) }
 }
 

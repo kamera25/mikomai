@@ -1,6 +1,6 @@
 import Foundation
 import AppKit
-import MikomaiFFI
+import MikomaiBindings
 import MikomaiDesktopCore
 
 extension DesktopModel {
@@ -18,7 +18,7 @@ extension DesktopModel {
             watchStatus = "監視設定の保存先を作成できませんでした: \(error.localizedDescription)"
             return
         }
-        let box = WatchCallbackBox(connections: connections, credentialPersistence: credentialPersistence) { [weak self] data in
+        let box = WatchCallbackBox(connections: connections) { [weak self] data in
             Task { @MainActor [weak self] in
                 guard let self, let value = try? JSONDecoder().decode(NativeWatch.Run.Notice.self, from: data) else { return }
                 self.watchStatus = value.message
@@ -28,7 +28,7 @@ extension DesktopModel {
             }
         }
         let context = Unmanaged.passRetained(box).toOpaque()
-        let response = destination.path.withCString { mikomai_watch_start($0, watchToolBridge, watchNotificationBridge, context) }
+        let response = destination.path.withCString { mikomai_watch_start($0, nil, watchNotificationBridge, context) }
         defer { mikomai_result_free(response) }
         if response.status == 0 {
             watchCallbackBox = box

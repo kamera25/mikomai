@@ -1,0 +1,7 @@
+[bindings.swift]
+module_name = "MikomaiBindings"
+ffi_module_name = "MikomaiGeneratedFFI"
+generate_module_map = true
+[bindings.csharp]
+namespace = "Mikomai.Bindings"
+cdylib_name = "mikomai_bindings"

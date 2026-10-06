@@ -34,6 +34,7 @@ impl mikomai_core::port::StreamingInferencePort for StreamingInference {
         prompt: &str,
         callback: &mut dyn FnMut(&str, bool),
     ) -> Result<String, String> {
+        let _lease=crate::scheduling::inference_lease(crate::scheduling::Priority::FinalAnswer)?;
         emit(
             "llm_request",
             serde_json::json!({"backend":"llamacpp", "prompt":prompt}),

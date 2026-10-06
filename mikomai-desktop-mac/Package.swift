@@ -20,20 +20,12 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-testing.git", .upToNextMinor(from: "6.2.0"))
     ],
     targets: [
-        .target(name: "MikomaiDesktopCore", dependencies: ["MikomaiFFI"], path: "Sources/MikomaiDesktopCore"),
-        .target(
-            name: "MikomaiFFI",
-            path: "Sources/MikomaiFFI",
-            publicHeadersPath: "include",
-            linkerSettings: [
-                .unsafeFlags(["-L\(rustLibraryDirectory)"]),
-                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
-                .linkedLibrary("mikomai_ffi")
-            ]
-        ),
+        .target(name: "MikomaiDesktopCore", dependencies: ["MikomaiBindings"], path: "Sources/MikomaiDesktopCore"),
+        .target(name: "MikomaiGeneratedFFI", path: "Sources/MikomaiGeneratedFFI", publicHeadersPath:"include", linkerSettings:[.unsafeFlags(["-L\(rustLibraryDirectory)"]),.unsafeFlags(["-Xlinker","-rpath","-Xlinker","@executable_path/../Frameworks"]),.linkedLibrary("mikomai_bindings")]),
+        .target(name:"MikomaiBindings",dependencies:["MikomaiGeneratedFFI"],path:"Sources/MikomaiBindings"),
         .executableTarget(
             name: "MikomaiDesktopMac",
-            dependencies: ["MikomaiDesktopCore", "MikomaiFFI"],
+            dependencies: ["MikomaiDesktopCore", "MikomaiBindings"],
             resources: [.copy("Resources/AppIcon.icns")]
         ),
         .testTarget(

@@ -4,7 +4,7 @@ import Foundation
 import Darwin
 import Security
 import CryptoKit
-import MikomaiFFI
+import MikomaiBindings
 import MikomaiDesktopCore
 import UniformTypeIdentifiers
 

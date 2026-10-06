@@ -4,7 +4,7 @@ import Foundation
 import Darwin
 import Security
 import CryptoKit
-import MikomaiFFI
+import MikomaiBindings
 import MikomaiDesktopCore
 import UniformTypeIdentifiers
 
@@ -119,28 +119,6 @@ struct NativeDeviceSnapshot: Codable, Equatable {
     let port: String
     let credentialsFingerprint: String
 
-    init(_ connection: SavedConnection, credentials: ConnectionCredentials) {
-        id = connection.id.uuidString
-        name = connection.name
-        host = connection.host
-        username = connection.username
-        deviceType = connection.deviceType
-        connectionType = connection.connectionType ?? "SSH"
-        port = connection.port
-        let credentialText = "\(credentials.password ?? "")\u{0}\(credentials.enablePassword ?? "")"
-        credentialsFingerprint = SHA256.hash(data: Data(credentialText.utf8)).map { String(format: "%02x", $0) }.joined()
-    }
-}
-
-struct NetworkRunnerRequest: Sendable {
-    let action: String
-    let host: String
-    let username: String
-    let password: String
-    let secret: String
-    let deviceType: String
-    let port: String
-    let commands: [String]
 }
 
 struct NetworkOperationOutput: Sendable {
@@ -151,50 +129,3 @@ struct NetworkOperationOutput: Sendable {
     var exitCode: Int32? = nil
 }
 
-// MARK: - Keychain Helper
-
-private enum KeychainHelper {
-    private static let service = "com.mikomai.desktop.mac"
-
-    static func save(key: String, value: String) {
-        guard let data = value.data(using: .utf8) else { return }
-        delete(key: key)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
-        ]
-        SecItemAdd(query as CFDictionary, nil)
-    }
-
-    static func load(key: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    static func delete(key: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key
-        ]
-        SecItemDelete(query as CFDictionary)
-    }
-}
-
-struct KeychainCredentialAdapter: CredentialStore {
-    func save(key: String, value: String) { KeychainHelper.save(key: key, value: value) }
-    func load(key: String) -> String? { KeychainHelper.load(key: key) }
-    func delete(key: String) { KeychainHelper.delete(key: key) }
-}

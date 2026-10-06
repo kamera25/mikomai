@@ -261,6 +261,7 @@ struct WatchStore {
 
 pub struct PortableWatchService {
     path: PathBuf,
+    persist: Option<Arc<dyn Fn(&[WatchDefinition])->Result<(),String> + Send + Sync>>,
     store: Mutex<WatchStore>,
 }
 
@@ -280,11 +281,17 @@ impl PortableWatchService {
         let watches = load_watches(&path);
         Ok(Self {
             path,
+            persist: None,
             store: Mutex::new(WatchStore {
                 watches,
                 ..WatchStore::default()
             }),
         })
+    }
+
+    pub fn with_store(watches:Vec<WatchDefinition>,persist:Arc<dyn Fn(&[WatchDefinition])->Result<(),String>+Send+Sync>)->Result<Self,String> {
+        for watch in &watches { watch.ir.validate()?; }
+        Ok(Self {path:PathBuf::new(),persist:Some(persist),store:Mutex::new(WatchStore{watches,..WatchStore::default()})})
     }
 
     pub fn storage_path(&self) -> &Path {
@@ -516,7 +523,7 @@ impl PortableWatchService {
         let previous = store.watches.clone();
         let previous_due = store.next_due.clone();
         update(&mut store);
-        if let Err(error) = save_watches(&self.path, &store.watches) {
+        if let Err(error) = self.persist.as_ref().map(|save| save(&store.watches)).unwrap_or_else(||save_watches(&self.path, &store.watches)) {
             store.watches = previous;
             store.next_due = previous_due;
             return Err(error);

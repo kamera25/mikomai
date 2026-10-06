@@ -10,8 +10,7 @@ mod logging;
 mod debug_trace;
 
 fn main() {
-    // Embedded RocksDB cannot be shared with the desktop process. Keep the
-    // CLI's rebuildable RAG index separate; an explicit override still wins.
+    // GUI and CLI use the same canonical path; an explicit override still wins.
     if let Some(path) = cli_graph_path(std::env::var_os("MIKOMAI_GRAPH_DB_PATH"), std::env::var_os("HOME")) {
         std::env::set_var("MIKOMAI_GRAPH_DB_PATH", path);
     }
@@ -32,7 +31,7 @@ fn main() {
 
 fn cli_graph_path(explicit: Option<std::ffi::OsString>, home: Option<std::ffi::OsString>) -> Option<PathBuf> {
     explicit.map(PathBuf::from).or_else(|| home.map(|home| {
-        PathBuf::from(home).join("Library/Application Support/MikomaiCLI/surrealdb")
+        PathBuf::from(home).join("Library/Application Support/MikomaiDesktopMac/surrealdb")
     }))
 }
 
@@ -41,12 +40,12 @@ mod graph_path_tests {
     use super::*;
 
     #[test]
-    fn cli_does_not_claim_the_desktop_database() {
+    fn cli_uses_the_canonical_database() {
         let home = PathBuf::from("/tmp/mikomai-path-test");
         let cli = cli_graph_path(None, Some(home.clone().into_os_string())).unwrap();
         assert_ne!(cli, home.join("Library/Application Support/com.mikomai.agent/surrealdb"));
-        assert_ne!(cli, home.join("Library/Application Support/MikomaiDesktopMac/surrealdb"));
-        assert_eq!(cli, home.join("Library/Application Support/MikomaiCLI/surrealdb"));
+        assert_eq!(cli, home.join("Library/Application Support/MikomaiDesktopMac/surrealdb"));
+        assert_eq!(cli, home.join("Library/Application Support/MikomaiDesktopMac/surrealdb"));
     }
 
     #[test]
@@ -81,6 +80,27 @@ pub fn run(mut args: Vec<String>, json: bool) -> Result<String, String> {
         return Err("--debug-jsonl is only supported for chat".into());
     }
     match args.first().map(String::as_str) {
+        Some("contract") => {
+            let fixture=std::fs::read_to_string(args.get(1).ok_or("contract fixture required")?).map_err(|e|e.to_string())?;
+            let engine=mikomai_app::api::engine();let id=engine.submit(mikomai_app::api::Command::Contract{fixture_json:fixture})?;
+            let start=std::time::Instant::now();
+            loop {
+                let snapshot=engine.query(&id)?;
+                if snapshot.state=="failed" {return Err(snapshot.result);}
+                if snapshot.state=="completed" {return Ok(serde_json::json!({"version":1,"kinds":snapshot.events.iter().map(|e|&e.kind).collect::<Vec<_>>(),"result":snapshot.result}).to_string());}
+                if start.elapsed()>std::time::Duration::from_secs(20) {return Err("contract timeout".into());}
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+        Some("device-show") => {
+            let target=args.get(1).ok_or("registered target required")?.clone();let commands=vec![args.get(2).ok_or("show command required")?.clone()];
+            let engine=mikomai_app::api::engine();let id=engine.submit(mikomai_app::api::Command::ReadDevice{target,commands,timeout_seconds:60})?;
+            loop {let snapshot=engine.query(&id)?;if ["completed","failed","cancelled","unknown","awaiting_user"].contains(&snapshot.state.as_str()) {return if snapshot.state=="completed" {Ok(snapshot.result)} else {Err(snapshot.result)}};std::thread::sleep(std::time::Duration::from_millis(5));}
+        }
+        Some("native-query") => {
+            let request=serde_json::from_str(args.get(1).ok_or("query JSON required")?).map_err(|e|e.to_string())?;
+            Ok(mikomai_app::native_features::query(&request)?.to_string())
+        }
         Some("chat") => chat(args.into_iter().skip(1).collect::<Vec<_>>().join(" "), json, debug_jsonl),
         Some("rag-ingest") => { let path = args.get(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("nw-docs")); let store = knowledge_store(); let chunks = store.ingest(path)?; Ok(if json { serde_json::json!({"ok": true, "data": {"chunks": chunks}}).to_string() } else { format!("Ingested {chunks} knowledge documents.") }) }
         Some("rag-search") => { let query = args.get(1..).unwrap_or(&[]).join(" "); if query.trim().is_empty() { return Err("rag-search query is required".into()); } let hits = futures_lite::future::block_on(knowledge_store().search(&query, 8))?; Ok(if json { serde_json::json!({"ok": true, "data": hits}).to_string() } else { hits.into_iter().map(|hit| format!("## {}\n{}", hit.title, hit.content)).collect::<Vec<_>>().join("\n\n") }) }

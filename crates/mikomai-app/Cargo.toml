@@ -8,11 +8,13 @@ mikomai-core = { path = "../../mikomai-core" }
 mikomai-adapters = { path = "../mikomai-adapters" }
 futures-lite = "2"
 serde_json = "1"
+base64 = "0.22"
+regex = "1"
 sha2 = "0.10"
+fs2 = "=0.4.3"
 serde = { version = "1", features = ["derive"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4.44", features = ["serde"] }
-tokio = { version = "1.52.1", features = ["rt-multi-thread", "rt", "time", "net", "fs", "io-util"] }
+tokio = { version = "1.52.1", features = ["rt-multi-thread", "rt", "time", "net", "fs", "io-util", "sync", "process", "macros"] }
 
 [dev-dependencies]
-base64 = "0.22"

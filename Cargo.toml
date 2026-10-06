@@ -5,7 +5,7 @@ members = [
   "crates/mikomai-adapters",
   "crates/mikomai-app",
   "crates/mikomai-cli",
-  "crates/mikomai-ffi",
+  "crates/mikomai-bindings",
   "crates/mikomai-llm",
   "crates/mikomai-llm-llamacpp",
 ]

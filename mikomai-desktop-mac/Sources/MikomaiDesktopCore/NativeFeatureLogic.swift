@@ -350,69 +350,6 @@ public enum ConnectionCredentialPolicy {
     }
 }
 
-public protocol CredentialStore: Sendable {
-    func save(key: String, value: String)
-    func load(key: String) -> String?
-    func delete(key: String)
-}
-
-public struct ConnectionCredentials: Equatable, Sendable {
-    public let password: String?
-    public let enablePassword: String?
-
-    public init(password: String?, enablePassword: String?) {
-        self.password = password
-        self.enablePassword = enablePassword
-    }
-}
-
-public struct ConnectionCredentialPersistence: Sendable {
-    private let store: any CredentialStore
-
-    public init(store: any CredentialStore) {
-        self.store = store
-    }
-
-    public func load(for connectionID: UUID) -> ConnectionCredentials {
-        ConnectionCredentials(
-            password: store.load(key: key(for: connectionID, credential: "password")),
-            enablePassword: store.load(key: key(for: connectionID, credential: "enable"))
-        )
-    }
-
-    @discardableResult
-    public func save(
-        for connectionID: UUID,
-        password: String?,
-        enablePassword: String?
-    ) -> ConnectionCredentials {
-        update(password, key: key(for: connectionID, credential: "password"))
-        update(enablePassword, key: key(for: connectionID, credential: "enable"))
-        return load(for: connectionID)
-    }
-
-    public func delete(for connectionID: UUID) {
-        store.delete(key: key(for: connectionID, credential: "password"))
-        store.delete(key: key(for: connectionID, credential: "enable"))
-    }
-
-    private func update(_ value: String?, key: String) {
-        guard let value else { return }
-        if value.isEmpty {
-            store.delete(key: key)
-        } else {
-            store.save(key: key, value: value)
-        }
-    }
-
-    private func key(for connectionID: UUID, credential: String) -> String {
-        "conn.\(connectionID.uuidString).\(credential)"
-    }
-}
-
-
-
-
 public enum ImageAttachmentError: LocalizedError {
     case disabled, invalidImage, tooLarge, tooMany, totalTooLarge
     public var errorDescription: String? {

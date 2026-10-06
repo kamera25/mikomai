@@ -29,7 +29,8 @@ if [ ! -d "$SDK" ]; then
 fi
 
 mkdir -p "$DIST" "$SCRATCH" "$CLANG_CACHE" "$SWIFTPM_CACHE"
-cargo build -p mikomai-ffi --manifest-path "$ROOT/Cargo.toml"
+sh "$ROOT/scripts/build-device-worker.sh"
+cargo build -p mikomai-bindings --manifest-path "$ROOT/Cargo.toml"
 build_swift() {
     # SwiftPM's Xcode backend can record the deployment target as the SDK
     # version. AppKit uses the linked SDK to enable the modern window controls.
@@ -61,19 +62,13 @@ cp "$APP/Info.plist" "$CONTENTS/Info.plist"
 cp "$APP/Sources/MikomaiDesktopMac/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
 cp -R "$PRODUCTS/MikomaiDesktopMac_MikomaiDesktopMac.bundle" "$CONTENTS/Resources/"
 cp "$PRODUCTS/MikomaiDesktopMac" "$CONTENTS/MacOS/Mikomai"
-cp "$ROOT/target/debug/deps/libmikomai_ffi.dylib" "$CONTENTS/Frameworks/libmikomai_ffi.dylib"
+cp "$ROOT/target/debug/deps/libmikomai_bindings.dylib" "$CONTENTS/Frameworks/libmikomai_bindings.dylib"
 cp -R "$ROOT/nw-docs" "$CONTENTS/Resources/nw-docs"
-cp "$ROOT/mikomai-core/assets/bin/netmiko_wrapper-macos-arm64" "$CONTENTS/Resources/netmiko_wrapper"
-mkdir -p "$CONTENTS/Resources/network"
-cp "$ROOT/mikomai-core/assets/network/netmiko_wrapper.py" "$CONTENTS/Resources/network/netmiko_wrapper.py"
-cp "$ROOT/mikomai-core/assets/network/netmiko_patches.py" "$CONTENTS/Resources/network/netmiko_patches.py"
-cp "$ROOT/mikomai-core/assets/network/config_helper.py" "$CONTENTS/Resources/network/config_helper.py"
-cp "$ROOT/mikomai-core/assets/network/nwdiag_wrapper.py" "$CONTENTS/Resources/network/nwdiag_wrapper.py"
-cp -R "$ROOT/mikomai-core/assets/templates" "$CONTENTS/Resources/templates"
-chmod 755 "$CONTENTS/Resources/netmiko_wrapper"
+cp "$ROOT/target/debug/mikomai-device-worker-macos-arm64" "$CONTENTS/Resources/mikomai-device-worker-macos-arm64"
+chmod 755 "$CONTENTS/Resources/mikomai-device-worker-macos-arm64"
 touch "$CONTENTS/Resources/.mikomai-development-bundle"
-install_name_tool -id @rpath/libmikomai_ffi.dylib "$CONTENTS/Frameworks/libmikomai_ffi.dylib"
-install_name_tool -change "$ROOT/target/debug/deps/libmikomai_ffi.dylib" @rpath/libmikomai_ffi.dylib "$CONTENTS/MacOS/Mikomai"
+install_name_tool -id @rpath/libmikomai_bindings.dylib "$CONTENTS/Frameworks/libmikomai_bindings.dylib"
+install_name_tool -change "$ROOT/target/debug/deps/libmikomai_bindings.dylib" @rpath/libmikomai_bindings.dylib "$CONTENTS/MacOS/Mikomai"
 # macOS 27 hides the ARP cache from apps without the Network Topology
 # Observation capability. It requires an authorised signing identity; adding
 # the restricted entitlement to an ad-hoc signature prevents the app launching.
@@ -84,7 +79,7 @@ else
     if [ -n "${MIKOMAI_PROVISIONING_PROFILE:-}" ]; then
         cp "$MIKOMAI_PROVISIONING_PROFILE" "$CONTENTS/embedded.provisionprofile"
     fi
-    codesign --force --sign "$SIGN_IDENTITY" "$CONTENTS/Frameworks/libmikomai_ffi.dylib"
+    codesign --force --sign "$SIGN_IDENTITY" "$CONTENTS/Frameworks/libmikomai_bindings.dylib"
     codesign --force --sign "$SIGN_IDENTITY" --entitlements "$APP/NetworkTopology.entitlements" "$STAGED_APP"
 fi
 codesign --verify --deep --strict "$STAGED_APP"

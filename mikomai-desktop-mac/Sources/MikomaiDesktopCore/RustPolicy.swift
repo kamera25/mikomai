@@ -1,5 +1,5 @@
 import Foundation
-import MikomaiFFI
+import MikomaiBindings
 
 public enum NativeStoreError: LocalizedError {
     case failure(String)
@@ -44,4 +44,21 @@ public enum NativePersistence {
 
 public enum LegacyDataNotice {
     public static var existingDirectories: [String] { RustPolicy.call(["op": "legacy_locations"]) }
+}
+
+public enum NativeCommands {
+    public static func request(_ json: String) throws -> String {
+        let result = legacyInvoke(op: "mikomai_native_query", args: [json], listener: nil)
+        guard result.status == 0 else { throw NativeStoreError.failure(result.text) }
+        return result.text
+    }
+    public static func updateCredentials(id: String, password: String?, enablePassword: String?) throws {
+        var request: [String:Any] = ["op":"credential_update", "id":id]
+        if let password { request["password"] = password }
+        if let enablePassword { request["enablePassword"] = enablePassword }
+        _ = try RustPolicy.data(request)
+    }
+    public static func prepareOperation<T:Decodable>(id: String, proposal: String, rationale: String) throws -> T {
+        try JSONDecoder().decode(T.self,from:RustPolicy.data(["op":"operation_prepare","id":id,"proposal":proposal,"rationale":rationale]))
+    }
 }

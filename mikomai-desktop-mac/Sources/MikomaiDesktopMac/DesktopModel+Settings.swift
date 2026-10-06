@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 import UniformTypeIdentifiers
 import MikomaiDesktopCore
-import MikomaiFFI
+import MikomaiBindings
 
 extension DesktopModel {
     // MARK: - Native Settings Management

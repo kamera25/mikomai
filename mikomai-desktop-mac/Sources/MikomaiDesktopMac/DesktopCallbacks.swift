@@ -4,7 +4,7 @@ import Foundation
 import Darwin
 import Security
 import CryptoKit
-import MikomaiFFI
+import MikomaiBindings
 import MikomaiDesktopCore
 import UniformTypeIdentifiers
 
@@ -20,15 +20,13 @@ final class StreamBox: @unchecked Sendable {
 final class ChatCallbackBox: @unchecked Sendable {
     let stream: StreamBox
     let connections: [SavedConnection]
-    let credentialPersistence: ConnectionCredentialPersistence
     let onOperationPlan: (Data) -> Void
     let onToolResult: (AgentToolResult) -> Void
     let onDebug: (String) -> Void
 
-    init(stream: StreamBox, connections: [SavedConnection], credentialPersistence: ConnectionCredentialPersistence, onOperationPlan: @escaping (Data) -> Void, onToolResult: @escaping (AgentToolResult) -> Void, onDebug: @escaping (String) -> Void) {
+    init(stream: StreamBox, connections: [SavedConnection], onOperationPlan: @escaping (Data) -> Void, onToolResult: @escaping (AgentToolResult) -> Void, onDebug: @escaping (String) -> Void) {
         self.stream = stream
         self.connections = connections
-        self.credentialPersistence = credentialPersistence
         self.onOperationPlan = onOperationPlan
         self.onToolResult = onToolResult
         self.onDebug = onDebug
@@ -110,36 +108,13 @@ struct WatchAlert: Identifiable {
 final class WatchCallbackBox: @unchecked Sendable {
     private let lock = NSLock()
     private var savedConnections: [SavedConnection]
-    let credentialPersistence: ConnectionCredentialPersistence
     let onNotification: @Sendable (Data) -> Void
-    init(connections: [SavedConnection], credentialPersistence: ConnectionCredentialPersistence, onNotification: @escaping @Sendable (Data) -> Void) {
+    init(connections: [SavedConnection], onNotification: @escaping @Sendable (Data) -> Void) {
         self.savedConnections = connections
-        self.credentialPersistence = credentialPersistence
         self.onNotification = onNotification
     }
     var connections: [SavedConnection] { lock.lock(); defer { lock.unlock() }; return savedConnections }
     func update(connections: [SavedConnection]) { lock.lock(); savedConnections = connections; lock.unlock() }
-}
-
-func watchToolBridge(
-    toolID: UnsafePointer<CChar>?, targetJSON: UnsafePointer<CChar>?, argsJSON: UnsafePointer<CChar>?,
-    output: UnsafeMutablePointer<CChar>?, outputCapacity: UInt, context: UnsafeMutableRawPointer?
-) -> Int32 {
-    guard let output, outputCapacity > 0 else { return 1 }
-    let capacity = Int(outputCapacity); output[0] = 0
-    guard let context, let toolID, let targetJSON, let argsJSON else { return 1 }
-    let box = Unmanaged<WatchCallbackBox>.fromOpaque(context).takeUnretainedValue()
-    do {
-        let target = try JSONDecoder().decode(PortableDeviceTarget.self, from: Data(String(cString: targetJSON).utf8))
-        let arguments = try JSONSerialization.jsonObject(with: Data(String(cString: argsJSON).utf8)) as? [String: Any] ?? [:]
-        let result = DesktopModel.runPortableAgentTool(tool: String(cString: toolID), target: target, arguments: arguments, connections: box.connections, credentialPersistence: box.credentialPersistence)
-        let payload = try JSONSerialization.data(withJSONObject: ["success": result.success, "output": result.success ? result.stdout : result.stderr])
-        let text = String(decoding: payload, as: UTF8.self)
-        return text.withCString { strlcpy(output, $0, capacity) < capacity ? 0 : 1 }
-    } catch {
-        let text = "watch probe failed: \(error.localizedDescription)"
-        return text.withCString { _ = strlcpy(output, $0, capacity); return 1 }
-    }
 }
 
 func watchNotificationBridge(notificationJSON: UnsafePointer<CChar>?, context: UnsafeMutableRawPointer?) {
@@ -148,92 +123,3 @@ func watchNotificationBridge(notificationJSON: UnsafePointer<CChar>?, context: U
     box.onNotification(Data(String(cString: notificationJSON).utf8))
 }
 
-func agentToolBridge(
-    toolID: UnsafePointer<CChar>?,
-    targetJSON: UnsafePointer<CChar>?,
-    argsJSON: UnsafePointer<CChar>?,
-    output: UnsafeMutablePointer<CChar>?,
-    outputCapacity: UInt,
-    context: UnsafeMutableRawPointer?
-) -> Int32 {
-    guard let output, outputCapacity > 0 else { return 1 }
-    let capacity = Int(outputCapacity)
-    output[0] = 0
-    guard let context, let toolID, let targetJSON, let argsJSON else {
-        "agent tool bridge arguments are missing".withCString { _ = strlcpy(output, $0, capacity) }
-        return 1
-    }
-    let box = Unmanaged<ChatCallbackBox>.fromOpaque(context).takeUnretainedValue()
-    let tool = String(cString: toolID)
-    box.onDebug(CoreDebugRecord.encode(kind: "tool_request", payload: ["tool":tool, "target_json":String(cString: targetJSON), "args_json":String(cString: argsJSON)]))
-    do {
-        let target = try JSONDecoder().decode(PortableDeviceTarget.self, from: Data(String(cString: targetJSON).utf8))
-        let arguments = try JSONSerialization.jsonObject(with: Data(String(cString: argsJSON).utf8)) as? [String: Any] ?? [:]
-        let result = DesktopModel.runPortableAgentTool(
-            tool: tool,
-            target: target,
-            arguments: arguments,
-            connections: box.connections,
-            credentialPersistence: box.credentialPersistence
-        )
-        box.onDebug(CoreDebugRecord.encode(kind: "tool_response", payload: ["tool":tool, "success":result.success, "stdout":result.stdout, "stderr":result.stderr, "command":result.command ?? "", "exit_code":result.exitCode.map { $0 as Any } ?? NSNull()]))
-        let toolOutput = AgentToolResult.isLocalProbe(tool: tool)
-            ? AgentToolResult.terminalOutput(stdout: result.stdout, stderr: result.stderr)
-            : result.success ? result.stdout : result.stderr
-        if tool == "get_state" || tool == "query_db" || AgentToolResult.isLocalProbe(tool: tool) {
-            box.onToolResult(AgentToolResult(tool: tool, output: toolOutput, succeeded: result.success, command: result.command))
-        }
-        let payload = try JSONSerialization.data(withJSONObject: ["success": result.success, "output": toolOutput])
-        let text = String(decoding: payload, as: UTF8.self)
-        let copied = text.withCString { strlcpy(output, $0, capacity) }
-        return copied < capacity ? 0 : 1
-    } catch {
-        let text = "agent tool failed: \(error.localizedDescription)"
-        let _ = text.withCString { strlcpy(output, $0, capacity) }
-        return 1
-    }
-}
-
-func agentPlanBridge(
-    target: UnsafePointer<CChar>?,
-    toolID: UnsafePointer<CChar>?,
-    argsJSON: UnsafePointer<CChar>?,
-    rationale: UnsafePointer<CChar>?,
-    output: UnsafeMutablePointer<CChar>?,
-    outputCapacity: UInt,
-    context: UnsafeMutableRawPointer?
-) -> Int32 {
-    guard let output, outputCapacity > 0 else { return 1 }
-    let capacity = Int(outputCapacity)
-    output[0] = 0
-    guard let context, let target, let toolID, let argsJSON, let rationale else { return 1 }
-    let box = Unmanaged<ChatCallbackBox>.fromOpaque(context).takeUnretainedValue()
-    let targetName = String(cString: target)
-    guard let connection = box.connections.first(where: { $0.name == targetName || $0.host == targetName || $0.id.uuidString == targetName }) else {
-        "変更対象がSwift側の登録端末にありません。".withCString { _ = strlcpy(output, $0, capacity) }
-        return 1
-    }
-    guard let credentialsJSON = try? String(data: JSONEncoder().encode(NativeDeviceSnapshot(connection, credentials: box.credentialPersistence.load(for: connection.id))), encoding: .utf8) else { return 1 }
-    let toolName = String(cString: toolID)
-    let args = String(cString: argsJSON)
-    let rationaleText = String(cString: rationale)
-    let response = connection.name.withCString { targetPtr in
-        credentialsJSON.withCString { snapshotPtr in
-            toolName.withCString { toolPtr in
-                args.withCString { argsPtr in
-                rationaleText.withCString { rationalePtr in
-                    mikomai_operation_plan_create_generic(targetPtr, toolPtr, snapshotPtr, argsPtr, rationalePtr)
-                }
-                }
-            }
-        }
-    }
-    defer { mikomai_result_free(response) }
-    guard response.status == 0, let message = response.message else {
-        let text = response.message.map { String(cString: $0) } ?? "変更計画を作成できませんでした。"
-        let _ = text.withCString { strlcpy(output, $0, capacity) }
-        return 1
-    }
-    let copied = strlcpy(output, message, capacity)
-    return copied < capacity ? 0 : 1
-}

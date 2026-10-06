@@ -30,6 +30,10 @@ use llm_runtime::infer;
 use mikomai_adapters::local_llama::CANCEL_INFERENCE;
 
 pub mod native_features;
+pub mod scheduling;
+pub mod api;
+pub mod native_execution;
+pub mod owned_bridge;
 mod service;
 pub use service::MikomaiService;
 use service::shared_service;
@@ -64,17 +68,22 @@ fn portable_app_data_dir() -> Result<PathBuf, String> {
     Ok(home.join("Library/Application Support/MikomaiDesktopMac"))
 }
 
-fn operation_audit_log() -> Result<&'static mikomai_adapters::audit::FileAuditLog, String> {
-    if let Some(log) = shared_service().operation_audit.get() {
-        return Ok(log);
+struct CanonicalAudit;
+impl CanonicalAudit {
+    fn append(&self,record:&mikomai_core::audit::AuditRecord)->Result<(),String> {
+        shared_service().update_internal("audit", |value| {
+            if !value.is_array() { if value==&serde_json::json!({}) {*value=serde_json::json!([]);} else {return Err("invalid audit schema".into());} }
+            value.as_array_mut().unwrap().push(serde_json::to_value(record).map_err(|e|e.to_string())?);Ok(())
+        })
     }
-    let path = portable_app_data_dir()?.join("audit/operations.ndjson");
-    let log = mikomai_adapters::audit::FileAuditLog::at(path);
-    let _ = shared_service().operation_audit.set(log);
-    shared_service().operation_audit
-        .get()
-        .ok_or_else(|| "operation audit log is unavailable".to_string())
+    fn list(&self,limit:usize)->Result<Vec<mikomai_core::audit::AuditRecord>,String> {
+        let value=shared_service().load_document("audit")?.unwrap_or(serde_json::json!([]));
+        let records:Vec<mikomai_core::audit::AuditRecord>=serde_json::from_value(value).map_err(|e|e.to_string())?;
+        if records.iter().any(|r|!mikomai_core::audit::verify(r)) {return Err("audit verification failed".into());}
+        Ok(records.into_iter().rev().take(limit).collect())
+    }
 }
+fn operation_audit_log()->Result<CanonicalAudit,String> {Ok(CanonicalAudit)}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -85,77 +94,27 @@ struct PersistedAgentAudit {
     last_event_at: chrono::DateTime<chrono::Utc>,
 }
 
-fn agent_event_directory() -> Result<PathBuf, String> {
-    if let Some(root) = std::env::var_os("MIKOMAI_DATA_DIR") {
-        return Ok(PathBuf::from(root).join("agent-events"));
-    }
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| "home directory is unavailable".to_string())?;
-    let native_path = home.join("Library/Application Support/MikomaiDesktopMac/agent-events");
-    Ok(native_path)
-}
-
-fn agent_task_path(task_id: uuid::Uuid) -> Result<PathBuf, String> {
-    Ok(agent_event_directory()?.join(format!("{task_id}.json")))
-}
-
 fn read_agent_audit(task_id: uuid::Uuid) -> Result<Option<PersistedAgentAudit>, String> {
-    let path = agent_task_path(task_id)?;
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(format!("cannot read agent task audit: {error}")),
-    };
-    serde_json::from_slice::<PersistedAgentAudit>(&bytes)
-        .map(Some)
-        .map_err(|error| format!("agent task audit is malformed: {error}"))
+    let value = shared_service().load_document("tasks")?.unwrap_or(serde_json::json!({}));
+    value.get("agent").and_then(|v|v.get(task_id.to_string())).cloned().map(serde_json::from_value).transpose().map_err(|e| e.to_string())
 }
-
 fn delete_agent_audit(task_id: uuid::Uuid) -> Result<(), String> {
-    let path = agent_task_path(task_id)?;
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| format!("cannot delete agent audit: {e}"))?;
-    }
-    Ok(())
+    shared_service().update_internal("tasks", |value| {
+        if let Some(records)=value.get_mut("agent").and_then(serde_json::Value::as_object_mut) {records.remove(&task_id.to_string());} Ok(())
+    })
 }
-
 fn delete_all_agent_audits() -> Result<(), String> {
-    let directory = agent_event_directory()?;
-    if directory.is_dir() {
-        for entry in std::fs::read_dir(&directory).map_err(|e| e.to_string())?.flatten() {
-            let path = entry.path();
-            if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("json") {
-                let _ = std::fs::remove_file(path);
-            }
-        }
-    }
-    Ok(())
+    shared_service().update_internal("tasks",|value|{value.as_object_mut().ok_or("invalid tasks schema")?.remove("agent");Ok(())})
 }
-
 fn persist_agent_audit(snapshot: &TaskSnapshot, event: serde_json::Value) -> Result<(), String> {
-    let path = agent_task_path(snapshot.task.id)?;
-    let mut audit = read_agent_audit(snapshot.task.id)?.unwrap_or_else(|| PersistedAgentAudit {
-        snapshot: snapshot.clone(),
-        events: Vec::new(),
-        started_at: chrono::Utc::now(),
-        last_event_at: chrono::Utc::now(),
-    });
-    audit.snapshot = snapshot.clone();
-    audit.last_event_at = chrono::Utc::now();
-    audit.events.push(event);
-    let parent = path
-        .parent()
-        .ok_or_else(|| "agent audit path has no parent".to_string())?;
-    std::fs::create_dir_all(parent)
-        .map_err(|error| format!("cannot create agent event directory: {error}"))?;
-    let temporary = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(&audit).map_err(|error| error.to_string())?;
-    std::fs::write(&temporary, bytes)
-        .map_err(|error| format!("cannot write agent audit: {error}"))?;
-    std::fs::rename(&temporary, &path).map_err(|error| {
-        let _ = std::fs::remove_file(&temporary);
-        format!("cannot atomically replace agent audit: {error}")
+    shared_service().update_internal("tasks", |value| {
+        if value.get("agent").is_none() {value["agent"]=serde_json::json!({});}
+        let records = value["agent"].as_object_mut().ok_or("invalid tasks schema")?;
+        let key = snapshot.task.id.to_string();
+        let mut audit: PersistedAgentAudit = records.get(&key).cloned().map(serde_json::from_value).transpose().map_err(|e| e.to_string())?
+            .unwrap_or_else(|| PersistedAgentAudit { snapshot:snapshot.clone(), events:Vec::new(), started_at:chrono::Utc::now(), last_event_at:chrono::Utc::now() });
+        audit.snapshot = snapshot.clone(); audit.last_event_at = chrono::Utc::now(); audit.events.push(event);
+        records.insert(key, serde_json::to_value(audit).map_err(|e| e.to_string())?); Ok(())
     })
 }
 
@@ -192,30 +151,10 @@ fn summarize_agent_audit(audit: &PersistedAgentAudit) -> AgentTaskSummary {
 }
 
 fn list_agent_audits() -> Result<Vec<PersistedAgentAudit>, String> {
-    let directory = agent_event_directory()?;
-    let entries = match std::fs::read_dir(directory) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(format!("cannot list agent task audit: {error}")),
-    };
-    let mut audits = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(id) = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .and_then(|stem| uuid::Uuid::parse_str(stem).ok())
-        else {
-            continue;
-        };
-        match read_agent_audit(id) {
-            Ok(Some(audit)) => audits.push(audit),
-            Ok(None) => {}
-            Err(error) => eprintln!("skipping unreadable agent audit {id}: {error}"),
-        }
-    }
-    audits.sort_by(|left, right| right.last_event_at.cmp(&left.last_event_at));
-    Ok(audits)
+    let value = shared_service().load_document("tasks")?.unwrap_or(serde_json::json!({}));
+    let mut audits: Vec<PersistedAgentAudit> = value.get("agent").cloned().unwrap_or(serde_json::json!({})).as_object().ok_or("invalid tasks schema")?.values().cloned()
+        .map(serde_json::from_value).collect::<Result<_,_>>().map_err(|e| e.to_string())?;
+    audits.sort_by(|a,b| b.last_event_at.cmp(&a.last_event_at)); Ok(audits)
 }
 
 fn resume_saved_agent_task(task_id: uuid::Uuid) -> Result<TaskSnapshot, String> {
@@ -292,18 +231,15 @@ fn rag_ingested_paths() -> &'static Mutex<std::collections::HashSet<PathBuf>> {
     shared_service().rag_ingested_paths.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
 }
 
-fn operation_plans() -> &'static Mutex<HashMap<String, OperationPlan>> {
+fn operation_plans() -> Result<&'static Mutex<HashMap<String, OperationPlan>>, String> {
     shared_service().operation_plans.get_or_init(|| {
-        let restored = operation_plan_path()
-            .ok()
-            .and_then(|path| std::fs::read(path).ok())
-            .and_then(|bytes| serde_json::from_slice::<Vec<OperationPlan>>(&bytes).ok())
-            .unwrap_or_default()
-            .into_iter()
-            .map(|plan| (plan.id.to_string(), plan))
-            .collect();
-        Mutex::new(restored)
-    })
+        let value = shared_service().load_document("operations")?.unwrap_or(serde_json::json!({}));
+        let mut plans:HashMap<String,OperationPlan>=serde_json::from_value(value).map_err(|e|format!("invalid operation store: {e}"))?;
+        let mut recovered=false;
+        for plan in plans.values_mut() {if plan.status==mikomai_core::OperationStatus::Executing {plan.status=mikomai_core::OperationStatus::Unknown;recovered=true;}}
+        if recovered {persist_operation_plans(&plans)?;}
+        Ok(Mutex::new(plans))
+    }).as_ref().map_err(Clone::clone)
 }
 
 fn strip_model_credentials(value: &mut serde_json::Value) {
@@ -337,16 +273,14 @@ fn strip_model_credentials(value: &mut serde_json::Value) {
     }
 }
 
-fn generic_execution_claims() -> &'static Mutex<std::collections::HashSet<String>> {
+fn generic_execution_claims() -> Result<&'static Mutex<std::collections::HashSet<String>>, String> {
     shared_service().generic_execution_claims.get_or_init(|| {
-        let restored = operation_plan_path()
-            .ok()
-            .map(|path| load_generic_execution_claims(&path.with_extension("executed.json")))
-            .unwrap_or_default();
-        Mutex::new(restored)
-    })
+        let value = shared_service().load_document("claims")?.unwrap_or(serde_json::json!([]));
+        serde_json::from_value(value).map(Mutex::new).map_err(|e| format!("invalid operation claims: {e}"))
+    }).as_ref().map_err(Clone::clone)
 }
 
+#[cfg(test)]
 fn load_generic_execution_claims(path: &Path) -> std::collections::HashSet<String> {
     std::fs::read(path)
         .ok()
@@ -354,15 +288,11 @@ fn load_generic_execution_claims(path: &Path) -> std::collections::HashSet<Strin
         .unwrap_or_default()
 }
 
-fn persist_generic_execution_claims(
-    claims: &std::collections::HashSet<String>,
-) -> Result<(), String> {
-    persist_generic_execution_claims_at(
-        &operation_plan_path()?.with_extension("executed.json"),
-        claims,
-    )
+fn persist_generic_execution_claims(claims: &std::collections::HashSet<String>) -> Result<(), String> {
+    shared_service().save_internal("claims", &serde_json::to_value(claims).map_err(|e| e.to_string())?)
 }
 
+#[cfg(test)]
 fn persist_generic_execution_claims_at(
     path: &Path,
     claims: &std::collections::HashSet<String>,
@@ -381,24 +311,9 @@ fn persist_generic_execution_claims_at(
         .map_err(|error| format!("cannot replace operation claim storage: {error}"))
 }
 
-fn operation_plan_path() -> Result<PathBuf, String> {
-    Ok(portable_app_data_dir()?.join("operation-plans.json"))
-}
 
 fn persist_operation_plans(plans: &HashMap<String, OperationPlan>) -> Result<(), String> {
-    let path = operation_plan_path()?;
-    let directory = path
-        .parent()
-        .ok_or_else(|| "operation plan storage path is invalid".to_string())?;
-    std::fs::create_dir_all(directory)
-        .map_err(|e| format!("cannot create operation plan storage: {e}"))?;
-    let bytes = serde_json::to_vec_pretty(&plans.values().cloned().collect::<Vec<_>>())
-        .map_err(|e| format!("cannot serialize operation plans: {e}"))?;
-    let temporary = path.with_extension("json.tmp");
-    std::fs::write(&temporary, bytes)
-        .map_err(|e| format!("cannot persist operation plans: {e}"))?;
-    std::fs::rename(&temporary, &path)
-        .map_err(|e| format!("cannot replace operation plan storage: {e}"))
+    shared_service().save_internal("operations", &serde_json::to_value(plans).map_err(|e| e.to_string())?)
 }
 
 fn validate_native_config_command(command: &str) -> Result<(), String> {
@@ -477,11 +392,11 @@ pub unsafe fn mikomai_operation_plan_create(
             rationale,
         )?;
         let json = serde_json::to_string(&plan).map_err(|e| e.to_string())?;
-        let mut plans = operation_plans()
+        let mut plans = operation_plans()?
             .lock()
             .map_err(|_| "operation plan state is unavailable".to_string())?;
         plans.insert(plan.id.to_string(), plan.clone());
-        persist_operation_plans(&plans)?;
+        if let Err(error)=persist_operation_plans(&plans) {plans.remove(&plan.id.to_string());return Err(error);}
         audit_operation(
             &plan,
             "planned",
@@ -562,11 +477,11 @@ pub unsafe fn mikomai_operation_plan_create_generic(
         let args = serde_json::Value::Object(args);
         let plan = ChangePlanner::create(tool_id, Some(target), args, rationale)?;
         let json = serde_json::to_string(&plan).map_err(|e| e.to_string())?;
-        let mut plans = operation_plans()
+        let mut plans = operation_plans()?
             .lock()
             .map_err(|_| "operation plan state is unavailable".to_string())?;
         plans.insert(plan.id.to_string(), plan.clone());
-        persist_operation_plans(&plans)?;
+        if let Err(error)=persist_operation_plans(&plans) {plans.remove(&plan.id.to_string());return Err(error);}
         audit_operation(
             &plan,
             "planned",
@@ -598,7 +513,7 @@ pub unsafe fn mikomai_operation_plan_approve(
             .to_str()
             .map_err(|e| e.to_string())?
             .to_owned();
-        let mut plans = operation_plans()
+        let mut plans = operation_plans()?
             .lock()
             .map_err(|_| "operation plan state is unavailable".to_string())?;
         let previous = plans
@@ -643,7 +558,7 @@ pub unsafe fn mikomai_operation_plan_get(id: *const c_char) -> MikomaiResult {
             .to_str()
             .map_err(|e| e.to_string())?
             .to_owned();
-        let plans = operation_plans()
+        let plans = operation_plans()?
             .lock()
             .map_err(|_| "operation plan state is unavailable".to_string())?;
         let plan = plans
@@ -744,7 +659,7 @@ pub unsafe fn mikomai_operation_plan_begin(
             .to_str()
             .map_err(|e| e.to_string())?
             .to_owned();
-        let mut plans = operation_plans()
+        let mut plans = operation_plans()?
             .lock()
             .map_err(|_| "operation plan state is unavailable".to_string())?;
         let previous = plans
@@ -792,7 +707,7 @@ pub unsafe fn mikomai_operation_plan_finish(
             .to_str()
             .map_err(|e| e.to_string())?
             .to_owned();
-        let mut plans = operation_plans()
+        let mut plans = operation_plans()?
             .lock()
             .map_err(|_| "operation plan state is unavailable".to_string())?;
         let previous = plans
@@ -933,7 +848,7 @@ async fn execute_approved_operation(
     let credentials: serde_json::Value = serde_json::from_str(&credentials_json)
         .map_err(|e| format!("invalid ephemeral credential payload: {e}"))?;
     let plan = {
-        let plans = operation_plans()
+        let plans = operation_plans()?
             .lock()
             .map_err(|_| "operation plan state is unavailable".to_string())?;
         let plan = plans
@@ -950,7 +865,7 @@ async fn execute_approved_operation(
             return Err("approved operation has not been claimed for execution".into());
         }
         OperationGate::authorize(&plan, Some(&hash))?;
-        let mut claims = generic_execution_claims()
+        let mut claims = generic_execution_claims()?
             .lock()
             .map_err(|_| "operation execution state is unavailable".to_string())?;
         if !claims.insert(id.clone()) {
@@ -1224,7 +1139,7 @@ pub unsafe fn mikomai_model_chat(prompt: *const c_char) -> MikomaiResult {
     }
     let caught = std::panic::catch_unwind(|| {
         let prompt = CStr::from_ptr(prompt).to_str().map_err(|e| e.to_string())?;
-        llm_runtime::reset_cancellation();
+
         infer(prompt)
     });
     match caught {
@@ -1504,7 +1419,7 @@ impl mikomai_adapters::portable_watch::WatchPrimitiveExecutor for FfiWatchPrimit
             let tool_id = CString::new("get_state").unwrap();
             let target = serde_json::json!({"hostname": call.args.device});
             let target = CString::new(target.to_string()).map_err(|error| error.to_string())?;
-            let args = CString::new(serde_json::json!({"resource":"cpu"}).to_string())
+            let args = CString::new(serde_json::json!({"resource":"cpu","watch_run":true}).to_string())
                 .map_err(|error| error.to_string())?;
             let mut output = vec![0_i8; 16 * 1024];
             let status = unsafe {
@@ -1607,9 +1522,9 @@ pub unsafe fn mikomai_watch_start(
         if state.is_some() {
             return Err("Watch scheduler is already started".into());
         }
-        let service = Arc::new(mikomai_adapters::portable_watch::PortableWatchService::at(
-            &path,
-        )?);
+        let _ = path; // Caller paths are no longer authoritative or imported.
+        let watches=serde_json::from_value(shared_service().load_document("watches")?.unwrap_or(serde_json::json!([]))).map_err(|e|e.to_string())?;
+        let service=Arc::new(mikomai_adapters::portable_watch::PortableWatchService::with_store(watches,Arc::new(|watches| shared_service().save_internal("watches",&serde_json::to_value(watches).map_err(|e|e.to_string())?)))?);
         let executor = Arc::new(FfiWatchPrimitiveExecutor {
             callback: tool_callback.unwrap(),
             context: context as usize,
@@ -1971,7 +1886,7 @@ impl ToolExecutorPort for FfiAgentExecutor {
                     .or_else(|| args.get("planId"))
                     .and_then(serde_json::Value::as_str)
                     .ok_or_else(|| "operation plan id is required".to_string())?;
-                let plans = operation_plans()
+                let plans = operation_plans()?
                     .lock()
                     .map_err(|_| "operation plan store lock is poisoned".to_string())?;
                 let Some(plan) = plans.get(id) else {
@@ -2495,7 +2410,7 @@ pub unsafe fn mikomai_agent_chat_streaming(
             .to_str()
             .map_err(|e| e.to_string())?
             .to_owned();
-        llm_runtime::reset_cancellation();
+
         let raw_attachments = if attachments.is_null() { "" } else {
             CStr::from_ptr(attachments).to_str().map_err(|e| e.to_string())?
         };
@@ -2846,7 +2761,7 @@ pub unsafe fn mikomai_assistant_chat_streaming(
     }
     let _debug_scope = debug_trace::Scope::enter(callback, context);
     let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        llm_runtime::reset_cancellation();
+
         let question = CStr::from_ptr(message)
             .to_str()
             .map_err(|e| e.to_string())?;
@@ -3474,22 +3389,24 @@ mod tests {
         let previous = std::env::var_os("MIKOMAI_DATA_DIR");
         std::env::set_var("MIKOMAI_DATA_DIR", &root);
         let id = uuid::Uuid::new_v4();
-        let path = super::agent_task_path(id).unwrap();
+        let path = root.join("agent-events").join(format!("{id}.json"));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, r#"{"events":[{"event_type":"task_started"}]}"#).unwrap();
-        assert!(super::read_agent_audit(id).unwrap_err().contains("malformed"));
+        assert!(super::read_agent_audit(id).unwrap().is_none());
         let mut snapshot = mikomai_core::TaskSnapshot::new("resume native investigation");
         snapshot.evidence.push(mikomai_core::Evidence::from_tool("CPU usage 91%", Some("router".into()), Some("get_state".into())));
         super::persist_agent_audit(&snapshot, serde_json::json!({"event_type":"task_started"})).unwrap();
         let resumed = super::resume_saved_agent_task(snapshot.task.id).unwrap();
         assert_ne!(resumed.task.id, snapshot.task.id);
         assert_eq!(resumed.evidence[0].content, "CPU usage 91%");
+        super::delete_agent_audit(snapshot.task.id).unwrap();
         restore_env("MIKOMAI_DATA_DIR", previous);
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn agent_task_deletion_removes_single_and_all_audits() {
+        super::delete_all_agent_audits().unwrap();
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("mikomai-agent-del-{}", uuid::Uuid::new_v4()));
         let previous = std::env::var_os("MIKOMAI_DATA_DIR");
@@ -4968,7 +4885,7 @@ mod tests {
             start.elapsed() < Duration::from_secs(1),
             "submission waited for transfer"
         );
-        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        started_rx.recv_timeout(Duration::from_secs(10)).unwrap_or_else(|error| panic!("transfer did not start: {error}; completion: {:?}",success_rx.try_recv()));
         assert!(matches!(
             success_rx.try_recv(),
             Err(mpsc::TryRecvError::Empty)

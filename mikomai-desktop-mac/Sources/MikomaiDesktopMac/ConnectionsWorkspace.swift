@@ -116,9 +116,8 @@ struct ConnectionEditor: View {
         self._connection = State(initialValue: connection)
         self.isNewConnection = connection.name.isEmpty
         self.onSave = onSave
-        let credentials = ConnectionCredentialPersistence(store: KeychainCredentialAdapter()).load(for: connection.id)
-        self._password = State(initialValue: credentials.password ?? "")
-        self._enablePassword = State(initialValue: credentials.enablePassword ?? "")
+        self._password = State(initialValue: "")
+        self._enablePassword = State(initialValue: "")
     }
 
     var body: some View {
@@ -199,7 +198,7 @@ struct ConnectionEditor: View {
                 AccessibleButton("キャンセル") { dismiss() }.accessibleCancelAction()
                 AccessibleButton("保存") {
                     guard connection.validationError == nil else { return }
-                    onSave(connection, password, enablePassword)
+                    onSave(connection, password.isEmpty ? nil : password, enablePassword.isEmpty ? nil : enablePassword)
                     dismiss()
                 }
                 .accessibleDefaultAction()

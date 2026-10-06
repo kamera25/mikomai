@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 import UniformTypeIdentifiers
 import MikomaiDesktopCore
-import MikomaiFFI
+import MikomaiBindings
 
 extension DesktopModel {
     // MARK: - Streaming Chat Operations
@@ -78,7 +78,6 @@ extension DesktopModel {
         let modelP = (modelPath as NSString).expandingTildeInPath
         let usesAppleModel = isAppleModelSelected
         let agentConnections = connections
-        let agentCredentialPersistence = credentialPersistence
         guard let requestID = chatResponse.begin(sessionID: id) else { return }
         let dispatchMode = Self.dispatchMode(submissionText, connections: agentConnections)
         let isAgentRequest = dispatchMode == "agent"
@@ -128,7 +127,12 @@ extension DesktopModel {
                 knowledge: knowledge,
                 attachments: attachmentText,
                 connections: agentConnections,
-                credentialPersistence: agentCredentialPersistence,
+                onTaskID: { taskID in
+                    DispatchQueue.main.async {
+                        self.activeRustTaskID = taskID
+                        if self.chatResponse.isCancelling { try? MikomaiService().cancel(taskId:taskID) }
+                    }
+                },
                 onOperationPlan: { data in
                     DispatchQueue.main.async {
                         guard self.chatResponse.acceptsChunk(for: requestID),
@@ -341,6 +345,6 @@ extension DesktopModel {
     func stop() {
         guard isWorking, !isCancelling else { return }
         chatResponse.cancel()
-        _ = Self.callRust { mikomai_model_cancel() }
+        if let taskID = activeRustTaskID { try? MikomaiService().cancel(taskId:taskID) }
     }
 }

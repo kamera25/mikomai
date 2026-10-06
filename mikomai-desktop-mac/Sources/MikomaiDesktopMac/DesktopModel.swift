@@ -4,7 +4,7 @@ import Foundation
 import Darwin
 import Security
 import CryptoKit
-import MikomaiFFI
+import MikomaiBindings
 import MikomaiDesktopCore
 import UniformTypeIdentifiers
 
@@ -76,6 +76,7 @@ final class DesktopModel: ObservableObject {
     var supportsAppleModelOS: Bool {
         AppleModelPolicy.supportsOS(majorVersion: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
     }
+    var activeRustTaskID: String?
     var isCancelling: Bool { chatResponse.isCancelling }
 
     // Native settings
@@ -91,7 +92,6 @@ final class DesktopModel: ObservableObject {
     @Published var isDownloadingModel: Bool = false
     @Published var downloadProgressText: String = ""
 
-    let credentialPersistence = ConnectionCredentialPersistence(store: KeychainCredentialAdapter())
     var isRestoringPersistence = true
     var persistenceAvailable = true
     var settingsPersistenceAvailable = true
@@ -253,36 +253,11 @@ final class DesktopModel: ObservableObject {
     // MARK: - Operation Plans
 
     func createOperationPlan(target: SavedConnection, proposal: String, rationale: String) -> String? {
-
-        let commands = proposal.split(whereSeparator: \.isNewline).map(String.init).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        guard !commands.isEmpty else { return "変更コマンドがありません。" }
-        let args: String
-        do { args = String(data: try JSONEncoder().encode(commands), encoding: .utf8) ?? "[]" }
-        catch { return error.localizedDescription }
-        let snapshotText: String
-        let credentials = credentialPersistence.load(for: target.id)
-        do { snapshotText = String(data: try JSONEncoder().encode(NativeDeviceSnapshot(target, credentials: credentials)), encoding: .utf8) ?? "{}" }
-        catch { return error.localizedDescription }
-        let responseText = target.name.withCString { targetPtr in
-            snapshotText.withCString { snapshotPtr in
-                args.withCString { argsPtr in
-                    rationale.withCString { rationalePtr in
-                        let response = mikomai_operation_plan_create(targetPtr, snapshotPtr, argsPtr, rationalePtr)
-                        defer { mikomai_result_free(response) }
-                        guard let message = response.message else { return "エラー: 応答がありません。" }
-                        let text = String(cString: message)
-                        return response.status == 0 ? text : "エラー: \(text)"
-                    }
-                }
-            }
-        }
-        guard !responseText.hasPrefix("エラー:") else { return responseText }
         do {
-            operationPlan = try JSONDecoder().decode(NativeOperationPlan.self, from: Data(responseText.utf8))
+            operationPlan = try NativeCommands.prepareOperation(id: target.id.uuidString, proposal: proposal, rationale: rationale)
             operationPhase = "計画作成済み"
-            operationLogs.append("[STATUS] 変更計画を作成しました（\(target)）")
             return nil
-        } catch { return "変更計画を読み取れませんでした: \(error.localizedDescription)" }
+        } catch { return error.localizedDescription }
     }
 
     func approveOperationPlan() -> String? {
@@ -303,52 +278,6 @@ final class DesktopModel: ObservableObject {
             operationLogs.append("[STATUS] ハッシュを照合し、計画を承認しました")
             return nil
         } catch { return "承認状態を読み取れませんでした: \(error.localizedDescription)" }
-    }
-
-    func beginOperationPlan() -> String? {
-        guard let plan = operationPlan else { return "実行する計画がありません。" }
-        let responseText = plan.id.withCString { id in
-            plan.planHash.withCString { hash in
-                let response = mikomai_operation_plan_begin(id, hash)
-                defer { mikomai_result_free(response) }
-                guard let message = response.message else { return "エラー: 応答がありません。" }
-                let text = String(cString: message)
-                return response.status == 0 ? text : "エラー: \(text)"
-            }
-        }
-        guard !responseText.hasPrefix("エラー:") else { return responseText }
-        do { operationPlan = try JSONDecoder().decode(NativeOperationPlan.self, from: Data(responseText.utf8)); return nil }
-        catch { return "実行状態を読み取れませんでした: \(error.localizedDescription)" }
-    }
-
-    func finishOperationPlan(succeeded: Bool) {
-        guard let id = operationPlan?.id else { return }
-        id.withCString { idPtr in
-            let response = mikomai_operation_plan_finish(idPtr, succeeded ? 1 : 0)
-            defer { mikomai_result_free(response) }
-            guard response.status == 0, let message = response.message,
-                  let data = String(cString: message).data(using: .utf8) else { return }
-            operationPlan = try? JSONDecoder().decode(NativeOperationPlan.self, from: data)
-        }
-    }
-
-    func resolveOperationTarget(for plan: NativeOperationPlan) -> (SavedConnection, ConnectionCredentials)? {
-        guard let id = UUID(uuidString: plan.args.deviceSnapshot.id),
-              let connection = connections.first(where: { $0.id == id }) else { return nil }
-        let credentials = credentialPersistence.load(for: id)
-        guard NativeDeviceSnapshot(connection, credentials: credentials) == plan.args.deviceSnapshot else { return nil }
-        return (connection, credentials)
-    }
-
-    func networkRequest(action: String, connection: SavedConnection, commands: [String]) -> NetworkRunnerRequest? {
-        guard (connection.connectionType ?? "SSH").lowercased() != "console" else { return nil }
-        let credentials = credentialPersistence.load(for: connection.id)
-        let deviceType = DeviceTypeCatalog.canonicalID(for: connection.deviceType)
-        return NetworkRunnerRequest(
-            action: action, host: connection.host, username: connection.username,
-            password: credentials.password ?? "", secret: credentials.enablePassword ?? "",
-            deviceType: connection.transportDeviceType(deviceType), port: connection.effectivePort, commands: commands
-        )
     }
 
     // MARK: - Persistence
@@ -394,48 +323,35 @@ final class DesktopModel: ObservableObject {
         knowledge: String,
         attachments: String,
         connections: [SavedConnection],
-        credentialPersistence: ConnectionCredentialPersistence,
+        onTaskID: @escaping (String) -> Void,
         onOperationPlan: @escaping (Data) -> Void,
         onDebug: @escaping (String) -> Void,
         onToolResult: @escaping (AgentToolResult) -> Void,
         onChunk: @escaping (String, Bool) -> Void
     ) -> String {
-        let box = ChatCallbackBox(stream: StreamBox(onChunk: onChunk), connections: connections, credentialPersistence: credentialPersistence, onOperationPlan: onOperationPlan, onToolResult: onToolResult, onDebug: onDebug)
-        let context = Unmanaged.passUnretained(box).toOpaque()
-        let devicesJSON = Self.publicDevicesJSON(connections)
-        let mode = Self.dispatchMode(prompt, connections: connections)
-        onDebug(CoreDebugRecord.encode(kind: "swift_request", payload: ["query":prompt, "history":history, "attachments":attachments, "devices_json":devicesJSON, "mode":mode, "documents":documents, "knowledge":knowledge]))
-        let response = prompt.withCString { message in
-            devicesJSON.withCString { devices in
-                // The Agent entry point keeps grounded worker answers and can
-                // escalate knowledge misses using the native tool callbacks.
-                do {
-                    return history.withCString { historyText in
-                        documents.withCString { documentsPath in
-                            knowledge.withCString { knowledgePath in
-                                attachments.withCString { attachmentText in
-                                    mikomai_agent_chat_streaming(message, historyText, documentsPath, knowledgePath, attachmentText, devices, streamBridge, agentToolBridge, agentPlanBridge, context)
-                                }
-                            }
-                        }
-                    }
+        let service = MikomaiService()
+        do {
+            let taskID = try service.submit(command: .chat(message:prompt,history:history,documentsDir:documents,knowledgeDir:knowledge,attachments:attachments,devicesJson:Self.publicDevicesJSON(connections),agent:true))
+            onTaskID(taskID)
+            var seq: UInt64 = 0
+            while true {
+                let snapshot = try service.query(query:.task(taskId:taskID))
+                for event in snapshot.events where event.seq > seq {
+                    seq = event.seq
+                    guard let object = try? JSONSerialization.jsonObject(with:Data(event.payload.utf8)) as? [String:Any], let text = object["text"] as? String else { continue }
+                    if text.hasPrefix("__MIKOMAI_DEBUG__") { onDebug(String(text.dropFirst("__MIKOMAI_DEBUG__".count))) }
+                    else if text.hasPrefix("__MIKOMAI_APPROVAL_PLAN__") { onOperationPlan(Data(text.dropFirst("__MIKOMAI_APPROVAL_PLAN__".count).utf8)) }
+                    else { onChunk(text,object["done"] as? Bool ?? false) }
                 }
+                if ["completed","awaiting_user","awaiting_approval","failed","cancelled","unknown"].contains(snapshot.state) {
+                    return ["failed","unknown"].contains(snapshot.state) ? "エラー: \(snapshot.result)" : snapshot.result
+                }
+                Thread.sleep(forTimeInterval:0.01)
             }
-        }
-        defer { mikomai_result_free(response) }
-        guard let message = response.message else { return "Rust 側から応答がありませんでした。" }
-        let text = String(cString: message)
-        onDebug(CoreDebugRecord.encode(kind: "core_response", payload: ["status":response.status, "text":text]))
-        return response.status == 0 ? text : "エラー: \(text)"
+        } catch { return "エラー: \(error.localizedDescription)" }
     }
 
-    nonisolated static func testTCP(host: String, port: UInt16, timeoutMs: UInt32) -> (success: Bool, message: String, latencyMs: Int?) {
-        MikomaiFFIBridge.testTCP(host: host, port: port, timeoutMs: timeoutMs)
-    }
-
-    nonisolated static func callRust(_ call: () -> MikomaiResult) -> String {
-        MikomaiFFIBridge.call(call).formattedOutput
-    }
+    nonisolated static func callRust(_ call: () -> MikomaiResult) -> String { MikomaiFFIBridge.call(call).formattedOutput }
 
     nonisolated static func consumeRust(_ response: MikomaiResult) -> String {
         defer { mikomai_result_free(response) }
@@ -445,7 +361,5 @@ final class DesktopModel: ObservableObject {
     }
 
 
-    nonisolated static func executeApprovedAgentOperation(planID: String, planHash: String, password: String?) async -> NetworkOperationOutput {
-        await MikomaiFFIBridge.executeApprovedAgentOperation(planID: planID, planHash: planHash, password: password)
-    }
+
 }
