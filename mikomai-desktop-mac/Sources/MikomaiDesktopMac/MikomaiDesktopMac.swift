@@ -15,7 +15,11 @@ private final class DesktopAppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         NSApplication.shared.setActivationPolicy(.regular)
-        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+        // Packaged apps use the Info.plist icon. Replacing it at launch can
+        // change its apparent size in the Dock; only unbundled SwiftPM runs
+        // need an explicit icon.
+        if Bundle.main.bundleURL.pathExtension != "app",
+           let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApplication.shared.applicationIconImage = icon
         }
