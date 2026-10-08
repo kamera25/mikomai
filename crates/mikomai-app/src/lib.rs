@@ -1735,6 +1735,14 @@ impl ToolExecutorPort for FfiAgentExecutor {
             if CANCEL_INFERENCE.load(Ordering::Relaxed) {
                 return Err("生成を停止しました。".into());
             }
+            if matches!(tool,"query_state"|"diff_state") {
+                let mut args=args.clone();
+                if args.get("device").is_none() { if let Some(target)=target { args["device"]=serde_json::json!(target); } }
+                return Ok(match mikomai_adapters::state::execute(&self.graph,tool,&args).await {
+                    Ok(output)=>ToolResult {output:output.to_string(),success:true},
+                    Err(error)=>ToolResult {output:error,success:false},
+                });
+            }
             if tool == "fetch_arp" || (tool == "get_state" && args["resource"] == "arp")
                 || (tool == "network_show" && args["command"].as_str().is_some_and(|command| command.to_ascii_lowercase().contains("arp"))) {
                 let requested = target.or_else(|| args["device"].as_str()).ok_or("ARP requires a target")?;
@@ -3989,6 +3997,38 @@ mod tests {
         assert_eq!(capacity, 8 * 1024 * 1024);
         drop(executor);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn stored_state_executor_uses_no_transport_or_inference() {
+        use mikomai_core::port::ToolExecutorPort;
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        super::CANCEL_INFERENCE.store(false, std::sync::atomic::Ordering::Relaxed);
+        unsafe extern "C" fn forbidden(_: *const c_char, _: *const c_char, _: *const c_char, _: *mut c_char, _: usize, _: *mut std::ffi::c_void) -> i32 {
+            std::process::abort();
+        }
+        let root=std::env::temp_dir().join(format!("mikomai-state-executor-{}",uuid::Uuid::new_v4()));
+        let runtime=super::portable_runtime().unwrap();
+        let graph=runtime.block_on(mikomai_adapters::portable_graph::PortableGraph::initialize_at(&root)).unwrap();
+        runtime.block_on(graph.ingest(mikomai_adapters::portable_graph::GraphIngestInput {
+            source_id:"get_state.interfaces:all".into(),device_name:"R1".into(),kind:mikomai_adapters::portable_graph::GraphDataKind::Interfaces,
+            collected_at:chrono::Utc::now(),raw:"fixture".into(),normalized:None,evidence:None,normalizer_version:"interface-constrained-index-v1".into(),
+            canonical:Some(serde_json::json!({"version":"1.0","metadata":{"source_device":"R1","generated_at":"2026-10-08T00:00:00Z","os_type":"fixture"},"interfaces":[{"name":"eth1","status":"up","ipv4_addresses":[],"prefix_len":null}]})),
+        })).unwrap();
+        let executor=super::FfiAgentExecutor {
+            registry:mikomai_adapters::portable_device::ReadOnlyToolRegistry::default(),
+            transport:super::SwiftCallbackTransport {callback:forbidden,context:0},
+            rag:mikomai_adapters::portable_rag::PortableRag::new(graph.clone(),std::sync::Arc::new(mikomai_adapters::e5_embedder::FastEmbedE5::new())),
+            graph,rag_sources:vec![],canonical_inference:|_,_|panic!("inference forbidden"),
+        };
+        let args=serde_json::json!({"snapshot_id":"latest","resource":"interfaces","fields":["status"]});
+        let result=runtime.block_on(executor.execute(uuid::Uuid::new_v4(),"query_state",Some("R1"),&args)).unwrap();
+        assert!(result.success);let result:serde_json::Value=serde_json::from_str(&result.output).unwrap();
+        assert_eq!(result["results"],serde_json::json!([{"status":"up"}]));
+        let diff=serde_json::json!({"before":"latest","after":"latest","resource":"interfaces"});
+        let result=runtime.block_on(executor.execute(uuid::Uuid::new_v4(),"diff_state",Some("R1"),&diff)).unwrap();assert!(result.success);
+        let bad=serde_json::json!({"snapshot_id":"missing","resource":"interfaces"});
+        assert!(!runtime.block_on(executor.execute(uuid::Uuid::new_v4(),"query_state",Some("R1"),&bad)).unwrap().success);
     }
 
     #[test]

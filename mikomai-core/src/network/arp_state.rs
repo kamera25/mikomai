@@ -32,16 +32,18 @@ pub async fn get_state(port: &impl ArpStatePort, device: &str) -> Result<Value, 
     let mut observation = match port.fresh_observation(device).await? {
         Some(observation) => observation,
         None => {
-            let raw = port.collect(device).await?;
-            if raw.trim().is_empty() {
-                return Err("ARP取得結果が空のため、有無を判定できません。".into());
-            }
+            let collected = port.collect(device).await;
+            let raw = collected.as_ref().cloned().unwrap_or_default();
             let observation = ArpObservation {
                 raw,
                 canonical: None,
                 collected_at: Utc::now(),
             };
             port.store(device, &observation, None).await?;
+            collected?;
+            if observation.raw.trim().is_empty() {
+                return Err("ARP取得結果が空のため、有無を判定できません。".into());
+            }
             observation
         }
     };

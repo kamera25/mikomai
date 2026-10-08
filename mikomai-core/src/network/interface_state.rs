@@ -48,16 +48,18 @@ pub async fn get_state(
     let mut observation = match cached {
         Some(observation) => observation,
         None => {
-            let raw = port.collect(device).await?;
-            if raw.trim().is_empty() {
-                return Err("インターフェース取得結果が空です".into());
-            }
+            let collected = port.collect(device).await;
+            let raw = collected.as_ref().cloned().unwrap_or_default();
             let observation = InterfaceObservation {
                 raw,
                 canonical: None,
                 collected_at: Utc::now(),
             };
             port.store(device, scope, &observation, None).await?;
+            collected?;
+            if observation.raw.trim().is_empty() {
+                return Err("インターフェース取得結果が空です".into());
+            }
             observation
         }
     };

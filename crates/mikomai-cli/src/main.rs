@@ -153,13 +153,19 @@ pub fn run(mut args: Vec<String>, json: bool) -> Result<String, String> {
             })
         }
         Some("resources") => { let resources = ["interfaces", "routes", "arp", "ndp", "mac-table", "config", "system"]; Ok(if json { serde_json::json!({"ok": true, "data": resources}).to_string() } else { resources.join("\n") }) }
+        Some("query-state" | "diff-state") => {
+            if args.len()!=2 {return Err("query-state/diff-state requires one JSON argument".into());}
+            let input=serde_json::from_str(&args[1]).map_err(|e|e.to_string())?;
+            let tool=if args[0]=="query-state" {"query_state"}else{"diff_state"};
+            Ok(mikomai_app::native_execution::execute_stored_state(tool,&input)?.to_string())
+        }
         Some("get-state") => {
             let device = args.get(1).ok_or("get-state device is required")?;
             let resource = args.get(2).ok_or("get-state resource is required")?;
             let output = mikomai_app::native_execution::execute_tool("get_state", &serde_json::json!({"id":device}), &serde_json::json!({"resource":resource}))?;
             Ok(output)
         }
-        _ => Err("usage: mikomai-cli [--json] [--debug|-d] [--debug-jsonl] <chat|rag-ingest|rag-search|devices|resources|get-state> ...".into()),
+        _ => Err("usage: mikomai-cli [--json] [--debug|-d] [--debug-jsonl] <chat|rag-ingest|rag-search|devices|resources|get-state|query-state|diff-state> ...".into()),
     }
 }
 
@@ -203,7 +209,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         "cli_request",
         serde_json::json!({
             "query": goal, "history": "", "attachments": "", "devices_json": "[]",
-            "mode": if local_ndp { if mikomai_core::network::ndp::is_command(&goal) { "fast_router" } else { "agent" } } else if interface_check.is_some() { "agent" } else if next_hop.is_some() { "agent" } else if local_route.is_some() || port_check.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
+            "mode": if mikomai_core::dispatch::is_stored_state_request(&goal) { "agent" } else if local_ndp { if mikomai_core::network::ndp::is_command(&goal) { "fast_router" } else { "agent" } } else if interface_check.is_some() { "agent" } else if next_hop.is_some() { "agent" } else if local_route.is_some() || port_check.is_some() { "fast_router" } else if local_mac.is_some() { "agent" } else { "worker" }, "documents": docs, "knowledge": knowledge,
             "backend": if greeting_reply.is_some() { "deterministic_reply" } else if local_ndp { "local_ndp" } else if interface_check.is_some() { "native_device_transport" } else if port_check.is_some() { "local_tcp" } else if local_route.is_some() { "local_route" } else if local_mac.is_some() { "local_arp" } else if model_path.is_some() { "local_model" } else { "markdown" }
         }),
     );
@@ -262,7 +268,7 @@ fn chat(goal: String, json: bool, debug_jsonl: bool) -> Result<String, String> {
         } else if let Some(path) = model_path {
             mikomai_app::load_local_model(&path)?;
             let engine=mikomai_app::api::engine();
-            let id=engine.submit(mikomai_app::api::Command::Chat{message:goal.clone(),history:String::new(),documents_dir:docs.to_string_lossy().into(),knowledge_dir:knowledge.to_string_lossy().into(),attachments:String::new(),devices_json:"[]".into(),agent:false})?;
+            let id=engine.submit(mikomai_app::api::Command::Chat{message:goal.clone(),history:String::new(),documents_dir:docs.to_string_lossy().into(),knowledge_dir:knowledge.to_string_lossy().into(),attachments:String::new(),devices_json:"[]".into(),agent:mikomai_core::dispatch::is_stored_state_request(&goal)})?;
             let mut seq=0;
             loop {
                 let snapshot=engine.query(&id)?;

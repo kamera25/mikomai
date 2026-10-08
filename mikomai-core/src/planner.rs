@@ -196,7 +196,7 @@ pub fn build_decision_schema(devices: &[String], tools: &[String]) -> String {
     } else {
         serde_json::json!({"anyOf":[{"type":"string","enum":devices},{"type":"null"}]})
     };
-    serde_json::json!({
+    let mut schema = serde_json::json!({
         "type":"object",
         "properties":{
             "action_type":{"type":"string","enum":["OBSERVE","VERIFY","CONFIGURE","ROLLBACK","ASK_HUMAN","FINISH"]},
@@ -224,7 +224,16 @@ pub fn build_decision_schema(devices: &[String], tools: &[String]) -> String {
             "final_answer":{"type":["string","null"]}
         },
         "required":["action_type","objective"]
-    }).to_string()
+    });
+    let state_properties=serde_json::json!({
+        "device":{"type":"string","minLength":1,"maxLength":256},
+        "snapshot_id":{"type":"string"},"before":{"type":"string"},"after":{"type":"string"},
+        "scope":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":1000},
+        "fields":{"type":"array","items":{"type":"string"}},
+        "filter":{"type":"object","additionalProperties":{"type":["string","number","boolean","null"]}}
+    });
+    schema["properties"]["parameters"]["properties"].as_object_mut().unwrap().extend(state_properties.as_object().unwrap().clone());
+    schema.to_string()
 }
 
 /// Builds the runtime schema and narrows MAC address queries to the legacy

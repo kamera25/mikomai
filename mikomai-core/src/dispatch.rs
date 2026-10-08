@@ -470,7 +470,17 @@ fn is_greeting(message: &str) -> bool {
         .any(|term| lower.contains(term))
 }
 
+/// Stored-state operations use the shared agent executor rather than a worker answer.
+pub fn is_stored_state_request(message:&str)->bool {
+    let lower=message.to_lowercase();
+    if is_explanatory_request(&lower) || ["使い方", "説明", "usage", "how to"].iter().any(|word|lower.contains(word)) {return false;}
+    lower.contains("query_state") || lower.contains("diff_state") ||
+        (lower.contains("保存済み") && (lower.contains("snapshot") || lower.contains("状態")) &&
+            ["調べ", "検索", "抽出", "比較", "差分", "確認"].iter().any(|word|lower.contains(word)))
+}
+
 pub fn select_dispatch_mode(message: &str) -> DispatchMode {
+    if is_stored_state_request(message) {return DispatchMode::Agent;}
     if crate::attachment_transfer::upload_protocol(message).is_some() {
         return DispatchMode::Agent;
     }
@@ -779,5 +789,18 @@ mod next_hop_tests {
         for goal in ["R1の8.8.8.8のネクストホップはどこ？", "localhost の999.8.8.8の経路はどこ？", "localhost の8.8.8.8;touchの経路はどこ？"] {
             assert!(local_next_hop_shortcut(goal).is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod stored_state_dispatch_tests {
+    use super::*;
+    #[test]
+    fn stored_state_operations_and_paraphrases_use_agent_but_explanations_use_worker() {
+        for goal in ["query_stateでR1のinterfacesを検索して", "diff_stateで比較して", "保存済みの状態からeth1だけを抽出して"] {
+            assert!(is_stored_state_request(goal));assert_eq!(select_dispatch_mode(goal),DispatchMode::Agent);
+        }
+        assert!(!is_stored_state_request("query_stateの使い方を教えて"));
+        assert_eq!(select_dispatch_mode("query_stateの使い方を教えて"),DispatchMode::Worker);
     }
 }

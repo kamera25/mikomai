@@ -170,6 +170,7 @@ fn dispatch<'a>(
             ),
             "rag_document_chunks" => encode(graph.rag_document_chunks(text("path")).await?),
             "ingest" => encode(graph.ingest(decode(&args["input"])?).await?),
+            "state_snapshot" => encode(graph.state_snapshot(text("id"),text("device"),text("resource"),text("scope")).await?),
             "fresh_arp_observation" => encode(graph.fresh_arp_observation(text("device")).await?),
             "latest_interface_observation" => encode(
                 graph

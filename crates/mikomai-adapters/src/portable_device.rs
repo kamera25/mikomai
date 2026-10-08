@@ -213,6 +213,8 @@ impl ReadOnlyToolRegistry {
             [
                 "network_query_nw_db",
                 "query_rag",
+                "query_state",
+                "diff_state",
                 "self_network_test_net_connection",
             ]
             .into_iter()

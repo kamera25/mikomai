@@ -551,6 +551,83 @@ DEFINE INDEX IF NOT EXISTS rag_chunk_embedding ON TABLE rag_chunk FIELDS embeddi
         Ok(())
     }
 
+    /// Resolve an observation ID without TTL refresh, collection or inference.
+    pub async fn state_snapshot(
+        &self,
+        id: &str,
+        device: &str,
+        resource: &str,
+        scope: &str,
+    ) -> Result<Option<mikomai_core::network::state::StateSnapshot>, String> {
+        #[cfg(unix)]
+        if let Some(socket) = &self.remote {
+            return crate::store_broker::call(
+                socket,
+                "state_snapshot",
+                json!({"id":id,"device":device,"resource":resource,"scope":scope}),
+            )
+            .await;
+        }
+        crate::state::resource_shape(resource)?;
+        if resource != "interfaces" && scope != "all" {
+            return Err("Only interfaces support acquisition scopes".into());
+        }
+        let source = if resource == "interfaces" {
+            format!("get_state.interfaces:{scope}")
+        } else {
+            String::new()
+        };
+        let response=self.db.query("SELECT record::id(id) AS snapshot_id, device_name, kind, source_id, collected_at, normalizer_version, canonical FROM observation WHERE device_name = $device AND kind = $resource AND ($source = '' OR source_id = $source) AND ($snapshot = 'latest' OR record::id(id) = $snapshot) ORDER BY collected_at DESC, snapshot_id ASC LIMIT 1;")
+            .bind(("device",device.to_owned())).bind(("resource",resource.to_owned())).bind(("source",source)).bind(("snapshot",id.to_owned())).await.map_err(|e|e.to_string())?;
+        let mut response = response.check().map_err(|e| e.to_string())?;
+        let rows: Vec<Value> = response.take(0).map_err(|e| e.to_string())?;
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let text = |key: &str| {
+            row[key]
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| format!("Invalid stored snapshot metadata: {key}"))
+        };
+        let canonical = row.get("canonical").filter(|v| !v.is_null()).cloned();
+        let collected_at = text("collected_at")?;
+        let timestamp = DateTime::parse_from_rfc3339(&collected_at)
+            .map_err(|e| e.to_string())?
+            .with_timezone(&Utc);
+        // Existing collectors publish canonical data only after completeness validation.
+        let known_normalizer = match resource {
+            "interfaces" => text("normalizer_version")? == "interface-constrained-index-v1",
+            "arp" => text("normalizer_version")? == "arp-constrained-index-v2",
+            _ => text("normalizer_version")? == crate::router_canonicalization::VERSION,
+        };
+        let complete = known_normalizer
+            && canonical.as_ref().is_some_and(|value| match resource {
+                "interfaces" => {
+                    mikomai_core::network::interface::validate_canonical_table(value, device)
+                        .is_ok()
+                }
+                "arp" => {
+                    mikomai_core::network::arp::validate_canonical_table(value, device).is_ok()
+                }
+                _ => crate::router_canonicalization::validate_canonical(
+                    value, resource, device, timestamp,
+                )
+                .is_ok(),
+            });
+        Ok(Some(mikomai_core::network::state::StateSnapshot {
+            snapshot_id: text("snapshot_id")?,
+            device: device.into(),
+            resource: resource.into(),
+            scope: scope.into(),
+            collected_at,
+            source_id: text("source_id")?,
+            normalizer_version: text("normalizer_version")?,
+            complete,
+            canonical,
+        }))
+    }
+
     /// Only the latest observation of this device/resource is authoritative.
     /// Never resurrect an older canonical table after a newer failed refresh.
     pub async fn fresh_arp_observation(&self, device: &str) -> Result<Option<mikomai_core::network::arp_state::ArpObservation>, String> {

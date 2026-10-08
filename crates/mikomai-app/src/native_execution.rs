@@ -218,6 +218,9 @@ pub fn execute_tool(tool: &str, target: &Value, args: &Value) -> Result<String, 
         }
         return Ok(result.payload.to_string());
     }
+    if matches!(tool,"query_state"|"diff_state") {
+        return execute_stored_state(tool,args).map(|value|value.to_string());
+    }
     if tool.starts_with("self_network_")
         || matches!(tool, "network_get_ip_info" | "network_list_serial_ports")
     {
@@ -808,6 +811,12 @@ fn line_diff(before: &str, after: &str) -> Vec<String> {
         )
         .collect()
 }
+/// Shared stored-state entry point used by CLI and native callers.
+pub fn execute_stored_state(tool:&str,args:&Value)->Result<Value,String> {
+    let graph=crate::portable_graph()?;
+    crate::shared_service().run(mikomai_adapters::state::execute(&graph,tool,args))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

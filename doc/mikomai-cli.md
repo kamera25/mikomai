@@ -32,3 +32,5 @@ npm run cli -- rag-search "VLAN 設定"
 `devices` はCLI用に設定されたデバイス一覧を表示します。Swiftアプリが保持する接続情報や認証情報は自動では引き継がれません。実機への接続経路はアプリの構成と区別して扱ってください。
 
 `./ingest.sh` は `nw-docs/` を取り込むショートカットです。
+
+`query-state '<JSON>'` と `diff-state '<JSON>'` は実機アクセスを行わず保存済み観測を検索・比較します。入力・出力・上限は [保存済み状態API](stored-state.md) を参照してください。

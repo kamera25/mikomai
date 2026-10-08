@@ -29,6 +29,8 @@ pub enum ToolKind {
     FetchRouting,
     FetchArp,
     GetState,
+    QueryState,
+    DiffState,
     RequireHostRegistered,
     SelfNetworkNwdiag,
     ValidateCiscoConfig,
@@ -71,6 +73,8 @@ impl ToolKind {
             Self::FetchRouting => "fetch_routing",
             Self::FetchArp => "fetch_arp",
             Self::GetState => "get_state",
+            Self::QueryState => "query_state",
+            Self::DiffState => "diff_state",
             Self::RequireHostRegistered => "require_host_registered",
             Self::SelfNetworkNwdiag => "self_network_nwdiag",
             Self::ValidateCiscoConfig => "validate_cisco_config",
@@ -112,6 +116,8 @@ impl ToolKind {
             Self::FetchRouting => "Fetch Routing",
             Self::FetchArp => "Fetch ARP",
             Self::GetState => "State取得",
+            Self::QueryState => "保存済みState検索",
+            Self::DiffState => "State差分",
             Self::RequireHostRegistered => "ホスト登録要求",
             Self::SelfNetworkNwdiag => "ネットワーク図生成",
             Self::ValidateCiscoConfig => "Cisco設定検証",
@@ -198,6 +204,8 @@ impl ToolKind {
                 | Self::NetworkQueryNwDb
                 | Self::QueryNwDb
                 | Self::QueryRag
+                | Self::QueryState
+                | Self::DiffState
                 | Self::QueryNetworkGraph
                 | Self::GetSubgraph
                 | Self::FindIpByMac
@@ -255,6 +263,8 @@ impl std::str::FromStr for ToolKind {
             "fetch_routing" => Ok(Self::FetchRouting),
             "fetch_arp" => Ok(Self::FetchArp),
             "get_state" => Ok(Self::GetState),
+            "query_state" => Ok(Self::QueryState),
+            "diff_state" => Ok(Self::DiffState),
             "require_host_registered" => Ok(Self::RequireHostRegistered),
             "self_network_nwdiag" => Ok(Self::SelfNetworkNwdiag),
             "validate_cisco_config" => Ok(Self::ValidateCiscoConfig),

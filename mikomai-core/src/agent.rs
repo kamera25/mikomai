@@ -447,6 +447,7 @@ impl AgentPlanner<'_> {
             if let Some(host) = &statistics_host {
                 prompt.push_str(&format!("\nThis specific request asks ICMP packet statistics for {host}. The only applicable tool is self_network_ping. Use action_type OBSERVE, top-level tool self_network_ping, and parameters.host {host}. A TCP connection cannot measure packets sent, received, or packet loss. Do not invent statistics before a Ping observation is available. Keep count at the requested number, or omit it to use the default."));
             }
+            prompt.push_str(&format!("\nStored canonical state: query_state and diff_state perform no device IO or inference. Stored-state tools may use historical canonical device names absent from the registered inventory; set target=null and parameters.device to the stored name. Prefer query_state for subsets of already collected data; use get_state only when a new observation is required. snapshot_id/before/after accept observation IDs or latest; always specify device, resource and acquisition scope (default all). Interface query fields are name/status/ipv4_addresses/prefix_len. Filter is scalar equality; limit defaults to 100 and is at most 1000. Unavailable/partial data never proves absence. diff_state refuses incomplete or incompatible observations. Contracts: query_state={}, diff_state={}", crate::network::state::input_schema(false),crate::network::state::input_schema(true)));
             let mut decision = None;
             for attempt in 0..2 {
                 let raw = self.inference.complete(&prompt).await?;
