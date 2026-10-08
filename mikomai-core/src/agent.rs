@@ -180,6 +180,14 @@ fn observation_succeeded(item: &crate::Evidence) -> bool {
     item.source.success != Some(false) && !item.content.starts_with("FastRouter execution failed:")
 }
 
+/// Only complete a whole, single-probe request; compound goals still need planning.
+fn single_ping_request(goal: &str) -> Option<crate::dispatch::LegacyShortcut> {
+    let pattern = regex::Regex::new(
+        r"(?ix)^(?:[a-z0-9][a-z0-9_.:-]*\s*(?:に|へ|を)\s*(?:ping|ピング)\s*(?:して|してください|を実行して|を実行してください)|(?:ping|ピング)\s+[a-z0-9][a-z0-9_.:-]*\s*(?:して|してください|を実行して|を実行してください))\s*[。！!]?\s*$"
+    ).ok()?;
+    pattern.is_match(goal.trim()).then(|| crate::dispatch::legacy_shortcut(goal)).flatten()
+}
+
 /// Identify a single-target statistics request independently of command routing.
 /// Natural-language goals may enter through the planner rather than FastRouter.
 pub(crate) fn ping_statistics_target(goal: &str) -> Option<String> {
@@ -318,6 +326,14 @@ impl AgentPlanner<'_> {
                 return Ok(PlanDecision::Observe { tool: route.tool.unwrap(), target: route.target, args: route.args });
             }
             if self.attachments.is_empty() {
+                if let Some(shortcut) = single_ping_request(&task.task.goal) {
+                    if let Some(observation) = observed_request(task, "self_network_ping", None, &shortcut.args, self.inventory)
+                        .filter(|item| item.source.success == Some(true) && observation_succeeded(item)) {
+                        return Ok(PlanDecision::Complete {
+                            brief: format!("{} へのPing実行結果です。\n\n```text\n{}\n```", shortcut.args["host"].as_str().unwrap_or("対象"), observation.content),
+                        });
+                    }
+                }
                 if let Some(shortcut) = crate::dispatch::fast_route(&task.task.goal) {
                     if let Some(observation) = shortcut.tool.as_deref().and_then(|tool| observed_request(task, tool, shortcut.target.as_deref(), &shortcut.args, self.inventory))
                         .filter(|item| observation_succeeded(item)) {
@@ -546,6 +562,33 @@ mod tests {
     use super::*;
     use std::collections::VecDeque;
     use std::sync::Mutex;
+    #[test]
+    fn single_ping_prose_finishes_without_post_probe_inference() {
+        let model = Model { replies: Mutex::new(VecDeque::new()), prompts: Mutex::new(vec![]) };
+        let approval = Approval(Mutex::new(0));
+        let tools = vec!["self_network_ping".into()];
+        let planner = AgentPlanner { inventory: &[], devices: &[], tools: &tools, history: "", attachments: "", reference_material: "", inference: &model, worker: &model, approval: &approval };
+        for goal in ["NakaokuGW へPingして", "NakaokuGWにPingを実行してください。", "Ping NakaokuGW して"] {
+            let mut task = TaskSnapshot::new(goal);
+            assert!(crate::dispatch::fast_route(goal).is_none());
+            let PlanDecision::Observe { tool, target, args } = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap() else { panic!("probe required") };
+            assert_eq!(tool, "self_network_ping");
+            assert_eq!(args["host"], "NakaokuGW");
+            let output = "4 packets transmitted, 4 packets received, 0.0% packet loss";
+            let mut evidence = crate::Evidence::from_tool(output, target, Some(tool));
+            evidence.source.success = Some(true);
+            evidence.source.request = Some(args.to_string());
+            task.evidence.push(evidence);
+            let PlanDecision::Complete { brief } = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap() else { panic!("must release request after probe") };
+            assert!(brief.contains(output));
+            task.evidence[0].source.success = Some(false);
+            model.replies.lock().unwrap().push_back(Err("probe failed; replanning required".into()));
+            assert!(futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).is_err());
+        }
+        for goal in ["NakaokuGWへPingして、ARPも確認して", "NakaokuGWと8.8.8.8へPingして", "Ping NakaokuGWの結果を説明して", "NakaokuGWへPingして成功率を教えて"] {
+            assert!(single_ping_request(goal).is_none(), "{goal}");
+        }
+    }
     #[test]
     fn ndp_prose_observes_once_and_never_completes_from_failed_output() {
         let model = Model { replies: Mutex::new(VecDeque::new()), prompts: Mutex::new(vec![]) };
