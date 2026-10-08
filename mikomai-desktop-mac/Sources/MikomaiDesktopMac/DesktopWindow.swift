@@ -64,53 +64,6 @@ private struct WindowTitleDragRegion: NSViewRepresentable {
     func updateNSView(_ nsView: DragView, context: Context) {}
 }
 
-private struct InitialHistoryPaneSizing: NSViewRepresentable {
-    let width: CGFloat
-
-    final class SizingView: NSView {
-        var initialWidth: CGFloat = 248
-        private var didSetWidth = false
-        private var isScheduled = false
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            scheduleSizing()
-        }
-
-        override func layout() {
-            super.layout()
-            scheduleSizing()
-        }
-
-        func scheduleSizing() {
-            guard window != nil, !didSetWidth, !isScheduled else { return }
-            isScheduled = true
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.isScheduled = false
-                var ancestor = self.superview
-                while let view = ancestor {
-                    if let split = view as? NSSplitView, split.isVertical,
-                       split.subviews.count > 1, split.bounds.width > 0 {
-                        // SwiftUI's idealWidth is only a proposal. Set the initial
-                        // divider once, then leave subsequent user resizing alone.
-                        self.didSetWidth = true
-                        split.setPosition(self.initialWidth, ofDividerAt: 0)
-                        return
-                    }
-                    ancestor = view.superview
-                }
-            }
-        }
-    }
-
-    func makeNSView(context: Context) -> SizingView { SizingView() }
-    func updateNSView(_ nsView: SizingView, context: Context) {
-        nsView.initialWidth = width
-        nsView.scheduleSizing()
-    }
-}
-
 private struct ToolbarHeaderSizing: NSViewRepresentable {
     @Binding var rightPaneWidth: CGFloat
     let showsRightPane: Bool
@@ -145,7 +98,7 @@ private struct ToolbarHeaderSizing: NSViewRepresentable {
     func updateNSView(_ nsView: ObserverView, context: Context) {
         nsView.onResize = { window in
             if showsRightPane, let content = window.contentView,
-               let split = Self.mainSplit(in: content), let pane = split.subviews.last {
+               let split = Self.mainSplit(in: content), let pane = split.arrangedSubviews.last {
                 let width = pane.frame.width
                 if width > 0 && abs(rightPaneWidth - width) > 0.5 { rightPaneWidth = width }
             }
@@ -156,7 +109,7 @@ private struct ToolbarHeaderSizing: NSViewRepresentable {
     }
 
     private static func mainSplit(in view: NSView) -> NSSplitView? {
-        if let split = view as? NSSplitView, split.isVertical, split.subviews.count > 1 { return split }
+        if let split = view as? NSSplitView, split.isVertical, split.arrangedSubviews.count > 1 { return split }
         return view.subviews.lazy.compactMap { mainSplit(in: $0) }.first
     }
 }
@@ -183,7 +136,7 @@ struct DesktopWindow: View {
     @State private var wasRightPaneOpenBeforeTiling = false
     @State private var currentContainerWidth: CGFloat = 1120
 
-    private let historyWidth: CGFloat = 248
+    @State private var historyWidth: CGFloat = 248
     @State private var isHistoryOpen = true
     @AppStorage("mikomai.desktop.mac.rightPaneWidth") private var rightPaneWidth = 330.0
     @State private var isRightPaneOpen = false
@@ -233,11 +186,15 @@ struct DesktopWindow: View {
                 if showsHistorySidebar && isHistoryOpen {
                     historySidebar
                         .frame(minWidth: 180, idealWidth: historyWidth, maxWidth: 420)
-                        .background(InitialHistoryPaneSizing(width: historyWidth))
+                        .background(PaneInitialSizing(width: historyWidth, isHistoryPane: true))
                         .overlay(alignment: .trailing) {
-                            PaneDragCollapse(isHistoryPane: true) {
+                            PaneDragCollapse(isHistoryPane: true, onClose: { width in
+                                historyWidth = width
                                 withAnimation(.easeInOut(duration: 0.22)) { isHistoryOpen = false }
-                            }
+                            }, onReopen: { width in
+                                historyWidth = width
+                                withAnimation(.easeInOut(duration: 0.22)) { isHistoryOpen = true }
+                            }, onResize: { historyWidth = $0 })
                                 .frame(width: 8).offset(x: 4)
                                 .help("ドラッグで幅を調整・最小幅まで左へ縮めると自動で閉じる")
                         }
@@ -261,10 +218,15 @@ struct DesktopWindow: View {
                 if model.workspace == .chat && isRightPaneOpen {
                     rightSidePane
                         .frame(minWidth: 180, idealWidth: rightPaneWidth, maxWidth: 600)
+                        .background(PaneInitialSizing(width: rightPaneWidth, isHistoryPane: false))
                         .overlay(alignment: .leading) {
-                            PaneDragCollapse(isHistoryPane: false) {
+                            PaneDragCollapse(isHistoryPane: false, onClose: { width in
+                                rightPaneWidth = Double(width)
                                 withAnimation(.easeInOut(duration: 0.22)) { isRightPaneOpen = false }
-                            }
+                            }, onReopen: { width in
+                                rightPaneWidth = Double(width)
+                                withAnimation(.easeInOut(duration: 0.22)) { isRightPaneOpen = true }
+                            }, onResize: { rightPaneWidth = Double($0) })
                                 .frame(width: 8).offset(x: -4)
                                 .help("ドラッグで幅を調整・最小幅まで右へ縮めると自動で閉じる")
                         }
