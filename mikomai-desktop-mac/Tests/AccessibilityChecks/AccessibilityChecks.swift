@@ -248,7 +248,7 @@ import MikomaiDesktopCore
     window.contentView = host
     pump()
     let cells = readableViews(host)
-    for column in ["名前", "ホスト", "ポート", "ユーザー", "機器タイプ", "資格情報"] {
+    for column in ["名前", "ホスト", "ポート", "ユーザー", "機器タイプ", "パスワード", "Enableパスワード"] {
         precondition(cells.contains { ($0.accessibilityLabel() ?? "").hasPrefix("検証機器の\(column):") }, "Missing readable table column: \(column)")
     }
     precondition(cells.first { ($0.accessibilityLabel() ?? "").hasPrefix("検証機器のユーザー:") }?.accessibilityValue() as? String == "未設定")
@@ -261,7 +261,7 @@ import MikomaiDesktopCore
         if let cell = window.firstResponder as? ReadableContentView { cellsVisited.insert(cell.accessibilityLabel() ?? "") }
     }
     precondition(cells.allSatisfy { cellsVisited.contains($0.accessibilityLabel() ?? "") }, "Every table cell is reachable through Tab; visited: \(cellsVisited.sorted()); cells: \(cells.map { "\($0.accessibilityLabel() ?? "") enabled=\($0.isEnabled) hidden=\($0.isHiddenOrHasHiddenAncestor) key=\($0.canBecomeKeyView) frame=\($0.frame)" })")
-    print("PASS: host table Tab reaches all six columns, identifies row/column/value, and names empty cells")
+    print("PASS: host table Tab reaches all seven columns, identifies row/column/value, and names empty cells")
     let edit = button("機器を編集: 検証機器", in: host)
     window.makeFirstResponder(edit)
     edit.keyDown(with: key(36))

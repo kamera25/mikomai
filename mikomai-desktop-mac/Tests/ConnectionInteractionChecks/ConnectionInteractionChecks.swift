@@ -58,5 +58,42 @@ import ObjectiveC
         precondition(descendants(inventory).compactMap { $0 as? KeyboardActionButton }
             .contains { $0.accessibilityLabel() == "機器を削除: 検証機器" })
         print("PASS: existing edit button and separate delete control remain available")
+        for (password, enable) in [(false, false), (true, false), (false, true), (true, true)] {
+            model.connections[0].hasPassword = password
+            model.connections[0].hasEnablePassword = enable
+            pump()
+            let cells = descendants(inventory).compactMap { $0 as? ReadableContentView }
+            for (column, registered) in [("パスワード", password), ("Enableパスワード", enable)] {
+                let cell = cells.first { ($0.accessibilityLabel() ?? "").hasPrefix("検証機器の\(column):") }!
+                precondition(cell.accessibilityValue() as? String == (registered ? "*****" : "未設定"),
+                             "Each credential must independently show a fixed mask only when registered")
+            }
+        }
+        print("PASS: password and Enable columns independently show ***** or 未設定 for all four registration states")
+        for (password, enable) in [(false, false), (true, false), (false, true), (true, true)] {
+            var saved = false
+            var receivedPassword: String?
+            var receivedEnable: String?
+            let connection = SavedConnection(name: "編集検証", host: "192.0.2.3", hasPassword: password, hasEnablePassword: enable)
+            let editor = NSHostingView(rootView: ConnectionEditor(connection: connection) { _, password, enable in
+                saved = true
+                receivedPassword = password
+                receivedEnable = enable
+            })
+            window.contentView = editor
+            pump()
+            let fields = descendants(editor).compactMap { $0 as? AccessibleSecureField }
+            precondition(fields.count == 2)
+            for (title, registered) in [("パスワード", password), ("Enable パスワード", enable)] {
+                let field = fields.first { $0.accessibilityLabel() == title }!
+                precondition(field.placeholderString == (registered ? "*****" : ""))
+                precondition(field.stringValue.isEmpty, "Mask must be a placeholder, never a credential value")
+                precondition((field.accessibilityHelp() ?? "").contains(registered ? "登録済み" : "未登録"))
+            }
+            let save = descendants(editor).compactMap { $0 as? KeyboardActionButton }.first { $0.accessibilityLabel() == "保存" }!
+            save.performClick(nil)
+            precondition(saved && receivedPassword == nil && receivedEnable == nil, "Unchanged masks must not overwrite stored credentials")
+        }
+        print("PASS: editor placeholders reflect all registration states; unchanged Save preserves both credentials")
     }
 }

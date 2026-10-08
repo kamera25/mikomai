@@ -8,12 +8,13 @@ struct AccessibleTextField: View {
     @Binding var text: String
     var help: String = ""
     var isSecure = false
+    var placeholder = ""
     var defersTabNavigation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.system(size: 13)).accessibilityHidden(true)
-            NativeField(title: title, text: $text, help: help, isSecure: isSecure, defersTabNavigation: defersTabNavigation)
+            NativeField(title: title, text: $text, help: help, isSecure: isSecure, placeholder: placeholder, defersTabNavigation: defersTabNavigation)
                 .frame(minHeight: 26)
         }
     }
@@ -23,6 +24,7 @@ struct AccessibleTextField: View {
         @Binding var text: String
         let help: String
         let isSecure: Bool
+        let placeholder: String
         let defersTabNavigation: Bool
         @Environment(\.isEnabled) private var isEnabled
 
@@ -42,6 +44,7 @@ struct AccessibleTextField: View {
             context.coordinator.owner = self
             field.isEnabled = isEnabled
             (field as? AccessibleInputField)?.defersTabNavigation = defersTabNavigation
+            field.placeholderString = placeholder
             field.setAccessibilityLabel(title)
             field.setAccessibilityHelp(help)
             // Binding updates must not replace marked text or reset the cursor.

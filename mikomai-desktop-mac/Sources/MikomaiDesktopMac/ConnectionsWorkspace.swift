@@ -53,20 +53,21 @@ struct ConnectionsWorkspace: View {
                             .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                             .keyboardReadable("\(connection.name)の機器タイプ", text: DeviceTypeCatalog.displayName(for: connection.deviceType))
                     }
-                    TableColumn("資格情報") { connection in
-                        Group {
-                            if connection.hasPassword || connection.hasEnablePassword {
-                                Label(
-                                    connection.hasPassword && connection.hasEnablePassword ? "Key + Enable" :
-                                        (connection.hasEnablePassword ? "Enable" : "Key"),
-                                    systemImage: "key.fill"
-                                ).font(.system(size: 13)).foregroundStyle(.green)
-                            } else {
-                                Text("未設定").font(.system(size: 13)).foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-                        .keyboardReadable("\(connection.name)の資格情報", text: connection.hasPassword && connection.hasEnablePassword ? "パスワードとEnableパスワードを設定済み" : connection.hasEnablePassword ? "Enableパスワードを設定済み" : connection.hasPassword ? "パスワードを設定済み" : "未設定")
+                    TableColumn("パスワード") { connection in
+                        Text(verbatim: connection.hasPassword ? "*****" : "未設定")
+                            .font(.system(size: 13))
+                            .foregroundStyle(connection.hasPassword ? Color.primary : Color.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                            .keyboardReadable("\(connection.name)のパスワード", text: connection.hasPassword ? "*****" : "未設定")
+                            .help(connection.hasPassword ? "パスワードを登録済み" : "パスワード未設定")
+                    }.width(90)
+                    TableColumn("Enable") { connection in
+                        Text(verbatim: connection.hasEnablePassword ? "*****" : "未設定")
+                            .font(.system(size: 13))
+                            .foregroundStyle(connection.hasEnablePassword ? Color.primary : Color.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                            .keyboardReadable("\(connection.name)のEnableパスワード", text: connection.hasEnablePassword ? "*****" : "未設定")
+                            .help(connection.hasEnablePassword ? "Enableパスワードを登録済み" : "Enableパスワード未設定")
                     }.width(90)
                     TableColumn("操作") { connection in
                         HStack(spacing: 6) {
@@ -189,8 +190,14 @@ struct ConnectionEditor: View {
 
                     VStack(alignment: .leading, spacing: 14) {
                         Text("資格情報 (Keychain)").font(.headline).accessibilityAddTraits(.isHeader)
-                        AccessibleTextField(title: "パスワード", text: $password, help: "接続時に使用するパスワード。省略可能です。入力内容は保護され、Keychainに保存されます。", isSecure: true)
-                        AccessibleTextField(title: "Enable パスワード", text: $enablePassword, help: "特権モードで使用するパスワード。省略可能です。入力内容は保護され、Keychainに保存されます。", isSecure: true)
+                        AccessibleTextField(title: "パスワード", text: $password, help: "接続時に使用するパスワード。入力内容は保護され、Keychainに保存されます。" + (connection.hasPassword ? " 登録済み。空欄で保存すると現在のパスワードを保持します。" : " 未登録。省略可能です。"), isSecure: true, placeholder: connection.hasPassword ? "*****" : "")
+                        if connection.hasPassword {
+                            Text("登録済み（変更する場合のみ入力）").font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
+                        AccessibleTextField(title: "Enable パスワード", text: $enablePassword, help: "特権モードで使用するパスワード。入力内容は保護され、Keychainに保存されます。" + (connection.hasEnablePassword ? " 登録済み。空欄で保存すると現在のEnableパスワードを保持します。" : " 未登録。省略可能です。"), isSecure: true, placeholder: connection.hasEnablePassword ? "*****" : "")
+                        if connection.hasEnablePassword {
+                            Text("登録済み（変更する場合のみ入力）").font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
                         Text("パスワードは macOS Keychain に暗号化されて安全に保管されます。平文ファイルには保存されません。")
                             .font(.system(size: 12)).foregroundStyle(.secondary)
                             .keyboardReadable("資格情報の保存について", text: "パスワードはmacOS Keychainに暗号化して保存されます。")
