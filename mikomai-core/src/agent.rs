@@ -18,6 +18,56 @@ pub struct RegisteredDevice {
     pub device_type: Option<String>,
 }
 
+pub fn rag_brand_for_device_type(kind: &str) -> Option<&'static str> {
+    match kind.trim().to_lowercase().as_str() {
+        "yamaha" | "yamaha_rtx" => Some("yamaha"),
+        "cisco" | "cisco_ios" | "cisco_xe" | "cisco_xr" | "cisco_nxos" => Some("cisco_ios"),
+        "juniper" | "junos" | "juniper_junos" => Some("juniper_junos"),
+        "furukawa" | "fitelnet" | "furukawa_fitelnet" | "f220" | "fx201" | "fx310" => Some("furukawa_fitelnet"),
+        "arista" | "arista_eos" => Some("arista_eos"),
+        "fortinet" | "fortigate" | "fortios" => Some("fortinet"),
+        "a10" | "a10_ax" | "a10_vthreads" => Some("a10"),
+        "paloalto" | "palo_alto" | "panos" | "paloalto_panos" => Some("paloalto_panos"),
+        _ => None,
+    }
+}
+
+/// Resolve manual questions from inventory, without treating a request for
+/// instructions as authorization to change the device.
+pub fn registered_manual_query(
+    goal: &str,
+    inventory: &[RegisteredDevice],
+) -> Option<(String, serde_json::Value)> {
+    let lower = goal.to_lowercase();
+    if !["方法", "手順", "使い方", "設定例", "説明して", "仕組み", "とは", "how to"]
+        .iter().any(|marker| lower.contains(marker))
+        || ["設定して", "変更して", "投入して", "削除して", "確認して", "取得して", "実行して"].iter().any(|marker| lower.contains(marker))
+        || !crate::reference_context::needs_selected_references(goal)
+    {
+        return None;
+    }
+    let matches = inventory.iter().filter(|device| {
+        !device.hostname.is_empty() && lower.contains(&device.hostname.to_lowercase())
+            || device.ip.as_deref().is_some_and(|ip| !ip.is_empty() && lower.contains(ip))
+    }).collect::<Vec<_>>();
+    if matches.len() != 1 { return None; }
+    let device = matches[0];
+    let kind = device.device_type.as_deref().unwrap_or_default().to_lowercase();
+    let brand = rag_brand_for_device_type(&kind);
+    let mut args = serde_json::json!({"query":goal, "expand_documents":true});
+    if let Some(brand) = brand {
+        // Device aliases carry no meaning in a manual embedding search.
+        let mut query = regex::Regex::new(&format!("(?i){}", regex::escape(&device.hostname)))
+            .ok()?.replace_all(goal, kind.as_str()).into_owned();
+        if let Some(ip) = device.ip.as_deref().filter(|ip| !ip.is_empty()) {
+            query = query.replace(ip, &kind);
+        }
+        args["query"] = query.into();
+        args["brand"] = brand.into();
+    }
+    Some((device.hostname.clone(), args))
+}
+
 // Resolve explicit ARP reads from caller-supplied, non-secret inventory rather
 // than asking the model to invent a tool or choose an arbitrary device.
 pub fn registered_arp_decision(
@@ -421,6 +471,23 @@ impl AgentPlanner<'_> {
             if let Some(decision) = registered_arp_decision(task, &self.inventory) {
                 return Ok(decision);
             }
+            if let Some((target, args)) = registered_manual_query(&task.task.goal, self.inventory) {
+                if self.tools.iter().any(|tool| tool == "query_rag") {
+                    if let Some(observation) = observed_request(task, "query_rag", Some(&target), &args, self.inventory) {
+                        if !observation_succeeded(observation) {
+                            return Ok(PlanDecision::AskUser { message: format!("{} の資料を検索しましたが、回答の根拠を取得できませんでした。検索結果: {}", target, observation.content) });
+                        }
+                        let context = crate::response::ResponseContext {
+                            question: &task.task.goal,
+                            history: self.history,
+                            references: &observation.content,
+                            attachments: self.attachments,
+                        };
+                        return Ok(PlanDecision::Complete { brief: context.answer(self.inference).await? });
+                    }
+                    return Ok(PlanDecision::Observe { tool: "query_rag".into(), target: Some(target), args });
+                }
+            }
             let mode =
                 crate::dispatch::select_dispatch_mode_for_devices(&task.task.goal, &self.devices);
             if mode == DispatchMode::Worker && task.evidence.is_empty()
@@ -562,6 +629,45 @@ mod tests {
     use super::*;
     use std::collections::VecDeque;
     use std::sync::Mutex;
+    #[test]
+    fn named_device_manual_questions_search_vendor_rag_then_answer_without_clarification() {
+        let inventory = vec![RegisteredDevice { id: None, hostname: "NakaokuGW".into(), ip: Some("192.168.50.1".into()), device_type: Some("yamaha".into()) }];
+        let tools = vec!["query_rag".into()];
+        let devices = vec!["NakaokuGW".into()];
+        let model = Model { replies: Mutex::new(vec![Ok("設定の表示は show config です。【出典: yamaha/2-02_show_config.md】".into())].into()), prompts: Mutex::new(vec![]) };
+        let approval = Approval(Mutex::new(0));
+        let planner = AgentPlanner { inventory: &inventory, devices: &devices, tools: &tools, history: "", attachments: "", reference_material: "Cisco configure terminal", inference: &model, worker: &model, approval: &approval };
+        for goal in ["NakaokuGW で設定変更する方法を教えて", "nakaokugw の設定手順を説明して", "192.168.50.1 の設定方法を教えて"] {
+            let mut task = TaskSnapshot::new(goal);
+            let PlanDecision::Observe { tool, target, args } = futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap() else { panic!("must search before asking") };
+            assert_eq!(tool, "query_rag");
+            assert_eq!(target.as_deref(), Some("NakaokuGW"));
+            assert_eq!(args["brand"], "yamaha");
+            assert!(args["query"].as_str().unwrap().contains("yamaha"));
+            assert!(!args["query"].as_str().unwrap().to_lowercase().contains("nakaokugw"));
+            assert!(model.prompts.lock().unwrap().is_empty());
+            if goal.starts_with("NakaokuGW") {
+                let mut evidence = crate::Evidence::from_tool("Yamaha show config【出典: yamaha/2-02_show_config.md】", target, Some(tool));
+                evidence.source.success = Some(true);
+                evidence.source.request = Some(args.to_string());
+                task.evidence.push(evidence);
+                assert!(matches!(futures_lite::future::block_on(planner.plan_with_cancellation(&task, false)).unwrap(), PlanDecision::Complete { brief } if brief.contains("show config")));
+                let prompts = model.prompts.lock().unwrap();
+                assert_eq!(prompts.len(), 1);
+                assert!(prompts[0].contains("Yamaha show config"));
+                assert!(!prompts[0].contains("Cisco configure terminal"));
+                drop(prompts);
+                model.prompts.lock().unwrap().clear();
+            }
+        }
+        for goal in ["NakaokuGW の設定を変更して", "NakaokuGWへPingして結果を教えて", "NakaokuGW のLAN1を確認して、設定方法も教えて", "NakaokuGW と R2 の設定方法を教えて"] {
+            let mut devices = inventory.clone();
+            devices.push(RegisteredDevice { hostname: "R2".into(), ..inventory[0].clone() });
+            assert!(registered_manual_query(goal, &devices).is_none(), "{goal}");
+        }
+        assert!(registered_manual_query("NakaokuGW の設定方法を教えて", &[]).is_none());
+        assert_eq!(*approval.0.lock().unwrap(), 0);
+    }
     #[test]
     fn single_ping_prose_finishes_without_post_probe_inference() {
         let model = Model { replies: Mutex::new(VecDeque::new()), prompts: Mutex::new(vec![]) };

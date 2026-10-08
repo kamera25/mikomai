@@ -2004,6 +2004,7 @@ impl ToolExecutorPort for FfiAgentExecutor {
                                 })
                             })
                             .and_then(|device| device.device_type.as_deref())
+                            .and_then(mikomai_core::agent::rag_brand_for_device_type)
                     });
                 for source in &self.rag_sources {
                     if !source.is_dir() {
@@ -2024,9 +2025,17 @@ impl ToolExecutorPort for FfiAgentExecutor {
                     }
                 }
                 let hits = self.rag.search(query, brand).await?;
+                let output = if args["expand_documents"] == true && !hits.citations.is_empty() {
+                    let paths = hits.citations.iter().take(3)
+                        .map(|citation| citation.source_path.clone()).collect::<Vec<_>>();
+                    let documents = self.rag.expand_selected_documents(&paths).await?;
+                    mikomai_core::reference_context::deduplicate_selected_references(&documents)
+                } else {
+                    hits.output
+                };
                 return Ok(ToolResult {
                     success: hits.success,
-                    output: hits.output,
+                    output,
                 });
             }
             let target_id = target;
@@ -2547,10 +2556,16 @@ pub unsafe fn mikomai_agent_chat_streaming(
                 .map_err(|e| e.to_string())?
         };
         let attachments = prepare_attachments(&goal, attachments)?;
+        let device_text = CStr::from_ptr(devices_json)
+            .to_str()
+            .map_err(|e| e.to_string())?;
+        let registry =
+            mikomai_adapters::portable_device::ReadOnlyToolRegistry::from_json(device_text)?;
         // Plotter uses supplied topology, history and attachments, rather than
         // configuration manuals. Do not require downloading an embedding model to draw it.
         let fetch_references = !mikomai_core::plotter::is_diagram_request(&goal)
             && !mikomai_core::network::ndp::is_local_request(&goal)
+            && mikomai_core::agent::registered_manual_query(&goal, registry.devices()).is_none()
             && mikomai_core::reference_context::needs_selected_references(&goal);
         let reference_start = std::time::Instant::now();
         let reference_material = if fetch_references && documents.is_dir() {
@@ -2569,11 +2584,6 @@ pub unsafe fn mikomai_agent_chat_streaming(
                 "from":"worker", "to":"agent", "reason":"no_similar_knowledge", "query":goal,
             }));
         }
-        let device_text = CStr::from_ptr(devices_json)
-            .to_str()
-            .map_err(|e| e.to_string())?;
-        let registry =
-            mikomai_adapters::portable_device::ReadOnlyToolRegistry::from_json(device_text)?;
         let devices = registry
             .devices()
             .iter()
@@ -3172,7 +3182,7 @@ fn infer_rag_brand(query: &str) -> Option<&'static str> {
     } else if normalized.contains("juniper") || normalized.contains("junos") {
         Some("juniper_junos")
     } else if normalized.contains("yamaha") || normalized.contains("rtx") {
-        Some("yamaha_rtx")
+        Some("yamaha")
     } else {
         None
     }
@@ -3875,6 +3885,44 @@ mod tests {
 
     use mikomai_core::{port::PlanDecision, TaskSnapshot};
     use std::ffi::c_char;
+
+    #[test]
+    fn named_yamaha_manual_query_executes_filtered_rag_without_device_io() {
+        use mikomai_core::port::ToolExecutorPort;
+        struct FixedEmbedding;
+        impl mikomai_adapters::portable_rag::RagEmbedder for FixedEmbedding {
+            fn embed(&self, inputs: &[String]) -> Result<Vec<Vec<f32>>, String> {
+                Ok(inputs.iter().map(|_| { let mut vector = vec![0.0; 1024]; vector[0] = 1.0; vector }).collect())
+            }
+        }
+        unsafe extern "C" fn no_device_io(_: *const c_char, _: *const c_char, _: *const c_char, _: *mut c_char, _: usize, _: *mut std::ffi::c_void) -> i32 {
+            1
+        }
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        super::CANCEL_INFERENCE.store(false, std::sync::atomic::Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!("mikomai-yamaha-manual-{}", uuid::Uuid::new_v4()));
+        let runtime = super::portable_runtime().unwrap();
+        let graph = runtime.block_on(mikomai_adapters::portable_graph::PortableGraph::initialize_at(&root)).unwrap();
+        let registry = mikomai_adapters::portable_device::ReadOnlyToolRegistry::from_json(r#"[{"hostname":"NakaokuGW","ip":"192.168.50.1","deviceType":"yamaha"}]"#).unwrap();
+        let rag = mikomai_adapters::portable_rag::PortableRag::new(graph.clone(), std::sync::Arc::new(FixedEmbedding));
+        let docs = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../nw-docs");
+        runtime.block_on(rag.ingest_path(&docs.join("yamaha"))).unwrap();
+        runtime.block_on(rag.ingest_path(&docs.join("cisco"))).unwrap();
+        let (target, args) = mikomai_core::agent::registered_manual_query("NakaokuGW で設定変更する方法を教えて", registry.devices()).unwrap();
+        let executor = super::FfiAgentExecutor {
+            registry, transport: super::SwiftCallbackTransport { callback: no_device_io, context: 0 },
+            graph, rag, rag_sources: vec![], canonical_inference: |_, _| unreachable!(),
+        };
+        let result = runtime.block_on(executor.execute(uuid::Uuid::new_v4(), "query_rag", Some(&target), &args)).unwrap();
+        assert!(result.success);
+        assert!(result.output.contains("show config"), "{}", result.output);
+        assert!(result.output.contains("2-02_show_config.md"));
+        assert!(!result.output.contains("configure terminal"));
+        assert!(!result.output.contains("/cisco/"));
+        assert_eq!(super::infer_rag_brand("Yamaha RTX1300 設定方法"), Some("yamaha"));
+        drop(executor);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     fn arp_inventory(names: &[&str]) -> Vec<mikomai_adapters::portable_device::RegisteredDevice> {
         names
