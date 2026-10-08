@@ -16,7 +16,7 @@ public enum PaneResizePolicy {
 
     public static func shouldClose(startWidth: Double, translation: Double, isHistoryPane: Bool) -> Bool {
         let resultingWidth = isHistoryPane ? startWidth + translation : startWidth - translation
-        return resultingWidth < minimumWidth
+        return resultingWidth <= minimumWidth
     }
 
     public static func isCompactWidth(_ width: Double) -> Bool {
@@ -58,4 +58,3 @@ public enum PaneResizePolicy {
         return false
     }
 }
-

@@ -234,6 +234,13 @@ struct DesktopWindow: View {
                     historySidebar
                         .frame(minWidth: 180, idealWidth: historyWidth, maxWidth: 420)
                         .background(InitialHistoryPaneSizing(width: historyWidth))
+                        .overlay(alignment: .trailing) {
+                            PaneDragCollapse(isHistoryPane: true) {
+                                withAnimation(.easeInOut(duration: 0.22)) { isHistoryOpen = false }
+                            }
+                                .frame(width: 8).offset(x: 4)
+                                .help("ドラッグで幅を調整・最小幅まで左へ縮めると自動で閉じる")
+                        }
                 }
                 VStack(spacing: 0) {
                     Group {
@@ -254,6 +261,13 @@ struct DesktopWindow: View {
                 if model.workspace == .chat && isRightPaneOpen {
                     rightSidePane
                         .frame(minWidth: 180, idealWidth: rightPaneWidth, maxWidth: 600)
+                        .overlay(alignment: .leading) {
+                            PaneDragCollapse(isHistoryPane: false) {
+                                withAnimation(.easeInOut(duration: 0.22)) { isRightPaneOpen = false }
+                            }
+                                .frame(width: 8).offset(x: -4)
+                                .help("ドラッグで幅を調整・最小幅まで右へ縮めると自動で閉じる")
+                        }
                 }
             }
             .frame(width: max(0, geometry.size.width - 50))

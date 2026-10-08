@@ -40,7 +40,9 @@ struct ChatPresentationPolicyTests {
         #expect(PaneResizePolicy.clampedWidth(140, maximumWidth: 500) == 180)
         #expect(PaneResizePolicy.clampedWidth(640, maximumWidth: 500) == 500)
         #expect(PaneResizePolicy.shouldClose(startWidth: 200, translation: -21, isHistoryPane: true))
-        #expect(!PaneResizePolicy.shouldClose(startWidth: 200, translation: -20, isHistoryPane: true))
+        #expect(PaneResizePolicy.shouldClose(startWidth: 200, translation: -20, isHistoryPane: true))
+        #expect(!PaneResizePolicy.shouldClose(startWidth: 200, translation: -19, isHistoryPane: true))
+        #expect(PaneResizePolicy.shouldClose(startWidth: 200, translation: 20, isHistoryPane: false))
         #expect(PaneResizePolicy.shouldClose(startWidth: 200, translation: 21, isHistoryPane: false))
     }
 
