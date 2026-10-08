@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 
 struct ConnectionsWorkspace: View {
     @ObservedObject var model: DesktopModel
+    @State private var selectedConnectionID: SavedConnection.ID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,30 +27,30 @@ struct ConnectionsWorkspace: View {
                     Text("ネットワーク機器の接続情報を登録できます。資格情報はKeychainに安全に保存します。").font(.system(size: 14)).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                Table(model.connections) {
+                Table(model.connections, selection: $selectedConnectionID) {
                     TableColumn("名前") { connection in
                         Text(connection.name.isEmpty ? "未設定" : connection.name)
-                            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                             .keyboardReadable("\(connection.name)の名前", text: connection.name)
                     }
                     TableColumn("ホスト") { connection in
                         Text(connection.host.isEmpty ? "未設定" : connection.host)
-                            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                             .keyboardReadable("\(connection.name)のホスト", text: connection.host)
                     }
                     TableColumn("ポート") { connection in
                         Text(connection.port.isEmpty ? "未設定" : connection.port)
-                            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                             .keyboardReadable("\(connection.name)のポート", text: connection.port)
                     }.width(50)
                     TableColumn("ユーザー") { connection in
                         Text(connection.username.isEmpty ? "未設定" : connection.username)
-                            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                             .keyboardReadable("\(connection.name)のユーザー", text: connection.username)
                     }
                     TableColumn("機器タイプ") { connection in
                         Text(DeviceTypeCatalog.displayName(for: connection.deviceType))
-                            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                             .keyboardReadable("\(connection.name)の機器タイプ", text: DeviceTypeCatalog.displayName(for: connection.deviceType))
                     }
                     TableColumn("資格情報") { connection in
@@ -64,7 +65,7 @@ struct ConnectionsWorkspace: View {
                                 Text("未設定").font(.system(size: 13)).foregroundStyle(.secondary)
                             }
                         }
-                        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                         .keyboardReadable("\(connection.name)の資格情報", text: connection.hasPassword && connection.hasEnablePassword ? "パスワードとEnableパスワードを設定済み" : connection.hasEnablePassword ? "Enableパスワードを設定済み" : connection.hasPassword ? "パスワードを設定済み" : "未設定")
                     }.width(90)
                     TableColumn("操作") { connection in
@@ -86,6 +87,15 @@ struct ConnectionsWorkspace: View {
                         .accessibleButtonStyle(.plain)
                         .accessibilityElement(children: .contain)
                     }.width(115)
+                }
+                .contextMenu(forSelectionType: SavedConnection.ID.self) { ids in
+                    if let connection = model.connections.first(where: { ids.contains($0.id) }) {
+                        Button("編集") { model.editingConnection = connection }
+                    }
+                } primaryAction: { ids in
+                    if let connection = model.connections.first(where: { ids.contains($0.id) }) {
+                        model.editingConnection = connection
+                    }
                 }
             }
             Spacer(minLength: 0)

@@ -17,7 +17,7 @@ for source in "$APP"/Sources/MikomaiDesktopMac/*.swift; do
 done
 swiftc -suppress-warnings -sdk "$SDK" -module-cache-path "$CHECK_DIR/cache" \
  -I "$SCRATCH/out/Products/Debug" \
- -Xcc "-fmodule-map-file=$SCRATCH/out/Intermediates.noindex/GeneratedModuleMaps/MikomaiGeneratedFFI.modulemap" \
+ -Xcc "-fmodule-map-file=$APP/Sources/MikomaiGeneratedFFI/include/module.modulemap" \
  -L "$ROOT/target/debug" -lmikomai_bindings -Xlinker -rpath -Xlinker "$ROOT/target/debug" \
  "$SCRATCH/out/Products/Debug/MikomaiDesktopCore.o" "$SCRATCH/out/Products/Debug/MikomaiBindings.o" "$@" \
  "$SCRATCH/out/Intermediates.noindex/MikomaiDesktopMac.build/Debug/MikomaiDesktopMac-p.build/DerivedSources/resource_bundle_accessor.swift" \
