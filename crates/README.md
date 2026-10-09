@@ -1,19 +1,75 @@
 # Mikomai workspace crates
 
-依存方向はリポジトリ直下の `mikomai-core/`（domain/application/port）を中心に、`crates/mikomai-adapters`、`crates/mikomai-cli`、`crates/mikomai-ffi` が外向きに依存する形に固定する。coreからOS固有UI、DB、LLM、外部プロセスの起動方法を参照しない。
+Mikomai はオニオンアーキテクチャを採用しており、リポジトリ直下のドメイン層 [`mikomai-core`](file:///Users/kamera25/mikomai/mikomai-core) を中心に、外側のアダプター層・アプリケーション層・バインディング層が内向きに依存する構造をとっています。`core` は OS 固有 UI、DB、LLM 実装、外部プロセス等の I/O を参照しません。
 
-LLM は次の境界を使う。既存の core 配置はビルド・スクリプト互換性のため維持する。
+## Crate 構成と役割
 
-- `mikomai-llm`: core の `InferencePort` / streaming / Vision を再公開する共通契約。core はこの crate や具体的な backend に依存しない。
-- `mikomai-llm-llamacpp`: 従来の GGUF 読み込み、推論パラメータ、キャンセル、ストリーミング、Vision、ネイティブログ制御を所有する。`mikomai_adapters::local_llama` は互換用の再公開。
-- `mikomai-llm-apple`: macOS の target-specific dependency。非 macOS の `--workspace` ビルドにも入らないよう workspace member から除外し、実装も `cfg(target_os = "macos")` で保護する。Swift / C FFI / Apple SDK へのビルド依存はない。
+```mermaid
+flowchart TD
+  subgraph UI ["フロントエンド"]
+    SwiftUI["macOS (SwiftUI)"]
+    WinUI["Windows (WinUI 3)"]
+    CLI["mikomai-cli"]
+  end
 
-新しい backend も `InferencePort` を実装し、既存の core の呼び出し箇所に渡せる。
-`capabilities()` は、この連携で提供するテキスト生成・構造化出力・tool calling とトークン制限を返す。
-構造化出力/tool calling は現在両 backend とも専用 API を提供していないため false。自由文から JSON を抽出する従来の Agent 動作は変更しない。
-`availability()` はコンパイル対象とは独立した実行時の状態。従来の callback adapter は Unknown、llama.cpp は GGUF のロード状況、Apple は `fm available --model system` を確認する。
+  subgraph Bindings ["バインディング層"]
+    MikomaiBindings["crates/mikomai-bindings<br/>(UniFFI: Swift / C#)"]
+  end
 
-Apple の利用例（macOS のアプリケーション側で選択する。既存 CLI/FFI の既定は llama.cpp のまま）:
+  subgraph AppLayer ["アプリケーション層"]
+    MikomaiApp["crates/mikomai-app<br/>(MikomaiService, API, Scheduler, Runtime)"]
+  end
+
+  subgraph Adapters ["アダプター層"]
+    MikomaiAdapters["crates/mikomai-adapters<br/>(SurrealDB, RAG, Worker, Keychain, Serial)"]
+    MikomaiLlmCpp["crates/mikomai-llm-llamacpp<br/>(llama.cpp GGUF)"]
+    MikomaiLlmApple["crates/mikomai-llm-apple<br/>(Apple FM / macOS only)"]
+  end
+
+  subgraph Domain ["ドメイン層・共通契約"]
+    MikomaiCore["mikomai-core<br/>(Domain, Ports, Policy, Agent)"]
+    MikomaiLlm["crates/mikomai-llm<br/>(LLM Contracts & Types)"]
+  end
+
+  SwiftUI --> MikomaiBindings
+  WinUI --> MikomaiBindings
+  MikomaiBindings --> MikomaiApp
+  CLI --> MikomaiApp
+  CLI --> MikomaiAdapters
+  CLI --> MikomaiCore
+  MikomaiApp --> MikomaiAdapters
+  MikomaiApp --> MikomaiCore
+  MikomaiAdapters --> MikomaiCore
+  MikomaiAdapters --> MikomaiLlmCpp
+  MikomaiAdapters -.->|macOS cfg| MikomaiLlmApple
+  MikomaiLlmCpp --> MikomaiLlm
+  MikomaiLlmCpp --> MikomaiCore
+  MikomaiLlmApple --> MikomaiLlm
+  MikomaiLlm --> MikomaiCore
+```
+
+| Crate | パス | 役割と責務 |
+| --- | --- | --- |
+| [`mikomai-core`](file:///Users/kamera25/mikomai/mikomai-core) | `mikomai-core/` | ドメインロジック、ポリシー、自律エージェント、ポート定義（`InferencePort`、`SearchPort`、`ReporterPort` 等）。I/O や具象インフラに依存しない。 |
+| [`mikomai-llm`](file:///Users/kamera25/mikomai/crates/mikomai-llm) | `crates/mikomai-llm/` | LLM 推論契約の共通インターフェース。core の `InferencePort`、`StreamingInferencePort`、`VisionPort`、`InferenceCapabilities`、`ModelAvailability` などを再公開。 |
+| [`mikomai-llm-llamacpp`](file:///Users/kamera25/mikomai/crates/mikomai-llm-llamacpp) | `crates/mikomai-llm-llamacpp/` | `llama.cpp`（GGUF）による推論バックエンド。マルチスレッド、Metal / Vulkan / CPU 推論、ストリーミング、Vision、推論キャンセル制御を担当。 |
+| [`mikomai-llm-apple`](file:///Users/kamera25/mikomai/crates/mikomai-llm-apple) | `crates/mikomai-llm-apple/` | macOS 専用 Apple Foundation Models（`/usr/bin/fm` CLI）推論バックエンド。非 macOS の `--workspace` ビルドを阻害しないよう workspace member から除外（`exclude`）され、macOS target 依存でのみビルド。 |
+| [`mikomai-adapters`](file:///Users/kamera25/mikomai/crates/mikomai-adapters) | `crates/mikomai-adapters/` | インフラストラクチャアダプター。SurrealDB（RocksDB 組み込み）による永続化・グラフDB、FastEmbed（E5）による RAG、Python Netmiko ワーカープロセス連携、OS 資格情報（`keyring`）、シリアルポート制御、監査ログ、ルーター状態正規化など。 |
+| [`mikomai-app`](file:///Users/kamera25/mikomai/crates/mikomai-app) | `crates/mikomai-app/` | アプリケーションオーケストレーション。`MikomaiService` がアプリ全体の状態（セッション、タスク、承認計画、排他制御等）と単一 Tokio Runtime を所有。`api` モジュール（`Command` / `Query` / `TaskEvent` / `Snapshot`）および所有型ブリッジを提供。 |
+| [`mikomai-bindings`](file:///Users/kamera25/mikomai/crates/mikomai-bindings) | `crates/mikomai-bindings/` | UniFFI によるネイティブ UI 向けバインディング。旧手書き C ABI（`mikomai-ffi`）を置き換え、1 つの定義から Swift / C# 向けの型安全な FFI コードを生成（`uniffi-bindgen` / `uniffi-bindgen-cs`）。 |
+| [`mikomai-cli`](file:///Users/kamera25/mikomai/crates/mikomai-cli) | `crates/mikomai-cli/` | コマンドラインツール。`chat`、`serve` などのサブコマンドを提供。`mikomai-app` や `mikomai-adapters` に直接依存し、`--debug-jsonl` による詳細トレース出力に対応。 |
+
+---
+
+## LLM 推論バックエンド境界
+
+LLM バックエンドは `mikomai-llm`（core の `InferencePort`）を実装することでプラガブルに切り替え可能です。
+
+- `capabilities()`: テキスト生成、構造化出力、tool calling、トークン制限（入力／出力制限）を返します。
+- `availability()`: コンパイル時ではなく実行時の状態を返します（GGUF ファイルのロード状況や、Apple FM の `fm available` 状態）。
+
+### Apple Foundation Models の利用例
+macOS アプリケーション側で選択可能です（CLI や既定の構成は llama.cpp を標準利用）:
 
 ```rust,ignore
 use mikomai_llm::InferencePort;
@@ -25,15 +81,32 @@ let availability = backend.availability();
 let answer = backend.complete("短く挨拶してください").await?;
 ```
 
-初期実装は Apple の `/usr/bin/fm`（`available`, `count-tokens --quiet`, `respond --no-stream`）を使用する。
-CLI が存在しない macOS やモデル準備未完了時は実行時に unavailable を返す。インストールや利用規約への同意は行わない。
-stdin でプロンプトを渡すので、シェル展開や先頭の `--` によるオプション解釈は起きない。
-各リクエストは独立したセッションで、暗黙の会話履歴・core の長い system prompt は追加しない。
-Apple 側で保守的な 4096 トークンの予算を使い、応答用に 1024 を確保するため入力は 3072 以下に制限する。
-計数失敗や超過はエラーとし、入力を黙って切り捨てない。fm が出力トークン上限を指定できないため `max_output_tokens` は None。
-これは生成長の保証ではなく応答用の余裕であり、モデルの context 超過等の実行時エラーもそのまま呼び出し側に返す。
-`AppleTransport` を差し替えることで core を変更せずにネイティブ連携へ移行できる。
+- `/usr/bin/fm`（`available`, `count-tokens --quiet`, `respond --no-stream`）を使用。
+- CLI 不在やモデル準備未完了時は実行時に unavailable を返し、同意画面の表示やインストールは自動実行しません。
+- プロンプトは標準入力経由で渡され、シェル展開の影響を受けません。
+- トークン予算（入力上限 3072、応答用余裕 1024）を保守的に管理します。
 
-検証: `cargo check --workspace`、`cargo test -p mikomai-core -p mikomai-llm -p mikomai-llm-llamacpp`。
-macOS では `cargo test --manifest-path crates/mikomai-llm-apple/Cargo.toml --target-dir target` と
-`cargo run --manifest-path crates/mikomai-llm-apple/Cargo.toml --target-dir target --example smoke` で Apple を個別確認できる。
+---
+
+## ビルドと検証
+
+### ワークスペース全体の整合性チェック
+```bash
+cargo check --workspace
+```
+
+### 主要クレートの単体テスト
+```bash
+cargo test -p mikomai-core -p mikomai-app -p mikomai-adapters -p mikomai-bindings -p mikomai-cli
+```
+
+### Apple バックエンドの個別検証（macOS のみ）
+```bash
+cargo test --manifest-path crates/mikomai-llm-apple/Cargo.toml --target-dir target
+cargo run --manifest-path crates/mikomai-llm-apple/Cargo.toml --target-dir target --example smoke
+```
+
+### CLI 動作検証（必須検証ステップ）
+```bash
+npm run --silent cli -- chat "F220のVLAN設定方法を教えて" --debug-jsonl
+```
