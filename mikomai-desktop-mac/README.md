@@ -1,72 +1,114 @@
-# Mikomai for macOS
+# Mikomai for macOS (デスクトップアプリ)
 
-SwiftUIデスクトップアプリはRustの `mikomai-core` / `mikomai-adapters` をC FFI経由で利用します。SwiftチャットはローカルGGUFによるWorker回答と、LLM planner・device tools・複数stepのportable AgentLoopを使用します。CoreのPlannerには会話履歴、添付テキスト・画像解析結果、検索資料を渡し、Agentの内部イベントや生の機器出力は通常の回答として表示しません。
+macOS 向けのネイティブ SwiftUI デスクトップアプリケーションです。共有 Rust ロジックを UniFFI（[`crates/mikomai-bindings`](file:///Users/kamera25/mikomai/crates/mikomai-bindings)）経由で呼び出し、ローカル LLM による対話、技術ドキュメントのナレッジ検索（RAG）、自律的なネットワーク機器調査および安全な設定変更支援を提供します。
 
-CoreがLLMの判断と回答生成を管理し、モデル読み込み・実推論は `mikomai-adapters::local_llama` に分離しています。FFIはその入口とSwift callbackの変換を担当します。
+---
 
-設定でVisionを有効にし、画像対応Gemma 4 GGUFと対応するmmprojを指定すると、PNG/JPEGをチャットに添付できます。画像は4ファイルまで、各8 MiB・合計16 MiB・各16,777,216画素以下です。画像の解析結果を非信頼の参考資料としてCoreへ渡します。テキストのみのモデルや不正な画像はエラーになります。
+## 主な機能
 
-## Agentとネットワーク操作
+- **日本語チャット & 自律エージェント**:
+  - **Worker 経路**: 技術ドキュメントに基づく手順解説や設定例の即時回答。
+  - **Agent 経路**: 複数ステップにわたり、Ping/Trace、ARP・経路情報取得、機器設定取得、パケット解析などを自律実行して原因究明。
+- **ローカル推論 (llama.cpp / Apple FM)**:
+  - GGUF モデルをローカルで高速推論（Metal 最適化）。
+  - Vision（Gemma 4 ＋ mmproj）対応により、トポロジ図や画面キャプチャの画像添付解析が可能。
+  - Apple Foundation Models（`fm` CLI）バックエンドの利用にも対応。
+- **安全な変更承認ゲート (OperationGate)**:
+  - 設定変更、シリアルコンソール送信、FTP/TFTP 転送などの変更操作は、ハッシュ付き承認計画（`OperationPlan`）を作成して UI 上でユーザー承認を要求。未承認操作の実行を防止。
+- **ネットワーク構成図の自動描画**:
+  - 自然言語や会話履歴から構成図（nwdiag DSL）を自動生成し、SVG ベクター画像としてチャット内に埋め込み表示・保存。
+- **機器接続 & 認証情報の保護**:
+  - パスワードや Enable パスワードなどの機密情報は macOS Keychain に暗号化保存。LLM プロンプトやログへの露出を自動防止。
+- **CPU監視・通知・履歴管理**:
+  - バックグラウンドでの定期死活・CPU監視と通知機能。
+  - エージェントの調査履歴および操作監査ログの閲覧。
 
-AgentはFFI allow-list経由で疎通確認、route/IP情報、serial port列挙、`get_state`、`fetch_config`、`fetch_routing`、`fetch_arp`、`network_show`、packet解析/準備/安全確認、NW図、Cisco設定validate/convert、SurrealDB graph/MAC lookup、ベクトルRAG検索を利用します。機器調査はSwift callbackがmacOS Keychainから資格情報を取り出し、Netmiko runnerを呼び出します。秘密情報はplanner schemaやLLM promptへ渡さず、取得した設定出力もredactしてから共有します。
+---
 
-設定変更、serial console送信、FTP/TFTP file transferはhash付きOperationPlanを作成し、Swiftの確認・承認UIに送ります。実行は承認後だけ可能で、FFIのplan hash gate、開始済み状態確認、結果確定を通ります。資格情報はSwift Keychainから必要なFTP接続に限って渡します。Ask-user choiceは候補を表示し、返信を同じpending Agent taskへ続けます。NW図生成はSVG artifactとして保存・表示します。
+## アーキテクチャ連携
 
-承認済みFTP/TFTP転送は、推論とは独立した専用Rustワーカーに非同期で送ります。Swiftは完了コールバックを`async/await`で受け取り、実際の転送結果から完了・失敗を表示します。画像解析は非因果attentionのバッチ上限に合わせて処理し、画像バッチが推論コンテキストの物理バッチ上限を超えないようにします。
+```text
+[SwiftUI UI層]
+    │  ▲
+    │  │ UniFFI (crates/mikomai-bindings)
+    ▼  │
+[mikomai-app] ── MikomaiService (Tokio Runtime / 状態・承認ゲート所有)
+    │
+    ├── [mikomai-core] (ドメイン・エージェント判断・NW正規化)
+    └── [mikomai-adapters]
+          ├── [mikomai-llm-llamacpp / apple] (推論)
+          ├── FastEmbed E5 (ベクトル RAG)
+          ├── SurrealDB / RocksDB (データ永続化)
+          └── Netmiko Worker (SSH / Telnet / Serial 機器通信)
+```
 
-「添付を192.168.50.200へTFTPへアップロード」（FTPも同様）のような添付転送依頼は、Vision解析・RAG検索・Planner推論を通さずに承認計画を作成します。元のPNG/JPEGまたはUTF-8添付を転送用に保存し、承認計画にファイルのSHA-256を固定して、専用ワーカーが送信直前に一致を確認します。送信先は登録端末と照合し、送信先や対象ファイルが曖昧な場合は確認を求めます。画像の解析・説明を依頼した場合は通常のVision経路を使います。
+---
 
-React/Tauri UI/runtimeとIPC、専用MCP server process群を削除しました。旧Scheduler/Watch/TaskAuditの画面レイアウトは再現していませんが、定期実行、CPU監視、通知、run historyは「CPU監視」に、agent task履歴・再開は左アイコンから開く独立した「エージェント履歴」に分けています。操作監査は会話履歴のメニューから表示できます。GUIの専用ネットワークツール（TCP接続テスト、Ping/Trace、ARPテーブル、ルーティング）と機器一覧の診断ボタンは廃止し、ネットワーク調査はチャットのAgent経由で実行します。旧 `watches.json` とtask event JSONはSwift版Application Supportへ一度だけ取り込みます。agentの登録済みtool契約はportable FFI/Swift callback/承認済みadapterへ移しています。古いtool名と現在の実行経路は [`doc/tauri-retirement.md`](../doc/tauri-retirement.md) に記録しています。
+## セットアップと起動
 
-## 設定と起動
-
-設定は `~/Library/Application Support/MikomaiDesktopMac/settings.json` に保存します。既存インストールのsettingsは初回読込時に一度だけimportし、その後はSwift-native保存先を使います。接続情報はSwift側のローカル保存、パスワード類はmacOS Keychainに保存します。GGUFモデルは同梱せず、設定画面から選んで読み込みます。RAGには旧SurrealDB pathの `rag_chunk` を再利用し、Multilingual E5-Large modelを初回利用時にFastEmbed cacheへ取得します。
-
-監視定義と履歴は `~/Library/Application Support/MikomaiDesktopMac/watches.json` に、Agent task event/evidenceは同じディレクトリの `agent-events/` に保存します。操作監査は `audit/operations.ndjson` に記録します。旧Tauri監視・task auditのファイルがある場合は初回起動時に不足分だけ取り込みます。
-
-リポジトリから起動する場合は `./mikomai-desktop-mac/run.sh`、配布appを作る場合は `./mikomai-desktop-mac/build-app.sh` を実行します。Netmiko wrapperの共有Python資産とmacOS arm64 sidecarは `mikomai-core/assets/` 配下にあります。
-
-CLIは同じFFI推論器を使います。`MIKOMAI_MODEL_PATH` を指定するか、Swift-native/既存設定にGGUF pathを設定して、`npm run cli -- chat "F220のVLAN設定方法を教えて"` のように実行します。モデルが見つからない時は非生成ナレッジ応答を行うため、LLM回答を検証する場合はモデルを設定してください。
-
-CLIのSurrealDB/RAGインデックスは `~/Library/Application Support/MikomaiCLI/surrealdb` に保存します。Swift版の既存データベースとは分け、CLI検証中もAgentを起動できるようにしています。`MIKOMAI_GRAPH_DB_PATH` による明示的な指定は優先されますが、別プロセスで使用中のデータベースは同時に開けません。Swift版を再度起動すると、既に起動している同じアプリを前面に表示します。
-
-## 検証
+### 開発実行
+リポジトリルートから以下のスクリプトを実行します。
 
 ```bash
-cargo test --workspace
-cargo build -p mikomai-ffi
+./mikomai-desktop-mac/run.sh
+```
+
+### 配布用アプリバンドル（.app）のビルド
+```bash
+./mikomai-desktop-mac/build-app.sh
+```
+
+---
+
+## 設定と保存場所
+
+- **設定ファイル**: `~/Library/Application Support/MikomaiDesktopMac/settings.json`
+- **データベース (SurrealDB)**: `~/Library/Application Support/MikomaiDesktopMac/surrealdb/`
+- **監視設定・タスク**: `~/Library/Application Support/MikomaiDesktopMac/watches.json`
+- **生成アーティファクト (NW図 SVG 等)**: `~/Library/Application Support/MikomaiDesktopMac/artifacts/`
+- **認証情報**: macOS Keychain（`keyring` クレート経由で安全に管理）
+
+---
+
+## テストと検証
+
+### 1. Swift テスト
+```bash
+# 全体テスト
 ./mikomai-desktop-mac/test-core.sh
-npm run cli -- chat "F220のVLAN設定方法を教えて"
+
+# 特定のテストのみ実行
+./mikomai-desktop-mac/test-core.sh --filter AgentProgressTests
 ```
 
-Swiftテストは `test-core.sh` から標準の `swift test` ランナーを実行します。アプリと同じmacOS SDK・キャッシュを使い、Testing 6.2系を固定して、対応Command Line Toolsに存在しない `_TestingInterop` への依存を避けます。特定のテストだけ実行する場合は `./mikomai-desktop-mac/test-core.sh --filter AgentProgressTests` のように指定できます。
-
-UIとSwift callbackの確認は、`test-core.sh` の後に `./mikomai-desktop-mac/test-execution-queue.sh` を実行できます。一時設定・保存先を使い、入力と送信待機列、localhostへのping・traceroute結果を検証します。
-
-Swift unit testsおよびRust fake transportで承認・planner・tool結果を検証します。実機SSH、モデルごとの生成品質、物理装置に対する変更適用はそれぞれの利用環境で追加確認してください。
-
-### NW図の表示
-
-「LAN 192.168.1.0/24にrouter01とswitch01を接続したNW図を作成して」のように構成を指定すると、共有CoreのPlotterが会話履歴・添付情報を参照してnwdiag DSLを生成し、検証後にSwift callbackがSVGを描画します。DSLを直接コードブロックで指定する場合はモデル推論を省略します。生成した図はチャット内で表示し、「拡大」「SVGを保存」を利用できます。SVGは回答に埋め込むため、履歴を開き直しても表示できます。構成不足や描画失敗では確認を求め、再生成は上限を設けています。
-
-描画にはnwdiag・Pillow・SVG用依存を導入したPythonが必要です。既存の`venv/bin/python`、または`MIKOMAI_PYTHON`で指定した環境を使います。SVGの自動保存先はApplication Support内の`MikomaiDesktopMac/artifacts`で、検証時には`MIKOMAI_ARTIFACTS_DIR`で変更できます。
-
-表示経路の検証は、Core/Swiftテストに加えて以下で実施できます。macOSのWebKit描画プロセスへのアクセスが必要です。`MIKOMAI_DIAGRAM_CHECK_MODEL`にGGUFパスを指定すると自然文からの生成も検証します。
-
-```sh
-MIKOMAI_WINDOW_CHECK_SOURCE="$PWD/mikomai-desktop-mac/Tests/NetworkDiagramChecks/NetworkDiagramChecks.swift" sh mikomai-desktop-mac/test-chat-window.sh
+### 2. 実行キューと送信確認テスト
+```bash
+./mikomai-desktop-mac/test-execution-queue.sh
 ```
 
-### アクセシビリティとキーボード操作
+### 3. NW図の描画確認テスト
+```bash
+MIKOMAI_WINDOW_CHECK_SOURCE="$PWD/mikomai-desktop-mac/Tests/NetworkDiagramChecks/NetworkDiagramChecks.swift" \
+  sh mikomai-desktop-mac/test-chat-window.sh
+```
 
-アイコンボタン、履歴、ワークスペースタブ、機器・監視の操作にはVoiceOver用の名前を付け、選択行には選択状態を公開します。NW図の代替テキストにはMarkdown画像のタイトルを使用します。
+### 4. アクセシビリティ・UI 操作テスト
+```bash
+# キーボード操作、VoiceOver 読み上げ、フォーカス遷移の検証
+sh mikomai-desktop-mac/test-accessibility.sh
 
-アプリ内のボタン・選択メニュー・スイッチ・入力欄はTabで次へ、Shift+Tabで前へ移動できます。システム全体の「キーボードナビゲーション」を有効にしなくても操作できます。Enter／Spaceでフォーカス中のボタンを実行し、スライダーは矢印キーで値を調整します。ホスト編集のEnterはフォーカス中の操作を優先し、入力欄では保存を実行します。日本語変換中は保存しません。Escでキャンセルできます。
+# 入力フォーム・IME・補完の検証
+sh mikomai-desktop-mac/test-chat-composer.sh
+```
 
-履歴行は完全な会話名と選択状態を読み上げ要素に直接設定し、Enterで選択、F2で名前変更、VoiceOverのカスタムアクションで名前変更・削除ができます。質問欄の機器名候補が開いている場合だけ、Tabで候補を補完します。Shift+Tabは候補表示中も前へ移動します。日本語変換中は入力メソッドを優先します。
+---
 
-`sh mikomai-desktop-mac/test-accessibility.sh` は全ワークスペースと設定の全カテゴリの操作名、履歴の選択・名前変更、ホスト編集の前後移動、フォーカス中の操作と保存の優先順、独立した機器一覧の編集ボタン、無効状態、スイッチ・スライダーのキー／アクセシビリティ操作を検証します。`test-chat-composer.sh` は入力保持、Tab移動、候補補完、IME、設定欄の改行を検証します。VoiceOverの実音声は自動試験に含みません。
+## アクセシビリティとキーボード操作
 
-チャットのユーザー・AIの発言全文、エージェントの状態・目的・次のアクション・詳細・展開した実行内容、ホスト一覧の各セルもTab／Shift+Tabの対象です。フォーカス枠を表示し、画面外の項目へ移動するとスクロールします。ホストのセルには機器名・列名・値を付け、空欄は「未設定」と読みます。資格情報は設定の有無のみ公開します。
-
-機器の詳細登録・編集画面では、入力済みでも項目名と必須・入力条件の説明が残ります。パスワード欄はネイティブの保護された入力欄です。入力エラーと資格情報の保存説明もTabで確認でき、通常の入力欄はTab直後の文字が次の欄に入るよう即座にフォーカスを切り替えます。
+- **キーボードナビゲーション**: 全ての入力欄、ボタン、リスト項目は `Tab` / `Shift+Tab` で前後に移動可能。
+- **ショートカット**:
+  - `Enter` / `Space`: ボタンの実行、リスト行の選択
+  - `F2`: 会話履歴の名前変更
+  - `Esc`: モーダルや補完のキャンセル
+  - `Tab`: 機器名候補の自動補完
+- **VoiceOver**: 全ボタン、履歴、機器一覧セル、ステータスアイコンに適切なラベルと状態（選択中、未設定等）が付与されています。
