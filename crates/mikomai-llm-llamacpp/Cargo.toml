@@ -6,5 +6,5 @@ edition = "2021"
 [dependencies]
 mikomai-core = { path = "../../mikomai-core" }
 mikomai-llm = { path = "../mikomai-llm" }
-llama-cpp-2 = { version = "0.1.156", features = ["mtmd"] }
-llama-cpp-sys-2 = "0.1.156"
+llama-cpp-2 = { version = "0.1.159", features = ["mtmd"] }
+llama-cpp-sys-2 = "0.1.159"

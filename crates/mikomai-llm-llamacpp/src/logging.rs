@@ -5,6 +5,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static DEBUG: AtomicBool = AtomicBool::new(false);
 
+pub(crate) fn inference_stats(stats: &crate::InferenceStats) {
+    if DEBUG.load(Ordering::Relaxed) {
+        let _ = writeln!(std::io::stderr().lock(),
+            "mikomai llama: context_reused={} prompt_tokens={} reused_tokens={} evaluated_tokens={} first_token_ms={:.2} total_ms={:.2}",
+            stats.context_reused, stats.prompt_tokens, stats.reused_tokens,
+            stats.evaluated_tokens, stats.first_token_ms, stats.total_ms);
+    }
+}
+
 pub fn configure(debug: bool) {
     DEBUG.store(debug, Ordering::Relaxed);
     // Install before backend initialization/model loading. This callback is
